@@ -1,16 +1,3 @@
-.DS_Store
-node_modules
-/dist
-/scripts
-/.now
-
-/tests/e2e/videos/
-/tests/e2e/screenshots/
-
-# local env files
-.env
-.env.local
-.env.*.local
 
 # Log files
 npm-debug.log*
@@ -25,6 +12,3 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw*
-
-.release-it.json
-now.json
