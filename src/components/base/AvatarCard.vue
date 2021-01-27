@@ -1,7 +1,7 @@
 <template>
   <div
     :class="classes"
-    class="pt-2"
+    style="justify-content: center;"
   >
     <base-avatar
       v-if="icon"
@@ -10,11 +10,14 @@
       :icon="icon"
       :outlined="outlined"
       :size="size"
-      class="mb-3"
+      class=""
+      :href="href"
+      :target="target"
     />
 
     <div :class="horizontal && title && 'ml-6'">
       <base-title
+        v-if="title"
         :title="title"
         class="text-uppercase"
         space="3"
@@ -24,7 +27,9 @@
         v-if="text || $slots.default"
         :space="horizontal ? 0 : undefined"
         :text="text"
-        class="mx-auto"
+        :html="html"
+        class="mx-auto d-flex"
+        align="center"
         max-width="700"
       >
         <slot />
@@ -65,6 +70,9 @@
       },
       text: String,
       title: String,
+      html: String,
+      href: String,
+      target: String,
     },
 
     computed: {

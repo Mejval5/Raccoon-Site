@@ -15,14 +15,14 @@
       shaped
     >
       <v-list-item
-        v-for="name in items"
-        :key="name"
-        :to="{ name }"
-        :exact="name === 'Home'"
+        v-for="link in links"
+        :key="link.name"
+        :to="{ name: link.name, hash: link.hash }"
+        :exact="link.name === 'Home'"
         color="primary"
       >
         <v-list-item-content>
-          <v-list-item-title v-text="name" />
+          <v-list-item-title v-text="link.name" />
         </v-list-item-content>
       </v-list-item>
     </v-list>
@@ -34,10 +34,17 @@
     name: 'HomeDrawer',
 
     props: {
-      items: {
+      links: {
         type: Array,
-        default: () => ([]),
+        default () {
+          return [{ name: '', hash: '' }]
+        },
       },
     },
+    data: () => ({
+      link: { name: 'Home', hash: '' },
+      name: '',
+      hash: '',
+    }),
   }
 </script>

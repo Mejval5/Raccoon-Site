@@ -1,6 +1,6 @@
 <template>
   <base-section
-    id="info-alt"
+    id="contact"
     space="56"
   >
     <v-container>
@@ -9,8 +9,10 @@
           cols="12"
           md="5"
         >
-          <base-business-info title="KEEP IN TOUCH WITH US">
-            Lorem ipsum dolor, sit amet consectetur adipisicing elit. Illo pariatur quidem, quis modi iure nihil commodi suscipit, corporis dicta adipisci, voluptatum quia cupiditate.
+          <base-business-info
+          title="FIND ME ON SOCIAL MEDIA"
+          text="Text here"
+          >
           </base-business-info>
         </v-col>
 
@@ -18,7 +20,7 @@
           cols="12"
           md="6"
         >
-          <base-contact-form title="MAIL US YOUR MESSAGE" />
+          <base-contact-form title="SEND ME YOUR MESSAGE" />
         </v-col>
       </v-row>
     </v-container>

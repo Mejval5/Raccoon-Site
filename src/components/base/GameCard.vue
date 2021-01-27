@@ -85,6 +85,7 @@
       headline: String,
       subtitle: String,
       text: String,
+      target: String,
       image: String,
       samepage: String,
     },

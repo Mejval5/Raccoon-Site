@@ -1,4 +1,9 @@
 <template>
+<v-btn
+icon
+:href="href"
+:target="target"
+>
   <v-icon
     :size="size"
     v-bind="$attrs"
@@ -6,6 +11,7 @@
   >
     <slot />
   </v-icon>
+</v-btn>
 </template>
 
 <script>
@@ -13,6 +19,8 @@
     name: 'BaseIcon',
 
     props: {
+      target: String,
+      href: String,
       size: {
         type: [Number, String],
         default: 56,

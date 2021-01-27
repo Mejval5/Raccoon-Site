@@ -23,6 +23,8 @@
         v-if="icon"
         :dark="dark"
         :size="size / 2"
+        :href="href"
+        :target="target"
       >
         {{ icon }}
       </base-icon>
@@ -38,6 +40,8 @@
       color: String,
       dark: Boolean,
       icon: String,
+      href: String,
+      target: String,
       outlined: Boolean,
       size: {
         type: [Number, String],

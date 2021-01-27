@@ -1,5 +1,9 @@
 <template>
-  <v-fade-transition mode="out-in">
+  <v-fade-transition
+  mode="out-in"
+  @after-enter="afterEnter"
+  appear
+  >
     <router-view />
   </v-fade-transition>
 </template>
@@ -14,6 +18,11 @@
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ],
+    },
+    methods: {
+      afterEnter () {
+        this.$root.$emit('scrollAfterEnter')
+      },
     },
   }
 </script>

@@ -2,9 +2,9 @@
   <v-theme-provider dark>
     <section id="hero-alt">
       <base-img
-        :height="$vuetify.breakpoint.mdAndUp ? 350 : 225"
+        :height="$vuetify.breakpoint.mdAndUp ? 400 : 225"
         :gradient="gradient"
-        :src="src"
+        :src="img_src"
         color="#45516b"
         flat
         max-width="100%"
@@ -66,12 +66,12 @@
 
     computed: {
       gradient () {
-        const color = `${this.$vuetify.theme.themes.light.secondary}CC`
+        const color = `${this.$vuetify.theme.themes.light.secondary}88`
         const overlay = RGBAtoCSS(HexToRGBA(color))
 
         return `to top, ${overlay}, ${overlay}`
       },
-      src () {
+      img_src () {
         return this.$route.meta.src
       },
       items () {

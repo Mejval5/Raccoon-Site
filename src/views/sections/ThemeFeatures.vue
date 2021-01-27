@@ -1,7 +1,8 @@
 <template>
   <base-section id="theme-features">
-    <base-section-heading title="Theme Features">
-      Lorem ipsum dolor sit amet consectetur adipisicing elit. Libero, in! Asperiores, impedit libero. Veniam rerum saepe unde nihil possimus quibusdam esse accusamus mollitia magni fuga.
+    <base-section-heading title="Hello there!">
+      My name is Daniel Nečesal. I am an indie game developer based in Brno, Czech Republic.
+      <br>On this site I would like to share the progress of my current projects and 
     </base-section-heading>
 
     <v-container>
@@ -11,7 +12,7 @@
         <v-col
           v-for="(feature, i) in features"
           :key="i"
-          cols= "4"
+          cols= "auto"
         >
           <base-avatar-card
             v-bind="feature"

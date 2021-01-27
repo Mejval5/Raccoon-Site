@@ -12,14 +12,11 @@
 
     extends: View,
 
+    img_src: 'about.jpg',
+
     mixins: [
       LoadSections([
         'hero-alt',
-        'about-our-product',
-        'theme-features',
-        'affiliates',
-        'newsletter',
-        'pro-features',
       ]),
     ],
 

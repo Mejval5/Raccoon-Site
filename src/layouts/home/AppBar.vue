@@ -7,6 +7,7 @@
       elevation="1"
       height="80"
       v-bind:to="'home'"
+      sticky
     >
       <v-tab
       class="mx-3 px-0"
@@ -23,7 +24,7 @@
 
       <v-tab
         active-class="text--primary"
-        class="font-weight-bold headline"
+        class="font-weight-bold headline hidden-xs-only"
         min-width="96"
         text
         to="/"
@@ -46,17 +47,17 @@
           optional
         >
           <v-tab
-            v-for="(name, i) in items"
+            v-for="(link, i) in links"
             :key="i"
-            :to="{ name }"
-            :exact="name === 'Home'"
+            :exact="link.name === 'Home'"
             :ripple="false"
+            :to="{ name: link.name, hash: link.hash }"
             active-class="text--primary"
             class="font-weight-bold"
             min-width="96"
             text
           >
-            {{ name }}
+            {{ link.name }}
           </v-tab>
         </v-tabs>
       </div>
@@ -69,12 +70,13 @@
 
     <home-drawer
       v-model="drawer"
-      :items="items"
+      :links="links"
     />
   </div>
 </template>
 
 <script>
+  import goTo from 'vuetify/es5/services/goto'
   export default {
     name: 'HomeAppBar',
 
@@ -84,13 +86,14 @@
 
     data: () => ({
       drawer: null,
-      items: [
-        'Home',
-        'About',
-        'Games',
-        'Blog',
-        'Octomancer',
-        'Contact',
+      lastPage: null,
+      links: [
+        { name: 'Home', hash: '' },
+        { name: 'About', hash: '' },
+        { name: 'Games', hash: '' },
+        { name: 'Blog', hash: '' },
+        { name: 'Octomancer', hash: '' },
+        { name: 'Contact', hash: '' },
       ],
     }),
   }

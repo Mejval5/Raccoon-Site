@@ -2,13 +2,16 @@
   <v-theme-provider :dark="dark">
     <div>
       <base-info-card
-        title="KEEP IN TOUCH WITH US"
+        :title="title"
+        :text="text"
         pace="6"
       >
-        Lorem ipsum dolor, sit amet consectetur adipisicing elit. Illo pariatur quidem, quis modi iure nihil commodi suscipit, corporis dicta adipisci, voluptatum quia cupiditate. Nulla minus voluptatum nostrum deleniti, asperiores facere.
       </base-info-card>
 
-      <base-business-contact dense />
+      <base-business-contact
+      dense
+      :business="business"
+      />
     </div>
   </v-theme-provider>
 </template>
@@ -17,24 +20,28 @@
   export default {
     name: 'BaseBusinessInfo',
 
-    props: { dark: Boolean },
+    props: {
+      dark: Boolean,
+      text: String,
+      title: String,
+    },
 
     data: () => ({
       business: [
         {
-          icon: 'mdi-map-marker-outline',
-          title: 'Address',
-          text: '8553 N. Beach St. Ste. 227<br>Fort Worth, Texas 76137',
+          icon: 'mdi-facebook',
+          text: 'Daniel Nečesal',
+          html: 'https://www.facebook.com/daniel.necesal/',
         },
         {
-          icon: 'mdi-cellphone',
-          title: 'Phone',
-          text: '01 (800) 433 744<br>01 (800) 433 633',
+          icon: 'mdi-instagram',
+          text: 'Raccoon in the sun',
+          html: 'https://www.instagram.com/raccoon.in.the.sun/',
         },
         {
-          icon: 'mdi-email',
-          title: 'Email',
-          text: 'john@vuetifyjs.com<br>heather@vuetifyjs.com',
+          icon: 'mdi-linkedin',
+          text: 'Daniel Nečesal',
+          html: 'https://www.linkedin.com/in/necesal-daniel/',
         },
       ],
     }),

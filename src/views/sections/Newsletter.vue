@@ -75,7 +75,7 @@
       },
       save_email () {
         if (this.test_email(this.email)) {
-          this.axios.post('https://us-central1-website-raccoon.cloudfunctions.net/uploadMail?text=' + this.email, this.email,
+          this.axios.post('https://us-central1-website-raccoon.cloudfunctions.net/uploadEmail?text=' + this.email, this.email,
                           { headers: { 'Access-Control-Allow-Origin': '*' } }).catch()
           // // this captures and saves the email for later use
           // const Http = new XMLHttpRequest()

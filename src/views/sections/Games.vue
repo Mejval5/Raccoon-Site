@@ -32,6 +32,19 @@
         cols="auto"
       >
         <game-card
+          image="assets/mini2.png"
+          gamelink="https://raccoon5.itch.io/plantagonist"
+          headline="Sproutagonist"
+          subtitle="A one nighter made with Milan!"
+          text="Have you ever wanted to be a majestical plant reaching for the heavens with roots reaching deep into the mother earth?
+          This game is definitely for you."
+        />
+      </v-col>
+
+      <v-col
+        cols="auto"
+      >
+        <game-card
           image="assets/game-1.png"
           gamelink="https://raccoon5.itch.io/piranhasbounty"
           headline="Piranha's bounty"

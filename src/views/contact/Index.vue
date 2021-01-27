@@ -16,8 +16,6 @@
       LoadSections([
         'hero-alt',
         'keep-in-touch',
-        'newsletter',
-        'pro-features',
       ]),
     ],
 

@@ -1,36 +1,39 @@
 <template>
+  <v-fade-transition
+  mode="out-in"
+  @after-enter="afterEnter"
+  appear
+  >
   <section id="hero">
-    <v-img
-      :min-height="minHeight"
-      :src="require('@/assets/home-hero.jpg')"
-      class="white--text"
-      gradient="to right, rgba(5, 11, 31, .1), rgba(5, 11, 31, .5)"
+    <v-parallax
+    :src="require('@/assets/test.jpg')"
+    :height="$vuetify.breakpoint.mdAndUp ? 500 : 400"
+    class="pa-0"
     >
-    <!--
-      <v-container class="fill-height px-4 py-12">
+    <v-img
+      :height="$vuetify.breakpoint.mdAndUp ? 500 : 400"
+      style="width:100%; !important"
+      gradient="to right, rgba(5, 11, 31, .4), rgba(5, 11, 31, .6)"
+    >
+      <v-container class="fill-height px-4 py-6">
         <v-responsive
           class="d-flex align-center"
           height="100%"
-          max-width="700"
           width="100%"
         >
-          <base-heading title="PROMOTE YOUR BUSINESS WITH ZERO" />
+          <base-heading title="Welcome" />
 
-          <base-body>
-            Infographic hypotheses influencer user experience Long madel ture gen-z paradigm shift client partner network product seilans solve management influencer analytics leverage virality.
-            incubator seed round massmarket.
-            buyer agile development growth hacking business-to-consumer ecosystem
+          <base-body
+          class="text--lighten-3"
+          >
+            My name is Daniel Nečesal. I am an indie game developer based in Brno, Czech Republic. <br>
+            On this site I would like to share the progress of my current projects and
           </base-body>
 
           <div
             :class="$vuetify.breakpoint.smAndDown ? 'flex-column align-start' : 'align-center'"
             class="d-flex flex-wrap"
           >
-            <base-btn>
-              Discover More
-            </base-btn>
-
-            <span class="font-weight-bold ml-6 mr-4 my-4">or</span>
 
             <base-btn
               :ripple="false"
@@ -43,9 +46,10 @@
           </div>
         </v-responsive>
       </v-container>
-      -->
     </v-img>
+    </v-parallax>
   </section>
+  </v-fade-transition>
 </template>
 
 <script>
@@ -54,6 +58,11 @@
 
     provide: {
       theme: { isDark: true },
+    },
+    methods: {
+      afterEnter () {
+        this.$root.$emit('scrollAfterEnter')
+      },
     },
 
     computed: {
@@ -65,3 +74,11 @@
     },
   }
 </script>
+
+<style lang='scss'>
+.v-parallax__content
+{
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+}
+</style>
