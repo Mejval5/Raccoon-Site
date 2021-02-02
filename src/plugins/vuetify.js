@@ -2,6 +2,7 @@
 
 import Vue from 'vue'
 import Vuetify from 'vuetify/lib/framework'
+import { preset } from 'vue-cli-plugin-vuetify-preset-rally/preset'
 import {
   VCol,
   VRow,
@@ -15,15 +16,18 @@ Vue.use(Vuetify, {
 })
 
 export default new Vuetify({
+  preset,
   theme: {
-    dark: false,
+    dark: true,
     themes: {
       light: {
         primary: '#42a5f6',
         secondary: '#050b1f',
         accent: '#204165',
       },
-      dark: {},
+      dark: {
+        primary: '#cdcddfff',
+      },
     },
   },
 })

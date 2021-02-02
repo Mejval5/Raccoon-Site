@@ -32,7 +32,7 @@
         cols="auto"
       >
         <game-card
-          image="assets/mini2.png"
+          image="assets/plantzie.png"
           gamelink="https://raccoon5.itch.io/plantagonist"
           headline="Sproutagonist"
           subtitle="A one nighter made with Milan!"

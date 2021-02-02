@@ -60,14 +60,27 @@
     <v-card
       class="flex-grow-1 d-flex justify-center align-end"
       flat
+    >        <router-link
+      v-if="samepage"
+      :to="gamelink"
     >
       <v-btn
         class="my-6"
         rounded
         x-large
         color="primary"
+      >
+        <b>Learn more</b>
+      </v-btn>
+          </router-link>
+      <v-btn
+        v-else
+        class="my-6"
+        rounded
+        x-large
+        color="primary"
         :href="gamelink"
-        :target="target"
+        target="_blank"
       >
         <b>Learn more</b>
       </v-btn>
@@ -76,7 +89,7 @@
 </template>
 <script>
   export default {
-    name: 'BaseCard',
+    name: 'GameCard',
 
     inheritAttrs: false,
 
@@ -85,7 +98,6 @@
       headline: String,
       subtitle: String,
       text: String,
-      target: String,
       image: String,
       samepage: String,
     },

@@ -1,7 +1,6 @@
 <template>
   <v-navigation-drawer
     right
-    color="transparent"
     fixed
     height="auto"
     overlay-color="secondary"
@@ -11,7 +10,6 @@
     v-on="$listeners"
   >
     <v-list
-      color="white"
       shaped
     >
       <v-list-item

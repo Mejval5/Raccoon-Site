@@ -36,7 +36,7 @@
       cards: [
         {
           icon: 'mdi-keyboard-outline',
-          title: 'Trendy Design',
+          title: 'Programming',
           text: 'Efficiently unleash media information without cross-media value. Quickly maximize value timely deliverables schemas.',
         },
         {

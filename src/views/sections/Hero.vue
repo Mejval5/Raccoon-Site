@@ -13,7 +13,7 @@
     <v-img
       :height="$vuetify.breakpoint.mdAndUp ? 500 : 400"
       style="width:100%; !important"
-      gradient="to right, rgba(5, 11, 31, .4), rgba(5, 11, 31, .6)"
+      gradient="to right, rgba(5, 11, 31, .6), rgba(5, 11, 31, .8)"
     >
       <v-container class="fill-height px-4 py-6">
         <v-responsive
@@ -27,23 +27,21 @@
           class="text--lighten-3"
           >
             My name is Daniel Nečesal. I am an indie game developer based in Brno, Czech Republic. <br>
-            On this site I would like to share the progress of my current projects and
-          </base-body>
-
-          <div
-            :class="$vuetify.breakpoint.smAndDown ? 'flex-column align-start' : 'align-center'"
-            class="d-flex flex-wrap"
-          >
-
+            On this site I would like to share my older projects as well as the progress of my current projects. <br> <br>
+            My current main project is the
             <base-btn
-              :ripple="false"
-              class="pa-1"
+              class="px-1"
+              style="min-width: 0;"
               height="auto"
               text
+              rounded
+              :tile="false"
+              to="/octomancer"
             >
-              Get Started Now
+              Octomancer
             </base-btn>
-          </div>
+          </base-body>
+
         </v-responsive>
       </v-container>
     </v-img>

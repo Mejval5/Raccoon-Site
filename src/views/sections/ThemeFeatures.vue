@@ -2,7 +2,7 @@
   <base-section id="theme-features">
     <base-section-heading title="Hello there!">
       My name is Daniel Nečesal. I am an indie game developer based in Brno, Czech Republic.
-      <br>On this site I would like to share the progress of my current projects and 
+      <br>On this site I would like to share the progress of my current projects and
     </base-section-heading>
 
     <v-container>

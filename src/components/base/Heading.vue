@@ -19,7 +19,7 @@
 
     inject: {
       theme: {
-        default: () => ({ isDark: false }),
+        default: () => ({ isDark: true }),
       },
       heading: {
         default: () => ({ align: 'left' }),
@@ -81,7 +81,6 @@
           `font-weight-${this.weight}`,
           `mb-${this.space}`,
           `text-${this.align}`,
-          this.theme.isDark && 'white--text',
         ]
 
         return classes

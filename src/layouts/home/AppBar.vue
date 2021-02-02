@@ -3,7 +3,7 @@
     <v-app-bar
       id="home-app-bar"
       app
-      color="white"
+      color=""
       elevation="1"
       height="80"
       v-bind:to="'home'"
@@ -15,9 +15,9 @@
       to="/"
       >
         <base-img
-          :src="require('@/assets/racc.svg')"
+          :src="require('@/assets/racc-dark.svg')"
           contain
-          max-width="52"
+          max-width="55"
           width="100%"
         />
       </v-tab>
@@ -38,7 +38,7 @@
         max-width="128"
         width="100%"
       />
--->
+      -->
       <v-spacer />
 
       <div>
@@ -108,4 +108,7 @@
     .v-tab
       &::before
         display: none
+
+    .theme--dark.v-tabs > .v-tabs-bar
+      background-color: #1e1e1e00 !important
 </style>

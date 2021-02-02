@@ -83,9 +83,3 @@
     },
   }
 </script>
-
-<style lang="sass">
-  #hero-alt
-    .v-breadcrumbs__item
-      color: #FFFFFF
-</style>

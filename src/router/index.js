@@ -46,7 +46,7 @@ const router = new Router({
           meta: { src: require('@/assets/me.jpg') },
         },
         {
-          path: '/contact',
+          path: 'contact',
           name: 'Contact',
           component: () => import('@/views/contact/Index.vue'),
           meta: { src: require('@/assets/IMG_0031.jpg') },
@@ -62,6 +62,11 @@ const router = new Router({
           name: 'Octomancer',
           component: () => import('@/views/octomancer/Index.vue'),
           meta: { src: require('@/assets/pro.jpg') },
+        },
+        {
+          path: '/blogpost/:id',
+          name: 'BlogPost',
+          component: () => import('@/views/blogpost/Index.vue'),
         },
         {
           path: '*',
