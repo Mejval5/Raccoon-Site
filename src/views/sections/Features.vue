@@ -1,7 +1,7 @@
 <template>
-  <base-section
+  <section
     id="features"
-    class="secondary"
+    class="elevation1 elevation-0 mx-10 mb-5 rounded pt-5"
   >
     <v-responsive
       class="mx-auto"
@@ -18,14 +18,13 @@
           >
             <base-info-card
               align="center"
-              dark
               v-bind="card"
             />
           </v-col>
         </v-row>
       </v-container>
     </v-responsive>
-  </base-section>
+  </section>
 </template>
 
 <script>

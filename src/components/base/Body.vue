@@ -3,7 +3,6 @@
     :is="tag"
     :class="classes"
     :style="styles"
-    class="base-body body-1"
     v-bind="$attrs"
     v-on="$listeners"
   >
@@ -35,13 +34,21 @@
 
     props: {
       html: String,
+      size: {
+        type: String,
+        default: 'subtitle-1',
+      },
+      mobileSize: {
+        type: String,
+        default: 'subtitle-2',
+      },
       maxWidth: {
         type: [Number, String],
         default: undefined,
       },
       space: {
         type: [Number, String],
-        default: 10,
+        default: 0,
       },
       tag: {
         type: String,
@@ -53,7 +60,8 @@
     computed: {
       classes () {
         return [
-          'grey--text',
+          'base-body',
+          this.fontSize,
           `text-${this.heading.align}`,
           `mb-${this.space}`,
         ]
@@ -62,6 +70,11 @@
         return {
           maxWidth: `${this.maxWidth}px`,
         }
+      },
+      fontSize () {
+        return this.$vuetify.breakpoint.mdAndUp
+          ? this.size
+          : this.mobileSize
       },
     },
   }

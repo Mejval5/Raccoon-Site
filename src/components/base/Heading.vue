@@ -65,12 +65,12 @@
       },
       tag: {
         type: String,
-        default: 'h1',
+        default: 'h3',
       },
       title: String,
       weight: {
         type: String,
-        default: 'black',
+        default: '',
       },
     },
 

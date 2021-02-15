@@ -9,7 +9,7 @@
           v-if="icon"
           :class="`text-${align}`"
           cols="12"
-          class="mb-4"
+          class="mb-4 "
         >
           <base-icon :color="color">
             {{ icon }}
@@ -28,14 +28,15 @@
 
           <base-title
             :title="title"
-            class="text-uppercase"
+            class="text-uppercase terciaryText"
             space="1"
           />
 
-          <base-divider :color="color" />
+          <base-divider />
 
           <base-body
             v-if="text || $slots.default"
+            class="secondaryText"
             :text="text"
             space="6"
           >

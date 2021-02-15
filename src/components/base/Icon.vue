@@ -1,17 +1,18 @@
 <template>
-<v-btn
-icon
-:href="href"
-:target="target"
->
-  <v-icon
-    :size="size"
-    v-bind="$attrs"
-    v-on="$listeners"
+  <v-btn
+    icon
+    :href="href"
+    :target="target"
   >
-    <slot />
-  </v-icon>
-</v-btn>
+    <v-icon
+      :size="size"
+      v-bind="$attrs"
+      :color="iconColor"
+      v-on="$listeners"
+    >
+      <slot />
+    </v-icon>
+  </v-btn>
 </template>
 
 <script>
@@ -24,6 +25,10 @@ icon
       size: {
         type: [Number, String],
         default: 56,
+      },
+      iconColor: {
+        type: String,
+        default: 'primary',
       },
     },
   }

@@ -1592,6 +1592,13 @@
   dependencies:
     semver "^7.1.2"
 
+"@vuetify/cli-plugin-utils@^0.0.7":
+  version "0.0.7"
+  resolved "https://registry.yarnpkg.com/@vuetify/cli-plugin-utils/-/cli-plugin-utils-0.0.7.tgz#103e0ce504253dbe87bc7fe7e096992beac9bf9b"
+  integrity sha512-34INe4rcsus6ByNgrpIPAyJaTRt1j+5YaMWt2Lh3iDZLn9h69tEp83Imqefze7weRbg+qukJYdnaWDFjFUAf2g==
+  dependencies:
+    semver "^7.1.2"
+
 "@vuetify/vue-cli-plugin-preset-base@~0.3.2":
   version "0.3.2"
   resolved "https://registry.yarnpkg.com/@vuetify/vue-cli-plugin-preset-base/-/vue-cli-plugin-preset-base-0.3.2.tgz#3bfbfd09d0662141b7ba5cda29145c237a9d79aa"
@@ -10288,6 +10295,13 @@ vue-axios@^3.2.2:
   version "3.2.2"
   resolved "https://registry.yarnpkg.com/vue-axios/-/vue-axios-3.2.2.tgz#c945694a4b7f4f741a07afbaec9e76b4877b618f"
   integrity sha512-kRhbZOOp9p+iEB46mtC7tfwYlvmycLUsdNUjC+24So6PkhK9VathdEP0d5OcR2QDb/Z+JNTs4i8DzJEGbx9zOg==
+
+vue-cli-plugin-vuetify-preset-rally@~1.0.4:
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/vue-cli-plugin-vuetify-preset-rally/-/vue-cli-plugin-vuetify-preset-rally-1.0.4.tgz#d2dc553f11391e4f59cab9460a4cd42a8d0b733c"
+  integrity sha512-0l+8Nokn1TgBgw4MYwfwDj9D1ZSEWIC5RkZahCWikRANwt3mxP5RwOBfGF/e8QL8CZQigx6Qf6VqWlmu1AufVg==
+  dependencies:
+    "@vuetify/cli-plugin-utils" "^0.0.7"
 
 vue-cli-plugin-vuetify@^2.0.5:
   version "2.0.9"

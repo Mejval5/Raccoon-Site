@@ -1,33 +1,78 @@
-$body-font-family: 'PT Sans', sans-serif;
-$heading-font-family: 'Work Sans', sans-serif;
+@import '~vuetify/src/styles/styles.sass';
 
+// Rally specific variables
+$rally-box-shadow: none;
+$rally-dialog-background-color: #1F1E1F;
+$rally-font-size: 16;
+$rally-tabs-slider-background: transparent;
+$rally-text-color: #FFFFFF;
+
+
+// Preset variables
+$body-font-family: 'Open Sans', sans-serif;
+$heading-font-family: 'Raleway', sans-serif;
+$btn-font-size: #{14 / $rally-font-size}rem;
+$btn-font-weight: 700;
+$card-box-shadow: none;
+$dialog-card-subtitle-padding: 24px;
+$dialog-card-text-padding: 24px;
+$dialog-card-title-padding: 24px;
+$dialog-elevation: 0;
 $headings: (
-  'h4': (
-    'letter-spacing': 0.1875rem,
-    'weight': 900
+  'h1':(
+    'font-family': $heading-font-family,
   ),
-  'h5': (
-    'letter-spacing': 0.1875rem,
-    'weight': 700
+  'h2':(
+    'font-family': $heading-font-family,
   ),
-  'h6': (
-    'letter-spacing': 0.1875rem,
-    'size': 1rem,
-    'weight': 700
+  'h3':(
+    'font-family': $heading-font-family,
   ),
-  'subtitle-1': (
-    'letter-spacing': 0.1875rem,
+  'h4':(
+    'font-family': $heading-font-family,
   ),
-  'subtitle-2': (
-    'letter-spacing': 0.1875rem,
+  'h5':(
+    'font-family': $heading-font-family,
   ),
-  'body-1': (
-    'size': .9375rem,
+  'h6':(
+    'font-family': $heading-font-family,
+  ),
+  'subtitle-1':(
+    'font-family': $body-font-family,
+  ),
+  'subtitle-2':(
+    'font-family': $body-font-family,
+  ),
+  'body-1':(
+    'font-family': $body-font-family,
+  ),
+  'body-2':(
+    'font-family': $body-font-family,
+  ),
+  'caption':(
+    'font-family': $body-font-family,
+  ),
+  'overline':(
+    'font-family': $body-font-family,
   )
 );
-
 $material-dark: (
-  'text': (
-    'primary': #cdcddfff,
-  )
+  'status-bar': (
+    'regular': #27272f
+  ),
+  'background': #33333d,
+  'cards': #373740,
+  'dividers': #33333d,
+  'tabs': rgba(255, 255, 255, .3)
 );
+$material-light: (
+  'dividers': rgba(255, 255, 255, .12)
+);
+$navigation-drawer-border-width: 0;
+$snackbar-background-color: rgba(39, 39, 47, .9);
+$tab-font-size: 1.25rem;
+$tab-font-weight: 500;
+$tabs-item-min-width: 0;
+$tabs-bar-background-color: map-get($material-dark, 'background');
+
+@import '~vuetify/src/styles/main.sass';

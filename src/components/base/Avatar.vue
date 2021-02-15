@@ -25,6 +25,7 @@
         :size="size / 2"
         :href="href"
         :target="target"
+        :iconColor="iconColor"
       >
         {{ icon }}
       </base-icon>
@@ -40,6 +41,10 @@
       color: String,
       dark: Boolean,
       icon: String,
+      iconColor: {
+        type: String,
+        default: 'primary',
+      },
       href: String,
       target: String,
       outlined: Boolean,

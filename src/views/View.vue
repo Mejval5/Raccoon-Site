@@ -1,6 +1,12 @@
 <template>
-  <section :id="id">
-    <v-row no-gutters>
+  <section
+  :id="id"
+  style="height: 100%;"
+  >
+    <v-row
+    no-gutters
+    style="height: 100%;"
+    >
       <v-col cols="12">
         <component
           :is="`section-${section}`"

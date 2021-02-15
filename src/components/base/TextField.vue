@@ -4,6 +4,7 @@
     dense
     single-line
     v-bind="$attrs"
+    color="blue"
     v-on="$listeners"
   >
     <slot

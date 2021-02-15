@@ -9,12 +9,13 @@
         <v-row justify="center">
           <v-col cols="10">
             <base-title
+              class="primaryText"
               :space="$vuetify.breakpoint.mdAndUp ? 0 : 4"
               title="HAVE QUESTIONS? LET US KNOW!"
             />
 
             <base-body space="0">
-              <span class="white--text">
+              <span class="primaryText">
                 Lorem ipsum dolor sit, amet consectetur adipisicing elit. Dolor itaque modi ab accusantium architecto voluptates ipsa molestiae.
               </span>
             </base-body>

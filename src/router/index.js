@@ -29,7 +29,7 @@ const router = new Router({
       component: () => import('@/layouts/home/Index.vue'),
       children: [
         {
-          path: '',
+          path: '/',
           name: 'Home',
           component: () => import('@/views/home/Index.vue'),
         },
@@ -55,17 +55,17 @@ const router = new Router({
           path: 'games',
           name: 'Games',
           component: () => import('@/views/games/Index.vue'),
-          meta: { src: require('@/assets/IMG_2162.jpg') },
+          meta: { src: require('@/assets/IMG_5698.jpg') },
         },
         {
           path: 'octomancer',
           name: 'Octomancer',
-          component: () => import('@/views/octomancer/Index.vue'),
+          component: () => import('@/views/octomancer/IndexMilanOpeningList.vue'),
           meta: { src: require('@/assets/pro.jpg') },
         },
         {
           path: '/blogpost/:id',
-          name: 'BlogPost',
+          name: 'Blogpost',
           component: () => import('@/views/blogpost/Index.vue'),
         },
         {
@@ -75,7 +75,6 @@ const router = new Router({
         },
       ],
     },
-
   ],
 })
 

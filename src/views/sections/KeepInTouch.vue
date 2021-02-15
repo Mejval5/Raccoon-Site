@@ -10,10 +10,8 @@
           md="5"
         >
           <base-business-info
-          title="FIND ME ON SOCIAL MEDIA"
-          text="Text here"
-          >
-          </base-business-info>
+            title="FIND ME ON SOCIAL MEDIA"
+          />
         </v-col>
 
         <v-col

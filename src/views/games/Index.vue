@@ -16,7 +16,6 @@
       LoadSections([
         'hero-alt',
         'games',
-        'info',
       ]),
     ],
 

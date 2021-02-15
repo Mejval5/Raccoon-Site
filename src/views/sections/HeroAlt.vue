@@ -1,41 +1,20 @@
 <template>
   <v-theme-provider dark>
-    <section id="hero-alt">
-      <base-img
-        :height="$vuetify.breakpoint.mdAndUp ? 400 : 225"
-        :gradient="gradient"
+    <section
+      id="hero-alt"
+      class="px-5 py-5"
+      style="margin-left:auto; margin-right:auto; max-width: 1400px;"
+    >
+      <v-parallax
         :src="img_src"
-        color="#45516b"
-        flat
-        max-width="100%"
-        tile
+        :height="$vuetify.breakpoint.mdAndUp ? 200 : 400"
+        class="rounded elevation-0"
       >
-        <v-row
-          v-if="title"
-          align="center"
-          class="ma-0 fill-height text-center"
-          justify="center"
-        >
-          <v-col cols="12">
-            <base-heading
-              :title="title"
-              space="2"
-              weight="500"
-            />
-
-            <base-divider
-              color="primary"
-              dense
-            />
-
-            <v-breadcrumbs
-              :items="items"
-              class="justify-center pa-0"
-              divider=">"
-            />
-          </v-col>
-        </v-row>
-      </base-img>
+        <base-hero-alt-text
+          class=""
+          :title="title"
+        />
+      </v-parallax>
     </section>
   </v-theme-provider>
 </template>
@@ -73,12 +52,6 @@
       },
       img_src () {
         return this.$route.meta.src
-      },
-      items () {
-        return [
-          { text: 'HOME', to: '/' },
-          { text: this.title },
-        ]
       },
     },
   }

@@ -1,13 +1,14 @@
 <template>
   <v-theme-provider dark>
     <section
-    id="hero-alt"
-    style="width: 100%;"
+      id="hero-alt"
+      style="width: 100%;"
     >
       <base-img
         :height="$vuetify.breakpoint.mdAndUp ? 400 : 225"
-        :src=display_image()
+        :src="display_image()"
         transition="slide-y-transition"
+        class="rounded"
         color="#45516b"
         flat
         max-width
@@ -68,20 +69,6 @@
       }
     },
 
-    methods: {
-      display_image () {
-        try {
-          return require(`@/${this.imgSource}`)
-        } catch {
-          return ''
-        }
-      },
-    },
-
-    provide: {
-      heading: { align: 'center' },
-    },
-
     data: () => ({
       title: '',
       imgSource: '',
@@ -101,6 +88,20 @@
           { text: this.title },
         ]
       },
+    },
+
+    methods: {
+      display_image () {
+        try {
+          return require(`@/${this.imgSource}`)
+        } catch {
+          return ''
+        }
+      },
+    },
+
+    provide: {
+      heading: { align: 'center' },
     },
   }
 </script>

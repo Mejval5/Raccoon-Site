@@ -7,19 +7,18 @@
 
     <v-container>
       <v-row
-      justify="center"
+        justify="center"
       >
         <v-col
           v-for="(feature, i) in features"
           :key="i"
-          cols= "auto"
+          cols="auto"
         >
           <base-avatar-card
             v-bind="feature"
             align="left"
             horizontal
-          >
-          </base-avatar-card>
+          />
         </v-col>
       </v-row>
     </v-container>

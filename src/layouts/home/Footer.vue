@@ -1,21 +1,27 @@
 <template>
   <v-footer
     id="home-footer"
-    color="grey darken-4"
+    class="rounded-t-none mx-0 px-0 my-0 py-0"
+    color="elevation1AppBar"
+    style="z-index: 1500;"
     dark
-    min-height="72"
+    min-height="15"
   >
-    <v-container>
-      <v-row>
+    <v-container
+      class="pb-3 pt-4 mx-5"
+      fluid
+    >
+      <v-row class="align-center py-0">
         <v-col
           cols="12"
-          md="6"
+          md="8"
+          class="py-0"
         >
-          <div class="d-flex flex-wrap justify-md-start justify-center justify-md-none">
+          <div class="d-flex flex-wrap justify-md-start justify-center justify-md-none align-center">
             <template v-for="(s, i) in social">
               <a
                 :key="s.name"
-                class="white--text pa-1 pa-md-0"
+                class="secondaryText pa-1 pa-md-0 text-body-2"
                 :href="s.link"
                 target="_blank"
                 v-text="s.name"
@@ -24,8 +30,8 @@
               <v-responsive
                 v-if="i < social.length - 1"
                 :key="`divider-${s.name}`"
-                class="mx-4 shrink hidden-sm-and-down"
-                max-height="24"
+                class="mx-4 mt-1 mt-md-0 shrink"
+                max-height="20"
               >
                 <v-divider vertical />
               </v-responsive>
@@ -34,9 +40,9 @@
         </v-col>
 
         <v-col
-          class="text-center text-md-right"
+          class="text-center text-md-right secondaryText py-2 text-caption"
           cols="12"
-          md="6"
+          md="4"
         >
           Made by Raccoon5
         </v-col>

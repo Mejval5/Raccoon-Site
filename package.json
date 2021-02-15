@@ -43,6 +43,7 @@
     "sass-loader": "^8.0.2",
     "shelljs": "^0.8.4",
     "vue-cli-plugin-vuetify": "^2.0.5",
+    "vue-cli-plugin-vuetify-preset-rally": "~1.0.4",
     "vue-template-compiler": "^2.6.11",
     "vuetify-loader": "^1.4.3",
     "webfontloader": "^1.6.28",

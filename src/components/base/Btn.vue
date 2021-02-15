@@ -1,6 +1,5 @@
 <template>
   <v-btn
-    :color="color"
     :depressed="depressed"
     :min-width="minWidth"
     :tile="tile"

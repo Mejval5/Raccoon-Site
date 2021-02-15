@@ -1,25 +1,25 @@
 
 <template>
   <v-container
-  fluid
-  class="pa-0"
-  style="max-width: 1360px;"
+    fluid
+    class="pa-0 pt-sm-3"
+    style="max-width: 1360px;"
   >
     <v-row
-    justify="center"
-    align="center"
-    no-gutters
+      justify="center"
+      align="center"
+      no-gutters
     >
-    <v-spacer />
+      <v-spacer />
       <v-col
-      cols="auto"
-      xl="auto"
-      sm="11"
+        cols="auto"
+        xl="auto"
+        sm="11"
       >
         <hero-alt />
-        <component :is="comp"></component>
+        <component :is="comp" />
       </v-col>
-    <v-spacer />
+      <v-spacer />
     </v-row>
   </v-container>
 </template>
@@ -27,9 +27,6 @@
 <script>
   // Extensions
   import View from '@/views/View'
-
-  // Mixins
-  import LoadBlogposts from '@/mixins/load-blogposts'
 
   export default {
     name: 'BlogPost',
@@ -54,12 +51,6 @@
         return () => import(`@/blog/${this.currentRoute()}.vue`)
       },
     },
-
-    mixins: [
-      LoadBlogposts([
-        'hero-alt-blog',
-      ]),
-    ],
 
     methods: {
       currentRoute () {

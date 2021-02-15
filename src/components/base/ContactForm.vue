@@ -1,53 +1,60 @@
 <template>
   <div>
-      <v-form
-    ref="form"
-    v-model="valid"
-    lazy-validation
-  >
-    <base-info-card
-      :title="title"
-      :subtitle="subtitle"
-      space="4"
-      color="primary"
-    />
-
-    <base-text-field
-    v-model="name"
-    label="Name"
-    :rules="nameRules"
-    validate-on-blur
-    />
-
-    <base-text-field
-    v-model="email"
-    label="Email"
-    :rules="emailRules"
-    validate-on-blur
-    />
-
-    <base-text-field
-    v-model="subject"
-    label="Subject"
-    :rules="subjectRules"
-    validate-on-blur
-    />
-
-    <base-textarea
-    v-model="text"
-    class="mb-6"
-    label="Your Need & Description"
-    :rules="textRules"
-    validate-on-blur
-    />
-
-    <base-btn
-      :color="!theme.isDark ? 'accent' : 'white'"
-      outlined
-      @click="save_email"
+    <v-form
+      ref="form"
+      v-model="valid"
+      lazy-validation
     >
-      Send message
-    </base-btn>
+      <base-info-card
+        :title="title"
+        :subtitle="subtitle"
+        space="4"
+        color="primary"
+      />
+
+      <base-text-field
+        v-model="name"
+        label="Name"
+        :rules="nameRules"
+        validate-on-blur
+      />
+
+      <base-text-field
+        v-model="email"
+        label="Email"
+        :rules="emailRules"
+        validate-on-blur
+      />
+
+      <base-text-field
+        v-model="subject"
+        label="Subject"
+        :rules="subjectRules"
+        validate-on-blur
+      />
+
+      <base-textarea
+        v-model="text"
+        class="mb-6"
+        label="Your Need & Description"
+        :rules="textRules"
+        validate-on-blur
+      />
+
+      <base-btn
+        :color="!theme.isDark ? 'accent' : 'white'"
+        outlined
+        class="rounded"
+        @click="save_email"
+      >
+        Send message
+      </base-btn>
+
+      <base-snack-bar
+        ref="snack01"
+        text="Email sent successfully!"
+        timeout="2000"
+      />
     </v-form>
   </div>
 </template>
@@ -55,6 +62,15 @@
 <script>
   export default {
     name: 'BaseContactForm',
+
+    props: {
+      subtitle: String,
+      title: {
+        type: String,
+        default: 'MAIL US YOUR MESSAGE',
+      },
+    },
+
     data: () => ({
       valid: true,
       name: '',
@@ -99,6 +115,11 @@
               headers: { 'Access-Control-Allow-Origin': '*' },
             },
           ).catch()
+          this.name = ''
+          this.email = ''
+          this.subject = ''
+          this.text = ''
+          this.$refs.snack01.openSnack()
         }
       },
       validate () {
@@ -114,13 +135,5 @@
 
     // Injected from the Vuetify Themeable mixin
     inject: ['theme'],
-
-    props: {
-      subtitle: String,
-      title: {
-        type: String,
-        default: 'MAIL US YOUR MESSAGE',
-      },
-    },
   }
 </script>

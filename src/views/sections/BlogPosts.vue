@@ -1,30 +1,24 @@
 <template>
-  <v-container>
+  <v-container
+    class="px-5 ma-auto pb-5"
+  >
     <v-row
+      v-if="renderComponent"
       align="end"
       justify="center"
     >
       <v-col
+        v-for="blogPost in blogPosts"
+        :key="blogPost.id"
         cols="auto"
       >
         <blog-card
-          image="assets/game-0.png"
-          bloglink="blogpost/15"
+          :image="blogPost.imgSource"
+          :bloglink="blogPost.file"
           samepage="true"
-          headline="Octomancer"
-          subtitle="Currently my main project"
-          text="Game centered around a small octopus trying to regain its magical powers.
-          Fight other players and become the Master of Arcane Arts. A collaboration with the one and only
-          <a
-          class=&quot;
-          font-weight-bold
-          subtitle-2
-          text-decoration-none
-          &quot;
-          target=&quot;_blank&quot;
-          href=&quot;https://svancarastrings.com/&quot;
-          >
-          Milan Švancara</a>."
+          :headline="blogPost.title"
+          subtitle="First blog post"
+          text="Random test"
         />
       </v-col>
     </v-row>
@@ -32,11 +26,43 @@
 </template>
 
 <script>
+
+  // Mixins
+  import LoadBlogposts from '@/plugins/load-blogposts'
+
   export default {
-    name: 'Games',
+    name: 'BlogPost',
 
     components: {
       BlogCard: () => import('@/components/base/BlogCard'),
     },
+
+    methods: {
+      async get_blog_posts () {
+        this.blogPosts = await LoadBlogposts()
+        console.log(this.blogPosts)
+
+        this.forceRerender()
+      },
+      forceRerender () {
+        // Remove my-component from the DOM
+        this.renderComponent = false
+
+        this.$nextTick(() => {
+          // Add the component back in
+          this.renderComponent = true
+        })
+      },
+    },
+
+    data: () => ({
+      blogPosts: [],
+      renderComponent: true,
+    }),
+
+    async beforeMount () {
+      await this.get_blog_posts()
+    },
+
   }
 </script>

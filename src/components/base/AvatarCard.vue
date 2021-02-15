@@ -6,6 +6,7 @@
     <base-avatar
       v-if="icon"
       :color="color"
+      :iconColor="iconColor"
       :dark="dark"
       :icon="icon"
       :outlined="outlined"
@@ -53,6 +54,10 @@
         default: 'left',
       },
       color: String,
+      iconColor: {
+        type: String,
+        default: 'primary',
+      },
       dark: Boolean,
       horizontal: Boolean,
       icon: String,

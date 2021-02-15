@@ -31,7 +31,6 @@
     computed: {
       classes () {
         return [
-          this.color,
           this.margin,
           `mb-${this.space}`,
           this.dense && 'base-divider--dense',
