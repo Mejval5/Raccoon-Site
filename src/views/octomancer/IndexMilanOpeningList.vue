@@ -262,7 +262,7 @@
                         class="gg gg1"
                       >
                     </div>
-                <!--    <div
+                    <!--    <div
                       id="bg23"
                       class="menu1 primaryText"
                       style="opacity: 1; text-shadow: 0 0 1vh rgba(255,255,255,0.0);"
@@ -272,7 +272,7 @@
                   </div>
                 </div>
               </div>
-            <base-scrolling-item />
+              <base-scrolling-item />
             </v-col>
           </v-row>
           <v-row

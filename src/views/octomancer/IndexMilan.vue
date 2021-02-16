@@ -262,7 +262,7 @@
                         class="gg gg1"
                       >
                     </div>
-                <!--    <div
+                    <!--    <div
                       id="bg23"
                       class="menu1 primaryText"
                       style="opacity: 1; text-shadow: 0 0 1vh rgba(255,255,255,0.0);"
@@ -272,98 +272,72 @@
                   </div>
                 </div>
               </div>
-                <v-slide-x-transition
-                origin = "right center 0"
+              <v-slide-x-transition
+                origin="right center 0"
+              >
+                <v-card
+                  v-show="showMainMenu"
+                  class="overflow-y-auto elevation-0 text-center expansionPanel hideScroll pa-4 rounded"
+                  style="width: fit-content;"
+                  max-height="400"
                 >
-                  <v-card
-                  v-show="showMenu"
-                  class="overflow-y-auto elevation-0 text-center expansionPanel hideScroll pa-4 rounded"
-                style="width: fit-content;"
-                  max-height="400"
+                  <v-btn
+                    elevation="0"
+                    class="my-2 buttonClass"
+                    text
+                    plain
+                    :ripple="false"
+                    @click="() => {
+                      showMainMenu = !showMainMenu
+                      showFirstMenu = !showFirstMenu
+                    }"
                   >
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                      :ripple="false"
-                     @click="() => {
-                       showMenu = !showMenu
-                       showMenu2 = !showMenu2
-                       }"
-                    >
                     OCTOMANCER
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    BROTAGONISTS™
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    SUPPORT US
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    CONTACT
-                    </v-btn>
-                  </v-card>
-                </v-slide-x-transition>
-                <v-slide-x-transition
-                origin = "right center 0"
-                ><v-card
-                  v-show="showMenu2"
-                  class="overflow-y-auto elevation-0 text-center expansionPanel hideScroll pa-4 rounded"
-                style="width: fit-content;"
-                  max-height="400"
+                  </v-btn> <br>
+                  <v-btn
+                    elevation="0"
+                    class="my-2 buttonClass"
+                    text
+                    plain
                   >
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                      :ripple="false"
-                     @click="showMenu2 = !showMenu2, showMenu = !showMenu"
-                    >
-                    111
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    5555555555
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    55555 US
-                    </v-btn> <br>
-                    <v-btn
-                      elevation="0"
-                      class="my-2"
-                      text
-                      plain
-                    >
-                    88888
-                    </v-btn>
-                  </v-card>
-                </v-slide-x-transition>
+                    BROTAGONISTS™
+                  </v-btn> <br>
+                  <v-btn
+                    elevation="0"
+                    class="my-2 buttonClass"
+                    text
+                    plain
+                  >
+                    SUPPORT US
+                  </v-btn> <br>
+                  <v-btn
+                    elevation="0"
+                    class="my-2 buttonClass"
+                    text
+                    plain
+                  >
+                    CONTACT
+                  </v-btn>
+                </v-card>
+              </v-slide-x-transition>
+              <v-slide-x-transition
+                origin="right center 0"
+              >
+                <v-container
+                  v-show="showFirstMenu"
+                  class="expansionPanel"
+                >
+                  <v-row
+                    class="fill-height"
+                  >
+                    <v-col>
+                      <base-scrolling-item
+                        :visible="showFirstMenu"
+                      />
+                    </v-col>
+                  </v-row>
+                </v-container>
+              </v-slide-x-transition>
             </v-col>
           </v-row>
           <v-row
@@ -408,8 +382,8 @@
 
     data: () => ({
       expand: false,
-      showMenu: true,
-      showMenu2: false,
+      showMainMenu: true,
+      showFirstMenu: false,
       parallaxInstance: {},
     }),
 
@@ -553,7 +527,7 @@ text-align: center;
 }
 .menuItemName
 {
-font-size: 2vh;
+font-size: 4vh;
 font-weight: 700;
 position: relative;
 z-index: 999!important;
@@ -563,7 +537,7 @@ text-shadow: 0 0 1vh rgba(255,255,255,0.0);
 }
 
 .menu1 p {
-font-size: 2vh;
+font-size: 4vh;
 padding-top: 23%;
 font-weight: 700;
 position: relative;
@@ -584,7 +558,6 @@ color: inherit;
   transform: translate(-50%, -50%);
   top: 50%;
   left: 50%;
-  width: 60%;
   z-index: 999!important;
   pointer-events: auto;
 }
@@ -596,7 +569,7 @@ color: inherit;
 .v-application--is-ltr .v-expansion-panel-header {
   backdrop-filter: blur(0px);
   text-align: center;
-  font-size: 2vh;
+  font-size: 4vh;
   font-weight: 700;
   position: relative;
   width: fit-content;
@@ -607,7 +580,9 @@ color: inherit;
   opacity: 1;
   text-shadow: 0 0 1vh rgba(255,255,255,0.0);
 }
-
+.buttonClass {
+  font-size: 2vh;
+}
 .theme--dark.v-btn.v-btn--has-bg {
   backdrop-filter: blur(0px);
 }
@@ -625,10 +600,6 @@ color: inherit;
 
 .v-expansion-panel::before {
   box-shadow: 0 0 0 0;
-}
-
-.theme--dark.v-expansion-panels .v-expansion-panel:not(:first-child)::after {
-  border-color: transparent;
 }
 
 .hideScroll {

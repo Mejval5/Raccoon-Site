@@ -52,7 +52,7 @@
         v-text="subtitle"
       />
       <v-divider
-      class="pb-2 pt-0"
+        class="pb-2 pt-0"
       />
 
       <div

@@ -25,7 +25,7 @@
         :size="size / 2"
         :href="href"
         :target="target"
-        :iconColor="iconColor"
+        :icon-color="iconColor"
       >
         {{ icon }}
       </base-icon>

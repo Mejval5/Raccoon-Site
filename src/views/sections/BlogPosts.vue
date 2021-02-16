@@ -37,10 +37,18 @@
       BlogCard: () => import('@/components/base/BlogCard'),
     },
 
+    data: () => ({
+      blogPosts: [],
+      renderComponent: true,
+    }),
+
+    async beforeMount () {
+      await this.get_blog_posts()
+    },
+
     methods: {
       async get_blog_posts () {
         this.blogPosts = await LoadBlogposts()
-        console.log(this.blogPosts)
 
         this.forceRerender()
       },
@@ -53,15 +61,6 @@
           this.renderComponent = true
         })
       },
-    },
-
-    data: () => ({
-      blogPosts: [],
-      renderComponent: true,
-    }),
-
-    async beforeMount () {
-      await this.get_blog_posts()
     },
 
   }

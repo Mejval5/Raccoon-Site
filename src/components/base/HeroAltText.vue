@@ -16,7 +16,7 @@
           <base-heading
             :title="title"
             class="primaryText"
-            mobileSize="display-2"
+            mobile-size="display-2"
             space="4"
           />
           <base-divider

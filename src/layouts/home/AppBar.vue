@@ -54,11 +54,17 @@
             :exact="link.name === 'Home'"
             :to="{ name: link.name, hash: link.hash }"
             active-class="navTextSelected"
-            class="font-weight-bold subtitle-2 pa-2 ma-2 navText"
+            class="font-weight-bold subtitle-2 navText"
             min-width="96"
             text
           >
-            {{ link.name }}
+            <v-hover v-slot="{ hover }">
+              <div
+                :class="{ 'navTextHover': hover }"
+              >
+                {{ link.name }}
+              </div>
+            </v-hover>
           </v-tab>
         </v-tabs>
       </div>

@@ -31,6 +31,10 @@
   export default {
     name: 'BlogPost',
 
+    components: {
+      HeroAlt: () => import('@/views/sections/HeroAltBlog'),
+    },
+
     extends: View,
 
     props: {
@@ -59,10 +63,6 @@
       goTo404 () {
         this.$router.push('/404')
       },
-    },
-
-    components: {
-      HeroAlt: () => import('@/views/sections/HeroAltBlog'),
     },
 
   }

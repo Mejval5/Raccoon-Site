@@ -60,7 +60,7 @@ const router = new Router({
         {
           path: 'octomancer',
           name: 'Octomancer',
-          component: () => import('@/views/octomancer/IndexMilanOpeningList.vue'),
+          component: () => import('@/views/octomancer/IndexMilan.vue'),
           meta: { src: require('@/assets/pro.jpg') },
         },
         {

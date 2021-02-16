@@ -1,11 +1,11 @@
 <template>
   <section
-  :id="id"
-  style="height: 100%;"
+    :id="id"
+    style="height: 100%;"
   >
     <v-row
-    no-gutters
-    style="height: 100%;"
+      no-gutters
+      style="height: 100%;"
     >
       <v-col cols="12">
         <component

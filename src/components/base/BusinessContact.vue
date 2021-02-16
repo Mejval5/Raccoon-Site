@@ -25,7 +25,7 @@
               :outlined="false"
               :title="!dense ? t : undefined"
               color="transparent"
-              :iconColor="iconColor"
+              :icon-color="iconColor"
               horizontal
               space="0"
               :href="html"

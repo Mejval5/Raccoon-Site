@@ -75,6 +75,9 @@
 .theme--dark .navText {
   color: #76868e !important;
 }
+.theme--dark .navTextHover {
+  color: #9cb1bb !important;
+}
 .theme--dark .navTextSelected {
   color: #a4adb3 !important;
 }
