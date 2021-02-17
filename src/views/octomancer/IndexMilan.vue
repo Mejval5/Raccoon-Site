@@ -321,17 +321,29 @@
                 </v-card>
               </v-slide-x-transition>
               <v-slide-x-transition
-                origin="right center 0"
+                origin="top center 0"
               >
                 <v-container
                   v-show="showFirstMenu"
                   class="expansionPanel"
+                  style="height: inherit"
                 >
                   <v-row
-                    class="fill-height"
+                    dense
+                    align-content="center"
+                    style="height: inherit"
+                    justify="center"
+                    no-gutters
                   >
-                    <v-col>
-                      <base-scrolling-item
+                    <v-col
+                    align-self="center"
+                    style="height: inherit"
+                    class="hideScroll"
+                    cols="12"
+                    xl="8"
+                    >
+                      <octo-scrolling-item
+                        @clicked="goBack"
                         :visible="showFirstMenu"
                       />
                     </v-col>
@@ -459,6 +471,12 @@
         console.log(this.parallaxInstance)
         console.log(this.$vuetify.breakpoint.mdAndUp)
       },
+      goBack (value) {
+        if (value === 'first') {
+          this.showFirstMenu = false
+        }
+        this.showMainMenu = true
+      },
     },
 
     metaInfo: { title: 'Octomancer' },
@@ -583,9 +601,6 @@ color: inherit;
 .buttonClass {
   font-size: 2vh;
 }
-.theme--dark.v-btn.v-btn--has-bg {
-  backdrop-filter: blur(0px);
-}
 
 .v-expansion-panel-content {
   background-color: transparent;
@@ -604,7 +619,6 @@ color: inherit;
 
 .hideScroll {
   background-color: transparent;
-  backdrop-filter: blur(2px) !important;
   border-radius: 4px;
 }
 
