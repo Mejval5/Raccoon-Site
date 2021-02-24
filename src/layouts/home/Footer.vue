@@ -21,11 +21,19 @@
             <template v-for="(s, i) in social">
               <a
                 :key="s.name"
-                class="secondaryText pa-1 pa-md-0 text-body-2"
+                class="secondaryText pa-1 pa-md-0 text-body-2 d-none d-md-block"
                 :href="s.link"
                 target="_blank"
                 v-text="s.name"
               />
+
+              <v-icon
+              :key="`icon-${s.name}`"
+              class="pa-1 d-block d-md-none"
+              :color="s.iconColor"
+              >
+                {{s.icon}}
+              </v-icon>
 
               <v-responsive
                 v-if="i < social.length - 1"
@@ -57,9 +65,9 @@
 
     data: () => ({
       social: [
-        { name: 'Facebook', link: 'https://www.facebook.com/daniel.necesal/' },
-        { name: 'Instagram', link: 'https://www.instagram.com/raccoon.in.the.sun/' },
-        { name: 'LinkedIn', link: 'https://www.linkedin.com/in/necesal-daniel/' },
+        { name: 'Facebook', link: 'https://www.facebook.com/daniel.necesal/', icon: 'mdi-facebook', iconColor: '#218df0' },
+        { name: 'Instagram', link: 'https://www.instagram.com/raccoon.in.the.sun/', icon: 'mdi-instagram', iconColor: '#f66c4a' },
+        { name: 'LinkedIn', link: 'https://www.linkedin.com/in/necesal-daniel/', icon: 'mdi-linkedin', iconColor: '#146fc8' },
       ],
     }),
   }

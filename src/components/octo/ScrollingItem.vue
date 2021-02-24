@@ -1,60 +1,78 @@
 <template>
   <v-container
-  v-scroll.self="onScroll"
-  fluid
-  class="overflow-y-auto"
-  style="height: inherit;"
+    v-scroll.self="onScroll"
+    fluid
+    class="overflow-y-auto"
+    style="height: inherit;"
   >
-  <div
-  class="center"
-  >
+    <div
+      class="center"
+      style="height: 100%; position: absolute; width: 100%;"
+    />
     <v-row
-    dense
-    align-content="center"
-    justify="center"
-    no-gutters
+      dense
+      align-content="center"
+      justify="center"
+      no-gutters
+      class="d-md-none mb-3"
     >
       <v-col>
         <v-btn
-        icon
-        @click="goBack"
+          icon
+          @click="goBack"
         >
           <v-icon>mdi-keyboard-backspace</v-icon>
         </v-btn>
       </v-col>
     </v-row>
-  <div
-  class="mb-n1 rounded"
-  style="backdrop-filter: blur(10px);"
-  >
-    <v-row
-    dense
-    align-content="center"
-    justify="center"
-    no-gutters
+    <div
+      :class="centerOnPC"
     >
-    <v-col
-      cols="12"
-      sm="8"
-      order="1"
-    >
-    <octo-game-description />
-    </v-col>
-      <v-col
-      cols="12"
-      sm="4"
-      order="0"
-      order-sm="2"
+      <div
+        class="mb-n1 rounded"
       >
-        <octo-carousel
-          :images="images"
-          :visible="visible"
-          :time="6"
-        />
-      </v-col>
-    </v-row>
-  </div>
-  </div>
+        <v-row
+          dense
+          align-content="center"
+          justify="center"
+        >
+          <v-col
+            class="d-none d-md-block text-right py-0"
+            cols="1"
+          >
+            <v-btn
+              icon
+              large
+              @click="goBack"
+            >
+              <v-icon>mdi-keyboard-backspace</v-icon>
+            </v-btn>
+          </v-col>
+          <v-col
+            class="pr-md-5"
+            cols="12"
+            md="6"
+            lg="7"
+            order="1"
+          >
+            <octo-game-description />
+          </v-col>
+          <v-col
+            cols="12"
+            md="5"
+            lg="4"
+            order="0"
+            order-md="2"
+          >
+            <octo-carousel
+              :images="images"
+              :visible="visible"
+              :time="6"
+            />
+          </v-col>
+        </v-row>
+      </div>
+    </div>
   </v-container>
 </template>
 
@@ -83,6 +101,11 @@
         ],
       }
     },
+    computed: {
+      centerOnPC () {
+        return this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
+      },
+    },
     methods: {
       onScroll () {},
       goBack () {
@@ -94,7 +117,6 @@
 
 <style scoped>
 .hideScroll {
-  backdrop-filter: blur(0px) !important;
   border-radius: 4px;
 }
 .hideScroll ::-webkit-scrollbar {
@@ -128,7 +150,6 @@
   background-color: transparent;
 }
 .v-application--is-ltr .v-expansion-panel-header {
-  backdrop-filter: blur(0px);
   text-align: center;
   font-size: 2vh;
   font-weight: 700;
@@ -140,10 +161,6 @@
   pointer-events: auto;
   opacity: 1;
   text-shadow: 0 0 1vh rgba(255,255,255,0.0);
-}
-
-.theme--dark.v-btn.v-btn--has-bg {
-  backdrop-filter: blur(0px);
 }
 .v-expansion-panel-content {
   background-color: transparent;
@@ -157,15 +174,11 @@
 .theme--dark.v-expansion-panels .v-expansion-panel:not(:first-child)::after {
   border-color: transparent;
 }
-.blurryBG {
-  backdrop-filter: blur(0px);
-}
 .hideScroll {
   background-color: transparent;
   backdrop-filter: blur(0px) !important;
   border-radius: 4px;
 }
-
 .hideScroll ::-webkit-scrollbar {
   width: 0.3vw;
   position: relative !important;

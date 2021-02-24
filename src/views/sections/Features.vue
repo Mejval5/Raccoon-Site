@@ -7,6 +7,7 @@
       class="mx-auto"
       max-width="1350"
     >
+      <base-test-svg />
       <v-container fluid>
         <v-row>
           <v-col

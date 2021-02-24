@@ -2,29 +2,29 @@
   <v-card
     elevation="0"
     width="100%"
-    class="mx-auto"
+    class="mx-auto rounded overflow-hidden"
     style="background-color: transparent;"
   >
     <v-carousel
+      v-model="model"
       :continuous="true"
       :cycle="true"
       :interval="intervalChanger"
       show-arrows-on-hover
       hide-delimiter-background
       delimiter-icon="mdi-hexagon-outline"
+      height="70vh"
       @change="
-      carouselVal=0
-      intervalChanger = 5000000
+        carouselVal=0
+        intervalChanger = 5000000
       "
-      v-model="model"
     >
       <template
         v-slot:prev="{ on, attrs }"
-        class="test"
       >
         <div
           v-bind="attrs"
-          class="hoverArrow"
+          class="hoverArrow d-none d-md-block"
           v-on="on"
         >
           <v-icon
@@ -44,10 +44,12 @@
         </div>
       </template>
 
-      <template v-slot:next="{ on, attrs }">
+      <template
+        v-slot:next="{ on, attrs }"
+      >
         <div
           v-bind="attrs"
-          class="hoverArrow"
+          class="hoverArrow d-none d-md-block"
           v-on="on"
         >
           <v-icon
@@ -69,24 +71,28 @@
       <v-carousel-item
         v-for="(image, i) in images"
         :key="i"
+        class="rounded"
+        eager
       >
-      <v-sheet
-      height="100%"
-      class="rounded"
-      >
-      <v-img
-      :src="require(`@/${image}`)"
-      height="100%"
-      class="rounded"
-      />
-      </v-sheet>
+        <v-sheet
+          height="100%"
+          class="rounded transparent"
+          eager
+        >
+          <v-img
+            :src="require(`@/${image}`)"
+            class="rounded"
+            aspect-ratio="0.5625"
+            eager
+          />
+        </v-sheet>
       </v-carousel-item>
     </v-carousel>
     <v-progress-linear
       :value="carouselVal"
       background-opacity="0"
       color="primary"
-      class="rounded-b"
+      class="rounded-b d-none d-md-block"
     />
   </v-card>
 </template>
@@ -99,12 +105,6 @@
       visible: Boolean,
       time: Number,
       image: String,
-    },
-    watch: {
-      visible: function () {
-        this.carouselVal = 0
-        this.cycle = true
-      },
     },
     data () {
       return {
@@ -122,18 +122,26 @@
         model: 0,
       }
     },
+    watch: {
+      visible: function () {
+        this.carouselVal = 0
+        this.cycle = true
+      },
+    },
 
     mounted: function () {
-      this.interval = window.setInterval(() => {
-        if (this.cycle) {
-          if (this.carouselVal >= 100) {
-            this.carouselVal = 0
-            this.model += 1
-            return
+      if (this.$vuetify.breakpoint.mdAndUp) {
+        this.interval = window.setInterval(() => {
+          if (this.cycle) {
+            if (this.carouselVal >= 100) {
+              this.carouselVal = 0
+              this.model += 1
+              return
+            }
+            this.carouselVal += 0.02 * 100 / this.time
           }
-          this.carouselVal += 0.03 * 100 / this.time
-        }
-      }, 30)
+        }, 20)
+      }
     },
     beforeDestroy: function () {
       window.clearInterval(this.interval)
@@ -152,15 +160,15 @@
     background-color: transparent;
 }
 .hoverArrow {
-    transition: all .1s ease-in-out;
+    transition: all .5s ease-in-out;
 }
 .hoverArrow:hover {
     transform: scale(1.3);
 }
 .v-progress-linear {
   position: absolute;
-  transition: 0.02s cubic-bezier(0.4, 0, 0.6, 1);
   transform: translateY(-0.4vh);
   height: 0.4vh;
+  transition: all 0.05s !important;
 }
 </style>

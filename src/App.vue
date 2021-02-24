@@ -60,6 +60,15 @@
 .theme--dark .elevation4 {
   background-color: #0c2d3d !important;
 }
+.theme--dark .octoPrimaryText {
+  color: #d1dadf !important;
+}
+.theme--dark .octoSecondaryText {
+  color: #c1cbd1 !important;
+}
+.theme--dark .octoTerciaryText {
+  color: #9eb2bd !important;
+}
 .theme--dark .primaryText {
   color: #b3babe !important;
 }

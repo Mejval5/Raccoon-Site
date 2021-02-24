@@ -1,23 +1,24 @@
 <template>
   <div>
     <v-row>
-      <v-col>
-          <base-title
+      <v-col align-self="center">
+        <base-title
           title="Octomancer"
-          class="text-uppercase terciaryText"
-          space="1"
-          />
+          size="display-1"
+          mobile-size="headline"
+          class="text-uppercase octoPrimaryText"
+          space="0"
+        />
       </v-col>
     </v-row>
 
     <v-row>
       <v-col>
-          <base-body
-          class="primaryText"
+        <base-body
+          class="octoSecondaryText"
           :text="text"
-          space="2"
-          >
-          </base-body>
+          space="3"
+        />
         <v-divider />
       </v-col>
     </v-row>
@@ -26,48 +27,26 @@
         <v-row>
           <v-col>
             <base-subtitle
-            title="Gay features"
-            size="subtitle-1"
-            space="0"
+              title="Gay features"
+              class="octoPrimaryText"
+              size="title"
+              mobile-size="subtitle-1"
+              space="0"
             />
           </v-col>
         </v-row>
-        <v-row>
-          <v-col>
-            <base-subtitle
-            title="- big booty sluts"
-            size="subtitle-2"
-            space="0"
-            />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <base-subtitle
-            title="- girls with nice vagaigai"
-            size="subtitle-2"
-            space="0"
-            />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <base-subtitle
-            title="- hair chicks"
-            size="subtitle-2"
-            space="0"
-            />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <base-subtitle
-            title="- two boys one slut"
-            size="subtitle-2"
-            space="2"
-            />
-          </v-col>
-        </v-row>
+        <octo-item
+          text="ahoj"
+        />
+        <octo-item
+          text="girls with nice vagaigai"
+        />
+        <octo-item
+          text="two boys one slut"
+        />
+        <octo-item
+          text="hair chicks"
+        />
         <v-divider />
       </v-col>
     </v-row>

@@ -33,7 +33,6 @@
       classes () {
         return [
           ...Heading.computed.classes.call(this),
-          'grey--text',
         ]
       },
     },

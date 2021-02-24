@@ -8,6 +8,7 @@ export default function () {
     methods: {
       debug: false,
       stop: false,
+      pause: false,
       async run () {
         var i
         var id
@@ -31,6 +32,11 @@ export default function () {
         for (k = 1; k <= 200000; k++) {
           if (this.stop) {
             return
+          }
+          if (this.pause) {
+            await new Promise(resolve => setTimeout(resolve, 200))
+            k -= 1
+            continue
           }
           perlinNoise = noise.noise.perlin2(k / 1000, k / 1000)
           perlinNoiseR = noise.noise.perlin2(k / 1000, k / 1000)

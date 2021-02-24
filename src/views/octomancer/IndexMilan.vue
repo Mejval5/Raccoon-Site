@@ -35,7 +35,7 @@
                   <div
                     id="scene"
                     data-relative-input="true"
-                    class="scene"
+                    :class="getSceneClass"
                   >
                     <div
                       id="bg1"
@@ -272,7 +272,7 @@
                   </div>
                 </div>
               </div>
-              <v-slide-x-transition
+              <v-fade-transition
                 origin="right center 0"
               >
                 <v-card
@@ -319,14 +319,15 @@
                     CONTACT
                   </v-btn>
                 </v-card>
-              </v-slide-x-transition>
-              <v-slide-x-transition
+              </v-fade-transition>
+              <v-fade-transition
                 origin="top center 0"
               >
                 <v-container
                   v-show="showFirstMenu"
-                  class="expansionPanel"
-                  style="height: inherit"
+                  class="expansionPanel pa-0"
+                  style="height: inherit; width: 100%;"
+                  fluid
                 >
                   <v-row
                     dense
@@ -336,20 +337,21 @@
                     no-gutters
                   >
                     <v-col
-                    align-self="center"
-                    style="height: inherit"
-                    class="hideScroll"
-                    cols="12"
-                    xl="8"
+                      align-self="center"
+                      style="height: inherit"
+                      class="hideScroll"
+                      cols="12"
+                      lg="9"
+                      xl="8"
                     >
                       <octo-scrolling-item
-                        @clicked="goBack"
                         :visible="showFirstMenu"
+                        @clicked="goBack"
                       />
                     </v-col>
                   </v-row>
                 </v-container>
-              </v-slide-x-transition>
+              </v-fade-transition>
             </v-col>
           </v-row>
           <v-row
@@ -413,6 +415,15 @@
         var height = this.$vuetify.breakpoint.mdAndUp ? 'calc(100vh - 90px)' : 'calc(100vh - 118px)'
         return 'max-height: ' + height + ';'
       },
+      getSceneClass () {
+        return this.showMainMenu ? 'scene' : 'scene blurryBG'
+      },
+    },
+
+    watch: {
+      showMainMenu: function () {
+        this.parallaxInstance.methods.pause = !this.showMainMenu
+      },
     },
 
     beforeRouteUpdate (to, from, next) {
@@ -446,7 +457,7 @@
       },
       async show_image () {
         this.parallaxInstance = await new DanParallax()
-        await new Promise(resolve => setTimeout(resolve, 200))
+        await new Promise(resolve => setTimeout(resolve, 300))
         this.expand = true
         this.parallaxInstance.methods.run()
         // console.log(this.parallaxInstance)
@@ -468,8 +479,6 @@
         if (!this.$vuetify.breakpoint.mdAndUp) {
           this.parallaxInstance.disableThisF()
         }
-        console.log(this.parallaxInstance)
-        console.log(this.$vuetify.breakpoint.mdAndUp)
       },
       goBack (value) {
         if (value === 'first') {
@@ -525,7 +534,7 @@ background-color:#e0e0e0;
     display: block;
     left: 0px;
     top: 0px;
-    transform: translate(0px, 0px)
+    transform: translate(0px, 0px);
 }
 
 .bg20 {
@@ -585,7 +594,6 @@ color: inherit;
 }
 
 .v-application--is-ltr .v-expansion-panel-header {
-  backdrop-filter: blur(0px);
   text-align: center;
   font-size: 4vh;
   font-weight: 700;
@@ -601,7 +609,10 @@ color: inherit;
 .buttonClass {
   font-size: 2vh;
 }
-
+.blurryBG {
+  filter: blur(10px) opacity(0.1);
+  transition: all 5s cubic-bezier(0.075, 0.82, 0.165, 1);
+}
 .v-expansion-panel-content {
   background-color: transparent;
   position: relative;
