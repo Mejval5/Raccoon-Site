@@ -28,11 +28,11 @@
               />
 
               <v-icon
-              :key="`icon-${s.name}`"
-              class="pa-1 d-block d-md-none"
-              :color="s.iconColor"
+                :key="`icon-${s.name}`"
+                class="pa-1 d-block d-md-none"
+                :color="s.iconColor"
               >
-                {{s.icon}}
+                {{ s.icon }}
               </v-icon>
 
               <v-responsive
