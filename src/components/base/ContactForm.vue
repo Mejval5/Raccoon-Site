@@ -1,5 +1,7 @@
 <template>
-  <div>
+  <div
+    :class="$vuetify.breakpoint.mdAndUp ? 'text-right' : 'text-center'"
+  >
     <v-form
       ref="form"
       v-model="valid"
@@ -35,25 +37,31 @@
 
       <base-textarea
         v-model="text"
-        class="mb-6"
+        class="mb-0"
         label="Your Need & Description"
         :rules="textRules"
         validate-on-blur
       />
 
-      <base-btn
-        :color="!theme.isDark ? 'accent' : 'white'"
+      <v-btn
         outlined
-        class="rounded"
+        x-large
+        class="rounded mb-5 mx-auto"
         @click="save_email"
       >
         Send message
-      </base-btn>
-
-      <base-snack-bar
-        ref="snack01"
-        text="Email sent successfully!"
-        timeout="2000"
+      </v-btn>
+      <div
+        class="primaryText mb-5 text-caption"
+      >
+        This site is protected by reCAPTCHA and the Google
+        <a href="https://policies.google.com/privacy">Privacy Policy</a> and
+        <a href="https://policies.google.com/terms">Terms of Service</a> apply.
+      </div>
+      <octo-email-saved
+        ref="dialog01"
+        timeout="3000"
+        text="Email sent!"
       />
     </v-form>
   </div>
@@ -67,7 +75,7 @@
       subtitle: String,
       title: {
         type: String,
-        default: 'MAIL US YOUR MESSAGE',
+        default: 'MAIL ME YOUR MESSAGE',
       },
     },
 
@@ -98,14 +106,16 @@
       are_all_fields_filled () {
         return this.name !== '' && this.email !== '' && this.subject !== '' && this.text !== ''
       },
-      save_email () {
+      async save_email () {
+        const token = await this.recaptcha()
         this.validate()
         if (this.test_email(this.email) && this.are_all_fields_filled()) {
-          let adress = 'https://us-central1-website-raccoon.cloudfunctions.net/sendUsEmail'
+          let adress = 'https://us-central1-octomancer-website.cloudfunctions.net/sendUsEmail'
           adress += '?name=' + this.name
           adress += '&email=' + this.email
           adress += '&subject=' + this.subject
           adress += '&text=' + this.text
+          adress += '&token=' + token
           this.axios(
             {
               method: 'post',
@@ -119,7 +129,7 @@
           this.email = ''
           this.subject = ''
           this.text = ''
-          this.$refs.snack01.openSnack()
+          this.$refs.dialog01.openDialog()
         }
       },
       validate () {
@@ -130,6 +140,14 @@
       },
       resetValidation () {
         this.$refs.form.resetValidation()
+      },
+      async recaptcha () {
+        // (optional) Wait until recaptcha has been loaded.
+        await this.$recaptchaLoaded()
+
+        // Execute reCAPTCHA with action "login".
+        return await this.$recaptcha('login')
+        // Do stuff with the received token.
       },
     },
 

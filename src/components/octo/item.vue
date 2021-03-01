@@ -4,18 +4,18 @@
     class="py-2"
   >
     <v-col
-      cols="1"
+      cols="2"
+      sm="1"
       class="text-center"
     >
-      <v-icon
-        x-small
-      >
+      <v-icon>
         {{ icon }}
       </v-icon>
     </v-col>
     <v-col align-self="center">
       <base-subtitle
         :title="text"
+        :html="html"
         class="primaryText"
         size="subtitle-2"
         space="0"
@@ -29,6 +29,7 @@
     name: 'Item',
     props: {
       text: String,
+      html: String,
       icon: {
         type: String,
         default: 'mdi-heart',

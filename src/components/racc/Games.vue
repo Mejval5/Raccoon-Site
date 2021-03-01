@@ -14,7 +14,7 @@
         <v-col
           cols="auto"
         >
-          <game-card
+          <base-game-card
             image="assets/game-0.png"
             gamelink="octomancer"
             samepage="true"
@@ -38,7 +38,7 @@
         <v-col
           cols="auto"
         >
-          <game-card
+          <base-game-card
             image="assets/plantzie.png"
             gamelink="https://raccoon5.itch.io/plantagonist"
             headline="Sproutagonist"
@@ -51,7 +51,7 @@
         <v-col
           cols="auto"
         >
-          <game-card
+          <base-game-card
             image="assets/V6t0Yh.png"
             gamelink="https://raccoon5.itch.io/piranhasbounty"
             headline="Piranha's bounty"
@@ -73,7 +73,7 @@
         <v-col
           cols="auto"
         >
-          <game-card
+          <base-game-card
             image="assets/game-2.png"
             headline="Billin' around"
             gamelink="https://raccoon5.itch.io/billinaround"
@@ -95,7 +95,7 @@
         <v-col
           cols="auto"
         >
-          <game-card
+          <base-game-card
             image="assets/game-3.png"
             gamelink="https://raccoon5.itch.io/space-simulator"
             headline="Space simulator"
@@ -111,9 +111,5 @@
 <script>
   export default {
     name: 'Games',
-
-    components: {
-      GameCard: () => import('@/components/base/GameCard'),
-    },
   }
 </script>

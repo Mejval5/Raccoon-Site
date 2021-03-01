@@ -262,6 +262,19 @@
                         class="gg gg1"
                       >
                     </div>
+                    <div
+                      v-show="!showMainMenu"
+                      id="bg23"
+                      data-depth="0.84"
+                      class="bgLight mybg"
+                      style="height: 100%; width: 100%;"
+                    >
+                      <v-sheet
+                        height="100%"
+                        width="100%"
+                        color="rgba(8,18,20,0.9)"
+                      />
+                    </div>
                     <!--    <div
                       id="bg23"
                       class="menu1 primaryText"
@@ -288,8 +301,9 @@
                     plain
                     :ripple="false"
                     @click="() => {
+                      this.$router.push('/octomancer')
                       showMainMenu = !showMainMenu
-                      showFirstMenu = !showFirstMenu
+                      showOctomancerPage = !showOctomancerPage
                     }"
                   >
                     OCTOMANCER
@@ -299,6 +313,12 @@
                     class="my-2 buttonClass"
                     text
                     plain
+                    :ripple="false"
+                    @click="() => {
+                      this.$router.push('/brotagonists')
+                      showMainMenu = !showMainMenu
+                      showBrotagonistsPage = !showBrotagonistsPage
+                    }"
                   >
                     BROTAGONISTS™
                   </v-btn> <br>
@@ -307,6 +327,12 @@
                     class="my-2 buttonClass"
                     text
                     plain
+                    :ripple="false"
+                    @click="() => {
+                      this.$router.push('/supportUs')
+                      showMainMenu = !showMainMenu
+                      showSupportUsPage = true
+                    }"
                   >
                     SUPPORT US
                   </v-btn> <br>
@@ -315,43 +341,52 @@
                     class="my-2 buttonClass"
                     text
                     plain
+                    :ripple="false"
+                    @click="() => {
+                      this.$router.push('/contact')
+                      showMainMenu = !showMainMenu
+                      showContactPage = !showContactPage
+                    }"
                   >
                     CONTACT
                   </v-btn>
                 </v-card>
               </v-fade-transition>
-              <v-fade-transition
-                origin="top center 0"
+              <octo-page
+                :visible="showOctomancerPage"
               >
-                <v-container
-                  v-show="showFirstMenu"
-                  class="expansionPanel pa-0"
-                  style="height: inherit; width: 100%;"
-                  fluid
-                >
-                  <v-row
-                    dense
-                    align-content="center"
-                    style="height: inherit"
-                    justify="center"
-                    no-gutters
-                  >
-                    <v-col
-                      align-self="center"
-                      style="height: inherit"
-                      class="hideScroll"
-                      cols="12"
-                      lg="9"
-                      xl="8"
-                    >
-                      <octo-scrolling-item
-                        :visible="showFirstMenu"
-                        @clicked="goBack"
-                      />
-                    </v-col>
-                  </v-row>
-                </v-container>
-              </v-fade-transition>
+                <octo-octomancer-inner
+                  :visible="showOctomancerPage"
+                  @clicked="goBack"
+                />
+              </octo-page>
+
+              <octo-page
+                :visible="showBrotagonistsPage"
+              >
+                <octo-brotagonists-inner
+                  :visible="showBrotagonistsPage"
+                  @clicked="goBack"
+                />
+              </octo-page>
+
+              <octo-page
+                :visible="showSupportUsPage"
+              >
+                <octo-support-us-inner
+                  :visible="showSupportUsPage"
+                  @clicked="goBack"
+                />
+              </octo-page>
+
+              <octo-page
+                :visible="showContactPage"
+              >
+                <octo-contact-inner
+                  :visible="showContactPage"
+                  @clicked="goBack"
+                />
+              </octo-page>
             </v-col>
           </v-row>
           <v-row
@@ -397,14 +432,17 @@
     data: () => ({
       expand: false,
       showMainMenu: true,
-      showFirstMenu: false,
+      showOctomancerPage: false,
+      showBrotagonistsPage: false,
+      showSupportUsPage: false,
+      showContactPage: false,
       parallaxInstance: {},
     }),
 
     computed: {
       get_mobile_size () {
         if (this.$vuetify.breakpoint.smAndDown) {
-          return 'width: 2560px;'
+          return 'width: 2000px;'
         } else if (this.$vuetify.breakpoint.mdAndUp && this.$vuetify.breakpoint.lgAndDown) {
           return 'width: 2560px;'
         } else {
@@ -412,11 +450,11 @@
         }
       },
       get_height_dirty () {
-        var height = this.$vuetify.breakpoint.mdAndUp ? 'calc(100vh - 90px)' : 'calc(100vh - 118px)'
+        var height = '100vh'
         return 'max-height: ' + height + ';'
       },
       getSceneClass () {
-        return this.showMainMenu ? 'scene' : 'scene blurryBG'
+        return this.showMainMenu ? 'scene' : 'scene'
       },
     },
 
@@ -424,12 +462,9 @@
       showMainMenu: function () {
         this.parallaxInstance.methods.pause = !this.showMainMenu
       },
-    },
-
-    beforeRouteUpdate (to, from, next) {
-      console.log(to)
-      console.log(from)
-      console.log(next)
+      $route (to, from) {
+        this.showMenuByPage()
+      },
     },
 
     mounted () {
@@ -437,6 +472,7 @@
       // this.parallaxInstance = new Parallax(scene)
       this.$nextTick(() => {
         this.show_image()
+        this.showMenuByPage()
       })
     },
 
@@ -450,6 +486,31 @@
     },
 
     methods: {
+      showMenuByPage () {
+        if (this.$route.params.pageName === 'octomancer') {
+          this.showOctomancerPage = true
+          this.showMainMenu = false
+        }
+        if (this.$route.params.pageName === 'brotagonists') {
+          this.showBrotagonistsPage = true
+          this.showMainMenu = false
+        }
+        if (this.$route.params.pageName === 'supportUs') {
+          this.showSupportUsPage = true
+          this.showMainMenu = false
+        }
+        if (this.$route.params.pageName === 'contact') {
+          this.showContactPage = true
+          this.showMainMenu = false
+        }
+        if (this.$route.params.pageName == null) {
+          this.showOctomancerPage = false
+          this.showBrotagonistsPage = false
+          this.showSupportUsPage = false
+          this.showContactPage = false
+          this.showMainMenu = true
+        }
+      },
       onScroll () {},
       stop_anim () {
         this.parallaxInstance.methods.stop = true
@@ -457,34 +518,29 @@
       },
       async show_image () {
         this.parallaxInstance = await new DanParallax()
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await new Promise(resolve => setTimeout(resolve, 500))
         this.expand = true
-        this.parallaxInstance.methods.run()
+        this.updateParallax()
+        this.parallaxInstance.methods.run(this.$vuetify.breakpoint.lgAndUp)
         // console.log(this.parallaxInstance)
       },
       onResize (event) {
         try {
-          if (this.$vuetify.breakpoint.mdAndUp && !this.parallaxInstance.enabled) {
-            this.parallaxInstance.enableThisF()
-          }
-          if (!this.$vuetify.breakpoint.mdAndUp && this.parallaxInstance.enabled) {
-            this.parallaxInstance.disableThisF()
-          }
+          this.updateParallax()
         } catch {}
       },
-      firstLoad () {
-        if (this.$vuetify.breakpoint.mdAndUp) {
-          this.parallaxInstance.enableThisF()
-        }
-        if (!this.$vuetify.breakpoint.mdAndUp) {
-          this.parallaxInstance.disableThisF()
-        }
+      updateParallax () {
+        this.parallaxInstance.methods.pause = this.$vuetify.breakpoint.mdAndDown || !this.showMainMenu
       },
       goBack (value) {
         if (value === 'first') {
-          this.showFirstMenu = false
+          this.showOctomancerPage = false
+        }
+        if (value === 'second') {
+          this.showBrotagonistsPage = false
         }
         this.showMainMenu = true
+        this.$router.push('/')
       },
     },
 
@@ -535,6 +591,10 @@ background-color:#e0e0e0;
     left: 0px;
     top: 0px;
     transform: translate(0px, 0px);
+}
+.willMove {
+  transition: all 12s ease-in-out;
+  will-change: transform;
 }
 
 .bg20 {
@@ -610,8 +670,8 @@ color: inherit;
   font-size: 2vh;
 }
 .blurryBG {
-  filter: blur(10px) opacity(0.1);
-  transition: all 5s cubic-bezier(0.075, 0.82, 0.165, 1);
+  filter: blur(2px) opacity(0.1);
+  transition: all 0.1s ease-in-out;
 }
 .v-expansion-panel-content {
   background-color: transparent;

@@ -8,7 +8,7 @@
     >
       <v-row>
         <v-col>
-          <menu-svg class="svg" />
+          asd
         </v-col>
       </v-row>
     </v-container>
@@ -18,10 +18,6 @@
 <script>
   export default {
     name: 'SectionFeatures',
-
-    components: {
-      MenuSvg: () => import('@/assets/menu/menu'),
-    },
 
   }
 </script>

@@ -8,15 +8,14 @@
     <v-carousel
       v-model="model"
       :continuous="true"
-      :cycle="true"
-      :interval="intervalChanger"
+      :cycle="cycle"
+      :interval="time * 1000"
       show-arrows-on-hover
       hide-delimiter-background
       delimiter-icon="mdi-hexagon-outline"
-      height="70vh"
+      :height="carouselHeight"
       @change="
         carouselVal=0
-        intervalChanger = 5000000
       "
     >
       <template
@@ -116,23 +115,27 @@
           'orange darken-1',
         ],
         carouselVal: 0,
-        cycle: false,
+        cycle: true,
         interval: {},
-        intervalChanger: 5000000,
         model: 0,
       }
+    },
+    computed: {
+      carouselHeight () {
+        return this.$vuetify.breakpoint.mdAndUp ? '70vh' : '70vh'
+      },
     },
     watch: {
       visible: function () {
         this.carouselVal = 0
-        this.cycle = true
+        this.model = 0
       },
     },
-
     mounted: function () {
       if (this.$vuetify.breakpoint.mdAndUp) {
+        this.cycle = false
         this.interval = window.setInterval(() => {
-          if (this.cycle) {
+          if (this.time !== 0) {
             if (this.carouselVal >= 100) {
               this.carouselVal = 0
               this.model += 1
@@ -159,6 +162,9 @@
 .v-icon.v-icon::after {
     background-color: transparent;
 }
+.v-carousel__controls__item {
+  margin: 0 6px;
+}
 .hoverArrow {
     transition: all .5s ease-in-out;
 }
@@ -170,5 +176,9 @@
   transform: translateY(-0.4vh);
   height: 0.4vh;
   transition: all 0.05s !important;
+}
+.v-carousel__controls__item.v-btn:hover {
+  transform: scale(1.5);
+  transition: all 0.1s ease-in-out;
 }
 </style>

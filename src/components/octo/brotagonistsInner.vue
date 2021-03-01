@@ -2,13 +2,9 @@
   <v-container
     v-scroll.self="onScroll"
     fluid
-    class="overflow-y-auto"
+    class="overflow-y-auto hideScroll"
     style="height: inherit;"
   >
-    <div
-      class="center"
-      style="height: 100%; position: absolute; width: 100%;"
-    />
     <v-row
       dense
       align-content="center"
@@ -18,10 +14,16 @@
     >
       <v-col>
         <v-btn
-          icon
+          block
+          color="transparent"
+          elevation="0"
           @click="goBack"
         >
-          <v-icon>mdi-keyboard-backspace</v-icon>
+          <v-icon
+            class="mr-auto"
+          >
+            mdi-keyboard-backspace
+          </v-icon>
         </v-btn>
       </v-col>
     </v-row>
@@ -29,20 +31,24 @@
       :class="centerOnPC"
     >
       <div
-        class="mb-n1 rounded"
+        class="rounded"
       >
         <v-row
           dense
-          align-content="center"
+          align="center"
           justify="center"
         >
           <v-col
             class="d-none d-md-block text-right py-0"
+            align-self="stretch"
             cols="1"
           >
             <v-btn
-              icon
               large
+              class="rounded-lg d-block"
+              style="height: 100%;"
+              color="transparent"
+              elevation="0"
               @click="goBack"
             >
               <v-icon>mdi-keyboard-backspace</v-icon>
@@ -51,24 +57,30 @@
           <v-col
             class="pr-md-5"
             cols="12"
-            md="6"
-            lg="7"
-            order="1"
+            md="11"
+            lg="10"
           >
-            <octo-game-description />
+            <octo-devs />
           </v-col>
-          <v-col
-            cols="12"
-            md="5"
-            lg="4"
-            order="0"
-            order-md="2"
-          >
-            <octo-carousel
-              :images="images"
-              :visible="visible"
-              :time="6"
-            />
+          <v-spacer class="d-none d-lg-block" />
+        </v-row>
+        <v-row
+          dense
+          align-content="center"
+          justify="center"
+          no-gutters
+          class="d-md-none mb-15"
+        >
+          <v-col>
+            <v-btn
+              block
+              color="transparent"
+              class="mb-15"
+              elevation="0"
+              @click="goBack"
+            >
+              <v-icon>mdi-keyboard-backspace</v-icon>
+            </v-btn>
           </v-col>
         </v-row>
       </div>
@@ -92,24 +104,24 @@
     data () {
       return {
         images: [
-          'assets/octoPR/01.png',
-          'assets/octoPR/02.png',
-          'assets/octoPR/03.png',
-          'assets/octoPR/04.png',
-          'assets/octoPR/05.png',
-          'assets/octoPR/06.png',
+          'assets/octoPR/01.jpg',
+          'assets/octoPR/02.jpg',
+          'assets/octoPR/03.jpg',
+          'assets/octoPR/04.jpg',
+          'assets/octoPR/05.jpg',
+          'assets/octoPR/06.jpg',
         ],
       }
     },
     computed: {
       centerOnPC () {
-        return this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
+        return this.$vuetify.breakpoint.lgAndUp ? 'center' : ''
       },
     },
     methods: {
       onScroll () {},
       goBack () {
-        this.$emit('clicked', 'first')
+        this.$emit('clicked', 'second')
       },
     },
   }
@@ -174,21 +186,20 @@
 .theme--dark.v-expansion-panels .v-expansion-panel:not(:first-child)::after {
   border-color: transparent;
 }
-.hideScroll {
-  background-color: transparent;
-  backdrop-filter: blur(0px) !important;
-  border-radius: 4px;
-}
-.hideScroll ::-webkit-scrollbar {
-  width: 0.3vw;
+::-webkit-scrollbar {
+  width: 4px;
   position: relative !important;
+  border-radius: 25px;
 }
-.hideScroll ::-webkit-scrollbar-track {
-  box-shadow: inset 0 0 0.3vw grey;
-  border-radius: 4px;
+::-webkit-scrollbar-track {
+  box-shadow: inset 0 0 4px #486674;
+  border-radius: 10px;
 }
-.hideScroll ::-webkit-scrollbar-thumb {
-  box-shadow: inset 0 0 0.2vw grey;
-  border-radius: 4px;
+::-webkit-scrollbar-thumb {
+  background: #486674;
+  border-radius: 10px;
+}
+.hideScroll {
+  background-color: #48667401;
 }
 </style>

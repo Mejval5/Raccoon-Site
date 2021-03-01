@@ -3,13 +3,13 @@
     <!--    <home-system-bar />
     <div class="test align-end justify-end elevation1 rounded-xl" />
     <div class="test2 elevation1 rounded-xl" />
-    -->
-    <home-app-bar />
+
+    <home-app-bar /> -->
 
     <home-view />
 
-    <home-footer />
-    <!--    <home-settings /> -->
+    <!-- <home-footer />
+       <home-settings /> -->
   </v-app>
 </template>
 
@@ -18,9 +18,9 @@
     name: 'HomeLayout',
 
     components: {
-      HomeAppBar: () => import('@/layouts/home/AppBar'),
+      /* HomeAppBar: () => import('@/layouts/home/AppBar'),
       HomeFooter: () => import('@/layouts/home/Footer'),
-      /* HomeSettings: () => import('@/layouts/home/Settings'), */
+      HomeSettings: () => import('@/layouts/home/Settings'), */
       /* HomeSystemBar: () => import('@/layouts/home/SystemBar'), */
       HomeView: () => import('@/layouts/home/View'),
     },

@@ -14,7 +14,7 @@
       >
         <base-heading
           :title="title"
-          class="secondaryText"
+          class="terciaryText"
           weight="normal"
           size="display-1"
           mobile-size="headline"
@@ -29,7 +29,7 @@
         :style="$vuetify.breakpoint.mdAndUp ? 'text-align: end;' : 'text-align: start;'"
       >
         <div
-          class="body-1 terciaryText"
+          class="body-1 secondaryText"
           v-text="formated_date()"
         />
       </v-col>

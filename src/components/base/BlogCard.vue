@@ -44,19 +44,30 @@
     />
 
     <v-card-text class="my-0 py-0">
-      <v-row align="center" />
-
+      <v-row
+      align="center"
+      >
+        <v-col class="pt-1">
       <div
         v-if="subtitle"
-        class="mt-4 mb-1 subtitle-1 secondaryText"
+        class="mb-1 subtitle-1 terciaryText"
         v-text="subtitle"
       />
+        </v-col>
+        <v-col class="pt-1">
+      <div
+        v-if="subtitle"
+        class="mb-1 subtitle-1 text-right terciaryText"
+        v-text="formatedDate"
+      />
+        </v-col>
+        </v-row>
       <v-divider
         class="pb-2 pt-0"
       />
 
       <div
-        class="subtitle-1 my-1 terciaryText"
+        class="subtitle-1 my-1 secondaryText"
         v-html="text"
       />
     </v-card-text>
@@ -105,6 +116,13 @@
       text: String,
       image: String,
       samepage: String,
+      date: Number,
+    },
+    computed: {
+      formatedDate () {
+        const [_month, _date, _year] = new Date(this.date).toLocaleDateString('en-US').split('/')
+        return _date.toString() + '. ' + _month.toString() + '. ' + _year.toString()
+      },
     },
   }
 </script>

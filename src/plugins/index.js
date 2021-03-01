@@ -2,5 +2,6 @@
 
 import './base'
 import './octo'
+import './racc'
 import './meta'
 import './webfontloader'
