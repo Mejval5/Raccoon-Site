@@ -57,24 +57,24 @@
           <v-col
             class="pr-md-5"
             cols="12"
-            md="10"
+            md="11"
+            lg="10"
           >
             <octo-contact-us />
           </v-col>
-          <v-spacer class="d-none d-sm-block" />
         </v-row>
         <v-row
           dense
           align-content="center"
           justify="center"
           no-gutters
-          class="d-sm-none mb-15"
+          class="d-sm-none mb-3"
         >
           <v-col>
             <v-btn
               block
               color="transparent"
-              class="mb-15"
+              class="py-5"
               elevation="0"
               @click="goBack"
             >

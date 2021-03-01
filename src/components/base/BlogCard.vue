@@ -83,7 +83,7 @@
         class="text-decoration-none"
       >
         <v-btn
-          class="my-6 elevation3 linkText rounded-xl"
+          class="my-6 elevation2 linkText rounded"
           elevation="0"
           x-large
         >

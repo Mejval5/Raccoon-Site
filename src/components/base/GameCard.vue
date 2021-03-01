@@ -48,7 +48,7 @@
 
       <div
         v-if="subtitle"
-        class="mt-4 mb-1 subtitle-1 secondaryText"
+        class="mt-4 mb-1 subtitle-1 terciaryText"
         v-text="subtitle"
       />
       <v-divider
@@ -56,7 +56,7 @@
       />
 
       <div
-        class="subtitle-1 my-1 terciaryText"
+        class="subtitle-1 my-1 secondaryText"
         v-html="text"
       />
     </v-card-text>
@@ -72,7 +72,7 @@
         class="text-decoration-none"
       >
         <v-btn
-          class="my-6 elevation4 linkText rounded-xl"
+          class="my-6 elevation4 linkText rounded"
           elevation="0"
           x-large
         >
@@ -81,7 +81,7 @@
       </router-link>
       <v-btn
         v-else
-        class="my-6 elevation4 linkText rounded-xl"
+        class="my-6 elevation4 linkText rounded"
         x-large
         elevation="0"
         :href="gamelink"

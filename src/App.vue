@@ -62,13 +62,13 @@
   background-color: #121212 !important;
 }
 .theme--dark .elevation2 {
-  background-color: #041d29 !important;
+  background-color: #212121 !important;
 }
 .theme--dark .elevation3 {
-  background-color: #062531 !important;
+  background-color: #303030 !important;
 }
 .theme--dark .elevation4 {
-  background-color: #0c2d3d !important;
+  background-color: #424242 !important;
 }
 .theme--dark .octoPrimaryText {
   color: #d1dadf !important;
@@ -101,7 +101,7 @@
   color: #a4adb3 !important;
 }
 .theme--dark .linkText {
-  color: #a4adb3 !important;
+  color: #ffa007 !important;
 }
 .v-application a {
   color: var(--v-link-base);

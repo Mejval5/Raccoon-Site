@@ -61,11 +61,11 @@
     data () {
       return {
         pages: {
-          mainMenu: { val: true, name: 'Raccoon site' },
-          aboutPage: { val: false, name: 'About me' },
-          gamesPage: { val: false, name: 'Games' },
-          blogPage: { val: false, name: 'Blog' },
-          contactPage: { val: false, name: 'Contact' },
+          mainMenu: { val: true, name: 'Raccoon site', route: '/' },
+          aboutPage: { val: false, name: 'About me', route: '/about' },
+          gamesPage: { val: false, name: 'Games', route: '/games' },
+          blogPage: { val: false, name: 'Blog', route: '/blog' },
+          contactPage: { val: false, name: 'Contact', route: '/contact' },
         },
       }
     },
@@ -90,11 +90,22 @@
         return 'wtf'
       },
     },
+    watch: {
+      $route (to, from) {
+        this.UpdatePage(this.$route.meta.pageName)
+      },
+    },
 
-    mounted () {
+    beforeMount () {
+      this.UpdatePage(this.$route.meta.pageName)
     },
     methods: {
       goToPage (page) {
+        if (this.$route.fullPath !== this.pages[page].route) {
+          this.$router.push(this.pages[page].route)
+        }
+      },
+      UpdatePage (page) {
         if (Object.keys(this.pages).indexOf(page) > -1) {
           for (var key in this.pages) {
             if (key === page) {
