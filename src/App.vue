@@ -6,6 +6,7 @@
   >
     <div
       style="position: absolute; width: 100%; height: 100%; overflow: hidden"
+      class="bg"
     >
       <router-view />
     </div>
@@ -42,6 +43,12 @@
 </style>
 
 <style global>
+.bg {
+  background-color: black !important;
+}
+.body {
+  background-color: black !important;
+}
 .theme--dark.v-application {
   background-color: #000000 !important;
   background-size: 550px 550px, 350px 350px, 250px 250px, 150px 150px;
@@ -125,4 +132,14 @@
   background: #486674;
   border-radius: 10px;
 }
+.grecaptcha-badge { visibility: hidden; }
+
+.theme--dark.v-skeleton-loader .v-skeleton-loader__avatar, .theme--dark.v-skeleton-loader .v-skeleton-loader__button, .theme--dark.v-skeleton-loader .v-skeleton-loader__chip, .theme--dark.v-skeleton-loader .v-skeleton-loader__divider, .theme--dark.v-skeleton-loader .v-skeleton-loader__heading, .theme--dark.v-skeleton-loader .v-skeleton-loader__image, .theme--dark.v-skeleton-loader .v-skeleton-loader__text {
+  background: #212121aa !important;
+}
+
+.theme--dark.v-skeleton-loader .v-skeleton-loader__actions, .theme--dark.v-skeleton-loader .v-skeleton-loader__article, .theme--dark.v-skeleton-loader .v-skeleton-loader__card-heading, .theme--dark.v-skeleton-loader .v-skeleton-loader__card-text, .theme--dark.v-skeleton-loader .v-skeleton-loader__date-picker, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-avatar, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-text, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-two-line, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-avatar-two-line, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-three-line, .theme--dark.v-skeleton-loader .v-skeleton-loader__list-item-avatar-three-line, .theme--dark.v-skeleton-loader .v-skeleton-loader__table-heading, .theme--dark.v-skeleton-loader .v-skeleton-loader__table-thead, .theme--dark.v-skeleton-loader .v-skeleton-loader__table-tbody, .theme--dark.v-skeleton-loader .v-skeleton-loader__table-tfoot {
+  background: #121212 !important;
+}
+
 </style>

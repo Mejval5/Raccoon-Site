@@ -53,6 +53,11 @@ const router = new Router({
           component: () => import('@/views/main/Index.vue'),
         },
         {
+          path: '/blogpost/:blogId',
+          name: 'Blogpost',
+          component: () => import('@/views/blogpost/Index.vue'),
+        },
+        {
           path: '/contact',
           name: 'Contact',
           meta: { pageName: 'contactPage' },

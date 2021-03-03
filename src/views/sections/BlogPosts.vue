@@ -12,13 +12,14 @@
         :key="blogPost.id"
         cols="auto"
       >
-        <blog-card
+        <base-blog-card
           :image="blogPost.imgSource"
           :bloglink="blogPost.file"
           samepage="true"
           :headline="blogPost.title"
           subtitle="First blog post"
           text="Random test"
+          :show-card="showCards"
         />
       </v-col>
     </v-row>
@@ -33,17 +34,16 @@
   export default {
     name: 'BlogPost',
 
-    components: {
-      BlogCard: () => import('@/components/base/BlogCard'),
-    },
-
     data: () => ({
       blogPosts: [],
       renderComponent: true,
+      showCards: false,
     }),
 
     async beforeMount () {
+      console.log(this.showCards)
       await this.get_blog_posts()
+      console.log(this.showCards)
     },
 
     methods: {
@@ -59,6 +59,7 @@
         this.$nextTick(() => {
           // Add the component back in
           this.renderComponent = true
+          this.showCards = true
         })
       },
     },

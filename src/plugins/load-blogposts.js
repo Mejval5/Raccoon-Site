@@ -21,5 +21,11 @@ export default async function () {
     blogPosts.push(blogPost)
   }
 
+  blogPosts.sort(
+    function (a, b) {
+      return b.date - a.date
+    },
+  )
+
   return blogPosts
 }

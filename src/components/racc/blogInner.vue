@@ -38,7 +38,7 @@
           align="center"
           justify="center"
         >
-        <v-spacer />
+          <v-spacer />
           <v-col
             class="d-none d-md-block text-right py-0"
             align-self="stretch"
@@ -69,7 +69,7 @@
           align-content="center"
           justify="center"
           no-gutters
-          class="d-sm-none mb-15"
+          class="d-sm-none mb-0"
         >
           <v-col>
             <v-btn
@@ -115,7 +115,7 @@
     },
     computed: {
       centerOnPC () {
-        return this.$vuetify.breakpoint.lgAndUp ? 'center' : ''
+        return this.$vuetify.breakpoint.height > 680 && this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
       },
     },
     methods: {
