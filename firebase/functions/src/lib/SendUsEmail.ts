@@ -46,8 +46,8 @@ export const _sendUsEmail = functions.https.onRequest(
           admin.firestore().collection("Sent emails").add({
             to: "necesal.daniel@gmail.com",
             message: {
-              subject: subjectString + " From: " + nameString,
-              html: textString + "/n Sent by: " + emailString,
+              subject: subjectString,
+              html: textString + "<br>From: " + nameString + "<br>Sent by: " + emailString,
             },
           });
         }
