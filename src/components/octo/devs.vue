@@ -1,8 +1,7 @@
 <template>
-  <v-container>
+  <v-container fluid>
     <octo-dev-info
       :dev-info="devInfo1"
-      class="mb-5"
     />
   </v-container>
 </template>
@@ -12,7 +11,7 @@
     data () {
       return {
         devInfo1: {
-          name: 'Daniel Nečesal',
+          name: 'DANIEL NEČESAL',
           pic: 'assets/me/dan.jpg',
           title: 'Game programmer',
           socialMedia: [

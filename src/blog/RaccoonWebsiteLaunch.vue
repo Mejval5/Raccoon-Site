@@ -1,7 +1,7 @@
 <template>
   <v-container
-  fluid
-  class="pa-0"
+    fluid
+    class="pa-0"
   >
     <base-blog-post-head
       :date="date"
@@ -9,8 +9,8 @@
       class="mb-3"
     />
     <base-body
-    class="secondaryText"
-    :html="html"
+      class="secondaryText"
+      :html="html"
     />
   </v-container>
 </template>

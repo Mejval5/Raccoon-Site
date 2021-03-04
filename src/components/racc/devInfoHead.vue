@@ -1,7 +1,7 @@
 <template>
   <div>
     <base-heading
-      size="display-1"
+      size="display-2"
       class="mb-0"
       space="0"
     >

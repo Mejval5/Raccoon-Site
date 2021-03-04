@@ -432,11 +432,11 @@
             <text
               id="aboutText"
               class="aboutText"
-              transform="rotate(-13.333)"
+              transform="rotate(-12.333)"
               x="86.722054"
               y="51.121693"
               fill="#000000"
-              font-family="'RocknRoll One'"
+              font-family="'Josefin Sans'"
               font-size="4.2333px"
               letter-spacing="0px"
               stroke-width=".26458"
@@ -445,11 +445,11 @@
               xml:space="preserve"
             ><tspan
               id="tspan904"
-              x="86.722054"
-              y="51.121693"
-              font-size="4.2333px"
+              x="87.522054"
+              y="49.821693"
+              font-size="4.6333px"
               stroke-width=".26458"
-            >About</tspan></text>
+            >ABOUT</tspan></text>
           </g>
           <g
             id="games"
@@ -466,11 +466,11 @@
             <text
               id="gamesText"
               class="gamesText"
-              transform="rotate(-10.418)"
+              transform="rotate(-9.018)"
               x="88.787315"
               y="51.542953"
               fill="#000000"
-              font-family="'RocknRoll One'"
+              font-family="'Josefin Sans'"
               font-size="4.2333px"
               letter-spacing="0px"
               stroke-width=".26458"
@@ -479,11 +479,11 @@
               xml:space="preserve"
             ><tspan
               id="tspan908"
-              x="88.787315"
-              y="51.542953"
-              font-size="4.2333px"
+              x="89.787315"
+              y="49.442953"
+              font-size="4.6333px"
               stroke-width=".26458"
-            >Games</tspan></text>
+            >GAMES</tspan></text>
           </g>
           <g
             id="blog"
@@ -500,12 +500,12 @@
             <text
               id="blogText"
               class="blogText"
-              transform="rotate(-6.2893)"
+              transform="rotate(-2.2893)"
               x="92.655106"
               y="49.486526"
               fill="#000000"
-              font-family="'RocknRoll One'"
-              font-size="4.2333px"
+              font-family="'Josefin Sans'"
+              font-size="4.6333px"
               letter-spacing="0px"
               stroke-width=".26458"
               word-spacing="0px"
@@ -513,11 +513,11 @@
               xml:space="preserve"
             ><tspan
               id="tspan912"
-              x="92.655106"
-              y="49.486526"
-              font-size="4.2333px"
+              x="95.355106"
+              y="42.886526"
+              font-size="4.6333px"
               stroke-width=".26458"
-            >Blog</tspan></text>
+            >BLOG</tspan></text>
           </g>
           <g
             id="contact"
@@ -534,11 +534,11 @@
             <text
               id="contactText"
               class="contactText"
-              transform="rotate(2.3441)"
+              transform="rotate(3.3441)"
               x="98.406548"
-              y="39.375965"
+              y="37.375965"
               fill="#000000"
-              font-family="'RocknRoll One'"
+              font-family="'Josefin Sans'"
               font-size="4.2333px"
               letter-spacing="0px"
               stroke-width=".26458"
@@ -547,11 +547,11 @@
               xml:space="preserve"
             ><tspan
               id="tspan916"
-              x="98.406548"
-              y="39.375965"
-              font-size="4.2333px"
+              x="98.906548"
+              y="37.675965"
+              font-size="4.6333px"
               stroke-width=".26458"
-            >Contact</tspan></text>
+            >CONTACT</tspan></text>
           </g>
         </g>
       </g>

@@ -108,7 +108,28 @@
   color: #a4adb3 !important;
 }
 .theme--dark .linkText {
-  color: #ffa007 !important;
+  color: #2196F3 !important;
+}
+.theme--dark .orange {
+  color: #ff9800 !important;
+}
+.theme--dark .orangeText {
+  color: #ff9800 !important;
+}
+.theme--dark .secondaryHeadText{
+  color: #ff9800aa !important;
+}
+.theme--dark .green {
+  color: #4CAF50 !important;
+}
+.theme--dark .blue {
+  color: #2196F3 !important;
+}
+.theme--dark .purple {
+  color: #9c27b0 !important;
+}
+.theme--dark .purpleText {
+  color: #9c27b0 !important;
 }
 .v-application a {
   color: var(--v-link-base);

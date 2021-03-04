@@ -12,11 +12,11 @@
     props: {
       size: {
         type: String,
-        default: 'title',
+        default: 'headline',
       },
       mobileSize: {
         type: String,
-        default: 'subtitle-1',
+        default: 'headline',
       },
       tag: {
         type: String,

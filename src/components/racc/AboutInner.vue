@@ -28,7 +28,7 @@
       </v-col>
     </v-row>
     <div
-      :class="centerOnPC"
+      :class="divClass"
     >
       <div
         class="rounded"
@@ -55,10 +55,12 @@
             </v-btn>
           </v-col>
           <v-col
-            class="pr-md-5"
+            ref="devs"
+            class=""
             cols="12"
-            md="10"
-            lg="8"
+            md="11"
+            lg="10"
+            xl="8"
           >
             <octo-devs />
           </v-col>
@@ -68,13 +70,13 @@
           align-content="center"
           justify="center"
           no-gutters
-          class="d-md-none mb-15"
+          class="d-md-none mb-3"
         >
           <v-col>
             <v-btn
               block
               color="transparent"
-              class="mb-15"
+              class="mb-3"
               elevation="0"
               @click="goBack"
             >
@@ -110,14 +112,27 @@
           'assets/octoPR/05.jpg',
           'assets/octoPR/06.jpg',
         ],
+        divClass: '',
       }
     },
-    computed: {
-      centerOnPC () {
-        return this.$vuetify.breakpoint.height > 640 && this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
-      },
+    mounted () {
+      // Register an event listener when the Vue component is ready
+      window.addEventListener('resize', this.onResize)
+      this.onResize()
+    },
+
+    beforeDestroy () {
+      // Unregister the event listener before destroying this Vue instance
+      window.removeEventListener('resize', this.onResize)
     },
     methods: {
+      onResize () {
+        if (this.$refs.devs.clientHeight + 10 < this.$vuetify.breakpoint.height && this.$vuetify.breakpoint.mdAndUp) {
+          this.divClass = 'center'
+        } else {
+          this.divClass = ''
+        }
+      },
       onScroll () {},
       goBack () {
         this.$emit('clicked', 'second')

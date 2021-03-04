@@ -20,7 +20,8 @@
     <v-overlay
       class="contain"
       :value="!this.pages.mainMenu.val"
-      opacity="0.3"
+      opacity="0.9"
+      color="#090909"
     >
       <octo-page
         :visible="this.pages.gamesPage.val"

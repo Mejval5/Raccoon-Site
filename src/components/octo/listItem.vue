@@ -8,11 +8,16 @@
   >
     <v-icon
       left
+      medium
       :color="iconColor"
     >
       {{ icon }}
     </v-icon>
+    <div
+    class="primaryText subtitle-2"
+    >
     {{ text }}
+    </div>
   </v-chip>
 </template>
 
@@ -30,11 +35,25 @@
         if (target.nodeName === 'SPAN') {
           target = e.path[2]
         }
+
         target.className += ' getBig'
         await new Promise(resolve => setTimeout(resolve, 200))
         target.classList.remove('getBig')
-        target.className += ' getNormal'
+
+        target.className += ' getSmall'
+        await new Promise(resolve => setTimeout(resolve, 250))
+        target.classList.remove('getSmall')
+
+        target.className += ' getBigLittle'
         await new Promise(resolve => setTimeout(resolve, 200))
+        target.classList.remove('getBigLittle')
+
+        target.className += ' getSmallLittle'
+        await new Promise(resolve => setTimeout(resolve, 150))
+        target.classList.remove('getSmallLittle')
+
+        target.className += ' getNormal'
+        await new Promise(resolve => setTimeout(resolve, 100))
         target.classList.remove('getNormal')
       },
     },
@@ -46,9 +65,21 @@
   transform: scale(1.2);
   transition: all 0.2s ease-in-out;
 }
+.getSmall {
+  transform: scale(0.8);
+  transition: all 0.25s ease-in-out;
+}
+.getBigLittle {
+  transform: scale(1.1);
+  transition: all 0.2s ease-in-out;
+}
+.getSmallLittle {
+  transform: scale(0.95);
+  transition: all 0.15s ease-in-out;
+}
 .getNormal {
   transform: scale(1.0);
-  transition: all 0.2s ease-in-out;
+  transition: all 0.1s ease-in-out;
 }
 .v-chip:before {
   background-color: transparent;

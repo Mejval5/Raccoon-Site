@@ -1,6 +1,6 @@
 <template>
   <v-row
-  class="back"
+    class="back"
   >
     <div id="stars" />
     <div id="stars2" />

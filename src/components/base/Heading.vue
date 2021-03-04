@@ -55,6 +55,10 @@
         type: [Number, String],
         default: 4,
       },
+      colorText: {
+        type: String,
+        default: 'primaryText',
+      },
       mobileSize: {
         type: String,
         default: 'display-1',
@@ -81,6 +85,7 @@
           `font-weight-${this.weight}`,
           `mb-${this.space}`,
           `text-${this.align}`,
+          `${this.colorText}`,
         ]
 
         return classes

@@ -39,7 +39,7 @@
 
     <v-card-title
       v-if="headline"
-      class="text-h5 d-flex align-start primaryText"
+      class="headline d-flex align-start primaryText"
       v-text="headline"
     />
 

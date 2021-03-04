@@ -53,9 +53,9 @@
 
       <v-card-title
         v-if="headline"
-        class="text-h5 d-flex align-start primaryText"
-        v-text="headline"
+        class="headline d-flex align-start primaryText"
         :style="$vuetify.breakpoint.smAndUp ? 'min-height: 96px;' : ''"
+        v-text="headline"
       />
 
       <v-card-text class="my-0 py-0">
@@ -65,8 +65,8 @@
           no-gutters
         >
           <v-col
-          cols="12"
-          md="8"
+            cols="12"
+            md="8"
           >
             <div
               v-if="subtitle"
@@ -75,8 +75,8 @@
             />
           </v-col>
           <v-col
-          cols="12"
-          md="4"
+            cols="12"
+            md="4"
           >
             <div
               v-if="subtitle"

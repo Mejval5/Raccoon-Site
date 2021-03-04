@@ -10361,7 +10361,7 @@ vue-meta@^2.3.3:
   dependencies:
     deepmerge "^4.2.2"
 
-vue-recaptcha-v3@1.9.0:
+vue-recaptcha-v3@1.9:
   version "1.9.0"
   resolved "https://registry.yarnpkg.com/vue-recaptcha-v3/-/vue-recaptcha-v3-1.9.0.tgz#6315ea07e2ae34abbb11e840ab9f18a427c5d53b"
   integrity sha512-WQIlhcOcETk3SYbEC88podUSq1J7UjmHpKgJhSy0Xm3DAjTIPjl19g9kn5KRdyTxNLiS/eR5C6H3Jk3c7b9baA==
