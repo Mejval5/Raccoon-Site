@@ -5,7 +5,6 @@
     <v-form
       ref="form"
       v-model="valid"
-      lazy-validation
     >
       <base-info-card
         :title="title"
@@ -15,17 +14,25 @@
       />
 
       <base-text-field
+        id="frmNameA"
         v-model="name"
         label="Name"
         :rules="nameRules"
-        validate-on-blur
+        name="name"
+        required
+        autocomplete="name"
       />
 
       <base-text-field
+        id="frmEmailA"
         v-model="email"
         label="Email"
         :rules="emailRules"
         validate-on-blur
+        type="email"
+        name="email"
+        required
+        autocomplete="email"
       />
 
       <base-text-field
@@ -86,7 +93,7 @@
       subject: '',
       text: '',
       emailRules: [
-        v => /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{1,5})+$/.test(v) || 'E-mail must be valid',
+        v => /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{1,10})+$/.test(v) || 'E-mail must be valid',
       ],
       textRules: [
         v => !!v || 'Missing text body',
@@ -98,9 +105,15 @@
         v => !!v || 'Missing subject',
       ],
     }),
+
+    watch: {
+      $route (from, to) {
+        this.$refs.form.reset()
+      },
+    },
     methods: {
       test_email (mail) {
-        const re = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{1,5})+$/
+        const re = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{1,10})+$/
         return re.test(mail)
       },
       are_all_fields_filled () {
@@ -110,7 +123,7 @@
         const token = await this.recaptcha()
         this.validate()
         if (this.test_email(this.email) && this.are_all_fields_filled()) {
-          let adress = 'https://us-central1-octomancer-website.cloudfunctions.net/sendUsEmail'
+          let adress = 'https://us-central1-website-raccoon.cloudfunctions.net/sendUsEmail'
           adress += '?name=' + this.name
           adress += '&email=' + this.email
           adress += '&subject=' + this.subject
@@ -125,6 +138,7 @@
               headers: { 'Access-Control-Allow-Origin': '*' },
             },
           ).catch()
+          this.$refs.form.reset()
           this.name = ''
           this.email = ''
           this.subject = ''
@@ -146,7 +160,7 @@
         await this.$recaptchaLoaded()
 
         // Execute reCAPTCHA with action "login".
-        return await this.$recaptcha('login')
+        return this.$recaptcha('login')
         // Do stuff with the received token.
       },
     },
@@ -155,3 +169,13 @@
     inject: ['theme'],
   }
 </script>
+
+<style>
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-transition-delay: 9999s;
+    -webkit-transition: color 9999s ease-out, background-color 9999s ease-out;
+}
+</style>

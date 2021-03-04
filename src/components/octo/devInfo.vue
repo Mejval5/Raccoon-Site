@@ -1,14 +1,15 @@
 <template>
+<v-fade-transition>
+  <div>
   <v-row
-    align="center"
+    align="start"
   >
     <v-col
       cols="12"
-      sm="6"
-      :order="reverseOrder"
+      sm="8"
+      order="1"
     >
-      <octo-dev-info-text
-        :text="devInfo.text"
+      <racc-dev-info-head
         :name="devInfo.name"
         :title="devInfo.title"
         :social-media="devInfo.socialMedia"
@@ -16,14 +17,14 @@
     </v-col>
     <v-col
       cols="12"
-      sm="6"
+      sm="4"
       align-self="stretch"
       order="-1"
       order-sm="2"
     >
       <v-img
         eager
-        width="30vh"
+        width="250px"
         class="clip mx-auto"
         :src="require(`@/${devInfo.pic}`)"
       >
@@ -38,8 +39,8 @@
               color="grey lighten-5"
             >
               <v-sheet
-                width="30vh"
-                height="30vh"
+                width="250px"
+                height="250px"
                 color="#0c2d3daa"
                 class="clip"
               />
@@ -48,19 +49,33 @@
         </template>
       </v-img>
     </v-col>
+    <v-col
+    cols="12"
+    order="5"
+    >
+      <v-divider />
+    </v-col>
   </v-row>
+  <v-row
+    align="center"
+  >
+    <v-col
+      cols="12"
+      sm="8"
+    >
+      <racc-my-info
+        :text="devInfo.text"
+      />
+    </v-col>
+  </v-row>
+  </div>
+</v-fade-transition>
 </template>
 
 <script>
   export default {
     props: {
       devInfo: Object,
-      reverse: Boolean,
-    },
-    computed: {
-      reverseOrder () {
-        return this.reverse ? '3' : '1'
-      },
     },
   }
 </script>

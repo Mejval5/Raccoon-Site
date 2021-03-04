@@ -3,14 +3,14 @@
     v-scroll.self="onScroll"
     fluid
     class="overflow-y-auto hideScroll"
-    style="height: inherit; width: inherit;"
+    style="height: inherit;"
   >
     <v-row
       dense
       align-content="center"
       justify="center"
       no-gutters
-      class="d-block d-md-none mb-3"
+      class="d-md-none mb-3"
     >
       <v-col>
         <v-btn
@@ -38,11 +38,10 @@
           align="center"
           justify="center"
         >
-          <v-spacer />
           <v-col
             class="d-none d-md-block text-right py-0"
             align-self="stretch"
-            cols="auto"
+            cols="1"
           >
             <v-btn
               large
@@ -58,24 +57,24 @@
           <v-col
             class="pr-md-5"
             cols="12"
-            md="11"
+            md="10"
+            lg="8"
           >
-            <racc-games />
+            <octo-devs />
           </v-col>
-          <v-spacer class="d-none d-sm-block" />
         </v-row>
         <v-row
           dense
           align-content="center"
           justify="center"
           no-gutters
-          class="d-sm-none mb-15"
+          class="d-md-none mb-15"
         >
           <v-col>
             <v-btn
               block
               color="transparent"
-              class="mb-3"
+              class="mb-15"
               elevation="0"
               @click="goBack"
             >
@@ -115,7 +114,7 @@
     },
     computed: {
       centerOnPC () {
-        return this.$vuetify.breakpoint.height > 640 && this.$vuetify.breakpoint.mdAndUp ? '' : ''
+        return this.$vuetify.breakpoint.height > 640 && this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
       },
     },
     methods: {

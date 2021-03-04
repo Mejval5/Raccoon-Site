@@ -579,6 +579,16 @@
         await new Promise(resolve => setTimeout(resolve, 50))
         const colors = document.getElementById('colors')
         colors.classList.remove('colors')
+        if (this.$vuetify.breakpoint.smAndDown) {
+          colors.classList.add('colorsSm')
+          await new Promise(resolve => setTimeout(resolve, 50))
+          colors.classList.remove('colorsSm')
+        }
+        if (this.$vuetify.breakpoint.md) {
+          colors.classList.add('colorsMd')
+          await new Promise(resolve => setTimeout(resolve, 50))
+          colors.classList.remove('colorsMd')
+        }
         colors.classList.add('colorsShown')
         await new Promise(resolve => setTimeout(resolve, 1000 * this.time))
         colors.classList.remove('colorsShown')
@@ -598,7 +608,12 @@
 
 .colors {
   clip-path: circle(0% at 0% 100%);
-  transition: all 3s ease-in;
+}
+.colorsSm {
+  clip-path: circle(50% at 0% 100%);
+}
+.colorsMd {
+  clip-path: circle(20% at 0% 100%);
 }
 .colorsShown {
   clip-path: circle(200% at 0% 100%);

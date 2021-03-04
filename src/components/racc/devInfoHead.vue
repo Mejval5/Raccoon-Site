@@ -28,10 +28,6 @@
         {{ s.name }} - <span class="linkText"> {{ s.link }} </span>
       </a>
     </base-subtitle>
-    <base-body
-      class="primaryText mt-8"
-      :html="text"
-    />
   </div>
 </template>
 

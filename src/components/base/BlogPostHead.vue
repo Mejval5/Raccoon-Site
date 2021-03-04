@@ -1,7 +1,7 @@
 <template>
   <v-container
     fluid
-    class="pa-sm-0"
+    class="pa-0 pb-4"
   >
     <v-row
       class="ma-0 my-2"
@@ -9,12 +9,12 @@
     >
       <v-col
         cols="12"
-        md="8"
+        sm="8"
         class="pa-0"
       >
         <base-heading
           :title="title"
-          class="terciaryText"
+          class="secondaryText"
           weight="normal"
           size="display-1"
           mobile-size="headline"
@@ -24,12 +24,12 @@
       <v-spacer />
       <v-col
         cols="12"
-        md="2"
+        sm="4"
         align-self="end"
         :style="$vuetify.breakpoint.mdAndUp ? 'text-align: end;' : 'text-align: start;'"
       >
         <div
-          class="body-1 secondaryText"
+          class="body-1 terciaryText"
           v-text="formated_date()"
         />
       </v-col>

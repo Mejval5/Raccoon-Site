@@ -55,7 +55,7 @@
             cols="10"
             lg="10"
             md="10"
-            sm="10"
+            sm="6"
           >
             <v-divider
               class="my-1"

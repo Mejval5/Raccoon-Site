@@ -16,8 +16,7 @@
         >
           <base-game-card
             image="assets/game-0.png"
-            gamelink="octomancer"
-            samepage="true"
+            gamelink="https://octomancer.com/"
             headline="Octomancer"
             subtitle="Currently my main project"
             text="Game centered around a small octopus trying to regain its magical powers.
@@ -45,6 +44,30 @@
             subtitle="A one nighter made with Milan!"
             text="Have you ever wanted to be a majestical plant reaching for the heavens with roots reaching deep into the mother earth?
           This game is definitely for you."
+          />
+        </v-col>
+
+        <v-col
+          cols="auto"
+        >
+          <base-game-card
+            image="assets/indian.png"
+            gamelink="https://raccoon5.itch.io/spherical-prairie"
+            headline="Spherical prairie"
+            subtitle="Old project revisited"
+            text="A year old project revamped with spherical world. You can explore assets made by
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://svancarastrings.com/&quot;
+          >
+          Milan Švancara</a>.
+          The game features gravity, throwing spears, and strange enviroment which will surely captivate you!
+          "
           />
         </v-col>
 

@@ -3,7 +3,6 @@
     class="px-5 ma-auto pb-5"
   >
     <v-row
-      v-if="renderComponent"
       align="end"
       justify="center"
     >
@@ -12,14 +11,15 @@
         :key="blogPost.id"
         cols="auto"
       >
-        <blog-card
+        <base-blog-card
           :image="blogPost.imgSource"
           :bloglink="blogPost.file"
           samepage="true"
           :headline="blogPost.title"
-          subtitle="First blog post"
-          text="Random test"
+          :subtitle="blogPost.subtitle"
+          :text="trimText(blogPost.html)"
           :date="blogPost.date"
+          :show-card="showAllCards"
         />
       </v-col>
     </v-row>
@@ -34,13 +34,10 @@
   export default {
     name: 'BlogPost',
 
-    components: {
-      BlogCard: () => import('@/components/base/BlogCard'),
-    },
-
     data: () => ({
       blogPosts: [],
       renderComponent: true,
+      showAllCards: false,
     }),
 
     async beforeMount () {
@@ -48,6 +45,13 @@
     },
 
     methods: {
+      trimText (_text) {
+        try {
+          return _text.substr(0, 120) + '...'
+        } catch {
+          return ''
+        }
+      },
       async get_blog_posts () {
         this.blogPosts = await LoadBlogposts()
 
@@ -55,12 +59,16 @@
       },
       forceRerender () {
         // Remove my-component from the DOM
-        this.renderComponent = false
 
         this.$nextTick(() => {
           // Add the component back in
-          this.renderComponent = true
+          this.showAllCards = false
+          this.showCards()
         })
+      },
+      async showCards () {
+        await new Promise(resolve => setTimeout(resolve, 200))
+        this.showAllCards = true
       },
     },
 

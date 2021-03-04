@@ -1,12 +1,12 @@
 <template>
-<div>
-      <div id="stars" />
-      <div id="stars2" />
-      <div id="stars3" />
-  <div
-  class="contain"
-  >
+  <div>
+    <div id="stars" />
+    <div id="stars2" />
+    <div id="stars3" />
     <div
+      class="contain"
+    >
+      <div
         class="position"
       >
         <racc-menu
@@ -16,38 +16,46 @@
           @goToPage="goToPage"
         />
       </div>
-  </div>
-  <v-overlay
-    class="contain"
-    :value="!this.pages.mainMenu.val"
-    opacity="0.3"
-  >
+    </div>
+    <v-overlay
+      class="contain"
+      :value="!this.pages.mainMenu.val"
+      opacity="0.3"
+    >
       <octo-page
-      :visible="this.pages.gamesPage.val"
-    >
-      <racc-games-inner
         :visible="this.pages.gamesPage.val"
-        @clicked="goToPage('mainMenu')"
-      />
-    </octo-page>
-    <octo-page
-      :visible="this.pages.blogPage.val"
-    >
-      <racc-blog-inner
+      >
+        <racc-games-inner
+          :visible="this.pages.gamesPage.val"
+          @clicked="goToPage('mainMenu')"
+        />
+      </octo-page>
+      <octo-page
         :visible="this.pages.blogPage.val"
-        @clicked="goToPage('mainMenu')"
-      />
-    </octo-page>
-    <octo-page
-      :visible="this.pages.contactPage.val"
-    >
-      <octo-contact-inner
+      >
+        <racc-blog-inner
+          :visible="this.pages.blogPage.val"
+          @clicked="goToPage('mainMenu')"
+        />
+      </octo-page>
+      <octo-page
         :visible="this.pages.contactPage.val"
-        @clicked="goToPage('mainMenu')"
-      />
-    </octo-page>
-  </v-overlay>
-</div>
+      >
+        <octo-contact-inner
+          :visible="this.pages.contactPage.val"
+          @clicked="goToPage('mainMenu')"
+        />
+      </octo-page>
+      <octo-page
+        :visible="this.pages.aboutPage.val"
+      >
+        <racc-about-inner
+          :visible="this.pages.aboutPage.val"
+          @clicked="goToPage('mainMenu')"
+        />
+      </octo-page>
+    </v-overlay>
+  </div>
 </template>
 
 <script>
@@ -61,11 +69,11 @@
     data () {
       return {
         pages: {
-          mainMenu: { val: true, name: 'Raccoon site' },
-          aboutPage: { val: false, name: 'About me' },
-          gamesPage: { val: false, name: 'Games' },
-          blogPage: { val: false, name: 'Blog' },
-          contactPage: { val: false, name: 'Contact' },
+          mainMenu: { val: true, name: 'Raccoon site', route: '/' },
+          aboutPage: { val: false, name: 'About me', route: '/about' },
+          gamesPage: { val: false, name: 'Games', route: '/games' },
+          blogPage: { val: false, name: 'Blog', route: '/blog' },
+          contactPage: { val: false, name: 'Contact', route: '/contact' },
         },
       }
     },
@@ -90,11 +98,22 @@
         return 'wtf'
       },
     },
+    watch: {
+      $route (to, from) {
+        this.UpdatePage(this.$route.meta.pageName)
+      },
+    },
 
-    mounted () {
+    beforeMount () {
+      this.UpdatePage(this.$route.meta.pageName)
     },
     methods: {
       goToPage (page) {
+        if (this.$route.fullPath !== this.pages[page].route) {
+          this.$router.push(this.pages[page].route)
+        }
+      },
+      UpdatePage (page) {
         if (Object.keys(this.pages).indexOf(page) > -1) {
           for (var key in this.pages) {
             if (key === page) {
