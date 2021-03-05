@@ -101,6 +101,7 @@
     },
     watch: {
       $route (to, from) {
+        console.log(this.$route.meta.pageName)
         this.UpdatePage(this.$route.meta.pageName)
       },
     },
