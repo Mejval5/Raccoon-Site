@@ -29,7 +29,7 @@
             on a day-to-day basis. <br><br>
             When I finished my Master's program in Physics at BUT, I have finally gathered enough courage to follow my lifelong passion of
             game making. And with two years of watching Unity tutorials and building small game
-            projects unde my belt, I've partnered up with a graphical artist and a music producer
+            projects under my belt, I've partnered up with a graphical artist and a music producer
             <a
               class='text-decoration-none linkText'
               href='https://svancarastrings.com/'
