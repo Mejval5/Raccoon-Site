@@ -210,7 +210,7 @@
           { label: 'Unity', value: 70, icon: 'mdi-unity' },
           { label: 'C#', value: 60, icon: 'mdi-microsoft-visual-studio' },
           { label: 'Python', value: 30, icon: 'mdi-language-python' },
-          { label: 'Javascript', value: 40, icon: 'mdi-language-javascript' },
+          { label: 'Typescript', value: 40, icon: 'mdi-language-typescript' },
         ],
         languages: [
           { label: 'English', value: 5 },
