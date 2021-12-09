@@ -15,9 +15,9 @@
           pic: 'assets/me/dan.jpg',
           title: 'Game programmer',
           socialMedia: [
-            { name: 'Facebook', link: 'facebook.com/daniel.necesal' },
             { name: 'Instagram', link: 'instagram.com/raccoon.in.the.sun' },
             { name: 'LinkedIn', link: 'linkedin.com/in/necesal-daniel' },
+            { name: 'GitHub', link: 'github.com/Mejval5' },
           ],
           text: `
             After finishing his Master's degree in Physics, Daniel Nečesal has decided to follow his lifelong passion of game making.

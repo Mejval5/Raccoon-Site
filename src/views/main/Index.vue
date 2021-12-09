@@ -156,7 +156,7 @@
 }
 .svgMd {
   width: 200%;
-  transform: translate(-30%, 0);
+  transform: translate(-40%, 0);
 }
 .svgSm {
   width: 300%;

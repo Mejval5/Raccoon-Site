@@ -447,7 +447,7 @@
               id="tspan904"
               x="87.522054"
               y="49.821693"
-              font-size="4.6333px"
+              font-size="4.0333px"
               stroke-width=".26458"
             >ABOUT</tspan></text>
           </g>
@@ -481,7 +481,7 @@
               id="tspan908"
               x="89.787315"
               y="49.442953"
-              font-size="4.6333px"
+              font-size="4.0333px"
               stroke-width=".26458"
             >GAMES</tspan></text>
           </g>
@@ -515,7 +515,7 @@
               id="tspan912"
               x="95.355106"
               y="42.886526"
-              font-size="4.6333px"
+              font-size="4.0333px"
               stroke-width=".26458"
             >BLOG</tspan></text>
           </g>
@@ -549,7 +549,7 @@
               id="tspan916"
               x="98.906548"
               y="37.675965"
-              font-size="4.6333px"
+              font-size="4.0333px"
               stroke-width=".26458"
             >CONTACT</tspan></text>
           </g>
