@@ -33,6 +33,29 @@
           Milan Švancara</a>."
           />
         </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-game-card
+            image="assets/tower_defense.png"
+            gamelink="https://learn2code.cz/kurzy/tower-defense-game-v-unity"
+            headline="Raccoon's tower defense"
+            subtitle="A game made for my game dev course"
+            text="Want to learn how to make games? Do you like tower defense genre?
+             Then this online course is for you! <br>I partnered up with
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://learn2code.cz/kurzy/tower-defense-game-v-unity&quot;
+          >
+           Learn 2 Code</a> to bring you a possibility to enter the world of Game development.
+          "
+          />
+        </v-col>
 
         <v-col
           cols="auto"

@@ -12,7 +12,7 @@
         cols="auto"
       >
         <base-blog-card
-          :image="blogPost.imgSource"
+          :image="getImg(blogPost)"
           :bloglink="blogPost.file"
           samepage="true"
           :headline="blogPost.title"
@@ -50,6 +50,13 @@
           return _text.substr(0, 120) + '...'
         } catch {
           return ''
+        }
+      },
+      getImg (blogPost) {
+        if (blogPost.previewImgSource !== undefined && blogPost.previewImgSource !== '') {
+          return blogPost.previewImgSource
+        } else {
+          return blogPost.imgSource
         }
       },
       async get_blog_posts () {

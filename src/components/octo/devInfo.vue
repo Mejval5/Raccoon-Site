@@ -25,6 +25,7 @@
           <v-img
             eager
             width="200px"
+            height="200px"
             class="clip mx-auto"
             :src="require(`@/${devInfo.pic}`)"
           >

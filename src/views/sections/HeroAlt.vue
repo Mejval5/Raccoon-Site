@@ -8,7 +8,7 @@
       <v-parallax
         :src="img_src"
         :height="$vuetify.breakpoint.mdAndUp ? 200 : 400"
-        class="rounded elevation-0"
+        class="rounded elevation-0 parallax"
       >
         <base-hero-alt-text
           class=""

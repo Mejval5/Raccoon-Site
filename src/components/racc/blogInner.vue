@@ -58,7 +58,7 @@
           <v-col
             class="pr-md-5"
             cols="12"
-            md="auto"
+            md="11"
           >
             <racc-blog-posts />
           </v-col>
@@ -69,7 +69,7 @@
           align-content="center"
           justify="center"
           no-gutters
-          class="d-sm-none mb-0"
+          class="d-sm-none mb-15"
         >
           <v-col>
             <v-btn
@@ -115,7 +115,7 @@
     },
     computed: {
       centerOnPC () {
-        return this.$vuetify.breakpoint.height > 680 && this.$vuetify.breakpoint.mdAndUp ? 'center' : ''
+        return this.$vuetify.breakpoint.height > 640 && this.$vuetify.breakpoint.mdAndUp ? '' : ''
       },
     },
     methods: {
