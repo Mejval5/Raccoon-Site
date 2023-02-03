@@ -1,1 +1,1 @@
-npm run lint --fix
+cmd /k npm run lint --fix

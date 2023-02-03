@@ -1,2 +1,1 @@
-yarn build && firebase deploy
-pause
+cmd /k "yarn build & firebase deploy"

@@ -34,10 +34,10 @@
       title: 'I created a tower defense course in Unity!',
       subtitle: 'Learning can be fun',
       html: `
-        I partnered up with Learn 2 Code to create a new game development course. <br>
+        I partnered up with Skillmea to create a new game development course. <br>
         The course is designed to introduce beginners in the game making process and show them the basics. <br>
         I chose Unity as my vehicle and the genre of tower defense. <br>
-        Right now the course is publicly available at <a class="text-decoration-none linkText" href="https://learn2code.cz/kurzy/tower-defense-game-v-unity" target="_blank"> Learn2Code</a> website.
+        Right now the course is publicly available at <a class="text-decoration-none linkText" href="https://skillmea.cz/online-kurzy/tower-defense-game-v-unity" target="_blank"> Skillmea</a> website.
       `,
     }),
   }
