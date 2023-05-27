@@ -15,29 +15,6 @@
           cols="auto"
         >
           <base-game-card
-            image="assets/TTT.png"
-            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
-            headline="TicTacToe"
-            subtitle="Tic Tac Toe with brutal AI"
-            text="A solid Tic Tac Toe engine with nice visuals, block combine game, and hard AI. <br>
-            The biggest challenge was creating smart AI for a MxM board where M > 3. <br>
-          Art was created by the one and only
-          <a
-          class=&quot;
-          font-weight-bold
-          subtitle-1 linkText
-          text-decoration-none
-          &quot;
-          target=&quot;_blank&quot;
-          href=&quot;https://svancarastrings.com/&quot;
-          >
-          Milan Švancara</a>."
-          />
-        </v-col>
-        <v-col
-          cols="auto"
-        >
-          <base-game-card
             image="assets/swallow.png"
             gamelink="https://raccoon5.itch.io/swallow"
             headline="Swallow"
@@ -61,12 +38,28 @@
           cols="auto"
         >
           <base-game-card
+            image="assets/TTT.png"
+            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
+            headline="TicTacToe"
+            subtitle="Tic Tac Toe with brutal AI"
+            text="A solid Tic Tac Toe engine with nice visuals, block combine game, and hard AI. <br>
+            The biggest challenge was creating smart AI for a MxM board where M > 3. <br>
+          Art was created by the one and only Milan Švancara."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-game-card
             image="assets/game-0.png"
-            gamelink="https://octomancer.com/"
+            gamelink="https://play.google.com/store/apps/details?id=com.brotagonists.octomancer"
             headline="Octomancer"
             subtitle="My first serious project"
             text="Game centered around a small octopus trying to regain its magical powers.
-          Fight other players and become the Master of Arcane Arts. A collaboration with the one and only
+          Fight other players and become the Master of Arcane Arts. 
+
+          A collaboration with artist Milan Švancara.
+          More information at 
           <a
           class=&quot;
           font-weight-bold
@@ -74,9 +67,8 @@
           text-decoration-none
           &quot;
           target=&quot;_blank&quot;
-          href=&quot;https://svancarastrings.com/&quot;
-          >
-          Milan Švancara</a>."
+          href=&quot;https://octomancer.com/&quot;>Octomancer.com</a>.
+     "
           />
         </v-col>
         <v-col
@@ -124,17 +116,7 @@
             gamelink="https://raccoon5.itch.io/spherical-prairie"
             headline="Spherical prairie"
             subtitle="Old project revisited"
-            text="A year old project revamped with spherical world. You can explore assets made by
-          <a
-          class=&quot;
-          font-weight-bold
-          subtitle-1 linkText
-          text-decoration-none
-          &quot;
-          target=&quot;_blank&quot;
-          href=&quot;https://svancarastrings.com/&quot;
-          >
-          Milan Švancara</a>.
+            text="A year old project revamped with spherical world. You can explore assets made by Milan Švancara.
           The game features gravity, throwing spears, and strange enviroment which will surely captivate you!
           "
           />
