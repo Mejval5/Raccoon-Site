@@ -56,10 +56,10 @@
             headline="Octomancer"
             subtitle="My first serious project"
             text="Game centered around a small octopus trying to regain its magical powers.
-          Fight other players and become the Master of Arcane Arts. 
+          Fight other players and become the Master of Arcane Arts.
 
           A collaboration with artist Milan Švancara.
-          More information at 
+          More information at
           <a
           class=&quot;
           font-weight-bold

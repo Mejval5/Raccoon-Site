@@ -76,7 +76,7 @@
           elevation="0"
           x-large
         >
-          <b>Learn more</b>
+          <b>Play Now</b>
         </v-btn>
       </router-link>
       <v-btn
@@ -87,7 +87,7 @@
         :href="gamelink"
         target="_blank"
       >
-        <b>Learn more</b>
+        <b>Play Now</b>
       </v-btn>
     </v-card>
   </v-card>
