@@ -15,29 +15,6 @@
           cols="auto"
         >
           <base-game-card
-            image="assets/swallow.png"
-            gamelink="https://raccoon5.itch.io/swallow"
-            headline="Swallow"
-            subtitle="My fun hackathon project"
-            text="You are hole. You swallow. That's all you know. That is all you have ever been.
-          You move and you consume. <br>
-          This was my submission for the first two day hackathon at
-          <a
-          class=&quot;
-          font-weight-bold
-          subtitle-1 linkText
-          text-decoration-none
-          &quot;
-          target=&quot;_blank&quot;
-          href=&quot;https://mindmaze.com/&quot;
-          >
-          MindMaze™</a>."
-          />
-        </v-col>
-        <v-col
-          cols="auto"
-        >
-          <base-game-card
             image="assets/TTT.png"
             gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
             headline="TicTacToe"
