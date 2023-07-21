@@ -28,6 +28,20 @@
           cols="auto"
         >
           <base-game-card
+            image="assets/balec.png"
+            gamelink="https://raccoon5.itch.io/balec-aldwin"
+            headline="Balec Aldwin"
+            subtitle="This submission won the Brno Game Jam 2022!"
+            text="You are Balec Aldwin shooting a new movie. Pick the correct gun, bullet, and drink.
+            Three Blender artists joined me to create this masterpiece in 48 hours. 
+            The most innapropriate game jam ever. <br>
+            "
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-game-card
             image="assets/game-0.png"
             gamelink="https://play.google.com/store/apps/details?id=com.brotagonists.octomancer"
             headline="Octomancer"
@@ -68,6 +82,19 @@
           href=&quot;https://skillmea.cz/online-kurzy/tower-defense-game-v-unity&quot;
           >
            Skillmea</a> to bring you a possibility to enter the world of Game development.
+          "
+          />
+        </v-col>
+
+        <v-col
+          cols="auto"
+        >
+          <base-game-card
+            image="assets/JumpingJack.png"
+            gamelink="https://raccoon5.itch.io/jumping-jack-zx-remake"
+            headline="Jumping Jack ZX Remake"
+            subtitle="Interview with TopTal"
+            text="Small project I made for the interview with TopTal. I was asked to remake a this game in 3 hours. I got the job!
           "
           />
         </v-col>
