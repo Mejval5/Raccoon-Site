@@ -29,7 +29,7 @@
         :style="$vuetify.breakpoint.mdAndUp ? 'text-align: end;' : 'text-align: start;'"
       >
         <div
-          class="body-1 terciaryText"
+          class="text-body-1 terciaryText"
           v-text="formated_date()"
         />
       </v-col>

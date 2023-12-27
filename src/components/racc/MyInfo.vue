@@ -22,8 +22,8 @@
               />
             </v-row>
             <base-body
-            class="primaryText pt-6"
-            html="
+              class="primaryText pt-6"
+              html="
             My life has revolved around playing and making since early childhood. Ever since kindergarten, I've been playing
             Dungeons and Dragons, Settlers of Catan, Prince of Persia, Counter-Strike, Minecraft, and many more games
             on a day-to-day basis. <br><br>
@@ -94,8 +94,7 @@
       <v-col
         class="d-none d-md-flex"
         cols="1"
-      >
-      </v-col>
+      />
       <v-col
         cols="12"
         md="5"

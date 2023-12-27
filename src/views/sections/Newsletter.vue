@@ -15,7 +15,7 @@
           justify="end"
         >
           <v-col
-            class="title white--text text-center"
+            class="text-h6 white--text text-center"
           >
             Sign up for Closed Beta
           </v-col>

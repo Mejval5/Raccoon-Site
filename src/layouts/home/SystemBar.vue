@@ -32,7 +32,7 @@
     <v-spacer />
 
     <v-btn
-      class="text-capitalize subtitle-2 mr-6"
+      class="text-capitalize text-subtitle-2 mr-6"
       color="success"
       href="https://store.vuetifyjs.com/product/zero-theme-free?ref=vtyd-system-bar"
       min-width="112"
@@ -41,7 +41,7 @@
     </v-btn>
 
     <v-btn
-      class="text-capitalize subtitle-2 font-weight-bold"
+      class="text-capitalize text-subtitle-2 font-weight-bold"
       color="white"
       light
       href="https://store.vuetifyjs.com/product/zero-theme-pro/?ref=vtyd-system-bar"

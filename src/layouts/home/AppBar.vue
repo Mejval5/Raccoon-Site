@@ -24,7 +24,7 @@
       </v-tab>
 
       <v-tab
-        class="font-weight-bold subtitle-2 siteText px-3"
+        class="font-weight-bold text-subtitle-2 siteText px-3"
         min-width="96"
         text
         to="/"
@@ -54,7 +54,7 @@
             :exact="link.name === 'Home'"
             :to="{ name: link.name, hash: link.hash }"
             active-class="navTextSelected"
-            class="font-weight-bold subtitle-2 navText"
+            class="font-weight-bold text-subtitle-2 navText"
             min-width="96"
             text
           >

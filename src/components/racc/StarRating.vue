@@ -1,54 +1,54 @@
 <template>
   <v-container
-  fluid
-  class="pa-0"
+    fluid
+    class="pa-0"
   >
     <v-row
-    align="center"
-    justify="start"
-    no-gutters
-    >
-    <v-col
-    cols="6"
+      align="center"
+      justify="start"
+      no-gutters
     >
       <v-col
-      v-if="icon"
-      cols="auto"
-      class="pa-0 pr-4"
+        cols="6"
       >
-        <v-icon
-        color="primary"
+        <v-col
+          v-if="icon"
+          cols="auto"
+          class="pa-0 pr-4"
         >
-          {{icon}}
-        </v-icon>
+          <v-icon
+            color="primary"
+          >
+            {{ icon }}
+          </v-icon>
+        </v-col>
+        <v-col
+          class="pl-0"
+          cols="auto"
+        >
+          <base-title
+            :title="label"
+            class="pl-0"
+            size="title"
+            mobile-size="subtitle-1"
+            space="0"
+          />
+        </v-col>
       </v-col>
       <v-col
-      class="pl-0"
-      cols="auto"
-      >
-      <base-title
-        :title="label"
-        class="pl-0"
-        size="title"
-        mobile-size="subtitle-1"
-        space="0"
-      />
-      </v-col>
-      </v-col>
-      <v-col
-      cols="auto"
-      class="pa-0"
+        cols="auto"
+        class="pa-0"
       >
         <v-rating
-        empty-icon="mdi-circle-outline"
-        full-icon="mdi-circle"
-        color="orange"
-        background-color="orange"
-        hover
-        length="5"
-        size="20"
-        readonly
-        :value="value"
+          empty-icon="mdi-circle-outline"
+          full-icon="mdi-circle"
+          color="orange"
+          background-color="orange"
+          hover
+          length="5"
+          size="20"
+          readonly
+          :value="value"
         />
       </v-col>
     </v-row>

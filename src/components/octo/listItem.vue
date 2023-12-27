@@ -14,9 +14,9 @@
       {{ icon }}
     </v-icon>
     <div
-    class="primaryText subtitle-2"
+      class="primaryText text-subtitle-2"
     >
-    {{ text }}
+      {{ text }}
     </div>
   </v-chip>
 </template>

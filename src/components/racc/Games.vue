@@ -33,7 +33,7 @@
             headline="Balec Aldwin"
             subtitle="This submission won the Brno Game Jam 2022!"
             text="You are Balec Aldwin shooting a new movie. Pick the correct gun, bullet, and drink.
-            Three Blender artists joined me to create this masterpiece in 48 hours. 
+            Three Blender artists joined me to create this masterpiece in 48 hours.
             The most innapropriate game jam ever. <br>
             "
           />
@@ -42,8 +42,8 @@
           cols="auto"
         >
           <base-game-card
-            image="assets/game-0.png"
-            gamelink="https://play.google.com/store/apps/details?id=com.brotagonists.octomancer"
+            image="assets/octo.png"
+            gamelink="https://raccoon5.itch.io/octomancer"
             headline="Octomancer"
             subtitle="My first serious project"
             text="Game centered around a small octopus trying to regain its magical powers.
@@ -67,7 +67,7 @@
         >
           <base-game-card
             image="assets/tower_defense.png"
-            gamelink="https://play.google.com/store/apps/details?id=com.RaccoonCompany.Towerdefense"
+            gamelink="https://raccoon5.itch.io/tower-defense-game"
             headline="Raccoon's tower defense"
             subtitle="A game made for my game dev course"
             text="Want to learn how to make games? Do you like tower defense genre?

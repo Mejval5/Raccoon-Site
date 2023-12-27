@@ -53,7 +53,7 @@
 
       <v-card-title
         v-if="headline"
-        class="headline d-flex align-start primaryText"
+        class="text-h5 d-flex align-start primaryText"
         :style="$vuetify.breakpoint.smAndUp ? 'min-height: 96px;' : ''"
         v-text="headline"
       />
@@ -70,7 +70,7 @@
           >
             <div
               v-if="subtitle"
-              class="mb-1 subtitle-1 terciaryText"
+              class="mb-1 text-subtitle-1 terciaryText"
               v-html="subtitle"
             />
           </v-col>
@@ -80,7 +80,7 @@
           >
             <div
               v-if="subtitle"
-              class="mb-1 subtitle-1 text-right terciaryText"
+              class="mb-1 text-subtitle-1 text-right terciaryText"
               v-text="formatedDate"
             />
           </v-col>
@@ -90,7 +90,7 @@
         />
 
         <div
-          class="subtitle-1 my-1 secondaryText"
+          class="text-subtitle-1 my-1 secondaryText"
           v-html="text"
         />
       </v-card-text>

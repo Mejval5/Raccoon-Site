@@ -49,7 +49,7 @@
           cols="2"
         >
           <div
-            class="display-3 grey--text text--lighten-4 font-weight-bold pr-8"
+            class="text-h2 grey--text text--lighten-4 font-weight-bold pr-8"
             v-text="callout"
           />
         </v-col>

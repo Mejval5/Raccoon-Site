@@ -25,7 +25,7 @@
             On this site I would like to share my older projects as well as the progress of my current projects. <br> <br>
             My current main project is the
             <base-btn
-              class="px-1 mb-1 linkText subtitle-1"
+              class="px-1 mb-1 linkText text-subtitle-1"
               style="min-width: 0;"
               height="auto"
               text

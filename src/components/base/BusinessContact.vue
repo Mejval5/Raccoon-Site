@@ -38,7 +38,7 @@
             md="8"
           >
             <a
-              class="title text-decoration-none primaryText"
+              class="text-h6 text-decoration-none primaryText"
               style="justify-content: center;"
               :href="html"
               target="_blank"

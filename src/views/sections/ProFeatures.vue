@@ -25,16 +25,16 @@
             <thead>
               <tr>
                 <th />
-                <th class="body-1 font-weight-bold text-center">
+                <th class="text-body-1 font-weight-bold text-center">
                   What's in the Demo?
                 </th>
-                <th class="body-1 font-weight-bold text-center">
+                <th class="text-body-1 font-weight-bold text-center">
                   What's in the PRO version?
                 </th>
               </tr>
             </thead>
 
-            <tbody class="body-1">
+            <tbody class="text-body-1">
               <tr
                 v-for="([name, one, two], i) in features"
                 :key="i"

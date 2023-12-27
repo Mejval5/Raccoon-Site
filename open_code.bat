@@ -1,1 +1,1 @@
-code src
+code .

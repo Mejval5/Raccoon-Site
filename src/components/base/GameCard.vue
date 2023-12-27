@@ -39,7 +39,7 @@
 
     <v-card-title
       v-if="headline"
-      class="headline d-flex align-start primaryText"
+      class="text-h5 d-flex align-start primaryText"
       v-text="headline"
     />
 
@@ -48,7 +48,7 @@
 
       <div
         v-if="subtitle"
-        class="mt-4 mb-1 subtitle-1 terciaryText"
+        class="mt-4 mb-1 text-subtitle-1 terciaryText"
         v-text="subtitle"
       />
       <v-divider
@@ -56,7 +56,7 @@
       />
 
       <div
-        class="subtitle-1 my-1 secondaryText"
+        class="text-subtitle-1 my-1 secondaryText"
         v-html="text"
       />
     </v-card-text>

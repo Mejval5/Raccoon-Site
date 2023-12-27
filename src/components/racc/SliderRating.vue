@@ -1,39 +1,39 @@
 <template>
   <v-container
-  fluid
-  class="py-0"
+    fluid
+    class="py-0"
   >
     <v-row
-    align="center"
-    justify="start"
+      align="center"
+      justify="start"
     >
       <v-col
-      v-if="icon"
-      cols="auto"
-      class="pa-0 pr-4"
+        v-if="icon"
+        cols="auto"
+        class="pa-0 pr-4"
       >
         <v-icon
-        color="primary"
+          color="primary"
         >
-          {{icon}}
+          {{ icon }}
         </v-icon>
       </v-col>
       <v-col
-      class="pl-0"
-      >
-      <base-title
-        :title="label"
         class="pl-0"
-        size="title"
-        mobile-size="subtitle-1"
-        space="0"
-      />
+      >
+        <base-title
+          :title="label"
+          class="pl-0"
+          size="title"
+          mobile-size="subtitle-1"
+          space="0"
+        />
       </v-col>
     </v-row>
     <v-row>
       <v-col
-      cols="12"
-      class="pa-0 pt-3"
+        cols="12"
+        class="pa-0 pt-3"
       >
         <v-slider
           readonly
