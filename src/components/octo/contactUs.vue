@@ -12,7 +12,9 @@
       cols="12"
       md="6"
     >
-      <base-contact-form />
+      <base-projects-info
+        title="CHECKOUT MY PROJECTS"
+      />
     </v-col>
   </v-row>
 </template>

@@ -24,69 +24,61 @@
             <base-body
               class="primaryText pt-6"
               html="
-            My life has revolved around playing and making since early childhood. Ever since kindergarten, I've been playing
-            Dungeons and Dragons, Settlers of Catan, Prince of Persia, Counter-Strike, Minecraft, and many more games
-            on a day-to-day basis. <br><br>
-            When I finished my Master's program in Physics at BUT, I have finally gathered enough courage to follow my lifelong passion of
-            game making. I've partnered up with a graphical artist and a music producer
-            <a
-              class='text-decoration-none linkText'
-              href='https://svancarastrings.com/'
-              target='_blank'
-            >
-              Milan Švancara
-            </a>
-            to start an indie game dev studio
-            <a
-              class='text-decoration-none linkText'
-              href='https://octomancer.com/brotagonists'
-              target='_blank'
-            >
-              Brotagonists™</a>.
-            After two years of learning Unity, C#, and game making, I've managed to release a my first game for Android called
-            <a
-              class='text-decoration-none linkText'
-              href='https://octomancer.com/octomancer'
-              target='_blank'
-            >
-              Octomancer</a>.
-              <br><br>
-              Currently, I am working for a medical company
-            <a
-              class='text-decoration-none linkText'
-              href='https://www.mindmaze.com/'
-              target='_blank'
-            >
-              MindMaze</a> as a Unity generalist mainly focused on UI development.
+            <p>Welcome! I'm Daniel Nečesal, a dedicated and innovative Game Developer with over 5 years of
+             experience specializing in Unity Engine. My journey in game development is marked by a passion
+              for creating immersive gaming experiences and a proven track record of leading projects to success. </p>
             "
             />
           </v-col>
         </v-row>
-        <v-row>
+                <v-row>
           <v-col>
             <base-title
-              title="INDUSTRY SKILLS"
-              class="pb-1 pt-3 secondaryText"
-              space="0"
+              title="CAREER HIGHLIGHTS"
+              class="secondaryText"
             />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-divider
-            class="pb-9"
-          />
-        </v-row>
-        <v-row>
-          <v-col
-            v-for="(item, i) in codingSkills"
-            :key="i"
-            cols="6"
-            class="py-0"
+            <v-row>
+              <v-divider
+                class="pb-2"
+              />
+            </v-row>
+            <base-body
+              class="primaryText pt-6"
+              html="
+<h3> MindMaze Unity Generalist Engineer </h3>
+Here, I've led several projects with cross-functional teams from ideation to launch, optimized game performance for various hardware,
+and integrated robust CI pipelines for improved testing and deployment.
+<p><h3> Tinysoft Unity Mobile Game Developer </h3>
+My analytics-driven approach significantly increased user engagement by 50% over 3 months,
+a testament to my ability to understand and cater to user needs.</p>
+<p><h3> Indie Development and Teaching </h3>
+As a co-founder of
+<a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://octomancer.com/brotagonists&quot;
           >
-            <racc-slider-rating
-              :label="item.label"
-              :value="item.value"
-              :icon="item.icon"
+           BROTAGONISTS</a>
+
+, I've pushed the limits of mobile game development
+with the release of
+<a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://octomancer.com/octomancer&quot;
+          >
+           Octomancer - Octopus Adventure</a>
+. I also share my passion and knowledge
+by teaching Unity and Python, shaping the next generation of game developers.</p>
+            "
             />
           </v-col>
         </v-row>
@@ -99,6 +91,29 @@
         cols="12"
         md="5"
       >
+      <v-row>
+          <v-col>
+            <base-title
+              title="PROFESSIONAL EXPERTISE"
+              class="secondaryText"
+            />
+            <v-row>
+              <v-divider
+                class="pb-2"
+              />
+            </v-row>
+            <base-body
+              class="primaryText pt-6"
+              html="
+<p>My technical prowess spans a range of languages, including <b>C#</b>, <b>TypeScript</b>, and <b>Python</b>,
+with specializations in <b>optimization</b>, <b>UI</b>, <b>editor tools</b>, and both <b>2D/3D math</b>. I've honed my
+skills in <b>Android</b> and <b>Windows development</b>, delving into <b>compute shaders</b>, <b>automated testing & deployment</b>, and
+ <b>translations integration</b>. I'm proficient with a suite of tools that drive my efficiency and creativity: <b>Rider, Blender,
+  Photoshop, Jenkins</b>, and more.</p>
+            "
+            />
+          </v-col>
+        </v-row>
         <v-row>
           <v-col>
             <base-title
@@ -154,33 +169,6 @@
               color="#48667466"
               :icon-color="item.iconColor"
               text-color="primary"
-            />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <base-title
-              title="LANGUAGES"
-              class="pb-1 pt-6 secondaryText"
-              space="0"
-            />
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-divider
-            class="pb-3"
-          />
-        </v-row>
-        <v-row>
-          <v-col
-            v-for="(item, i) in languages"
-            :key="i"
-            cols="12"
-          >
-            <racc-star-rating
-              :label="item.label"
-              :value="item.value"
-              :icon="item.icon"
             />
           </v-col>
         </v-row>
