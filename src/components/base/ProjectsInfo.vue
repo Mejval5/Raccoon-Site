@@ -30,7 +30,7 @@
       business: [
         {
           icon: 'mdi-github',
-          text: 'Raccoon5',
+          text: 'Mejval5',
           html: 'https://github.com/Mejval5',
           iconColor: '',
         },
