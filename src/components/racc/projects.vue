@@ -14,20 +14,77 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
-            image="assets/TTT.png"
-            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
-            headline="TicTacToe"
-            subtitle="Tic Tac Toe with brutal AI"
-            text="A solid Tic Tac Toe engine with nice visuals, block combine game, and hard AI. <br>
-            The biggest challenge was creating smart AI for a MxM board where M > 3. <br>
-          Art was created by the one and only Milan Švancara."
+          <base-project-card
+            button="Watch Now"
+            image="assets/UnrealRender.png"
+            gamelink="https://www.youtube.com/watch?v=c-QAQn37m5I"
+            headline="Unreal Render"
+            subtitle="Fluid simulation in Unreal Engine"
+            text="I wanted to learn how to use Unreal Engine, so I decided to make a fluid simulation. It's created using the Unreal Engine Niagara particle system.
+            I also used Quixel Megascans to create the environment."
           />
         </v-col>
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
+            button="Check Out"
+            image="assets/houseInFrance.png"
+            gamelink="https://drive.google.com/drive/folders/1xdEgieYB3Xvh3qwqzv0w1NHkCzLddwAu?usp=sharing"
+            headline="House in France"
+            subtitle="Visualization for my parents"
+            text="One long weekend I decided to make a visualization of a house my parents are building in France. 
+            I used Unreal Engine with Quixel Megascans and Blender to create this project. Sadly, most of the details are inside."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            image="assets/smart_rooms.png"
+            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
+            headline="Smart Rooms"
+            subtitle="Procedural level generator"
+            text="Smart Rooms is now available for purchase on the 
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://assetstore.unity.com/packages/tools/level-design/smart-rooms-procedural-level-generator-room-builder-236336&quot;>Unity Store</a>.
+          Inspired by Spelunky 2, Smart Rooms is a versatile Unity package for procedural level generation, enabling diverse 2D level generation with customizable rooms.
+             "
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            image="assets/TTT.png"
+            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
+            headline="TicTacToe"
+            subtitle="Tic Tac Toe with brutal AI"
+            text="Tic Tac Toe engine now available for purchase on the 
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://assetstore.unity.com/packages/templates/packs/tic-tac-toe-pro-smart-ai-2048-minigame-248300&quot;>Unity Store</a>
+
+             with nice visuals, 2048 minigamegame, and hard AI. <br>
+            The biggest challenge was creating smart AI for a MxM board where M > 3. <br>
+          Art was created by Milan Švancara."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
             image="assets/balec.png"
             gamelink="https://raccoon5.itch.io/balec-aldwin"
             headline="Balec Aldwin"
@@ -41,7 +98,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/octo.png"
             gamelink="https://raccoon5.itch.io/octomancer"
             headline="Octomancer"
@@ -65,7 +122,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/tower_defense.png"
             gamelink="https://raccoon5.itch.io/tower-defense-game"
             headline="Raccoon's tower defense"
@@ -89,7 +146,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/JumpingJack.png"
             gamelink="https://raccoon5.itch.io/jumping-jack-zx-remake"
             headline="Jumping Jack ZX Remake"
@@ -102,7 +159,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/plantzie.png"
             gamelink="https://raccoon5.itch.io/plantagonist"
             headline="Sproutagonist"
@@ -115,7 +172,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/indian.png"
             gamelink="https://raccoon5.itch.io/spherical-prairie"
             headline="Spherical prairie"
@@ -129,7 +186,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/V6t0Yh.png"
             gamelink="https://raccoon5.itch.io/piranhasbounty"
             headline="Piranha's bounty"
@@ -151,7 +208,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/game-2.png"
             headline="Billin' around"
             gamelink="https://raccoon5.itch.io/billinaround"
@@ -173,7 +230,7 @@
         <v-col
           cols="auto"
         >
-          <base-game-card
+          <base-project-card
             image="assets/game-3.png"
             gamelink="https://raccoon5.itch.io/space-simulator"
             headline="Space simulator"

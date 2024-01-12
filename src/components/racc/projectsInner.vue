@@ -60,7 +60,7 @@
             cols="12"
             md="11"
           >
-            <racc-games />
+            <racc-projects />
           </v-col>
           <v-spacer class="d-none d-sm-block" />
         </v-row>

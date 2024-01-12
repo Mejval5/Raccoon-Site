@@ -24,10 +24,10 @@
       color="#090909"
     >
       <octo-page
-        :visible="this.pages.gamesPage.val"
+        :visible="this.pages.projectsPage.val"
       >
-        <racc-games-inner
-          :visible="this.pages.gamesPage.val"
+        <racc-projects-inner
+          :visible="this.pages.projectsPage.val"
           @clicked="goToPage('mainMenu')"
         />
       </octo-page>
@@ -72,7 +72,7 @@
         pages: {
           mainMenu: { val: true, name: 'Raccoon site', route: '/' },
           aboutPage: { val: false, name: 'About me', route: '/about' },
-          gamesPage: { val: false, name: 'Games', route: '/games' },
+          projectsPage: { val: false, name: 'Projects', route: '/projects' },
           blogPage: { val: false, name: 'Blog', route: '/blog' },
           contactPage: { val: false, name: 'Contact', route: '/contact' },
         },

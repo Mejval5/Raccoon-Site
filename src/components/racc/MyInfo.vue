@@ -31,7 +31,7 @@
             />
           </v-col>
         </v-row>
-                <v-row>
+        <v-row>
           <v-col>
             <base-title
               title="CAREER HIGHLIGHTS"
@@ -91,7 +91,7 @@ by teaching Unity and Python, shaping the next generation of game developers.</p
         cols="12"
         md="5"
       >
-      <v-row>
+        <v-row>
           <v-col>
             <base-title
               title="PROFESSIONAL EXPERTISE"

@@ -454,7 +454,7 @@
           <g
             id="games"
             class="games textColor"
-            @click="goToPage('gamesPage')"
+            @click="goToPage('projectsPage')"
           >
             <path
               id="green"
@@ -483,7 +483,7 @@
               y="49.442953"
               font-size="4.0333px"
               stroke-width=".26458"
-            >GAMES</tspan></text>
+            >PROJECTS</tspan></text>
           </g>
           <g
             id="blog"

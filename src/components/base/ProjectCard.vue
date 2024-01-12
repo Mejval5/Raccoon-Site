@@ -76,7 +76,7 @@
           elevation="0"
           x-large
         >
-          <b>Play Now</b>
+          <b>:button</b>
         </v-btn>
       </router-link>
       <v-btn
@@ -87,7 +87,7 @@
         :href="gamelink"
         target="_blank"
       >
-        <b>Play Now</b>
+        <b>{{ this.button }}</b>
       </v-btn>
     </v-card>
   </v-card>
@@ -97,7 +97,6 @@
     name: 'GameCard',
 
     inheritAttrs: false,
-
     props: {
       gamelink: String,
       headline: String,
@@ -105,6 +104,10 @@
       text: String,
       image: String,
       samepage: String,
+      button: {
+        type: String,
+        default: 'Play Now',
+      },
     },
   }
 </script>

@@ -41,9 +41,9 @@ const router = new Router({
           component: () => import('@/views/main/Index.vue'),
         },
         {
-          path: '/games',
-          name: 'Games',
-          meta: { pageName: 'gamesPage' },
+          path: '/projects',
+          name: 'Projects',
+          meta: { pageName: 'projectsPage' },
           component: () => import('@/views/main/Index.vue'),
         },
         {

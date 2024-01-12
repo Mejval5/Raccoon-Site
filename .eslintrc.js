@@ -12,6 +12,7 @@ module.exports = {
   },
 
   rules: {
+    'no-trailing-spaces': 'off',
     'no-console': 'off',
     'no-debugger': 'off',
     // https://github.com/babel/babel-eslint/issues/681#issuecomment-420663038
