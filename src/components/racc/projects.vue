@@ -42,7 +42,7 @@
         >
           <base-project-card
             image="assets/smart_rooms.png"
-            gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
+            gamelink="https://raccoon5.itch.io/smart-rooms-demo"
             headline="Smart Rooms"
             subtitle="Procedural level generator"
             text="Smart Rooms is now available for purchase on the 
