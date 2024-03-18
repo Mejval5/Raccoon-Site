@@ -15,26 +15,22 @@
           cols="auto"
         >
           <base-project-card
-            button="Watch Now"
-            image="assets/UnrealRender.png"
-            gamelink="https://www.youtube.com/watch?v=c-QAQn37m5I"
-            headline="Unreal Render"
-            subtitle="Fluid simulation in Unreal Engine"
-            text="I wanted to learn how to use Unreal Engine, so I decided to make a fluid simulation. It's created using the Unreal Engine Niagara particle system.
-            I also used Quixel Megascans to create the environment."
-          />
-        </v-col>
-        <v-col
-          cols="auto"
-        >
-          <base-project-card
-            button="Check Out"
-            image="assets/houseInFrance.png"
-            gamelink="https://drive.google.com/drive/folders/1xdEgieYB3Xvh3qwqzv0w1NHkCzLddwAu?usp=sharing"
-            headline="House in France"
-            subtitle="Visualization for my parents"
-            text="One long weekend I decided to make a visualization of a house my parents are building in France. 
-            I used Unreal Engine with Quixel Megascans and Blender to create this project. Sadly, most of the details are inside."
+            image="assets/portal2.png"
+            gamelink="https://raccoon5.itch.io/thinking-with-portals-vr"
+            headline="Thinking with Portals VR"
+            subtitle="Ambitious VR project"
+            text="You can now play the demo on the 
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://raccoon5.itch.io/thinking-with-portals-vr&quot;>Itch.io</a>.
+          Inspired by Portal and Half Life series. This project is a VR puzzle game where you can create portals and solve puzzles in a new way. 
+          This has a whole new dimension in Virtual Reality.
+             "
           />
         </v-col>
         <v-col
@@ -88,7 +84,7 @@
             image="assets/balec.png"
             gamelink="https://raccoon5.itch.io/balec-aldwin"
             headline="Balec Aldwin"
-            subtitle="This submission won the Brno Game Jam 2022!"
+            subtitle="This game won the Brno Game Jam 2022!"
             text="You are Balec Aldwin shooting a new movie. Pick the correct gun, bullet, and drink.
             Three Blender artists joined me to create this masterpiece in 48 hours.
             The most innapropriate game jam ever. <br>
@@ -142,20 +138,6 @@
           "
           />
         </v-col>
-
-        <v-col
-          cols="auto"
-        >
-          <base-project-card
-            image="assets/JumpingJack.png"
-            gamelink="https://raccoon5.itch.io/jumping-jack-zx-remake"
-            headline="Jumping Jack ZX Remake"
-            subtitle="Interview with TopTal"
-            text="Small project I made for the interview with TopTal. I was asked to remake a this game in 3 hours. I got the job!
-          "
-          />
-        </v-col>
-
         <v-col
           cols="auto"
         >
@@ -166,6 +148,45 @@
             subtitle="A one nighter made with Milan!"
             text="Have you ever wanted to be a majestical plant reaching for the heavens with roots reaching deep into the mother earth?
           This game is definitely for you."
+          />
+        </v-col>
+
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            button="Watch Now"
+            image="assets/UnrealRender.png"
+            gamelink="https://www.youtube.com/watch?v=c-QAQn37m5I"
+            headline="Unreal Render"
+            subtitle="Fluid simulation in Unreal Engine"
+            text="I wanted to learn how to use Unreal Engine, so I decided to make a fluid simulation. It's created using the Unreal Engine Niagara particle system.
+            I also used Quixel Megascans to create the environment."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            button="Check Out"
+            image="assets/houseInFrance.png"
+            gamelink="https://drive.google.com/drive/folders/1xdEgieYB3Xvh3qwqzv0w1NHkCzLddwAu?usp=sharing"
+            headline="House in France"
+            subtitle="Visualization for my parents"
+            text="One long weekend I decided to make a visualization of a house my parents are building in France. 
+            I used Unreal Engine with Quixel Megascans and Blender to create this project. Sadly, most of the details are inside."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            image="assets/JumpingJack.png"
+            gamelink="https://raccoon5.itch.io/jumping-jack-zx-remake"
+            headline="Jumping Jack ZX Remake"
+            subtitle="Interview with TopTal"
+            text="Small project I made for the interview with TopTal. I was asked to remake a this game in 3 hours. I got the job!
+          "
           />
         </v-col>
 
