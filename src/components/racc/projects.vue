@@ -81,6 +81,49 @@
           cols="auto"
         >
           <base-project-card
+            button="Watch Now"
+            image="assets/DavidAttenMeme.png"
+            gamelink="https://www.youtube.com/watch?v=55Q1tbq11ug"
+            headline="Skaven: Warhammer Lore with David Attenborough"
+            subtitle="Fully automated AI video maker"
+            text="
+          I tried to make a fully automated video maker using AI image, text, and audio gen. Crazy stuff. Repo at <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://github.com/Mejval5/AIVideoMaker&quot;>GitHub</a>.
+          It can run fully autonomously using Firebase Functions. But it's too expensive to be worth it."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
+            button="Watch Now"
+            image="assets/hexventure.png"
+            gamelink="https://www.youtube.com/watch?v=txAb3yRDXEs"
+            headline="HexVenture"
+            subtitle="Small visual demo of a hexagonal world"
+            text="
+          I wanted to learn how to use Unity's HDRP pipeline, so I decided to make a small demo of a hexagonal world.
+          I integrated <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://assetstore.unity.com/packages/tools/particles-effects/hdrp-time-of-day-lighting-weather-clouds-226149&quot;>HDRP Time Of Day - Lighting, Weather & Clouds</a>
+          to achieve this effect. Base models created by Milan Švancara."
+          />
+        </v-col>
+        <v-col
+          cols="auto"
+        >
+          <base-project-card
             image="assets/balec.png"
             gamelink="https://raccoon5.itch.io/balec-aldwin"
             headline="Balec Aldwin"
