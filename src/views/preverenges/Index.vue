@@ -4,7 +4,8 @@
     <racc-stars />
     <v-overlay
       :value="true"
-      opacity="0.3"
+      opacity="0.6"
+      color="black"
       style="width:100vw; height: 100vh;"
     >
       <v-container
@@ -121,7 +122,7 @@
                     <v-icon>mdi-circle-small</v-icon>
                   </v-list-item-icon>
                   <v-list-item-content>
-                    <v-list-item-title>{{ extra_text[7].text }}<a href="mailto:moberson@prodob.net">moberson@prodob.net</a>.</v-list-item-title>
+                    <v-list-item-title><span v-html="extra_text[7].text"></span><a href="mailto:moberson@prodob.net">moberson@prodob.net</a>.</v-list-item-title>
                   </v-list-item-content>
                 </v-list-item>
               </v-list>
@@ -279,7 +280,7 @@
           { text: 'Price' },
           { text: '2000 CHF/month + utilities (water and electricity - 100 CHF/month)' },
           { text: 'Contact' },
-          { text: 'Martina Oberson, tel. 0774963846 or ' },
+          { text: 'Martina Oberson, tel.&nbsp;0774963846 or ' },
           { text: 'Send Email' },
           
         ],
@@ -308,7 +309,7 @@
           { text: 'Prix' },
           { text: '2000 CHF/mois + charges (l’eau et l’électricité - acompte de 100 CHF/mois)' },
           { text: 'Contact' },
-          { text: 'Martina Oberson, tel. 0774963846 ou ' },
+          { text: 'Martina Oberson, tel.&nbsp;0774963846 ou ' },
           { text: 'Envoyer un e-mail' },
         ],
         extra_text: [],
@@ -464,7 +465,9 @@
   background-color: transparent !important;
 }
 .v-list-item__title {
-  white-space: normal;
+  white-space: pre-wrap;
+}
+.v-btn--icon.v-size--small {
 }
 
 /* Mobile screen styles */
@@ -485,6 +488,10 @@
   .no-pad-top {
     padding-top: 0px !important;
     overflow-y: auto;
+  }
+  .v-btn--icon.v-size--small {
+    max-height: calc(50vw / 8);
+    max-width: calc(45vw / 8);
   }
 }
 </style>

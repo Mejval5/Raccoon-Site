@@ -72,6 +72,8 @@ const router = new Router({
             ogTitle: 'Préverenges Apartment', 
             ogDescription: 'Apartment to rent near Préverenges beach.', 
             ogImage: '@/assets/preverenges/postel.jpg',
+            ogUrl: 'https://raccoon-website/preverenges',
+            ogType: 'website',
            },
           component: () => import('@/views/preverenges/Index.vue'),
         },
@@ -83,7 +85,9 @@ const router = new Router({
             title: 'Préverenges Apartment', 
             ogTitle: 'Préverenges Apartment', 
             ogDescription: 'Apartment to rent near Préverenges beach.', 
-            ogImage: '@/assets/preverenges/postel.jpg',
+            ogImage: '/postel.jpg',
+            ogUrl: 'https://raccoon-website/preverenges',
+            ogType: 'website',
           },
           component: () => import('@/views/preverenges/Index.vue'),
         },
@@ -108,7 +112,7 @@ router.beforeEach((to, from, next) => {
     if (!tag) {
       tag = document.createElement('meta')
       tag.setAttribute('property', property)
-      document.head.appendChild(tag)
+      document.head.insertBefore(tag, document.head.firstChild)
     }
     tag.setAttribute('content', content)
   }
@@ -122,6 +126,12 @@ router.beforeEach((to, from, next) => {
   }
   if (to.meta.ogImage) {
     updateMetaTag('og:image', to.meta.ogImage)
+  }
+  if (to.meta.ogUrl) {
+    updateMetaTag('og:url', to.meta.ogUrl)
+  }
+  if (to.meta.ogType) {
+    updateMetaTag('og:type', to.meta.ogType)
   }
   next()
 })
