@@ -164,7 +164,7 @@
                 }"
               >
                 <v-carousel-item
-                  src="@/assets/preverenges/postel.png"
+                  src="@/assets/preverenges/postel.jpg"
                   cover
                   aspect-ratio="0.66"
                   eager

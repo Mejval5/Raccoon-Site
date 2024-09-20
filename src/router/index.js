@@ -66,13 +66,25 @@ const router = new Router({
         {
           path: '/preverenges',
           name: 'Préverenges',
-          meta: { pageName: 'preverenges' },
+          meta: { 
+            pageName: 'preverenges', 
+            title: 'Préverenges Apartment', 
+            ogTitle: 'Préverenges Apartment', 
+            ogDescription: 'Apartment to rent near Préverenges beach.', 
+            ogImage: '@/assets/preverenges/postel.jpg',
+           },
           component: () => import('@/views/preverenges/Index.vue'),
         },
         {
           path: '/preverenges/:lang?',
           name: 'Préverenges',
-          meta: { pageName: 'preverenges', title: 'Préverenges Apartment' },
+          meta: { 
+            pageName: 'preverenges', 
+            title: 'Préverenges Apartment', 
+            ogTitle: 'Préverenges Apartment', 
+            ogDescription: 'Apartment to rent near Préverenges beach.', 
+            ogImage: '@/assets/preverenges/postel.jpg',
+          },
           component: () => import('@/views/preverenges/Index.vue'),
         },
         {
@@ -90,6 +102,26 @@ router.beforeEach((to, from, next) => {
     document.title = to.meta.title
   } else {
     document.title = 'Raccoon Website' // Fallback title
+  }
+  function updateMetaTag (property, content) {
+    let tag = document.querySelector(`meta[property="${property}"]`)
+    if (!tag) {
+      tag = document.createElement('meta')
+      tag.setAttribute('property', property)
+      document.head.appendChild(tag)
+    }
+    tag.setAttribute('content', content)
+  }
+
+  // Dynamically update or create Open Graph meta tags
+  if (to.meta.ogTitle) {
+    updateMetaTag('og:title', to.meta.ogTitle)
+  }
+  if (to.meta.ogDescription) {
+    updateMetaTag('og:description', to.meta.ogDescription)
+  }
+  if (to.meta.ogImage) {
+    updateMetaTag('og:image', to.meta.ogImage)
   }
   next()
 })
