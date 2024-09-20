@@ -17,4 +17,5 @@ yarn-error.log*
 node_modules/*
 
 # Firebase cache
-.firebase/
+.firebase/*
+firebase-debug.log
