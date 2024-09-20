@@ -12,7 +12,7 @@
       return {
         devInfo1: {
           name: 'DANIEL NEČESAL',
-          pic: 'assets/meCrop.png',
+          pic: 'assets/meSquare.png',
           title: 'Game developer',
           socialMedia: [
             { name: 'Instagram', link: 'instagram.com/raccoon.in.the.sun' },

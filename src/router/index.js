@@ -64,12 +64,34 @@ const router = new Router({
           component: () => import('@/views/main/Index.vue'),
         },
         {
+          path: '/preverenges',
+          name: 'Préverenges',
+          meta: { pageName: 'preverenges' },
+          component: () => import('@/views/preverenges/Index.vue'),
+        },
+        {
+          path: '/preverenges/:lang?',
+          name: 'Préverenges',
+          meta: { pageName: 'preverenges', title: 'Préverenges Apartment' },
+          component: () => import('@/views/preverenges/Index.vue'),
+        },
+        {
           path: '*',
           redirect: '/',
         },
       ],
     },
   ],
+})
+
+router.beforeEach((to, from, next) => {
+  // Check if the route has a meta title
+  if (to.meta && to.meta.title) {
+    document.title = to.meta.title
+  } else {
+    document.title = 'Raccoon Website' // Fallback title
+  }
+  next()
 })
 
 export default router
