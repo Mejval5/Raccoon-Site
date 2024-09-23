@@ -2,7 +2,7 @@
   <v-container
     v-scroll.self="onScroll"
     fluid
-    class="overflow-y-auto hideScroll"
+    class="overflow-y-auto hideScroll py-0"
     style="height: inherit;"
   >
     <v-row
@@ -46,7 +46,7 @@
             <v-btn
               large
               class="rounded-lg d-block"
-              style="height: 100%;"
+              style="height: 98.5vh; position: sticky; top: 0;"
               color="transparent"
               elevation="0"
               @click="goBack"
@@ -56,11 +56,11 @@
           </v-col>
           <v-col
             ref="devs"
-            class=""
+            class="pt-4 pb-n2"
             cols="12"
             md="11"
             lg="10"
-            xl="8"
+            xl="10"
           >
             <octo-devs />
           </v-col>

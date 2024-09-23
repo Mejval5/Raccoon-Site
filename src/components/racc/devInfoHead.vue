@@ -4,7 +4,7 @@
       <v-col>
         <base-heading
           size="display-2"
-          class="mb-0"
+          class="mb-0 "
           space="0"
         >
           {{ name }}
@@ -13,34 +13,42 @@
     </v-row>
     <v-row>
       <v-col
-        cols="6"
+      cols="12"
       >
         <base-subtitle
-          space="6"
-          class="secondaryText"
-        >
-          {{ title }}
-        </base-subtitle>
+        class="text-h6"
+      >
+        {{ title }}
+      </base-subtitle>
+      </v-col>
+      <v-col
+        cols="6"
+      >
         <base-subtitle
           v-for="(s, i) in socialMedia"
           :key="i"
           space="3"
-          class="primaryText"
+          class="primaryText text-subtitle-1 d-flex align-items-center"
           mobile-size="subtitle-2"
         >
           <a
-            class="text-decoration-none"
+            class="text-decoration-none d-flex align-items-center"
             :href="`https://www.${s.link}`"
             target="_blank"
+            style=""
           >
-            {{ s.name }} - <span class="linkText"> {{ s.link }} </span>
+          
+          <img
+          style="-webkit-user-select: none; height:32px; width:32px; margin: auto;background-color: hsl(0, 0%, 0%, 0%);transition: background-color 300ms;"
+          :src="s.icon"
+          >
+           <span class="linkText pl-4"> {{ s.link }} </span>
           </a>
         </base-subtitle>
       </v-col>
       <v-col
         cols="12"
         lg="3"
-        class="pt-0 pt-lg-3"
       >
         <div
           class="d-flex flex-column"

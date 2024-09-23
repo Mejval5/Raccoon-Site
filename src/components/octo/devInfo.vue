@@ -24,9 +24,9 @@
         >
           <v-img
             eager
-            width="200px"
-            height="200px"
-            class="clip mx-auto"
+            width="250px"
+            height="250px"
+            class="rounded-xl mx-auto"
             :src="require(`@/${devInfo.pic}`)"
           >
             <template v-slot:placeholder>
@@ -40,8 +40,8 @@
                   color="grey lighten-5"
                 >
                   <v-sheet
-                    width="200px"
-                    height="200px"
+                    width="300px"
+                    height="300px"
                     color="#0c2d3daa"
                     class="clip"
                   />

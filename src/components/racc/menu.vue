@@ -617,7 +617,7 @@
 }
 .colorsShown {
   clip-path: circle(200% at 0% 100%);
-  transition: all 3s ease-in;
+  transition: all 2s ease-in-out;
 }
 .contactText {
   fill-opacity: 1 !important;

@@ -46,7 +46,7 @@
             <v-btn
               large
               class="rounded-lg d-block"
-              style="height: 100%;"
+              style="height: 95vh; position: sticky; top: 0;"
               color="transparent"
               elevation="0"
               @click="goBack"

@@ -1,6 +1,6 @@
 <template>
   <v-chip
-    class="ma-2"
+    class="ma-0"
     v-bind="$attrs"
     outlined
     v-on="$listeners"
