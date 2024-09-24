@@ -31,6 +31,7 @@
         v-if="samepage"
         :to="bloglink"
         color="transparent"
+        style="height:250px;"
       >
         <v-img
           class="rounded-t"
@@ -43,6 +44,7 @@
         v-else
         target="_blank"
         :href="bloglink"
+        style="height:250px;"
       >
         <v-img
           class="rounded-t"

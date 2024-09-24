@@ -4,7 +4,7 @@
     <racc-stars />
     <v-overlay
       :value="true"
-      opacity="0.6"
+      opacity="0.7"
       color="black"
       style="width:100vw; height: 100vh;"
     >

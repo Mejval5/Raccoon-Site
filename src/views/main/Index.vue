@@ -20,7 +20,7 @@
     <v-overlay
       class="contain"
       :value="!this.pages.mainMenu.val"
-      opacity="0.9"
+      opacity="0.7"
       color="#090909"
     >
       <octo-page

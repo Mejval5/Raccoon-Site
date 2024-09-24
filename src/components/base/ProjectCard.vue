@@ -28,6 +28,7 @@
     <a
       v-else
       target="_blank"
+      style="height:250px;"
       :href="gamelink"
     >
       <v-img

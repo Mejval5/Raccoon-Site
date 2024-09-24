@@ -10,7 +10,7 @@
       align-content="center"
       justify="center"
       no-gutters
-      class="d-md-none mb-3"
+      class="d-md-none mb-0 pt-2"
     >
       <v-col>
         <v-btn
@@ -70,7 +70,7 @@
           align-content="center"
           justify="center"
           no-gutters
-          class="d-md-none mb-3"
+          class="d-md-none mb-3 pt-10"
         >
           <v-col>
             <v-btn
