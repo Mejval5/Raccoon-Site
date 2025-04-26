@@ -11,9 +11,36 @@
         align-content="space-around"
         justify="center"
       >
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
+          <base-project-card
+            image="assets/VoxelPainter.jpg"
+            gamelink="https://github.com/Mejval5/VoxelPainter"
+            headline="Voxel Painter"
+            subtitle="GPU Accelerated Marching Cubes!"
+            text="Download the app at  
+          <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://raccoon5.itch.io/voxel-painter&quot;>Itch.io</a>.
+          Paint 3D models in real time using a 3D brush. <br>
+          Don't forget to paint them over with colors!
+          Highly optimized using compute shaders and GPU acceleration. <br>
+          Inspired by Oskar Stålberg's <a
+          class=&quot;
+          font-weight-bold
+          subtitle-1 linkText
+          text-decoration-none
+          &quot;
+          target=&quot;_blank&quot;
+          href=&quot;https://oskarstalberg.com/Townscaper/&quot;>Townscaper</a>.
+             "
+          />
+        </v-col>
+        <v-col cols="auto">
           <base-project-card
             image="assets/portal2.png"
             gamelink="https://raccoon5.itch.io/thinking-with-portals-vr"
@@ -33,9 +60,7 @@
              "
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/smart_rooms.png"
             gamelink="https://raccoon5.itch.io/smart-rooms-demo"
@@ -54,9 +79,7 @@
              "
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/TTT.png"
             gamelink="https://play.google.com/store/apps/details?id=com.ArcaneRaccoon.TicTacToeXO"
@@ -77,9 +100,7 @@
           Art was created by Milan Švancara."
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             button="Watch Now"
             image="assets/DavidAttenMeme.png"
@@ -98,9 +119,7 @@
           It can run fully autonomously using Firebase Functions. But it's too expensive to be worth it."
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             button="Watch Now"
             image="assets/hexventure.png"
@@ -120,9 +139,7 @@
           to achieve this effect. Base models created by Milan Švancara."
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/balec.png"
             gamelink="https://raccoon5.itch.io/balec-aldwin"
@@ -134,9 +151,7 @@
             "
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/octo.png"
             gamelink="https://raccoon5.itch.io/octomancer"
@@ -158,9 +173,7 @@
      "
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/tower_defense.png"
             gamelink="https://raccoon5.itch.io/tower-defense-game"
@@ -181,9 +194,7 @@
           "
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/plantzie.png"
             gamelink="https://raccoon5.itch.io/plantagonist"
@@ -194,9 +205,7 @@
           />
         </v-col>
 
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             button="Watch Now"
             image="assets/UnrealRender.png"
@@ -207,9 +216,7 @@
             I also used Quixel Megascans to create the environment."
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             button="Check Out"
             image="assets/houseInFrance.png"
@@ -220,9 +227,7 @@
             I used Unreal Engine with Quixel Megascans and Blender to create this project. Sadly, most of the details are inside."
           />
         </v-col>
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/JumpingJack.png"
             gamelink="https://raccoon5.itch.io/jumping-jack-zx-remake"
@@ -233,9 +238,7 @@
           />
         </v-col>
 
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/indian.png"
             gamelink="https://raccoon5.itch.io/spherical-prairie"
@@ -247,9 +250,7 @@
           />
         </v-col>
 
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/V6t0Yh.png"
             gamelink="https://raccoon5.itch.io/piranhasbounty"
@@ -269,9 +270,7 @@
           />
         </v-col>
 
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/game-2.png"
             headline="Billin' around"
@@ -291,9 +290,7 @@
           />
         </v-col>
 
-        <v-col
-          cols="auto"
-        >
+        <v-col cols="auto">
           <base-project-card
             image="assets/game-3.png"
             gamelink="https://raccoon5.itch.io/space-simulator"

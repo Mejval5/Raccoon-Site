@@ -1,7 +1,7 @@
 <template>
   <v-container
-  fluid
-  class="pb-0 pt-3"
+    fluid
+    class="pb-0 pt-3"
   >
     <octo-dev-info
       :dev-info="devInfo1"

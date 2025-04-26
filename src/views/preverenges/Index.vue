@@ -20,126 +20,128 @@
           style="min-height: 100vh; max-width: 100%; margin: 0;"
         >
           <v-col
-          class="pt-0 pb-0"
-          cols="12"
-          lg="7"
-          :order="$vuetify.breakpoint.mdAndUp ? 0 : 2"
+            class="pt-0 pb-0"
+            cols="12"
+            lg="7"
+            :order="$vuetify.breakpoint.mdAndUp ? 0 : 2"
           >
-          <v-row><v-col
-      cols="12"
-      sm="6"
-      class="py-2"
-    >
-      <v-btn-toggle
-        v-model="toggle_one"
-        mandatory
-        shaped
-        @change="updateLanguage"
-      >
-        <v-btn>
-          EN
-        </v-btn>
+            <v-row>
+              <v-col
+                cols="12"
+                sm="6"
+                class="py-2"
+              >
+                <v-btn-toggle
+                  v-model="toggle_one"
+                  mandatory
+                  shaped
+                  @change="updateLanguage"
+                >
+                  <v-btn>
+                    EN
+                  </v-btn>
 
-        <v-btn>
-          FR
-        </v-btn>
-      </v-btn-toggle>
-    </v-col>
-            <v-card
-              class="rounded-lg"
-              elevation="2"
-            >
-              <div
-                class="french-section pl-5 pr-5 pt-2"
+                  <v-btn>
+                    FR
+                  </v-btn>
+                </v-btn-toggle>
+              </v-col>
+              <v-card
+                class="rounded-lg"
+                elevation="2"
               >
-              <div class ="text-h4">
-                {{ extra_text[0].text }}
-              </div>
-              <div class ="text-h6">
-                {{ extra_text[1].text }}  <br>    
-                {{ extra_text[2].text }}         
-              </div>
-              <v-divider></v-divider>
-              <v-list
-              lines="one"
-              >
-                <v-list-item
-                  v-for="(item, index) in this.items"
-                  :key="index"                
+                <div
+                  class="french-section pl-5 pr-5 pt-2"
                 >
-                  <v-list-item-icon>
-                    <v-icon>mdi-circle-small</v-icon>
-                  </v-list-item-icon>
-                  <v-list-item-content>
-                    <v-list-item-title v-text="item.text"></v-list-item-title>
-                  </v-list-item-content>
-                </v-list-item>
-              </v-list>
-              <div class ="text-h5">
-                {{ extra_text[3].text }}
-              </div>
-              <v-divider></v-divider>
-              <v-list
-              lines="one"
-              >
-                <v-list-item
-                  v-for="(item, index) in this.items2"
-                  :key="index"                
-                >
-                  <v-list-item-icon>
-                    <v-icon>mdi-circle-small</v-icon>
-                  </v-list-item-icon>
-                  <v-list-item-content>
-                    <v-list-item-title v-text="item.text"></v-list-item-title>
-                  </v-list-item-content>
-                </v-list-item>
-              </v-list>
-              <div class ="text-h6">
-                {{ extra_text[4].text }}
-              </div>
-              <v-divider></v-divider>
-              <v-list
-              lines="one"
-              >
-                <v-list-item>
-                  <v-list-item-icon>
-                    <v-icon>mdi-circle-small</v-icon>
-                  </v-list-item-icon>
-                  <v-list-item-content>
-                    <v-list-item-title>{{ extra_text[5].text }}</v-list-item-title>
-                  </v-list-item-content>
-                </v-list-item>
-              </v-list>
-              <div class ="text-h6">
-                {{ extra_text[6].text }}
-              </div>
-              <v-divider></v-divider>
-              <v-list
-              lines="one"
-              >
-                <v-list-item>
-                  <v-list-item-icon>
-                    <v-icon>mdi-circle-small</v-icon>
-                  </v-list-item-icon>
-                  <v-list-item-content>
-                    <v-list-item-title><span v-html="extra_text[7].text"></span><a href="mailto:moberson@prodob.net">moberson@prodob.net</a>.</v-list-item-title>
-                  </v-list-item-content>
-                </v-list-item>
-              </v-list>
-              </div>
-            </v-card>    
-          </v-row>  
+                  <div class="text-h4">
+                    {{ extra_text[0].text }}
+                  </div>
+                  <div class="text-h6">
+                    {{ extra_text[1].text }}  <br>    
+                    {{ extra_text[2].text }}         
+                  </div>
+                  <v-divider />
+                  <v-list
+                    lines="one"
+                  >
+                    <v-list-item
+                      v-for="(item, index) in this.items"
+                      :key="index"                
+                    >
+                      <v-list-item-icon>
+                        <v-icon>mdi-circle-small</v-icon>
+                      </v-list-item-icon>
+                      <v-list-item-content>
+                        <v-list-item-title v-text="item.text" />
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                  <div class="text-h5">
+                    {{ extra_text[3].text }}
+                  </div>
+                  <v-divider />
+                  <v-list
+                    lines="one"
+                  >
+                    <v-list-item
+                      v-for="(item, index) in this.items2"
+                      :key="index"                
+                    >
+                      <v-list-item-icon>
+                        <v-icon>mdi-circle-small</v-icon>
+                      </v-list-item-icon>
+                      <v-list-item-content>
+                        <v-list-item-title v-text="item.text" />
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                  <div class="text-h6">
+                    {{ extra_text[4].text }}
+                  </div>
+                  <v-divider />
+                  <v-list
+                    lines="one"
+                  >
+                    <v-list-item>
+                      <v-list-item-icon>
+                        <v-icon>mdi-circle-small</v-icon>
+                      </v-list-item-icon>
+                      <v-list-item-content>
+                        <v-list-item-title>{{ extra_text[5].text }}</v-list-item-title>
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                  <div class="text-h6">
+                    {{ extra_text[6].text }}
+                  </div>
+                  <v-divider />
+                  <v-list
+                    lines="one"
+                  >
+                    <v-list-item>
+                      <v-list-item-icon>
+                        <v-icon>mdi-circle-small</v-icon>
+                      </v-list-item-icon>
+                      <v-list-item-content>
+                        <v-list-item-title><span v-html="extra_text[7].text" /><a href="mailto:moberson@prodob.net">moberson@prodob.net</a>.</v-list-item-title>
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                </div>
+              </v-card>    
+            </v-row>  
           </v-col>
           <v-col
-          class="align-center justify-center pt-0 pb-2"
-          cols="12"
-          lg="5"
+            class="align-center justify-center pt-0 pb-2"
+            cols="12"
+            lg="5"
           >
             <v-row
               style="max-height: 90vh !important; padding-top: 25px;"
               class="carousel_col align-center justify-center align-self-center"
             >
               <v-carousel
+                v-model="slide"
                 hide-delimiter-background
                 :show-arrows="$vuetify.breakpoint.mdAndUp"
                 style="max-width: 100%; height: 90hv; max-height: 90vh !important;"
@@ -148,20 +150,19 @@
                 :cycle="!this.stopCarouselCycle"
                 show-arrows-on-hover
                 dark
-                v-model="slide"
                 align-self="center"
                 :touch="{
-                      left: () => {
-                        slide = slide + 1 % slideCount
-                        this.stopCarousel()                  
-                      },
-                      right: () => {
-                        slide--
-                        if (slide < 0) {
-                          slide = slideCount + slide
-                        }
-                        this.stopCarousel()                  
-                      },
+                  left: () => {
+                    slide = slide + 1 % slideCount
+                    this.stopCarousel()                  
+                  },
+                  right: () => {
+                    slide--
+                    if (slide < 0) {
+                      slide = slideCount + slide
+                    }
+                    this.stopCarousel()                  
+                  },
                 }"
               >
                 <v-carousel-item
@@ -170,56 +171,56 @@
                   aspect-ratio="0.66"
                   eager
                   fade
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/skrin.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/kuch.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/outside.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/koupel.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/dum.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/kytky.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
 
                 <v-carousel-item
                   src="@/assets/preverenges/zahrada.jpg"
                   cover
                   aspect-ratio="0.66"
-                ></v-carousel-item>
+                />
               </v-carousel>
             </v-row>
           </v-col>
           <v-col
-          v-if="!$vuetify.breakpoint.mdAndUp"
-          :order=10
-          class="d-flex flex-column mx-12 pt-10"
+            v-if="!$vuetify.breakpoint.mdAndUp"
+            :order="10"
+            class="d-flex flex-column mx-12 pt-10"
           >            
             <v-btn
               elevation="0"
@@ -227,8 +228,8 @@
               large
               v-bind="$attrs"
               color="yellow lighten-1"
-              v-on="$listeners"
               href="mailto:moberson@prodob.net"
+              v-on="$listeners"
             >
               {{ extra_text[8].text }}
             </v-btn>
@@ -244,9 +245,19 @@
   import View from '@/views/View'
 
   export default {
-    name: 'Préverenges',
+    name: 'PrVerenges',
 
     components: {
+    },
+
+    extends: View,
+
+    props: {
+      id: {
+        type: String,
+        default: 'blog',
+      },
+      currentBlogPost: String,
     },
 
     data () {
@@ -318,14 +329,12 @@
       }
     },
 
-    extends: View,
+    computed: {
+    },
 
-    props: {
-      id: {
-        type: String,
-        default: 'blog',
-      },
-      currentBlogPost: String,
+    watch: {
+      // Watch the `lang` prop to dynamically update the content when the route changes
+      lang: 'updateLanguage',
     },
 
     mounted () {
@@ -337,14 +346,6 @@
 
     created () {
       this.updateLanguage()
-    },
-
-    computed: {
-    },
-
-    watch: {
-      // Watch the `lang` prop to dynamically update the content when the route changes
-      lang: 'updateLanguage',
     },
 
     methods: {

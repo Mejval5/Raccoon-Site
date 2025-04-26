@@ -13,13 +13,13 @@
     </v-row>
     <v-row>
       <v-col
-      cols="12"
+        cols="12"
       >
         <base-subtitle
-        class="text-h6"
-      >
-        {{ title }}
-      </base-subtitle>
+          class="text-h6"
+        >
+          {{ title }}
+        </base-subtitle>
       </v-col>
       <v-col
         cols="6"
@@ -38,11 +38,11 @@
             style=""
           >
           
-          <img
-          style="-webkit-user-select: none; height:32px; width:32px; margin: auto;background-color: hsl(0, 0%, 0%, 0%);transition: background-color 300ms;"
-          :src="s.icon"
-          >
-           <span class="linkText pl-4"> {{ s.link }} </span>
+            <img
+              style="-webkit-user-select: none; height:32px; width:32px; margin: auto;background-color: hsl(0, 0%, 0%, 0%);transition: background-color 300ms;"
+              :src="s.icon"
+            >
+            <span class="linkText pl-4"> {{ s.link }} </span>
           </a>
         </base-subtitle>
       </v-col>

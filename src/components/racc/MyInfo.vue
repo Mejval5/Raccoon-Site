@@ -35,10 +35,10 @@
           </v-col>
         </v-row>
         <v-row
-        class="pt-0"
+          class="pt-0"
         >
           <v-col
-          class="pt-0"
+            class="pt-0"
           >
             <base-title
               title="CAREER HIGHLIGHTS"
@@ -96,7 +96,7 @@
       >
         <v-row>
           <v-col
-          class="pb-0"
+            class="pb-0"
           >
             <base-title
               title="SKILLS"
@@ -121,9 +121,7 @@
           </v-col>
         </v-row>
         <v-row>
-          <v-col>
-            
-          </v-col>
+          <v-col />
         </v-row>
         <v-row>
           <v-col>
