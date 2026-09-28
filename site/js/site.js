@@ -17,8 +17,14 @@
 })()
 
 // Home: sweep the coloured beams in from the corner, once.
+// Wait for the menu font (capped, so a slow font server can't stall it) and two painted frames,
+// so the sweep never starts while the page is still loading and stutters.
 ;(function () {
   const colors = document.querySelector('.prism .colors')
   if (!colors) return
-  requestAnimationFrame(() => setTimeout(() => colors.classList.add('shown'), 50))
+  const fontsReady = document.fonts ? document.fonts.ready : Promise.resolve()
+  const cap = new Promise(resolve => setTimeout(resolve, 800))
+  Promise.race([fontsReady, cap]).then(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => colors.classList.add('shown')))
+  })
 })()

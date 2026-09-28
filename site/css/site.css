@@ -114,7 +114,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
 
 /* The light beams sweep in from the bottom-left corner once on load. */
 .prism .colors { clip-path: circle(0% at 0% 100%); }
-.prism .colors.shown { clip-path: circle(200% at 0% 100%); transition: clip-path 2s ease-in-out; }
+.prism .colors.shown { clip-path: circle(150% at 0% 100%); transition: clip-path 1.1s cubic-bezier(0.3, 0.7, 0.3, 1); }
 @media (prefers-reduced-motion: reduce) {
   .prism .colors { clip-path: none; }
 }
@@ -134,7 +134,16 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
   position: relative;
   z-index: 1;
   min-height: 100vh;
+}
+
+/* The veil dims the starfield behind the whole viewport, including under the back bar. */
+.page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background: var(--veil);
+  pointer-events: none;
 }
 
 .page-inner {
@@ -165,13 +174,14 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
   .back {
     position: sticky;
     width: 100%;
-    height: 48px;
+    height: 64px;
     justify-items: start;
     padding-left: var(--gutter);
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(6px);
+    padding-bottom: 16px;
+    background: linear-gradient(to bottom, rgba(6, 6, 6, 0.97) 0%, rgba(6, 6, 6, 0.95) 62%, rgba(6, 6, 6, 0) 100%);
     border-radius: 0;
   }
+  .back:hover { background: linear-gradient(to bottom, rgba(6, 6, 6, 0.97) 0%, rgba(6, 6, 6, 0.95) 62%, rgba(6, 6, 6, 0) 100%); }
 }
 
 .page-head { margin: 8px 0 32px; }
