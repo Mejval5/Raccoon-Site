@@ -1,6 +1,6 @@
 # Octomancer web port: architecture
 
-Owner: Ines (tech lead). Status: **v2, pure HTML/JS rewrite**, waiting for Daniel on §8. Paths are relative to `octomancer-unity/Assets/` unless they start with `site/`, `octomancer-web/` or `ProjectSettings/`.
+Owner: Beaver (tech lead). Status: **v2, pure HTML/JS rewrite**, waiting for Daniel on §8. Paths are relative to `octomancer-unity/Assets/` unless they start with `site/`, `octomancer-web/` or `ProjectSettings/`.
 **Rejected: Unity WebGL (former option A). Daniel decided on 2026-09-28 that no Unity stays in the stack.** `PLAN.md` and `CEO-REVIEW.md` describe that rejected approach and need to be redone.
 
 ## 1. What the original is (the reference we port from)
