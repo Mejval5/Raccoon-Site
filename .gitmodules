@@ -1,0 +1,4 @@
+[submodule "octomancer-unity"]
+	path = octomancer-unity
+	url = git@github.com:Mejval5/Octomancer.git
+	branch = main
