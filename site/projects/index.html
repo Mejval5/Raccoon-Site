@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects | Daniel Necesal</title>
+  <meta name="description" content="Tools, engines and experiments by Daniel Necesal: GPU voxel painting, VR portals, procedural levels, a chess bot tournament, Minecraft datapacks and a language written in French.">
+  <meta property="og:title" content="Projects | Raccoon Website">
+  <meta property="og:description" content="Tools, engines and experiments: GPU voxel painting, VR portals, procedural levels, a chess bot tournament and more.">
+  <meta property="og:image" content="https://raccoon.website/img/projects/voxel-painter.webp">
+  <meta property="og:url" content="https://raccoon.website/projects/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/racc-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Nunito:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/site.js" defer></script>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <a class="back" href="/" aria-label="Back to menu"><span class="mdi mdi-keyboard-backspace"></span></a>
+
+  <main class="page">
+    <div class="page-inner">
+
+      <header class="page-head">
+        <h1>Projects</h1>
+        <p>Tools, engines and experiments I build for fun. Looking for things to play? Those live under <a href="/games/">Games</a>.</p>
+        <div class="link-row">
+          <a href="https://github.com/Mejval5" target="_blank" rel="noopener"><span class="mdi mdi-github"></span>GitHub</a>
+          <a href="https://www.youtube.com/channel/UCnW-PUaJWwDjzvorrBTgbWw" target="_blank" rel="noopener"><span class="mdi mdi-youtube" style="color:#f44336"></span>YouTube</a>
+          <a href="https://raccoon5.itch.io/" target="_blank" rel="noopener"><span class="mdi mdi-controller" style="color:#ff9800"></span>itch.io</a>
+        </div>
+      </header>
+
+      <div class="cards">
+
+        <article class="card">
+          <div class="card-img"><img src="/img/projects/chess-turnarment.webp" alt="BlowFish, a cartoon fish strapped with dynamite: Stockfish lost in 5 moves" loading="lazy"></div>
+          <div class="card-body">
+            <h2>Chess Turnarment</h2>
+            <p class="subtitle">A round-robin tournament for ridiculous chess bots</p>
+            <div class="text">
+              <p>An arena in the spirit of Tom7’s <a href="http://tom7.org/chess/" target="_blank" rel="noopener"><b>Elo World</b></a>:
+                about 60 weird bots, from chess.com’s 250-rated Martin to a Stockfish whose pieces explode, play every
+                pairing in parallel on all CPU cores. It fits proper Elo with error bars, draws the cross table live,
+                and lets you play against (or as) any bot in the browser.</p>
+              <p>C#/.NET, built with a swarm of Claude agents working in parallel. A video is on the way.</p>
+            </div>
+            <div class="tags"><span class="tag wip">Work in progress</span><span class="tag ai">Built with AI agents</span><span class="tag">C# / .NET</span></div>
+          </div>
+          <div class="card-actions"><span class="btn disabled">Coming soon</span></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://github.com/Mejval5/VoxelPainter" target="_blank" rel="noopener"><img src="/img/projects/voxel-painter.webp" alt="Screenshot of Voxel Painter" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Voxel Painter</h2>
+            <p class="subtitle">GPU accelerated marching cubes!</p>
+            <div class="text">
+              <p>Paint 3D models in real time using a 3D brush, then paint them over with colours.
+                Highly optimized using compute shaders and GPU acceleration. Inspired by Oskar Stålberg’s
+                <a href="https://oskarstalberg.com/Townscaper/" target="_blank" rel="noopener"><b>Townscaper</b></a>.
+                Source on <a href="https://github.com/Mejval5/VoxelPainter" target="_blank" rel="noopener"><b>GitHub</b></a>.</p>
+            </div>
+            <div class="tags"><span class="tag">Unity</span><span class="tag">Compute shaders</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://raccoon5.itch.io/voxel-painter" target="_blank" rel="noopener">Download</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://raccoon5.itch.io/thinking-with-portals-vr" target="_blank" rel="noopener"><img src="/img/projects/portals-vr.webp" alt="Screenshot of Thinking with Portals VR" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Thinking with Portals VR</h2>
+            <p class="subtitle">Ambitious VR project</p>
+            <div class="text">
+              <p>A VR puzzle game inspired by the Portal and Half-Life series, where you create portals and solve
+                puzzles in a whole new dimension. Under the hood is a custom render pipeline for recursive portal
+                rendering in VR. The demo is on
+                <a href="https://raccoon5.itch.io/thinking-with-portals-vr" target="_blank" rel="noopener"><b>itch.io</b></a>.</p>
+            </div>
+            <div class="tags"><span class="tag">Unity</span><span class="tag">VR</span><span class="tag">Custom render pipeline</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://raccoon5.itch.io/thinking-with-portals-vr" target="_blank" rel="noopener">Play demo</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://raccoon5.itch.io/smart-rooms-demo" target="_blank" rel="noopener"><img src="/img/projects/smart-rooms.webp" alt="Screenshot of Smart Rooms" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Smart Rooms</h2>
+            <p class="subtitle">Procedural level generator</p>
+            <div class="text">
+              <p>Inspired by Spelunky 2, Smart Rooms is a versatile Unity package for procedural 2D level generation
+                with customizable rooms. Available on the
+                <a href="https://assetstore.unity.com/packages/tools/level-design/smart-rooms-procedural-level-generator-room-builder-236336" target="_blank" rel="noopener"><b>Unity Asset Store</b></a>.</p>
+            </div>
+            <div class="tags"><span class="tag">Unity</span><span class="tag">Asset Store</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://raccoon5.itch.io/smart-rooms-demo" target="_blank" rel="noopener">Play demo</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://modrinth.com/mod/grid-block" target="_blank" rel="noopener"><img src="/img/projects/gridblock.webp" alt="Screenshot of GridBlock in Minecraft" loading="lazy"></a>
+          <div class="card-body">
+            <h2>GridBlock</h2>
+            <p class="subtitle">An infinite, self-repairing line of blocks</p>
+            <div class="text">
+              <p>A Minecraft challenge: you spawn on a single block in an endless void, with a line of blocks running
+                forward forever. Every block is a pure function of its coordinates and the world seed, so the line is
+                deterministic, and it repairs itself: break one and the same block is back next tick.</p>
+              <p>1072 blocks from the game’s own registry, no mods, pure datapack. Source on
+                <a href="https://github.com/Mejval5/GridBlock" target="_blank" rel="noopener"><b>GitHub</b></a>.</p>
+            </div>
+            <div class="tags"><span class="tag">Minecraft</span><span class="tag">Datapack</span></div>
+          </div>
+          <div class="card-actions">
+            <a class="btn" href="https://modrinth.com/mod/grid-block" target="_blank" rel="noopener">Modrinth</a>
+            <a class="btn" href="https://www.curseforge.com/minecraft/data-packs/grid-block" target="_blank" rel="noopener">CurseForge</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://github.com/Mejval5/raccoon-tweaks" target="_blank" rel="noopener"><img src="/img/projects/raccoon-tweaks.webp" alt="Raccoon Tweaks token background art" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Raccoon Tweaks</h2>
+            <p class="subtitle">Foundry VTT fixes for my Pathfinder table</p>
+            <div class="text">
+              <p>One module instead of a community module per annoyance. It fixes a Tokenizer bug that stacked another
+                frame onto a token every time you opened it, by wrapping a single render call once instead of forking
+                the module, and adds GM-only AI portrait generation through the OpenAI images API.</p>
+            </div>
+            <div class="tags"><span class="tag">Foundry VTT</span><span class="tag">JavaScript</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://github.com/Mejval5/raccoon-tweaks" target="_blank" rel="noopener">View on GitHub</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://github.com/Mejval5/Fromage" target="_blank" rel="noopener"><img src="/img/projects/fromage.webp" alt="Fromage logo" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Fromage</h2>
+            <p class="subtitle">A programming language, written in French</p>
+            <div class="text">
+              <p>A dynamically typed language with its own bytecode compiler and virtual machine in C, with custom
+                memory management. For maximum fromage compliance, the whole thing, compiler included, is written in
+                French. Built while working through Robert Nystrom’s
+                <a href="https://craftinginterpreters.com/" target="_blank" rel="noopener"><b>Crafting Interpreters</b></a>;
+                its tree-walking sibling <a href="https://github.com/Mejval5/LoxNet" target="_blank" rel="noopener"><b>LoxNet</b></a> is in C#.</p>
+            </div>
+            <div class="tags"><span class="tag">C</span><span class="tag">Compilers</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://github.com/Mejval5/Fromage" target="_blank" rel="noopener">View on GitHub</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://www.youtube.com/watch?v=55Q1tbq11ug" target="_blank" rel="noopener"><img src="/img/projects/attenborough.webp" alt="Thumbnail of the Skaven Attenborough video" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Skaven: Warhammer Lore with David Attenborough</h2>
+            <p class="subtitle">Fully automated AI video maker</p>
+            <div class="text">
+              <p>I tried to make a fully automated video maker using AI image, text and audio generation. Crazy stuff.
+                It can run fully autonomously on Firebase Functions, but it’s too expensive to be worth it. Repo on
+                <a href="https://github.com/Mejval5/AIVideoMaker" target="_blank" rel="noopener"><b>GitHub</b></a>.</p>
+            </div>
+            <div class="tags"><span class="tag">TypeScript</span><span class="tag">Generative AI</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://www.youtube.com/watch?v=55Q1tbq11ug" target="_blank" rel="noopener">Watch now</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://www.youtube.com/watch?v=txAb3yRDXEs" target="_blank" rel="noopener"><img src="/img/projects/hexventure.webp" alt="Screenshot of HexVenture" loading="lazy"></a>
+          <div class="card-body">
+            <h2>HexVenture</h2>
+            <p class="subtitle">Small visual demo of a hexagonal world</p>
+            <div class="text">
+              <p>I wanted to learn Unity’s HDRP pipeline, so I made a small demo of a hexagonal world, integrating
+                <a href="https://assetstore.unity.com/packages/tools/particles-effects/hdrp-time-of-day-lighting-weather-clouds-226149" target="_blank" rel="noopener"><b>HDRP Time Of Day</b></a>
+                for lighting, weather and clouds. Base models by Milan Švancara.</p>
+            </div>
+            <div class="tags"><span class="tag">Unity</span><span class="tag">HDRP</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://www.youtube.com/watch?v=txAb3yRDXEs" target="_blank" rel="noopener">Watch now</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://www.youtube.com/watch?v=c-QAQn37m5I" target="_blank" rel="noopener"><img src="/img/projects/unreal-render.webp" alt="Screenshot of the Unreal Engine fluid simulation" loading="lazy"></a>
+          <div class="card-body">
+            <h2>Unreal Render</h2>
+            <p class="subtitle">Fluid simulation in Unreal Engine</p>
+            <div class="text">
+              <p>I wanted to learn Unreal Engine, so I made a fluid simulation with the Niagara particle system and
+                built the environment from Quixel Megascans.</p>
+            </div>
+            <div class="tags"><span class="tag">Unreal Engine</span><span class="tag">Niagara</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://www.youtube.com/watch?v=c-QAQn37m5I" target="_blank" rel="noopener">Watch now</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="https://drive.google.com/drive/folders/1xdEgieYB3Xvh3qwqzv0w1NHkCzLddwAu?usp=sharing" target="_blank" rel="noopener"><img src="/img/projects/house-in-france.webp" alt="Render of the house in France" loading="lazy"></a>
+          <div class="card-body">
+            <h2>House in France</h2>
+            <p class="subtitle">Visualization for my parents</p>
+            <div class="text">
+              <p>One long weekend I made a visualization of the house my parents are building in France, using Unreal
+                Engine with Quixel Megascans and Blender. Sadly, most of the details are inside.</p>
+            </div>
+            <div class="tags"><span class="tag">Unreal Engine</span><span class="tag">Blender</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="https://drive.google.com/drive/folders/1xdEgieYB3Xvh3qwqzv0w1NHkCzLddwAu?usp=sharing" target="_blank" rel="noopener">Check out</a></div>
+        </article>
+
+        <article class="card">
+          <a class="card-img" href="/camino/"><img src="/img/projects/camino.webp" alt="On the Camino Portuguese" loading="lazy"></a>
+          <div class="card-body">
+            <h2>I walked the Camino Portuguese!</h2>
+            <p class="subtitle">By motorcycle to Portugal, on foot to Santiago</p>
+            <div class="text">
+              <p>Not software, but one of my favourite projects: a summer of riding across Europe on a BMW, then
+                walking the Camino all the way to Santiago de Compostela.</p>
+            </div>
+            <div class="tags"><span class="tag">Adventure</span><span class="tag">2021</span></div>
+          </div>
+          <div class="card-actions"><a class="btn" href="/camino/">Read the story</a></div>
+        </article>
+
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Préverenges Apartment</title>
+  <meta name="description" content="Apartment to rent near Préverenges beach.">
+  <meta property="og:title" content="Préverenges Apartment">
+  <meta property="og:description" content="Apartment to rent near Préverenges beach.">
+  <meta property="og:image" content="https://raccoon.website/img/preverenges/og.jpg">
+  <meta property="og:url" content="https://raccoon.website/preverenges/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/racc-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Nunito:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/site.js" defer></script>
+  <style>
+    .pv-page-inner {
+      max-width: var(--page-max);
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 32px var(--gutter) 32px;
+    }
+
+    .pv-layout {
+      display: flex;
+      align-items: center;
+      gap: 48px;
+      width: 100%;
+    }
+
+    .pv-text { flex: 1 1 58%; min-width: 0; }
+    .pv-carousel-wrap { flex: 1 1 42%; display: flex; justify-content: center; }
+    .pv-email-mobile { display: none; }
+
+    /* ---------- Language toggle ---------- */
+    .lang-toggle {
+      display: inline-flex;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--outline);
+      margin-bottom: 18px;
+    }
+    .lang-btn {
+      appearance: none;
+      background: transparent;
+      border: none;
+      color: var(--text-2);
+      font-family: var(--font-body);
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      padding: 7px 20px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .lang-btn + .lang-btn { border-left: 1px solid var(--outline); }
+    .lang-btn.active { background: var(--button); color: var(--text); }
+    .lang-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.06); }
+
+    /* ---------- Text card ---------- */
+    .pv-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 24px 28px 28px;
+    }
+    .pv-card h1 {
+      font-family: var(--font-head);
+      font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+    .pv-subtitle {
+      margin: 0 0 10px;
+      color: var(--text-2);
+      font-size: 1.05rem;
+      line-height: 1.45;
+    }
+    .pv-card h2 {
+      font-family: var(--font-body);
+      font-weight: 700;
+      font-size: 1.05rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-2);
+      margin: 18px 0 6px;
+    }
+    .pv-divider { border: none; border-top: 1px solid var(--divider); margin: 0 0 8px; }
+    .pv-list { list-style: none; margin: 0; padding: 0 0 4px; }
+    .pv-list li {
+      position: relative;
+      padding-left: 18px;
+      margin: 5px 0;
+      line-height: 1.45;
+      color: var(--text);
+    }
+    .pv-list li::before {
+      content: '\2022';
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--text-3);
+    }
+    .pv-list a { font-weight: 700; }
+
+    /* ---------- Carousel ---------- */
+    .carousel { width: min(100%, 60vh); margin: 0 auto; }
+    .carousel-viewport {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      max-height: 90vh;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      border-radius: var(--radius);
+      background: #0b0b0b;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .carousel-viewport::-webkit-scrollbar { display: none; }
+    .carousel-track {
+      display: flex;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .carousel-slide { flex: 0 0 100%; height: 100%; scroll-snap-align: start; }
+    .carousel-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: var(--radius);
+      display: block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .carousel-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.45);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      z-index: 2;
+      transition: background 0.15s;
+    }
+    .carousel-btn:hover { background: rgba(0, 0, 0, 0.7); }
+    .carousel-btn.prev { left: 10px; }
+    .carousel-btn.next { right: 10px; }
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 0;
+      list-style: none;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      padding: 0;
+      border-radius: 50%;
+      border: 1px solid var(--outline);
+      background: transparent;
+      cursor: pointer;
+    }
+    .dot.active { background: var(--text); border-color: var(--text); }
+
+    /* ---------- Mobile email button ---------- */
+    .btn-outline-yellow {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 14px 18px;
+      border: 1px solid var(--orange);
+      color: var(--orange);
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 4px;
+      background: transparent;
+    }
+    .btn-outline-yellow:hover { background: rgba(255, 152, 0, 0.08); text-decoration: none; }
+
+    @media (max-width: 959px) {
+      .carousel-btn { display: none; }
+      .pv-page-inner { padding: 16px var(--gutter) 40px; align-items: flex-start; min-height: 0; }
+      .pv-layout { flex-direction: column; gap: 24px; }
+      .pv-text { order: 1; width: 100%; }
+      .pv-carousel-wrap { order: 0; width: 100%; }
+      .pv-email-mobile { order: 2; display: block; width: 100%; }
+      .carousel { width: min(100%, 70vh); }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <main class="page">
+    <div class="pv-page-inner">
+      <div class="pv-layout">
+
+        <section class="pv-text">
+          <div class="lang-toggle" role="group" aria-label="Language">
+            <button type="button" class="lang-btn" data-lang="en">EN</button>
+            <button type="button" class="lang-btn" data-lang="fr">FR</button>
+          </div>
+
+          <div class="pv-card">
+            <h1 data-i18n="heading"></h1>
+            <p class="pv-subtitle">
+              <span data-i18n="sub1"></span><br>
+              <span data-i18n="sub2"></span>
+            </p>
+            <hr class="pv-divider">
+            <ul class="pv-list" id="pvFeatures"></ul>
+
+            <h2 data-i18n="conditionsTitle"></h2>
+            <hr class="pv-divider">
+            <ul class="pv-list" id="pvConditions"></ul>
+
+            <h2 data-i18n="priceTitle"></h2>
+            <hr class="pv-divider">
+            <ul class="pv-list">
+              <li data-i18n="priceLine"></li>
+            </ul>
+
+            <h2 data-i18n="contactTitle"></h2>
+            <hr class="pv-divider">
+            <ul class="pv-list">
+              <li><span id="pvContactLine"></span><a href="mailto:moberson@prodob.net">moberson@prodob.net</a>.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="pv-carousel-wrap">
+          <div class="carousel">
+            <div class="carousel-viewport" id="carouselViewport">
+              <ul class="carousel-track" id="carouselTrack">
+                <li class="carousel-slide"><img src="/img/preverenges/postel.webp" data-alt="bedroom" alt="" loading="eager"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/skrin.webp" data-alt="wardrobe" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/kuch.webp" data-alt="kitchen" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/outside.webp" data-alt="outside" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/koupel.webp" data-alt="bathroom" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/dum.webp" data-alt="house" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/kytky.webp" data-alt="flowers" alt="" loading="lazy"></li>
+                <li class="carousel-slide"><img src="/img/preverenges/zahrada.webp" data-alt="garden" alt="" loading="lazy"></li>
+              </ul>
+              <button type="button" class="carousel-btn prev" id="carouselPrev" aria-label="Previous photo">&#8249;</button>
+              <button type="button" class="carousel-btn next" id="carouselNext" aria-label="Next photo">&#8250;</button>
+            </div>
+            <ul class="carousel-dots" id="carouselDots"></ul>
+          </div>
+        </section>
+
+        <div class="pv-email-mobile">
+          <a class="btn-outline-yellow" href="mailto:moberson@prodob.net" data-i18n="emailBtn"></a>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var i18n = {
+      en: {
+        heading: 'Apartment near Préverenges beach',
+        sub1: 'Modern and bright 2.5-room apartment of 55 m²',
+        sub2: 'For rent starting January 1st, 2025',
+        features: [
+          'Beautiful and very quiet location',
+          'Furnished or unfurnished (to be agreed upon with the future tenant)',
+          'Equipped kitchen – induction stove, dishwasher, washing machine/dryer',
+          'Bathroom with bathtub and Italian-style shower',
+          'Passive house – no heating costs',
+          'Finnish sauna available',
+          'Garden with BBQ available',
+          '2 parking spaces in front of the entrance (no additional cost)',
+          'Ideal for 1, max. 2 people'
+        ],
+        conditionsTitle: 'Rental conditions',
+        conditions: [
+          '2-month deposit (4000 CHF) in a rental guarantee savings account',
+          'Swiss employment contract',
+          'RC ménage assurance',
+          'resident permit Suisse'
+        ],
+        priceTitle: 'Price',
+        priceLine: '2000 CHF/month + utilities (water and electricity - 100 CHF/month)',
+        contactTitle: 'Contact',
+        contactLine: 'Martina Oberson, tel.&nbsp;0774963846 or ',
+        emailBtn: 'Send Email',
+        alts: {
+          bedroom: 'Bedroom',
+          wardrobe: 'Wardrobe',
+          kitchen: 'Kitchen',
+          outside: 'Outside',
+          bathroom: 'Bathroom',
+          house: 'House',
+          flowers: 'Flowers',
+          garden: 'Garden'
+        },
+        prevLabel: 'Previous photo',
+        nextLabel: 'Next photo',
+        dotLabel: function (n) { return 'Go to photo ' + n }
+      },
+      fr: {
+        heading: 'Appartement proche de la plage de Préverenges',
+        sub1: 'Appartement moderne et lumineux de 2.5 pièces de 55m2',
+        sub2: 'À louer à partir du 1er janvier 2025',
+        features: [
+          'Situation unique et très calme',
+          'Meublé ou sans meubles (à convenir avec le futur locataire)',
+          'Cuisine équipée – induction, lave-vaisselle, lave-linge/séchoir',
+          'Salle de bain avec baignoire et douche italienne',
+          'Maison passive – pas de frais de chauffage',
+          'Sauna finnois à disposition',
+          'Jardin avec BBQ à disposition',
+          '2 places de parking devant la porte d’entrée (sans frais supplémentaires)',
+          'Idéal pour 1, max. 2 personnes'
+        ],
+        conditionsTitle: 'Conditions de location',
+        conditions: [
+          '2 mois garantie (4000 CHF) sur un compte d’épargne de garantie de loyer',
+          'Contrat de travail en Suisse',
+          'Permis de séjour',
+          'Assurance RC ménage'
+        ],
+        priceTitle: 'Prix',
+        priceLine: '2000 CHF/mois + charges (l’eau et l’électricité - acompte de 100 CHF/mois)',
+        contactTitle: 'Contact',
+        contactLine: 'Martina Oberson, tel.&nbsp;0774963846 ou ',
+        emailBtn: 'Envoyer un e-mail',
+        alts: {
+          bedroom: 'Chambre',
+          wardrobe: 'Armoire',
+          kitchen: 'Cuisine',
+          outside: 'Extérieur',
+          bathroom: 'Salle de bain',
+          house: 'Maison',
+          flowers: 'Fleurs',
+          garden: 'Jardin'
+        },
+        prevLabel: 'Photo précédente',
+        nextLabel: 'Photo suivante',
+        dotLabel: function (n) { return 'Aller à la photo ' + n }
+      }
+    }
+
+    var langButtons = document.querySelectorAll('.lang-btn')
+    var featuresEl = document.getElementById('pvFeatures')
+    var conditionsEl = document.getElementById('pvConditions')
+    var contactLineEl = document.getElementById('pvContactLine')
+    var prevBtn = document.getElementById('carouselPrev')
+    var nextBtn = document.getElementById('carouselNext')
+    var dotsEl = document.getElementById('carouselDots')
+    var slideImgs = document.querySelectorAll('#carouselTrack img')
+
+    function fillList (el, items) {
+      el.innerHTML = ''
+      items.forEach(function (text) {
+        var li = document.createElement('li')
+        li.textContent = text
+        el.appendChild(li)
+      })
+    }
+
+    function setText (key, value) {
+      var els = document.querySelectorAll('[data-i18n="' + key + '"]')
+      els.forEach(function (el) { el.textContent = value })
+    }
+
+    function applyLang (lang) {
+      var t = i18n[lang] || i18n.en
+
+      setText('heading', t.heading)
+      setText('sub1', t.sub1)
+      setText('sub2', t.sub2)
+      setText('conditionsTitle', t.conditionsTitle)
+      setText('priceTitle', t.priceTitle)
+      setText('priceLine', t.priceLine)
+      setText('contactTitle', t.contactTitle)
+      setText('emailBtn', t.emailBtn)
+
+      fillList(featuresEl, t.features)
+      fillList(conditionsEl, t.conditions)
+      contactLineEl.innerHTML = t.contactLine
+
+      slideImgs.forEach(function (img) {
+        var key = img.getAttribute('data-alt')
+        img.setAttribute('alt', t.alts[key] || '')
+      })
+
+      prevBtn.setAttribute('aria-label', t.prevLabel)
+      nextBtn.setAttribute('aria-label', t.nextLabel)
+      dotsEl.querySelectorAll('.dot').forEach(function (dot, i) {
+        dot.setAttribute('aria-label', t.dotLabel(i + 1))
+      })
+
+      langButtons.forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-lang') === lang)
+      })
+
+      document.documentElement.lang = lang
+    }
+
+    function updateUrl (lang) {
+      var url = location.pathname
+      if (lang === 'fr') { url += '?lang=fr' }
+      history.replaceState(null, '', url)
+    }
+
+    function setLang (lang, updateHistory) {
+      applyLang(lang)
+      if (updateHistory) { updateUrl(lang) }
+    }
+
+    langButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setLang(btn.getAttribute('data-lang'), true)
+      })
+    })
+
+    var initialLang = 'en'
+    var params = new URLSearchParams(location.search)
+    if (params.get('lang') === 'fr' || location.hash.toLowerCase() === '#fr') {
+      initialLang = 'fr'
+    }
+    setLang(initialLang, false)
+
+    // ---------- Carousel ----------
+    var viewport = document.getElementById('carouselViewport')
+    var track = document.getElementById('carouselTrack')
+    var slides = Array.prototype.slice.call(track.children)
+    var index = 0
+    var autoplayId = null
+    var autoplayStopped = false
+
+    slides.forEach(function (_, i) {
+      var dot = document.createElement('li')
+      var btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'dot'
+      btn.setAttribute('data-index', i)
+      dot.appendChild(btn)
+      dotsEl.appendChild(dot)
+    })
+    var dots = Array.prototype.slice.call(dotsEl.querySelectorAll('.dot'))
+
+    function updateDots () {
+      dots.forEach(function (dot, i) { dot.classList.toggle('active', i === index) })
+    }
+
+    function goTo (i, smooth) {
+      index = (i + slides.length) % slides.length
+      viewport.scrollTo({ left: viewport.clientWidth * index, behavior: smooth === false ? 'auto' : 'smooth' })
+      updateDots()
+    }
+
+    function stopAutoplay () {
+      if (autoplayId) {
+        clearInterval(autoplayId)
+        autoplayId = null
+      }
+      autoplayStopped = true
+    }
+
+    function startAutoplay () {
+      if (autoplayStopped) return
+      autoplayId = setInterval(function () { goTo(index + 1) }, 5000)
+    }
+
+    prevBtn.addEventListener('click', function () { stopAutoplay(); goTo(index - 1) })
+    nextBtn.addEventListener('click', function () { stopAutoplay(); goTo(index + 1) })
+    dots.forEach(function (dot, i) {
+      dot.addEventListener('click', function () { stopAutoplay(); goTo(i) })
+    })
+    ;['pointerdown', 'touchstart', 'wheel'].forEach(function (evt) {
+      viewport.addEventListener(evt, function () { stopAutoplay() }, { passive: true })
+    })
+
+    var scrollTimer = null
+    viewport.addEventListener('scroll', function () {
+      clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(function () {
+        index = Math.round(viewport.scrollLeft / viewport.clientWidth)
+        updateDots()
+      }, 100)
+    }, { passive: true })
+
+    window.addEventListener('resize', function () { goTo(index, false) })
+
+    updateDots()
+    startAutoplay()
+  })()
+  </script>
+</body>
+</html>

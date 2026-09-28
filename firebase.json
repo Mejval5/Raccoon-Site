@@ -1,15 +1,24 @@
 {
   "hosting": {
-    "public": "dist",
+    "public": "site",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
-    "rewrites": [
+    "redirects": [
+      { "source": "/blog", "destination": "/projects/", "type": 301 },
+      { "source": "/blogpost/CaminoPortugese", "destination": "/camino/", "type": 301 },
+      { "source": "/blogpost/TowerDefenseCourse", "destination": "/games/", "type": 301 },
+      { "source": "/blogpost/Octomancer:rest*", "destination": "/octomancer/", "type": 301 },
+      { "source": "/blogpost/**", "destination": "/projects/", "type": 301 },
+      { "source": "/preverenges/en", "destination": "/preverenges/", "type": 301 },
+      { "source": "/preverenges/fr", "destination": "/preverenges/?lang=fr", "type": 301 }
+    ],
+    "headers": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/img/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
       }
     ]
   }

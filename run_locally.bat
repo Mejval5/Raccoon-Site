@@ -1,2 +1,1 @@
-yarn serve
-pause
+python -m http.server 8080 --directory site
