@@ -119,7 +119,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
   .prism .colors { clip-path: none; }
 }
 
-.prism .beam { cursor: pointer; }
+.prism .beam { cursor: pointer; text-decoration: none; }
 .prism .beam .color { fill-opacity: 1; transition: fill-opacity 0.2s ease-in-out; }
 .prism .textColors:hover .color { fill-opacity: 0.5; }
 .prism .textColors .beam:hover .color,
