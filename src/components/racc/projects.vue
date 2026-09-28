@@ -161,15 +161,7 @@
           Fight other players and become the Master of Arcane Arts.
 
           A collaboration with artist Milan Švancara.
-          More information at
-          <a
-          class=&quot;
-          font-weight-bold
-          subtitle-1 linkText
-          text-decoration-none
-          &quot;
-          target=&quot;_blank&quot;
-          href=&quot;https://octomancer.com/&quot;>Octomancer.com</a>.
+          Released with Firebase multiplayer and procedural level generation.
      "
           />
         </v-col>

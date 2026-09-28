@@ -23,12 +23,18 @@
             <base-body
               class="primaryText pt-6"
               html="
-            <p>Welcome! I’m Daniel Necesal, a Lead Software Developer with 6+ years of experience specializing in Unity,
-               Python, and full-stack development. 
-               I combine technical expertise with creativity, 
-               leading projects that range from game development to medical software. 
-               My passion lies in delivering high-quality solutions that exceed 
-               expectations and meet the demands of diverse industries.
+            <p>Welcome! I’m Daniel Necesal, Head of Engineering at
+               <a class='font-weight-bold subtitle-1 linkText text-decoration-none'
+                  target='_blank'
+                  href='https://tomplay.com/'>TOMPLAY</a>,
+               where I lead the team behind a music learning platform with 2M registered users
+               on iOS, Android, Windows, macOS and web.
+               I have 7+ years in Unity, C#/.NET and C++, four of them leading engineering teams,
+               across games, real-time 3D/VR and regulated medical software.
+</p>
+            <p>I’m still hands-on, anywhere from GPU profiling to roadmap negotiation,
+               and I build AI-augmented engineering workflows: AI review on every pull request,
+               agentic coding pipelines, and tooling that lets a whole company use AI safely.
 </p>
             "
             />
@@ -54,33 +60,40 @@
               html="
   <section id='experience'>
     <div class='experience-item'>
+      <h3>Head of Engineering | TOMPLAY</h3>
+      <p>I lead a ~10-person remote team across Unity, audio, note recognition, backend and web, and report to the CEO.
+        We went from 2 feature releases a year to 6 in the first nine months of 2026, cut median open-bug age from 374 to 23 days,
+        and held 99.5% crash-free sessions through a full platform rebuild. I also own the AI-augmented engineering workflow
+        and AI adoption across the company.</p>
+    </div>
+
+    <div class='experience-item'>
       <h3>Lead Software Engineer | MINDMAZE</h3>
-      <p>Leading cross-functional teams, I’ve delivered several projects from concept to launch. I specialize in medical device development, performance optimization, and automating testing pipelines.</p>
+      <p>Engineering lead on a real-time 3D/VR rehabilitation product. I led 5 major projects from breakdown to launch,
+        delivered health software under IEC 62304 and ISO 13485, migrated the render pipeline to URP,
+        and ported the product to Android for low-end hardware.</p>
     </div>
 
     <div class='experience-item'>
       <h3>Unity Mobile Game Developer | TINYSOFT</h3>
-      <p>Increased user engagement by 50% through the development of new features and frameworks for a mobile game.</p>
+      <p>Built campaign mode and a level-sharing framework for SandBox: Sand Pixel Simulator, lifting user engagement by 50% in 3 months.</p>
     </div>
 
     <div class='experience-item'>
       <h3>Indie Development and Teaching</h3>
-      <p>As a co-founder of
-        <a class='font-weight-bold subtitle-1 linkText text-decoration-none'
-           target='_blank'
-           href='https://octomancer.com/brotagonists'>
-           BROTAGONISTS</a>,
+      <p>As a co-founder of <b>BROTAGONISTS</b>,
         I've pushed the limits of mobile game development with the release of
         <a class='font-weight-bold subtitle-1 linkText text-decoration-none'
            target='_blank'
-           href='https://octomancer.com/octomancer'>
+           href='https://raccoon5.itch.io/octomancer'>
            Octomancer - Octopus Adventure</a>.
+        I taught Python and C#/Unity game development at ICT Pro and Skillmea, and scripted for Bohemia Interactive.
       </p>
     </div>
 
     <div class='experience-item'>
-      <h3>Unity & Python Instructor</h3>
-      <p>Taught Unity and Python to aspiring developers, delivering both in-person and online courses.</p>
+      <h3>Microoptics Engineer | EPFL</h3>
+      <p>Before software, I built a holographic microscope and its controller for the nano-photonics laboratory, which ended in a published paper.</p>
     </div>
   </section>
 
@@ -111,11 +124,12 @@
               class="primaryText pt-6 pb-2"
               html="
 
-  <b>Languages:</b> C#, Python, TypeScript, PowerShell, Kotlin, HLSL, C++, JavaScript, SQL, Java
-  <br><b>Technologies:</b> Full Stack Development, VR Optimization, UI/UX, Compute Shaders, CI/CD Automation, Procedural Generation, Firebase Integration
-  <br><b>Tools:</b> Rider, Jenkins, Git, Unity, Blender, Photoshop, Azure, Atlassian Suite, Lucid, GitHub, Unreal Engine, Stable Diffusion
-  <br><b>Development Practices:</b> Agile, TDD, Scrum, Kanban, Medical Device Software Development, Regulatory Compliance
-  <br><b>Web Technologies:</b> Node.js, Vue.js, ASP.NET, Django, MongoDB, REST APIs
+  <b>Leadership:</b> Engineering Management, Technical Strategy, Hiring, Org Design, Roadmap Planning, Incident Response, Medical Software Regulatory Documentation
+  <br><b>AI Engineering:</b> Agentic Coding Pipelines, AI Code Review, Claude Code, MCP Tooling and Connectors, AI Adoption Strategy
+  <br><b>Rendering:</b> Custom Render Pipelines (VR, 2D Compositing), Compute Shaders, Draw-Call Batching and Instancing, URP/HDRP Migration, Mobile GPU Profiling
+  <br><b>Languages:</b> C#, C++, Python, TypeScript, JavaScript, PHP, SQL, HLSL
+  <br><b>Tools:</b> Unity, .NET, Burst, Jobs, UniTask, NUnit, GitLab CI, GitHub Actions, Jenkins, Firebase, Azure, Blender, Unreal Engine
+  <br><b>Web Technologies:</b> Vue.js, Node.js, FastAPI, ASP.NET, MySQL, MongoDB, REST APIs
             "
             />
           </v-col>
