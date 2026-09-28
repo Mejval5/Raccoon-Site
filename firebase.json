@@ -7,26 +7,71 @@
       "**/node_modules/**"
     ],
     "redirects": [
-      { "source": "/blog", "destination": "/projects/", "type": 301 },
-      { "source": "/blogpost/CaminoPortugese", "destination": "/camino/", "type": 301 },
-      { "source": "/blogpost/TowerDefenseCourse", "destination": "/games/", "type": 301 },
-      { "source": "/blogpost/Octomancer:rest*", "destination": "/octomancer/", "type": 301 },
-      { "source": "/blogpost/**", "destination": "/projects/", "type": 301 },
-      { "source": "/preverenges/en", "destination": "/preverenges/", "type": 301 },
-      { "source": "/preverenges/fr", "destination": "/preverenges/?lang=fr", "type": 301 }
+      {
+        "source": "/blog",
+        "destination": "/projects/",
+        "type": 301
+      },
+      {
+        "source": "/blogpost/CaminoPortugese",
+        "destination": "/camino/",
+        "type": 301
+      },
+      {
+        "source": "/blogpost/TowerDefenseCourse",
+        "destination": "/games/",
+        "type": 301
+      },
+      {
+        "source": "/blogpost/Octomancer:rest*",
+        "destination": "/octomancer/",
+        "type": 301
+      },
+      {
+        "source": "/blogpost/**",
+        "destination": "/projects/",
+        "type": 301
+      },
+      {
+        "source": "/preverenges/en",
+        "destination": "/preverenges/",
+        "type": 301
+      },
+      {
+        "source": "/preverenges/fr",
+        "destination": "/preverenges/?lang=fr",
+        "type": 301
+      }
     ],
     "headers": [
       {
         "source": "/img/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
       }
     ],
     "rewrites": [
-      { "source": "/api/rsvp", "function": { "functionId": "rsvp", "region": "europe-west1" } }
+      {
+        "source": "/api/rsvp",
+        "function": {
+          "functionId": "rsvp",
+          "region": "europe-west1"
+        }
+      }
+    ],
+    "predeploy": [
+      "node \"$PROJECT_DIR/scripts/deploy-guard.js\""
     ]
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22"
+    "runtime": "nodejs22",
+    "predeploy": [
+      "node \"$PROJECT_DIR/scripts/deploy-guard.js\""
+    ]
   }
 }
