@@ -20,7 +20,7 @@
   --font-body: 'Nunito', system-ui, sans-serif;
   --font-head: 'Josefin Sans', 'Nunito', sans-serif;
   --radius: 8px;
-  --page-max: 1400px;
+  --page-max: 1560px;
   --gutter: 16px;
 }
 
@@ -149,7 +149,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
 .page-inner {
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 24px var(--gutter) 64px 96px;
+  padding: 24px 32px 64px 96px;
 }
 
 /* Back to the prism: a tall strip on the left on desktop, a bar on phones. */
@@ -212,8 +212,7 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 400; margin: 0; }
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 345px));
-  justify-content: center;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 24px;
 }
 
