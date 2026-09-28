@@ -39,31 +39,9 @@
     }
     .octo-scene-wrap.is-ready { opacity: 1; }
 
-    /* Never smaller than a cover fit, so no edges show at any aspect ratio (all layers are 16:9).
-       No will-change on the layers: forcing 22 full-screen GPU layers broke compositing in Chromium. */
-    .octo-scene {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: max(2000px, 177.78vh);
-      aspect-ratio: 16 / 9;
-      transform: translate(-50%, -50%);
-    }
-
-    .octo-layer { position: absolute; inset: 0; }
-    .octo-layer img { display: block; width: 100%; height: 100%; }
-
-    /* The overlay layer renders slightly oversized, matching the original mainMenu.vue. */
-    .octo-layer-overlay img { width: 120%; height: 120%; margin: -10% 0 0 -10%; }
-
-    /* A huge outline hides the gap this layer's drift would otherwise expose at the scene edges. */
-    .octo-layer-mask { outline: 1000px solid rgba(8, 18, 20, 1); }
-
-    /* The original drew the scene at a fixed 2560px on desktop and 2000px on phones, so the dark
-       frame of the cave sits mostly off-screen and the opening fills the view. */
-    @media (min-width: 960px) {
-      .octo-scene { width: max(2560px, 100vw, 177.78vh); }
-    }
+    /* The cave art is drawn into one screen-sized canvas (see the script at the bottom). Animating 22
+       full-size DOM layers made Chromium run out of GPU memory, which showed as flashing. */
+    .octo-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
     /* ---------- Loading veil ---------- */
 
@@ -170,30 +148,7 @@
   </div>
 
   <div class="octo-scene-wrap" id="octoSceneWrap" aria-hidden="true">
-    <div class="octo-scene" id="octoScene">
-      <div class="octo-layer" id="bg1"><img src="/img/octomancer/menu/01.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg2"><img src="/img/octomancer/menu/02.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg3"><img src="/img/octomancer/menu/03.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg4"><img src="/img/octomancer/menu/04.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg5"><img src="/img/octomancer/menu/05.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg6"><img src="/img/octomancer/menu/06.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg7"><img src="/img/octomancer/menu/07.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg8"><img src="/img/octomancer/menu/08.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg9"><img src="/img/octomancer/menu/09.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg10"><img src="/img/octomancer/menu/10.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg11"><img src="/img/octomancer/menu/11.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg12"><img src="/img/octomancer/menu/12.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg13"><img src="/img/octomancer/menu/13.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg14"><img src="/img/octomancer/menu/14.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg15"><img src="/img/octomancer/menu/15.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg16"><img src="/img/octomancer/menu/16.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg17"><img src="/img/octomancer/menu/17.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg18"><img src="/img/octomancer/menu/18.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg19"><img src="/img/octomancer/menu/19.webp" alt="" decoding="async"></div>
-      <div class="octo-layer octo-layer-overlay" id="bg20"><img src="/img/octomancer/menu/20-overlay.webp" alt="" decoding="async"></div>
-      <div class="octo-layer octo-layer-mask" id="bg21"><img src="/img/octomancer/menu/20.webp" alt="" decoding="async"></div>
-      <div class="octo-layer" id="bg22"><img src="/img/octomancer/menu/light.webp" alt="" decoding="async"></div>
-    </div>
+    <canvas class="octo-canvas" id="octoCanvas"></canvas>
   </div>
 
   <div class="octo-menu-wrap">
@@ -206,35 +161,6 @@
   </div>
 
   <script>
-    // Fade the scene in once every layer is downloaded AND decoded, so no half-painted layers flash.
-    (function () {
-      var loading = document.getElementById('octoLoading');
-      var sceneWrap = document.getElementById('octoSceneWrap');
-      var imgs = Array.prototype.slice.call(sceneWrap.querySelectorAll('img'));
-      var done = false;
-
-      function reveal() {
-        if (done) return;
-        done = true;
-        sceneWrap.classList.add('is-ready');
-        if (loading) loading.classList.add('is-hidden');
-      }
-
-      function ready(img) {
-        if (img.decode) return img.decode().catch(function () {});
-        if (img.complete) return Promise.resolve();
-        return new Promise(function (resolve) {
-          img.addEventListener('load', resolve, { once: true });
-          img.addEventListener('error', resolve, { once: true });
-        });
-      }
-
-      Promise.all(imgs.map(ready)).then(reveal);
-
-      // Safety net: never leave the player staring at the spinner if something stalls.
-      setTimeout(reveal, 4000);
-    })();
-
     // Escape leaves the title screen, same as backing out of a game's main menu.
     (function () {
       document.addEventListener('keydown', function (event) {
@@ -244,46 +170,119 @@
       });
     })();
 
-    // Parallax: layers follow the mouse, nearer layers more (depth grows with the square of the layer
-    // index, like the original's i*i/500). Without a mouse, or after a few idle seconds, the scene sways
-    // gently on its own. Eased every frame; off for reduced motion; rAF pauses itself in hidden tabs.
+    // The cave scene: five pre-combined depth groups of Milan's art drawn into one canvas.
+    // Nearer groups follow the mouse more (depth grows with the square of the original layer index);
+    // without a mouse, or after a few idle seconds, the scene sways gently. Every input is validated,
+    // so a zero-sized window (e.g. mid fullscreen switch) or a missing pointer can't produce NaN.
     (function () {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var canvas = document.getElementById('octoCanvas');
+      var ctx = canvas.getContext('2d');
+      var sceneWrap = document.getElementById('octoSceneWrap');
+      var loading = document.getElementById('octoLoading');
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      var layers = [];
-      for (var i = 1; i <= 22; i++) layers.push({ el: document.getElementById('bg' + i), depth: Math.pow(Math.min(i, 20) / 20, 2) });
+      // Group -> representative original layer index (1..20); depth = (index / 20)^2.
+      var GROUPS = [['group-1', 4], ['group-2', 9], ['group-3', 13.5], ['group-4', 17.5], ['group-5', 20]];
+      var MAX_X = 60, MAX_Y = 35;   // px the front group moves at the screen edge
+      var IDLE_AFTER = 4000;         // ms without mouse movement before the idle sway takes over
+      var ART_RATIO = 16 / 9;
 
-      var MAX_X = 60; // px the front layer moves at the screen edge
-      var MAX_Y = 35;
-      var IDLE_AFTER = 4000; // ms without mouse movement before the idle sway takes over
-      var target = { x: 0, y: 0 };
-      var current = { x: 0, y: 0 };
-      var lastPointer = -Infinity;
+      var layers = GROUPS.map(function (g) {
+        var img = new Image();
+        img.decoding = 'async';
+        img.src = '/img/octomancer/menu/' + g[0] + '.webp';
+        return { img: img, depth: Math.pow(g[1] / 20, 2) };
+      });
 
+      var target = { x: 0, y: 0 }, current = { x: 0, y: 0 }, drawn = { x: NaN, y: NaN };
+      var lastPointer = -Infinity, needsResize = true, ready = false;
+      var view = { w: 0, h: 0, dpr: 1 };
+
+      function clamp(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
+
+      function resize() {
+        var w = window.innerWidth, h = window.innerHeight;
+        if (!(w > 0 && h > 0)) return false;           // mid fullscreen switch: try again next frame
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        view = { w: w, h: h, dpr: dpr };
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        needsResize = false;
+        drawn.x = NaN;                                  // force a redraw
+        return true;
+      }
+
+      // Same framing as the original page: 2560px wide on desktop, 2000px on phones, never smaller
+      // than the screen plus the parallax travel, so no edge ever shows.
+      function sceneSize() {
+        var base = view.w >= 960 ? 2560 : 2000;
+        var w = Math.max(base, view.w + 2 * MAX_X + 8, (view.h + 2 * MAX_Y + 8) * ART_RATIO);
+        return { w: w, h: w / ART_RATIO };
+      }
+
+      function draw() {
+        var s = sceneSize();
+        var d = view.dpr;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = 'rgb(8, 18, 20)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        for (var i = 0; i < layers.length; i++) {
+          var l = layers[i];
+          var x = (view.w - s.w) / 2 - current.x * l.depth * MAX_X;
+          var y = (view.h - s.h) / 2 - current.y * l.depth * MAX_Y;
+          ctx.drawImage(l.img, x * d, y * d, s.w * d, s.h * d);
+        }
+        drawn.x = current.x;
+        drawn.y = current.y;
+      }
+
+      window.addEventListener('resize', function () { needsResize = true; });
       window.addEventListener('pointermove', function (event) {
         if (event.pointerType !== 'mouse') return;
-        target.x = (event.clientX / window.innerWidth) * 2 - 1;
-        target.y = (event.clientY / window.innerHeight) * 2 - 1;
+        var w = window.innerWidth, h = window.innerHeight;
+        if (!(w > 0 && h > 0) || !isFinite(event.clientX) || !isFinite(event.clientY)) return;
+        target.x = clamp((event.clientX / w) * 2 - 1);
+        target.y = clamp((event.clientY / h) * 2 - 1);
         lastPointer = performance.now();
       });
 
       function frame(now) {
-        if (now - lastPointer > IDLE_AFTER) {
-          target.x = Math.sin(now * 0.00017) * 0.6;
-          target.y = Math.sin(now * 0.00023 + 1.3) * 0.6;
+        if (needsResize && !resize()) { requestAnimationFrame(frame); return; }
+        if (!reduceMotion) {
+          if (now - lastPointer > IDLE_AFTER) {
+            target.x = Math.sin(now * 0.00017) * 0.6;
+            target.y = Math.sin(now * 0.00023 + 1.3) * 0.6;
+          }
+          current.x += (target.x - current.x) * 0.06;
+          current.y += (target.y - current.y) * 0.06;
         }
-        current.x += (target.x - current.x) * 0.06;
-        current.y += (target.y - current.y) * 0.06;
-        for (var i = 0; i < layers.length; i++) {
-          var l = layers[i];
-          if (!l.el) continue;
-          var x = -current.x * l.depth * MAX_X;
-          var y = -current.y * l.depth * MAX_Y;
-          l.el.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px,0)';
-        }
+        // Only redraw when the scene actually moved (or after a resize).
+        if (!(Math.abs(current.x - drawn.x) < 0.0005 && Math.abs(current.y - drawn.y) < 0.0005)) draw();
         requestAnimationFrame(frame);
       }
-      requestAnimationFrame(frame);
+
+      function reveal() {
+        if (ready) return;
+        ready = true;
+        sceneWrap.classList.add('is-ready');
+        if (loading) loading.classList.add('is-hidden');
+      }
+
+      Promise.all(layers.map(function (l) {
+        return l.img.decode ? l.img.decode().catch(function () {}) : new Promise(function (res) {
+          l.img.onload = l.img.onerror = res;
+        });
+      })).then(start);
+
+      // Safety net: never leave the player staring at the spinner if something stalls.
+      setTimeout(start, 4000);
+
+      var started = false;
+      function start() {
+        if (started) return;
+        started = true;
+        requestAnimationFrame(function (t) { frame(t); reveal(); });
+      }
     })();
   </script>
 </body>
