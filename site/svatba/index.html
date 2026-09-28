@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="cs" data-state="checking">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>Tereza &amp; Daniel · Svatební pozvánka</title>
+  <meta property="og:title" content="Tereza &amp; Daniel · 19. 6. 2027 · Svatební pozvánka">
+  <meta property="og:description" content="Tereza &amp; Daniel · 19. 6. 2027 · Svatební pozvánka">
+  <meta property="og:url" content="https://raccoon.website/svatba/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/racc-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Josefin+Sans:wght@400;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/svatba/svatba.css">
+  <link rel="stylesheet" href="/svatba/captcha.css">
+  <script src="/svatba/svatba-i18n.js" defer></script>
+  <script src="/svatba/svatba.js" defer></script>
+  <script src="/js/site.js" defer></script>
+  <noscript><style>#locked{display:grid !important}</style></noscript>
+</head>
+<body class="svatba">
+
+  <div class="stars" aria-hidden="true"></div>
+
+  <div class="sky" aria-hidden="true">
+    <div class="sky-gradient"></div>
+    <div class="horizon-haze"></div>
+    <div class="sun-glow"></div>
+
+    <!-- shared tree shapes, reused via <use> so real silhouettes cost very few DOM nodes -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="sv-tree-a" viewBox="0 0 100 120">
+          <path d="M50,120 L50,86 M50,92 L36,74 M50,88 L64,72 M50,84 L50,70" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path>
+          <g fill="currentColor">
+            <circle cx="38" cy="58" r="22"></circle>
+            <circle cx="62" cy="56" r="24"></circle>
+            <circle cx="50" cy="40" r="22"></circle>
+            <circle cx="70" cy="68" r="16"></circle>
+            <circle cx="30" cy="70" r="15"></circle>
+          </g>
+          <g fill="#f5a55a" opacity=".7">
+            <circle cx="42" cy="48" r="2.6"></circle>
+            <circle cx="63" cy="60" r="2.2"></circle>
+            <circle cx="55" cy="36" r="2"></circle>
+          </g>
+          <g fill="#f6efe4" opacity=".3">
+            <circle cx="58" cy="34" r="1.8"></circle>
+            <circle cx="34" cy="60" r="1.6"></circle>
+          </g>
+        </symbol>
+        <symbol id="sv-tree-b" viewBox="0 0 90 110">
+          <path d="M45,110 L45,80 M45,86 L33,68 M45,82 L58,66" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"></path>
+          <g fill="currentColor">
+            <circle cx="34" cy="54" r="19"></circle>
+            <circle cx="56" cy="52" r="21"></circle>
+            <circle cx="45" cy="36" r="19"></circle>
+            <circle cx="26" cy="64" r="13"></circle>
+          </g>
+          <g fill="#f5a55a" opacity=".65">
+            <circle cx="50" cy="46" r="2.2"></circle>
+            <circle cx="36" cy="56" r="2"></circle>
+          </g>
+        </symbol>
+        <symbol id="sv-tree-c" viewBox="0 0 70 90">
+          <path d="M35,90 L35,66 M35,70 L25,56" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+          <g fill="currentColor">
+            <circle cx="27" cy="44" r="15"></circle>
+            <circle cx="44" cy="42" r="17"></circle>
+            <circle cx="35" cy="30" r="15"></circle>
+          </g>
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- far hills: hazy rose-plum (only the hill FILL stretches; trees never do) -->
+    <svg class="layer layer-far" style="--d:.15" viewBox="0 0 1200 300" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M0,140 C160,95 320,168 480,128 C640,88 780,155 940,118 C1060,92 1140,128 1200,105 L1200,300 L0,300 Z" fill="#7d5a72"></path>
+    </svg>
+
+    <!-- mid hills: darker plum -->
+    <svg class="layer layer-mid" style="--d:.35" viewBox="0 0 1200 260" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M0,150 C200,102 360,182 540,138 C700,96 840,166 1020,128 C1110,108 1160,136 1200,120 L1200,260 L0,260 Z" fill="#4c3450"></path>
+    </svg>
+
+
+    <!-- near hills: very dark -->
+    <svg class="layer layer-near" style="--d:.6" viewBox="0 0 1200 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- fades into the page ground colour before the bottom edge, so there is no seam where the hero ends -->
+        <linearGradient id="sv-near-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset=".35" stop-color="#1e1526"></stop>
+          <stop offset=".78" stop-color="#140f22"></stop>
+        </linearGradient>
+      </defs>
+      <path d="M0,124 C180,86 360,150 560,112 C760,76 900,132 1100,102 C1150,94 1180,102 1200,94 L1200,220 L0,220 Z" fill="url(#sv-near-fill)"></path>
+    </svg>
+
+    <!-- second, smaller, lighter tree row along the near hill's ridge for depth -->
+    <svg class="layer layer-near-trees" style="--d:.6; color:#2a1f38" viewBox="0 0 1600 200" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+      <use href="#sv-tree-c" x="10" y="104" width="70" height="90"></use>
+      <use href="#sv-tree-b" x="130" y="84" width="90" height="110"></use>
+      <use href="#sv-tree-c" x="270" y="108" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="370" y="74" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="520" y="106" width="70" height="90"></use>
+      <use href="#sv-tree-b" x="640" y="86" width="90" height="110"></use>
+      <use href="#sv-tree-c" x="780" y="107" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="880" y="75" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="1020" y="104" width="70" height="90"></use>
+      <use href="#sv-tree-b" x="1140" y="84" width="90" height="110"></use>
+      <use href="#sv-tree-c" x="1280" y="107" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="1400" y="74" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="1520" y="105" width="70" height="90"></use>
+    </svg>
+
+    <!-- foreground: real apricot-tree silhouettes (forked trunks, clumpy canopies, a few ripening fruit),
+         a wide viewBox cropped by preserveAspectRatio="xMidYMax slice" so phones crop the sides, never squash them -->
+    <svg class="layer layer-orchard" style="--d:1; color:#140f22" viewBox="0 0 2400 300" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="230" width="2400" height="70" fill="#140f22"></rect>
+      <use href="#sv-tree-c" x="-50" y="140" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="75" y="98" width="100" height="120"></use>
+      <use href="#sv-tree-b" x="200" y="120" width="90" height="110"></use>
+      <use href="#sv-tree-a" x="325" y="110" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="450" y="140" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="575" y="98" width="100" height="120"></use>
+      <use href="#sv-tree-b" x="700" y="120" width="90" height="110"></use>
+      <use href="#sv-tree-a" x="825" y="110" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="950" y="140" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="1075" y="98" width="100" height="120"></use>
+      <use href="#sv-tree-b" x="1200" y="120" width="90" height="110"></use>
+      <use href="#sv-tree-a" x="1325" y="110" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="1450" y="140" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="1575" y="98" width="100" height="120"></use>
+      <use href="#sv-tree-b" x="1700" y="120" width="90" height="110"></use>
+      <use href="#sv-tree-a" x="1825" y="110" width="100" height="120"></use>
+      <use href="#sv-tree-c" x="1950" y="140" width="70" height="90"></use>
+      <use href="#sv-tree-a" x="2075" y="98" width="100" height="120"></use>
+      <use href="#sv-tree-b" x="2200" y="120" width="90" height="110"></use>
+      <use href="#sv-tree-a" x="2325" y="110" width="100" height="120"></use>
+    </svg>
+  </div>
+
+  <canvas id="sky-canvas" aria-hidden="true"></canvas>
+
+  <div class="lang-toggle" role="group" aria-label="Jazyk / Language / Langue">
+    <button type="button" data-lang="cs" aria-pressed="true">CS</button>
+    <button type="button" data-lang="en" aria-pressed="false">EN</button>
+    <button type="button" data-lang="fr" aria-pressed="false">FR</button>
+  </div>
+
+  <main id="invite" class="invite">
+
+    <header id="hero" class="hero">
+      <p class="kicker" data-i18n="hero.kicker">Svatební oznámení</p>
+      <h1 class="names">
+        <span class="person"><span class="given">Tereza</span> <span class="surname">Šancová</span></span>
+        <span class="amp">&amp;</span>
+        <span class="person"><span class="given">Daniel</span> <span class="surname">Nečesal</span></span>
+      </h1>
+      <p class="family"><span data-i18n="hero.family">Nečesalovi</span></p>
+
+      <p class="hero-date" data-i18n="hero.date">19. 6. 2027</p>
+      <p class="hero-place" data-i18n-html="hero.place"><span class="place-a">Stodola v Meruňkovém sadu</span><span class="place-sep"> · </span><span class="place-b">Dolní Kounice</span></p>
+      <a class="hero-cta" href="#rsvp" data-i18n="hero.cta">Potvrdit účast</a>
+
+      <a class="scroll-cue" href="#card" data-i18n-attr="aria-label:hero.scrollAria" aria-label="Přejít na pozvánku">
+        <svg viewBox="0 0 24 14" width="24" height="14" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M2,2 L12,12 L22,2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </a>
+    </header>
+
+    <section id="card" class="paper reveal" data-tilt>
+      <svg class="card-ornament" viewBox="0 0 60 34" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="30" cy="17" r="15" fill="none" stroke="#e2b45f" stroke-width="1"></circle>
+        <circle cx="30" cy="17" r="13.3" fill="none" stroke="#e2b45f" stroke-width=".5" opacity=".55"></circle>
+        <text x="30" y="20.6" text-anchor="middle" font-family="'Cormorant Garamond', serif" font-style="italic" font-size="10.5" fill="#7a5213">T&amp;D</text>
+      </svg>
+
+      <p class="greeting" data-i18n="card.greeting">Milí naši,</p>
+      <p data-i18n="card.p1">s radostí v srdci vám oznamujeme, že jsme se rozhodli jít spolu dál – tentokrát už jako manželé. Bude nám ctí, když tento den prožijete s námi.</p>
+      <p data-i18n="card.p2">Strávíme spolu dlouhý letní den pod korunami meruňkových stromů – s dobrým jídlem, vínem a lidmi, které máme rádi. Stačí přinést dobrou náladu, o všechno ostatní se postaráme.</p>
+
+      <svg class="card-divider" viewBox="0 0 220 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="0" y1="10" x2="92" y2="10" stroke="#e2b45f" stroke-width="1"></line>
+        <line x1="128" y1="10" x2="220" y2="10" stroke="#e2b45f" stroke-width="1"></line>
+        <g fill="#e2b45f">
+          <circle cx="110" cy="10" r="2.6"></circle>
+          <circle cx="105" cy="6" r="1.7"></circle>
+          <circle cx="115" cy="6" r="1.7"></circle>
+          <circle cx="105" cy="14" r="1.7"></circle>
+          <circle cx="115" cy="14" r="1.7"></circle>
+        </g>
+      </svg>
+
+      <div class="details-grid">
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.kdy.label">Kdy</h3>
+          <!-- TODO Daniel: confirm ceremony time -->
+          <p data-i18n="card.kdy.text">sobota 19. června 2027, obřad ve 14:00</p>
+        </div>
+
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.kde.label">Kde</h3>
+          <p data-i18n="card.kde.text">Stodola v Meruňkovém sadu, Dolní Kounice, Jihomoravský kraj</p>
+          <p class="detail-links">
+            <a href="https://mapy.com/cs/?q=Stodola%20v%20Meru%C5%88kov%C3%A9m%20sadu%2C%20Doln%C3%AD%20Kounice" target="_blank" rel="noopener" data-i18n="card.kde.map1">Mapy.com</a>
+            <a href="https://www.google.com/maps/search/?api=1&query=Stodola%20v%20Meru%C5%88kov%C3%A9m%20sadu%2C%20Doln%C3%AD%20Kounice" target="_blank" rel="noopener" data-i18n="card.kde.map2">Google Maps</a>
+          </p>
+        </div>
+
+        <div class="detail detail-wide">
+          <h3 class="detail-label" data-i18n="card.program.label">Program</h3>
+          <!-- TODO Daniel: confirm programme -->
+          <ul class="timeline">
+            <li data-i18n-html="card.program.item1">14:00 &ndash; obřad</li>
+            <li data-i18n-html="card.program.item2">15:00 &ndash; přípitek a focení</li>
+            <li data-i18n-html="card.program.item3">17:00 &ndash; hostina</li>
+            <li data-i18n-html="card.program.item4">20:00 &ndash; první tanec a zábava do rána</li>
+          </ul>
+        </div>
+
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.kids.label">Děti</h3>
+          <p data-i18n="card.kids.text">Budeme rádi, když si tenhle den užijete naplno s námi a své ratolesti necháte doma v klidu vychillovat.</p>
+        </div>
+
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.dress.label">Dress code</h3>
+          <p data-i18n="card.dress.text">Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí.</p>
+        </div>
+
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.gifts.label">Dary</h3>
+          <p data-i18n="card.gifts.text">Největší radost nám uděláte příspěvkem do společné kasičky. Na místě najdete obálku i QR kód pro platbu.</p>
+        </div>
+
+        <div class="detail">
+          <h3 class="detail-label" data-i18n="card.acc.label">Ubytování</h3>
+          <p data-i18n="card.acc.text">Kdo chce, může přespat pod stanem přímo v sadu. Na konci večera zajistíme rozvoz do Brna a okolí.</p>
+        </div>
+
+        <div class="detail detail-wide detail-contact">
+          <h3 class="detail-label" data-i18n="card.contact.label">Kontakt</h3>
+          <p data-i18n="card.contact.text">S čímkoliv se na nás neváhejte obrátit:</p>
+          <p class="detail-links">
+            <a href="mailto:necesal.daniel@gmail.com">necesal.daniel@gmail.com</a>
+            <a href="mailto:terezasancova1999@gmail.com">terezasancova1999@gmail.com</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="countdown" class="countdown reveal">
+      <p class="countdown-heading" data-i18n="countdown.heading">Odpočet do svatby</p>
+      <div class="cd-grid">
+        <div class="cd-item">
+          <span id="cd-days" class="cd-num">–</span>
+          <span id="cd-days-label" class="cd-label">dní</span>
+        </div>
+        <div class="cd-item">
+          <span id="cd-hours" class="cd-num">–</span>
+          <span id="cd-hours-label" class="cd-label">hodin</span>
+        </div>
+        <div class="cd-item">
+          <span id="cd-mins" class="cd-num">–</span>
+          <span id="cd-mins-label" class="cd-label">minut</span>
+        </div>
+        <div class="cd-item">
+          <span id="cd-secs" class="cd-num">–</span>
+          <span id="cd-secs-label" class="cd-label">sekund</span>
+        </div>
+      </div>
+      <p class="cd-apricots">
+        <svg class="cd-apricot-icon" viewBox="0 0 18 18" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="cd-apricot-grad" cx="38%" cy="32%" r="70%">
+              <stop offset="0%" stop-color="#f5a55a"></stop>
+              <stop offset="100%" stop-color="#e07b39"></stop>
+            </radialGradient>
+          </defs>
+          <circle cx="9" cy="10" r="7" fill="url(#cd-apricot-grad)"></circle>
+          <path d="M9,4.2 C8,6.4 8,8.4 9,10.4" fill="none" stroke="#c96a30" stroke-width="0.8" stroke-linecap="round" opacity=".6"></path>
+          <path d="M9.6,4 C11,1.6 13.4,1.4 14.4,2.4 C13,3 11.2,3.4 9.6,4 Z" fill="#6f9b52"></path>
+        </svg>
+        <span id="cd-apricots"></span>
+      </p>
+    </section>
+
+    <section id="rsvp" class="paper reveal" data-tilt>
+      <h2 data-i18n="rsvp.title">Dejte nám vědět</h2>
+      <!-- TODO Daniel: confirm RSVP deadline -->
+      <p class="rsvp-deadline" data-i18n="rsvp.deadline">Odpovězte nám prosím do 30. 4. 2027.</p>
+
+      <form id="rsvp-form" novalidate>
+        <div class="field">
+          <label for="rsvp-name" data-i18n="rsvp.name">Jméno</label>
+          <input id="rsvp-name" name="name" type="text" autocomplete="name" maxlength="120" aria-describedby="err-name" data-i18n-attr="placeholder:rsvp.name.placeholder" placeholder="Jméno a příjmení">
+          <p id="err-name" class="field-error"></p>
+        </div>
+
+        <div class="field">
+          <label for="rsvp-email" data-i18n="rsvp.email">E-mail</label>
+          <input id="rsvp-email" name="email" type="email" autocomplete="email" maxlength="200" aria-describedby="err-email" data-i18n-attr="placeholder:rsvp.email.placeholder" placeholder="vas@email.cz">
+          <p id="err-email" class="field-error"></p>
+        </div>
+
+        <fieldset class="field">
+          <legend data-i18n="rsvp.attending">Přijdete?</legend>
+          <div class="pill-group">
+            <input type="radio" id="attending-yes" name="attending" value="yes">
+            <label class="pill" for="attending-yes" data-i18n="rsvp.yes">Přijdu</label>
+            <input type="radio" id="attending-no" name="attending" value="no">
+            <label class="pill" for="attending-no" data-i18n="rsvp.no">Bohužel nepřijdu</label>
+          </div>
+          <p id="err-attending" class="field-error"></p>
+        </fieldset>
+
+        <div class="field">
+          <label for="rsvp-party" data-i18n="rsvp.party">Kdo přijde s vámi?</label>
+          <input id="rsvp-party" name="party" type="text" maxlength="300" aria-describedby="err-party" data-i18n-attr="placeholder:rsvp.party.placeholder" placeholder="např. jméno partnera nebo partnerky">
+          <p id="err-party" class="field-error"></p>
+        </div>
+
+        <div class="field">
+          <label for="rsvp-note" data-i18n="rsvp.note">Dotazy</label>
+          <textarea id="rsvp-note" name="note" maxlength="1000" rows="4" aria-describedby="err-note" data-i18n-attr="placeholder:rsvp.note.placeholder" placeholder="Chcete se na něco zeptat? Napište nám."></textarea>
+          <p id="err-note" class="field-error"></p>
+        </div>
+
+        <div class="hp" aria-hidden="true">
+          <label for="rsvp-website">Website</label>
+          <input id="rsvp-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div id="rsvp-captcha" class="captcha-slot"></div>
+
+        <button id="rsvp-submit" type="submit">
+          <span class="btn-label" data-i18n="rsvp.submit">Odeslat odpověď</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+
+        <p id="rsvp-status" class="rsvp-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <div id="rsvp-thanks" class="rsvp-thanks" hidden>
+        <svg class="thanks-blossom" viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <g fill="#e2b45f">
+            <circle cx="20" cy="12" r="6"></circle>
+            <circle cx="30" cy="20" r="6"></circle>
+            <circle cx="20" cy="28" r="6"></circle>
+            <circle cx="10" cy="20" r="6"></circle>
+          </g>
+          <circle cx="20" cy="20" r="4.5" fill="#9b1c2c"></circle>
+        </svg>
+        <h3 id="rsvp-thanks-title" tabindex="-1"></h3>
+        <p id="rsvp-thanks-text"></p>
+      </div>
+    </section>
+
+    <footer class="svatba-foot">
+      <p class="foot-line" data-i18n="footer.text">Těšíme se na vás!</p>
+      <p class="monogram">T &amp; D</p>
+      <a class="foot-home" href="/" data-i18n="footer.home">raccoon.website</a>
+    </footer>
+  </main>
+
+  <section id="locked" class="locked">
+    <svg class="envelope" viewBox="0 0 300 200" width="220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="10" y="30" width="280" height="150" rx="6" fill="#f6efe4" stroke="#b98a3a" stroke-width="2"></rect>
+      <path d="M10,36 L150,140 L290,36" fill="none" stroke="#b98a3a" stroke-width="2"></path>
+      <path d="M10,180 L110,96" fill="none" stroke="#e4d7bf" stroke-width="1.5"></path>
+      <path d="M290,180 L190,96" fill="none" stroke="#e4d7bf" stroke-width="1.5"></path>
+      <circle cx="150" cy="120" r="26" fill="#7a1522"></circle>
+      <circle cx="150" cy="120" r="26" fill="none" stroke="#9b1c2c" stroke-width="1.5"></circle>
+      <text x="150" y="128" text-anchor="middle" font-family="'Cormorant Garamond', serif" font-style="italic" font-size="20" fill="#e2b45f">T&amp;D</text>
+    </svg>
+    <h1 id="locked-title" data-i18n="locked.title">Tato stránka je jen pro pozvané.</h1>
+    <p data-i18n="locked.text">Otevřete prosím odkaz, který jste od nás dostali.</p>
+    <a href="/" data-i18n="locked.back">Zpět na raccoon.website</a>
+  </section>
+
+</body>
+</html>
