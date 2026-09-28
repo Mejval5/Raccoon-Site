@@ -4,269 +4,311 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Octomancer | Raccoon Website</title>
-  <meta name="description" content="Octomancer (2021): an underwater arcade/platformer with Firebase multiplayer and procedural levels, built by the two-person studio Brotagonists. An archive of the released game, its screenshots, and its devlog.">
+  <meta name="description" content="The Octomancer title screen: start the archived 2021 underwater arcade/platformer, or head back to the games list.">
   <meta property="og:title" content="Octomancer">
-  <meta property="og:description" content="An underwater arcade/platformer with Firebase multiplayer and procedural levels, built by Brotagonists in 2021. Archived here now that octomancer.com is gone.">
+  <meta property="og:description" content="The Octomancer title screen: start the archived 2021 underwater arcade/platformer, or head back to the games list.">
   <meta property="og:image" content="https://raccoon.website/img/octomancer/hero.webp">
   <meta property="og:url" content="https://raccoon.website/octomancer/">
   <meta property="og:type" content="website">
   <link rel="icon" href="/racc-light.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Nunito:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Quicksand:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="/css/site.css">
-  <script src="/js/site.js" defer></script>
   <style>
-    /* A quiet nod to Octomancer's own underwater palette, kept inside the dark starfield shell. */
-    :root {
-      --octo-mist: #d1dadf;
-      --octo-fog: #c1cbd1;
-      --octo-steel: #9eb2bd;
-      --octo-deep: #486674;
+    /* Octomancer's own title screen: Milan Švancara's layered cave art, drifting, behind a two-item menu. */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: rgba(8, 18, 20, 1);
+    }
+    body {
+      height: 100dvh;
     }
 
-    .octo-hero {
-      position: relative;
-      border-radius: var(--radius);
+    /* ---------- Parallax scene ---------- */
+
+    .octo-scene-wrap {
+      position: fixed;
+      inset: 0;
       overflow: hidden;
-      margin: 8px 0 40px;
-      background: #08141a;
-      aspect-ratio: 16 / 6;
-      min-height: 240px;
-      max-height: 420px;
-      width: 100%;
+      background: rgba(8, 18, 20, 1);
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 0.8s ease;
     }
-    .octo-hero img {
+    .octo-scene-wrap.is-ready { opacity: 1; }
+
+    /* At least 150% of the viewport width like the original menu, so the cave opening fills the view,
+       and never smaller than a cover fit, so no edges show at any aspect ratio (all layers are 16:9).
+       No will-change on the layers: forcing 22 full-screen GPU layers broke compositing in Chromium. */
+    .octo-scene {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      opacity: 0.55;
+      top: 50%;
+      left: 50%;
+      width: max(150vw, 177.78vh);
+      aspect-ratio: 16 / 9;
+      transform: translate(-50%, -50%);
     }
-    .octo-hero-text {
-      position: absolute;
+
+    .octo-layer { position: absolute; inset: 0; }
+    .octo-layer img { display: block; width: 100%; height: 100%; }
+
+    /* The overlay layer renders slightly oversized, matching the original mainMenu.vue. */
+    .octo-layer-overlay img { width: 120%; height: 120%; margin: -10% 0 0 -10%; }
+
+    /* A huge outline hides the gap this layer's drift would otherwise expose at the scene edges. */
+    .octo-layer-mask { outline: 1000px solid rgba(8, 18, 20, 1); }
+
+    @media (min-width: 1264px) {
+      @media (prefers-reduced-motion: no-preference) {
+        .octo-layer {
+          transition: transform 12s ease-in-out;
+        }
+      }
+    }
+
+    /* ---------- Loading veil ---------- */
+
+    .octo-loading {
+      position: fixed;
       inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      background: rgba(8, 18, 20, 1);
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+    .octo-loading.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .octo-spinner {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 3px solid rgba(209, 218, 223, 0.25);
+      border-top-color: #d1dadf;
+      animation: octo-spin 0.9s linear infinite;
+    }
+    @keyframes octo-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .octo-spinner { animation-duration: 1.8s; }
+    }
+
+    /* ---------- Menu ---------- */
+
+    .octo-menu-wrap {
+      position: relative;
+      z-index: 1;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      text-align: center;
       padding: 24px;
-      background: linear-gradient(180deg, rgba(8,20,26,0.15) 0%, rgba(8,20,26,0.9) 85%);
     }
-    .octo-hero h1 {
-      font-size: clamp(2.2rem, 6vw, 3.5rem);
-      letter-spacing: 0.05em;
+
+    .octo-title {
+      font-family: 'Josefin Sans', var(--font-head, sans-serif);
+      letter-spacing: 0.35em;
       text-transform: uppercase;
-      color: var(--octo-mist);
-      text-shadow: 0 2px 12px rgba(0,0,0,0.6);
-    }
-    .octo-hero .subtitle {
-      margin: 6px 0 0;
-      color: var(--octo-steel);
-      font-size: 1.1rem;
-      letter-spacing: 0.03em;
+      color: #d1dadf;
+      font-size: clamp(1.1rem, 3vw, 1.6rem);
+      margin: 0 0 12px;
+      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+      opacity: 0.92;
     }
 
-    .octo-pitch { font-size: 1.1rem; color: var(--text-2); max-width: 70ch; margin: 0 0 16px; }
-
-    .octo-tags { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 4px 0 20px; }
-    .octo-tags .tag { border-color: rgba(158, 178, 189, 0.4); color: var(--octo-steel); }
-
-    .octo-features { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 12px; }
-    .octo-features li { display: flex; gap: 12px; align-items: flex-start; color: var(--text-2); }
-    .octo-features .mdi { font-size: 22px; line-height: 1.4; color: var(--octo-deep); flex-shrink: 0; }
-    .octo-features b { color: var(--text); }
-
-    .octo-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; color: var(--text-2); }
-    .octo-facts .mdi { color: var(--octo-steel); margin-right: 8px; width: 20px; text-align: center; }
-
-    .octo-gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
-      margin: 0 0 8px;
-    }
-    .octo-gallery figure { margin: 0; background: var(--card); border-radius: var(--radius); overflow: hidden; }
-    .octo-gallery img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
-    .octo-gallery figcaption { padding: 8px 10px; font-size: 0.85rem; color: var(--text-3); }
-
-    .octo-team { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 8px; }
-    .octo-dev { display: flex; gap: 16px; }
-    .octo-dev img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .octo-dev h3 { font-family: var(--font-body); font-weight: 700; font-size: 1.1rem; margin: 0 0 2px; color: var(--text); }
-    .octo-dev .role { color: var(--octo-steel); font-size: 0.9rem; margin: 0 0 8px; }
-    .octo-dev p { margin: 0; color: var(--text-2); font-size: 0.95rem; }
-
-    .octo-devlog { list-style: none; margin: 0; padding: 0; }
-    .octo-devlog li {
+    .octo-menu {
       display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 16px;
-      align-items: flex-start;
-      padding: 16px 0;
-      border-top: 1px solid var(--divider);
+      padding: 20px 44px;
     }
-    .octo-devlog li:first-child { border-top: none; }
-    .octo-devlog img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius); flex-shrink: 0; }
-    .octo-devlog .date { color: var(--octo-steel); font-size: 0.85rem; display: block; margin-bottom: 4px; }
-    .octo-devlog h3 { font-family: var(--font-body); font-weight: 700; font-size: 1rem; margin: 0 0 4px; color: var(--text); }
-    .octo-devlog p { margin: 0; color: var(--text-2); font-size: 0.95rem; }
 
-    .octo-footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--divider); color: var(--text-3); font-size: 0.9rem; }
+    .octo-menu-item {
+      font-family: 'Quicksand', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: max(min(max(3vh, 3vw), 25px), 15px);
+      color: #fff;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      transition: text-shadow 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+    .octo-menu-item:hover,
+    .octo-menu-item:focus-visible {
+      color: #d1dadf;
+      text-decoration: none;
+      text-shadow: 0 0 18px rgba(158, 178, 189, 0.85), 0 0 36px rgba(158, 178, 189, 0.5);
+      transform: scale(1.05);
+    }
+    .octo-menu-item:focus-visible {
+      outline: 2px solid #9eb2bd;
+      outline-offset: 6px;
+    }
+    .octo-menu-item:active { transform: scale(0.98); }
 
-    @media (max-width: 759px) {
-      .octo-team { grid-template-columns: 1fr; }
-      .octo-dev img { width: 72px; height: 72px; }
+    .octo-menu-item.is-disabled {
+      opacity: 0.35;
+      cursor: default;
+      pointer-events: none;
+    }
+    .octo-menu-item.is-disabled:hover,
+    .octo-menu-item.is-disabled:focus-visible {
+      color: #fff;
+      text-shadow: none;
+      transform: none;
+      outline: none;
     }
   </style>
 </head>
 <body>
-  <div class="stars" aria-hidden="true"></div>
-  <a class="back" href="/games/" aria-label="Back to games"><span class="mdi mdi-keyboard-backspace"></span></a>
 
-  <main class="page">
-    <div class="page-inner">
+  <div class="octo-loading" id="octoLoading" aria-hidden="true">
+    <div class="octo-spinner"></div>
+  </div>
 
-      <div class="octo-hero">
-        <img src="/img/octomancer/hero.webp" alt="Octomancer key art: the title over a dim underwater cave" loading="lazy">
-        <div class="octo-hero-text">
-          <h1>Octomancer</h1>
-          <p class="subtitle">Octopus Adventure &middot; 2021 &middot; the archive</p>
-        </div>
-      </div>
-
-      <p class="octo-pitch">
-        Octomancer was our fresh mix of arcade, platformer, and multiplayer: build an underwater cove, defend it from
-        waves of enemy octopuses, and merge crystals together to grow your magic. Players from all over the world
-        competed to become the most powerful Octomancer in the ocean.
-      </p>
-
-      <div class="octo-tags">
-        <span class="tag">Action</span>
-        <span class="tag">Arcade</span>
-        <span class="tag">Casual</span>
-        <span class="tag">Platformer</span>
-        <span class="tag">Multiplayer</span>
-        <span class="tag">Unity</span>
-        <span class="tag">Indie</span>
-      </div>
-
-      <div class="link-row" style="margin-bottom: 40px;">
-        <a class="btn" href="https://raccoon5.itch.io/octomancer" target="_blank" rel="noopener">Play on itch.io</a>
-      </div>
-
-      <section style="margin-bottom: 48px;">
-        <h2 class="section-title">The Game</h2>
-        <div class="two-col">
-          <div>
-            <ul class="octo-features">
-              <li><span class="mdi mdi-shield"></span><span><b>Build defenses:</b> secure your cove from enemy octopuses.</span></li>
-              <li><span class="mdi mdi-treasure-chest"></span><span><b>Upgrade your loot:</b> merge crystals to create the most valuable treasure.</span></li>
-              <li><span class="mdi mdi-diamond-stone"></span><span><b>Capture pretty crystals:</b> compete with players all around the world.</span></li>
-              <li><span class="mdi mdi-auto-fix"></span><span><b>Grow in power:</b> become a feared Octomancer in the depths of the shallow sea.</span></li>
-            </ul>
-          </div>
-          <div>
-            <ul class="octo-facts">
-              <li><span class="mdi mdi-account-group"></span>Players: multiplayer, real-time via Firebase</li>
-              <li><span class="mdi mdi-shape-outline"></span>Genre: action, arcade, casual, platformer</li>
-              <li><span class="mdi mdi-map-marker-path"></span>Procedurally generated levels and a creature bestiary</li>
-              <li><span class="mdi mdi-unity"></span>Built in Unity by a two-person studio</li>
-              <li><span class="mdi mdi-peace"></span>Published by Brotagonists, Brno, 2021</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section style="margin-bottom: 48px;">
-        <h2 class="section-title">Screenshots</h2>
-        <div class="octo-gallery">
-          <figure>
-            <img src="/img/octomancer/screenshot-cove.webp" alt="Defending the cove: octopuses, plants, and a spiky creature closing in" loading="lazy">
-            <figcaption>Defending the cove</figcaption>
-          </figure>
-          <figure>
-            <img src="/img/octomancer/screenshot-swarm.webp" alt="A swarm of colourful octopus enemies filling the cove" loading="lazy">
-            <figcaption>A swarm closing in</figcaption>
-          </figure>
-          <figure>
-            <img src="/img/octomancer/screenshot-cave.webp" alt="The Creature Cave collection screen, showing captured creatures like Spikeyboi and Crazeye" loading="lazy">
-            <figcaption>The Creature Cave</figcaption>
-          </figure>
-          <figure>
-            <img src="/img/octomancer/screenshot-leaderboard.webp" alt="The global leaderboard screen showing top players and their scores" loading="lazy">
-            <figcaption>Global leaderboards</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section style="margin-bottom: 48px;">
-        <h2 class="section-title">Brotagonists</h2>
-        <p class="muted" style="max-width: 70ch; margin: 0 0 24px;">
-          Brotagonists was the two-person indie studio Daniel and Milan founded in Brno in 2020, during the
-          quarantine. Octomancer was the game we built and published together.
-        </p>
-        <div class="octo-team">
-          <div class="octo-dev">
-            <img src="/img/octomancer/dev-daniel.webp" alt="Daniel Nečesal" loading="lazy">
-            <div>
-              <h3>Daniel Nečesal</h3>
-              <p class="role">Project director / Game programmer</p>
-              <p>
-                After finishing his Master’s degree in Physics, Daniel decided to follow his lifelong passion for game
-                making: YouTube tutorials, the Unity docs, then a few solo games. During the 2020 quarantine he
-                partnered up with his friend Milan Švancara to start Brotagonists.
-              </p>
-            </div>
-          </div>
-          <div class="octo-dev">
-            <img src="/img/octomancer/dev-milan.webp" alt="Milan Švancara" loading="lazy">
-            <div>
-              <h3>Milan Švancara</h3>
-              <p class="role">Art director / Producer</p>
-              <p>
-                Milan (aka Svancara Strings) had been creating graphical art and music for over ten years. He
-                specializes in orchestral music with a focus on storytelling, and treats art as a channel for sharing
-                his stories and emotions, hoping to inspire the same feelings in others.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2 class="section-title">Devlog</h2>
-        <ul class="octo-devlog">
-          <li>
-            <img src="/img/octomancer/devlog-beta.webp" alt="Screenshot of the Octomancer closed beta build" loading="lazy">
-            <div>
-              <span class="date">17 December 2020</span>
-              <h3>Octomancer closed beta launched</h3>
-              <p>The closed beta went out to friends who wanted to help test the game.</p>
-            </div>
-          </li>
-          <li>
-            <img src="/img/octomancer/hero.webp" alt="The Octomancer website banner" loading="lazy">
-            <div>
-              <span class="date">20 February 2021</span>
-              <h3>Octomancer website live</h3>
-              <p>The Octomancer website launched, with sign-up for the closed beta.</p>
-            </div>
-          </li>
-          <li>
-            <img src="/img/octomancer/devlog-open-beta.webp" alt="Octomancer loading screen artwork with octopuses and sea creatures" loading="lazy">
-            <div>
-              <span class="date">28 June 2021</span>
-              <h3>Octomancer open beta launched</h3>
-              <p>The open beta went live: anyone could play and help test the game.</p>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <p class="octo-footer">This page is a static archive of a game we shipped in 2021. Back to <a href="/games/">games</a>.</p>
-
+  <div class="octo-scene-wrap" id="octoSceneWrap" aria-hidden="true">
+    <div class="octo-scene" id="octoScene">
+      <div class="octo-layer" id="bg1"><img src="/img/octomancer/menu/01.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg2"><img src="/img/octomancer/menu/02.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg3"><img src="/img/octomancer/menu/03.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg4"><img src="/img/octomancer/menu/04.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg5"><img src="/img/octomancer/menu/05.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg6"><img src="/img/octomancer/menu/06.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg7"><img src="/img/octomancer/menu/07.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg8"><img src="/img/octomancer/menu/08.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg9"><img src="/img/octomancer/menu/09.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg10"><img src="/img/octomancer/menu/10.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg11"><img src="/img/octomancer/menu/11.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg12"><img src="/img/octomancer/menu/12.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg13"><img src="/img/octomancer/menu/13.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg14"><img src="/img/octomancer/menu/14.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg15"><img src="/img/octomancer/menu/15.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg16"><img src="/img/octomancer/menu/16.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg17"><img src="/img/octomancer/menu/17.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg18"><img src="/img/octomancer/menu/18.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg19"><img src="/img/octomancer/menu/19.webp" alt="" decoding="async"></div>
+      <div class="octo-layer octo-layer-overlay" id="bg20"><img src="/img/octomancer/menu/20-overlay.webp" alt="" decoding="async"></div>
+      <div class="octo-layer octo-layer-mask" id="bg21"><img src="/img/octomancer/menu/20.webp" alt="" decoding="async"></div>
+      <div class="octo-layer" id="bg22"><img src="/img/octomancer/menu/light.webp" alt="" decoding="async"></div>
     </div>
-  </main>
+  </div>
+
+  <div class="octo-menu-wrap">
+    <p class="octo-title">Octomancer</p>
+    <nav class="octo-menu" aria-label="Octomancer menu">
+      <span class="octo-menu-item is-disabled" aria-disabled="true" title="Coming soon">Start Game</span>
+      <a class="octo-menu-item" href="/octomancer/archive/">Information</a>
+      <a class="octo-menu-item" href="/">Exit</a>
+    </nav>
+  </div>
+
+  <script>
+    // Fade the scene in once every layer is downloaded AND decoded, so no half-painted layers flash.
+    (function () {
+      var loading = document.getElementById('octoLoading');
+      var sceneWrap = document.getElementById('octoSceneWrap');
+      var imgs = Array.prototype.slice.call(sceneWrap.querySelectorAll('img'));
+      var done = false;
+
+      function reveal() {
+        if (done) return;
+        done = true;
+        sceneWrap.classList.add('is-ready');
+        if (loading) loading.classList.add('is-hidden');
+      }
+
+      function ready(img) {
+        if (img.decode) return img.decode().catch(function () {});
+        if (img.complete) return Promise.resolve();
+        return new Promise(function (resolve) {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      }
+
+      Promise.all(imgs.map(ready)).then(reveal);
+
+      // Safety net: never leave the player staring at the spinner if something stalls.
+      setTimeout(reveal, 4000);
+    })();
+
+    // Escape leaves the title screen, same as backing out of a game's main menu.
+    (function () {
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          window.location.href = '/';
+        }
+      });
+    })();
+
+    // Slow dreamy drift of the cave-art layers: desktop only, paused off-screen, skipped for
+    // reduced motion. Ports mainMenu.vue's danparallax.js (Perlin noise) to a simple smoothed
+    // random walk, keeping the same per-layer formula, timing and 12s CSS transition.
+    (function () {
+      var desktopQuery = window.matchMedia('(min-width: 1264px)');
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion) return;
+
+      var layers = [];
+      for (var i = 1; i <= 22; i++) {
+        layers[i] = document.getElementById('bg' + i);
+      }
+
+      function depthFor(i) {
+        return (i >= 20 && i <= 22) ? 20 : i;
+      }
+
+      var timer = null;
+      var running = false;
+      var hidden = document.hidden;
+
+      function tick() {
+        if (!hidden && desktopQuery.matches) {
+          var angle = Math.random() * Math.PI * 2;
+          var r = (Math.random() * 2 - 1) * 300;
+          for (var i = 1; i <= 22; i++) {
+            var d = depthFor(i);
+            var x = Math.round(Math.cos(angle) * r * d * d / 500);
+            var y = Math.round(Math.sin(angle) * r * d * d / 500);
+            if (layers[i]) layers[i].style.transform = 'translate(' + x + 'px,' + y + 'px)';
+          }
+        }
+        schedule();
+      }
+
+      function schedule() {
+        var wait = (Math.random() * 6 + 3) * 1000; // 3-9s, matching the original's timing
+        timer = setTimeout(tick, wait);
+      }
+
+      function start() {
+        if (running) return;
+        running = true;
+        schedule();
+      }
+
+      function stop() {
+        running = false;
+        if (timer) clearTimeout(timer);
+        timer = null;
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        hidden = document.hidden;
+      });
+
+      desktopQuery.addEventListener('change', function (event) {
+        if (event.matches) start(); else stop();
+      });
+
+      if (desktopQuery.matches) start();
+    })();
+  </script>
 </body>
 </html>

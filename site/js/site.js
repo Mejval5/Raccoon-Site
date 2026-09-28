@@ -28,3 +28,14 @@
     requestAnimationFrame(() => requestAnimationFrame(() => colors.classList.add('shown')))
   })
 })()
+
+// Fade in page images that haven't loaded yet; cached ones stay as they are, so nothing flickers.
+;(function () {
+  document.querySelectorAll('.page img').forEach((img) => {
+    if (img.complete && img.naturalWidth) return
+    img.classList.add('fade-in')
+    const show = () => img.classList.add('loaded')
+    img.addEventListener('load', show, { once: true })
+    img.addEventListener('error', show, { once: true })
+  })
+})()

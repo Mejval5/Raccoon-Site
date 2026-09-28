@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Octomancer | Raccoon Website</title>
+  <meta name="description" content="Octomancer (2021): an underwater arcade/platformer with Firebase multiplayer and procedural levels, built by the two-person studio Brotagonists. An archive of the released game, its screenshots, and its devlog.">
+  <meta property="og:title" content="Octomancer">
+  <meta property="og:description" content="An underwater arcade/platformer with Firebase multiplayer and procedural levels, built by Brotagonists in 2021. Archived here now that octomancer.com is gone.">
+  <meta property="og:image" content="https://raccoon.website/img/octomancer/hero.webp">
+  <meta property="og:url" content="https://raccoon.website/octomancer/archive/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/racc-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Nunito:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/site.js" defer></script>
+  <style>
+    /* A quiet nod to Octomancer's own underwater palette, kept inside the dark starfield shell. */
+    :root {
+      --octo-mist: #d1dadf;
+      --octo-fog: #c1cbd1;
+      --octo-steel: #9eb2bd;
+      --octo-deep: #486674;
+    }
+
+    .octo-hero {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin: 8px 0 40px;
+      background: #08141a;
+      aspect-ratio: 16 / 6;
+      min-height: 240px;
+      max-height: 420px;
+      width: 100%;
+    }
+    .octo-hero img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.55;
+    }
+    .octo-hero-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 24px;
+      background: linear-gradient(180deg, rgba(8,20,26,0.15) 0%, rgba(8,20,26,0.9) 85%);
+    }
+    .octo-hero h1 {
+      font-size: clamp(2.2rem, 6vw, 3.5rem);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--octo-mist);
+      text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    }
+    .octo-hero .subtitle {
+      margin: 6px 0 0;
+      color: var(--octo-steel);
+      font-size: 1.1rem;
+      letter-spacing: 0.03em;
+    }
+
+    .octo-pitch { font-size: 1.1rem; color: var(--text-2); max-width: 70ch; margin: 0 0 16px; }
+
+    .octo-tags { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 4px 0 20px; }
+    .octo-tags .tag { border-color: rgba(158, 178, 189, 0.4); color: var(--octo-steel); }
+
+    .octo-features { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 12px; }
+    .octo-features li { display: flex; gap: 12px; align-items: flex-start; color: var(--text-2); }
+    .octo-features .mdi { font-size: 22px; line-height: 1.4; color: var(--octo-deep); flex-shrink: 0; }
+    .octo-features b { color: var(--text); }
+
+    .octo-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; color: var(--text-2); }
+    .octo-facts .mdi { color: var(--octo-steel); margin-right: 8px; width: 20px; text-align: center; }
+
+    .octo-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      margin: 0 0 8px;
+    }
+    .octo-gallery figure { margin: 0; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+    .octo-gallery img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
+    .octo-gallery figcaption { padding: 8px 10px; font-size: 0.85rem; color: var(--text-3); }
+
+    .octo-team { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 8px; }
+    .octo-dev { display: flex; gap: 16px; }
+    .octo-dev img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .octo-dev h3 { font-family: var(--font-body); font-weight: 700; font-size: 1.1rem; margin: 0 0 2px; color: var(--text); }
+    .octo-dev .role { color: var(--octo-steel); font-size: 0.9rem; margin: 0 0 8px; }
+    .octo-dev p { margin: 0; color: var(--text-2); font-size: 0.95rem; }
+
+    .octo-devlog { list-style: none; margin: 0; padding: 0; }
+    .octo-devlog li {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 16px 0;
+      border-top: 1px solid var(--divider);
+    }
+    .octo-devlog li:first-child { border-top: none; }
+    .octo-devlog img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius); flex-shrink: 0; }
+    .octo-devlog .date { color: var(--octo-steel); font-size: 0.85rem; display: block; margin-bottom: 4px; }
+    .octo-devlog h3 { font-family: var(--font-body); font-weight: 700; font-size: 1rem; margin: 0 0 4px; color: var(--text); }
+    .octo-devlog p { margin: 0; color: var(--text-2); font-size: 0.95rem; }
+
+    .octo-footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--divider); color: var(--text-3); font-size: 0.9rem; }
+
+    @media (max-width: 759px) {
+      .octo-team { grid-template-columns: 1fr; }
+      .octo-dev img { width: 72px; height: 72px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <a class="back" href="/octomancer/" aria-label="Back to the Octomancer menu"><span class="mdi mdi-keyboard-backspace"></span></a>
+
+  <main class="page">
+    <div class="page-inner">
+
+      <div class="octo-hero">
+        <img src="/img/octomancer/hero.webp" alt="Octomancer key art: the title over a dim underwater cave" loading="lazy">
+        <div class="octo-hero-text">
+          <h1>Octomancer</h1>
+          <p class="subtitle">Octopus Adventure &middot; 2021 &middot; the archive</p>
+        </div>
+      </div>
+
+      <p class="octo-pitch">
+        Octomancer was our fresh mix of arcade, platformer, and multiplayer: build an underwater cove, defend it from
+        waves of enemy octopuses, and merge crystals together to grow your magic. Players from all over the world
+        competed to become the most powerful Octomancer in the ocean.
+      </p>
+
+      <div class="octo-tags">
+        <span class="tag">Action</span>
+        <span class="tag">Arcade</span>
+        <span class="tag">Casual</span>
+        <span class="tag">Platformer</span>
+        <span class="tag">Multiplayer</span>
+        <span class="tag">Unity</span>
+        <span class="tag">Indie</span>
+      </div>
+
+      <div class="link-row" style="margin-bottom: 40px;">
+        <a class="btn" href="https://raccoon5.itch.io/octomancer" target="_blank" rel="noopener">Play on itch.io</a>
+      </div>
+
+      <section style="margin-bottom: 48px;">
+        <h2 class="section-title">The Game</h2>
+        <div class="two-col">
+          <div>
+            <ul class="octo-features">
+              <li><span class="mdi mdi-shield"></span><span><b>Build defenses:</b> secure your cove from enemy octopuses.</span></li>
+              <li><span class="mdi mdi-treasure-chest"></span><span><b>Upgrade your loot:</b> merge crystals to create the most valuable treasure.</span></li>
+              <li><span class="mdi mdi-diamond-stone"></span><span><b>Capture pretty crystals:</b> compete with players all around the world.</span></li>
+              <li><span class="mdi mdi-auto-fix"></span><span><b>Grow in power:</b> become a feared Octomancer in the depths of the shallow sea.</span></li>
+            </ul>
+          </div>
+          <div>
+            <ul class="octo-facts">
+              <li><span class="mdi mdi-account-group"></span>Players: multiplayer, real-time via Firebase</li>
+              <li><span class="mdi mdi-shape-outline"></span>Genre: action, arcade, casual, platformer</li>
+              <li><span class="mdi mdi-map-marker-path"></span>Procedurally generated levels and a creature bestiary</li>
+              <li><span class="mdi mdi-unity"></span>Built in Unity by a two-person studio</li>
+              <li><span class="mdi mdi-peace"></span>Published by Brotagonists, Brno, 2021</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section style="margin-bottom: 48px;">
+        <h2 class="section-title">Screenshots</h2>
+        <div class="octo-gallery">
+          <figure>
+            <img src="/img/octomancer/screenshot-cove.webp" alt="Defending the cove: octopuses, plants, and a spiky creature closing in" loading="lazy">
+            <figcaption>Defending the cove</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/octomancer/screenshot-swarm.webp" alt="A swarm of colourful octopus enemies filling the cove" loading="lazy">
+            <figcaption>A swarm closing in</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/octomancer/screenshot-cave.webp" alt="The Creature Cave collection screen, showing captured creatures like Spikeyboi and Crazeye" loading="lazy">
+            <figcaption>The Creature Cave</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/octomancer/screenshot-leaderboard.webp" alt="The global leaderboard screen showing top players and their scores" loading="lazy">
+            <figcaption>Global leaderboards</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section style="margin-bottom: 48px;">
+        <h2 class="section-title">Brotagonists</h2>
+        <p class="muted" style="max-width: 70ch; margin: 0 0 24px;">
+          Brotagonists was the two-person indie studio Daniel and Milan founded in Brno in 2020, during the
+          quarantine. Octomancer was the game we built and published together.
+        </p>
+        <div class="octo-team">
+          <div class="octo-dev">
+            <img src="/img/octomancer/dev-daniel.webp" alt="Daniel Nečesal" loading="lazy">
+            <div>
+              <h3>Daniel Nečesal</h3>
+              <p class="role">Project director / Game programmer</p>
+              <p>
+                After finishing his Master’s degree in Physics, Daniel decided to follow his lifelong passion for game
+                making: YouTube tutorials, the Unity docs, then a few solo games. During the 2020 quarantine he
+                partnered up with his friend Milan Švancara to start Brotagonists.
+              </p>
+            </div>
+          </div>
+          <div class="octo-dev">
+            <img src="/img/octomancer/dev-milan.webp" alt="Milan Švancara" loading="lazy">
+            <div>
+              <h3>Milan Švancara</h3>
+              <p class="role">Art director / Producer</p>
+              <p>
+                Milan (aka Svancara Strings) had been creating graphical art and music for over ten years. He
+                specializes in orchestral music with a focus on storytelling, and treats art as a channel for sharing
+                his stories and emotions, hoping to inspire the same feelings in others.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">Devlog</h2>
+        <ul class="octo-devlog">
+          <li>
+            <img src="/img/octomancer/devlog-beta.webp" alt="Screenshot of the Octomancer closed beta build" loading="lazy">
+            <div>
+              <span class="date">17 December 2020</span>
+              <h3>Octomancer closed beta launched</h3>
+              <p>The closed beta went out to friends who wanted to help test the game.</p>
+            </div>
+          </li>
+          <li>
+            <img src="/img/octomancer/hero.webp" alt="The Octomancer website banner" loading="lazy">
+            <div>
+              <span class="date">20 February 2021</span>
+              <h3>Octomancer website live</h3>
+              <p>The Octomancer website launched, with sign-up for the closed beta.</p>
+            </div>
+          </li>
+          <li>
+            <img src="/img/octomancer/devlog-open-beta.webp" alt="Octomancer loading screen artwork with octopuses and sea creatures" loading="lazy">
+            <div>
+              <span class="date">28 June 2021</span>
+              <h3>Octomancer open beta launched</h3>
+              <p>The open beta went live: anyone could play and help test the game.</p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <p class="octo-footer">This page is a static archive of a game we shipped in 2021. Back to <a href="/octomancer/">the menu</a>.</p>
+
+    </div>
+  </main>
+</body>
+</html>
