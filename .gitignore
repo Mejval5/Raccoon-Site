@@ -19,3 +19,5 @@ node_modules/*
 # Firebase cache
 .firebase/*
 firebase-debug.log
+# Local Claude Code team definitions (personas are private, never pushed)
+.claude/agents/
