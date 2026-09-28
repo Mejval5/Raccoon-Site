@@ -1,0 +1,65 @@
+/*
+ * ALTCHA captcha widget (https://altcha.org, npm "altcha" v3.2.3) styling.
+ *
+ * The widget (<altcha-widget>, created from JS in svatba.js once the gate is
+ * open) reads its look entirely from documented CSS custom properties (see
+ * the package README's "Configuration" section and the CSSVariables type) —
+ * we never touch its internal classes directly, only set the variables it
+ * already consults so it sits on the cream paper card like the rest of the
+ * RSVP form. Colours are pulled from the tokens defined in svatba.css
+ * (--sv-ink / --sv-gold / --sv-gold-deep / --sv-paper) via var(), with the
+ * same literal fallbacks svatba.css itself uses, so this file still renders
+ * sensibly if ever loaded on its own.
+ */
+
+.captcha-slot {
+  --altcha-color-base: var(--sv-paper, #f6efe4);
+  --altcha-color-base-content: var(--sv-ink, #2b2230);
+  --altcha-color-neutral: rgba(122, 82, 19, 0.45);
+  --altcha-color-neutral-content: var(--sv-ink, #2b2230);
+  --altcha-color-primary: var(--sv-gold-deep, #7a5213);
+  --altcha-color-primary-content: var(--sv-paper, #f6efe4);
+  /* Checkbox "checked" accent: gold. */
+  --altcha-color-success: var(--sv-gold, #e2b45f);
+  --altcha-color-success-content: #2b1706;
+  --altcha-color-error: var(--sv-error, #9b1c2c);
+  --altcha-color-error-content: var(--sv-paper, #f6efe4);
+  --altcha-border-color: rgba(122, 82, 19, 0.45);
+  --altcha-border-width: 1px;
+  --altcha-border-radius: 8px;
+  --altcha-checkbox-border-color: rgba(122, 82, 19, 0.45);
+  --altcha-input-background-color: rgba(255, 255, 255, 0.35);
+  --altcha-input-border-radius: 4px;
+  --altcha-max-width: 100%;
+  --altcha-spinner-color: var(--sv-gold-deep, #7a5213);
+
+  display: block;
+  margin: 6px 0 22px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.captcha-slot altcha-widget {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  font-family: var(--font-body, inherit);
+  font-size: 0.92rem;
+  color: var(--sv-ink, #2b2230);
+}
+
+/* The widget's own root ships with `all: revert-layer` and a max-width of
+   its own (see --altcha-max-width above) — pin box-sizing too so it can
+   never push the card wider than its container, down to very small phones. */
+.captcha-slot .altcha,
+.captcha-slot .altcha-main {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.captcha-slot .altcha *,
+.captcha-slot .altcha-popover * {
+  box-sizing: border-box;
+}
