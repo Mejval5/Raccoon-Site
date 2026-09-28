@@ -173,7 +173,7 @@ The identity is the physics swim, the breakable cave, pearls, the portal and the
 | `Fonts/Orange Juice.otf` | Personal-use licence | None → Google Fonts |
 | `Fonts/Cookie.ttf`, `NotoSansJP` | OFL | Via Google Fonts, not the files |
 | `Fonts/consola.ttf` | Microsoft | None |
-| `Sounds/Effects/*`, `Sounds/Click/*`, `Sounds/ESM_*` | **Unknown or third party.** Names show library packs (ESM, mixkit, "Bloody punches 2") and two YouTube rips ("Mario Jump…", "Mouse Click…") | None. v1 SFX are a small Web Audio synth in code plus CC0 (Kenney) credited in `CREDITS.md` |
+| `Sounds/Effects/*`, `Sounds/Click/*`, `Sounds/ESM_*` | **Unknown or third party.** Library packs and clips of unclear provenance; none can ship. | None. v1 SFX are a small Web Audio synth in code plus CC0 (Kenney) credited in `CREDITS.md` |
 | `Sounds/Mj 362 - Octopus Medles.mp3`, `Mj - 312 Q.mp3`, `Svancara Strings - Flûte de forêt.wav` | Probably own compositions *(Daniel confirms)* | Music, re-encoded to ~96 kbps mp3 |
 
 The octopus and plants are exported by baking Creature clips into sprite frames with our own Python baker. It reads the mesh, skinning and per-frame data from the JSON: Milan's data, none of Kestrel Moon's code. Fallback if the baker overruns 2 days: a static octopus sprite with code-driven squash and tentacle wobble.
