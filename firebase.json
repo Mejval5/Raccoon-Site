@@ -20,6 +20,13 @@
         "source": "/img/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
       }
+    ],
+    "rewrites": [
+      { "source": "/api/rsvp", "function": { "functionId": "rsvp", "region": "europe-west1" } }
     ]
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22"
   }
 }

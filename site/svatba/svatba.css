@@ -1,0 +1,904 @@
+/* Svatba (wedding invitation) styles: "Soumrak v meruňkovém sadu" — dusk in the apricot orchard.
+   Overrides /css/site.css where needed (background, link hover, headings). */
+
+:root {
+  --sv-night: #0b0d1a;
+  --sv-ground: #140f22;
+  --sv-plum: #3b2a4a;
+  --sv-rose: #d9707a;
+  --sv-apricot: #f5a55a;
+  --sv-gold: #e2b45f;
+  --sv-gold-deep: #7a5213;
+  --sv-paper: #f6efe4;
+  --sv-paper-2: #efe4d2;
+  --sv-ink: #2b2230;
+  --sv-ink-2: #5c4a56;
+  --sv-error: #9b1c2c;
+  --sv-wine: #5a1420;
+  --sv-wine-hover: #6d1a28;
+
+  --font-display: 'Cormorant Garamond', 'Times New Roman', serif;
+  --font-label: 'Josefin Sans', 'Nunito', sans-serif;
+  --font-body: 'Nunito', system-ui, sans-serif;
+}
+
+/* ---------- Safety net: nothing on this page may cause horizontal scroll ---------- */
+html, body { overflow-x: clip; }
+[hidden] { display: none !important; }
+
+html.svatba-lock-scroll, body.svatba { overscroll-behavior-y: none; }
+
+body.svatba {
+  background: var(--sv-ground);
+  color: var(--sv-paper);
+  font-family: var(--font-body);
+  position: relative;
+}
+
+/* :not(.detail-label) so the small Josefin detail labels (h3) aren't pulled
+   back into Cormorant by this blanket heading rule. */
+body.svatba h1, body.svatba h2, body.svatba h3:not(.detail-label), body.svatba h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
+body.svatba a { color: var(--sv-gold); text-decoration: none; }
+body.svatba a:hover { text-decoration: underline; }
+/* Links printed on cream paper need a deep, readable colour, not gold-on-cream.
+   Higher specificity (2 classes) than the plain `body.svatba a` above so it wins. */
+body.svatba .paper a {
+  color: #6a3b12;
+  text-decoration: underline;
+  text-decoration-color: rgba(226, 180, 95, 0.85);
+  text-underline-offset: 3px;
+  font-weight: 700;
+}
+body.svatba .paper a:hover { text-decoration-color: #6a3b12; }
+
+/* Default focus ring: gold, so it's visible on the night backdrop (lang
+   toggle, scroll cue, footer, locked links). Inside paper cards it switches
+   to ink, which reads better on cream. */
+body.svatba a:focus-visible,
+body.svatba button:focus-visible,
+body.svatba input:focus-visible,
+body.svatba textarea:focus-visible,
+body.svatba .pill:focus-within {
+  outline: 2px solid var(--sv-gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+#card a:focus-visible, #card button:focus-visible, #card input:focus-visible,
+#card textarea:focus-visible, #card .pill:focus-within,
+#rsvp a:focus-visible, #rsvp button:focus-visible, #rsvp input:focus-visible,
+#rsvp textarea:focus-visible, #rsvp .pill:focus-within {
+  outline-color: var(--sv-ink);
+}
+
+/* ---------- Gate states ---------- */
+/* checking (initial): backdrop + toggle visible, invite/locked both hidden so nothing flashes */
+#invite { display: none; }
+#locked { display: none; }
+html[data-state="open"] #invite { display: block; }
+html[data-state="locked"] #locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ---------- Sky / hero backdrop ---------- */
+.sky {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100svh;
+  min-height: 560px;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.sky-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 28%,
+    var(--sv-plum) 40%,
+    #5a3552 48%,
+    #a0506a 55%,
+    var(--sv-rose) 61%,
+    #eb8f6a 67%,
+    var(--sv-apricot) 73%,
+    #f8c07e 80%,
+    var(--sv-apricot) 100%
+  );
+}
+
+/* A faint hazy light band right at the horizon — gradient only, no filters. */
+.horizon-haze {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: 62%;
+  height: 16%;
+  transform: translateY(-50%);
+  background: linear-gradient(to bottom, transparent, rgba(248, 192, 126, 0.32) 45%, rgba(248, 192, 126, 0.18) 60%, transparent);
+  mix-blend-mode: screen;
+}
+
+.sun-glow {
+  position: absolute;
+  left: 50%;
+  top: 68%;
+  width: 900px;
+  height: 460px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(255, 214, 156, 0.5), rgba(245, 165, 90, 0.16) 55%, transparent 75%);
+  mix-blend-mode: screen;
+}
+
+.sky .layer {
+  position: absolute;
+  left: -40px;
+  width: calc(100% + 80px);
+  bottom: 0;
+  display: block;
+  transform: translate3d(calc(var(--px, 0) * var(--d) * -28px), calc(var(--py, 0) * var(--d) * -10px), 0);
+}
+.layer-far { height: 52%; }
+.layer-mid { height: 44%; }
+.layer-near { height: 36%; }
+/* Both tree rows use `preserveAspectRatio="xMidYMax slice"` on an 8:1 viewBox (2400x300, 1600x200).
+   `slice` covers the box, so if the box is ever wider than 8:1 (wide monitors) the crowns get cropped
+   at the top. The min-height keeps every box at least as tall as 1/8 of its own width (the layers span
+   100% + 80px), so on wide screens the trees scale up instead of losing their tops. */
+.layer-orchard { height: 25%; min-height: calc((100vw + 80px) / 8); }
+
+
+/* Second, smaller, lighter tree row peeking above the near hill's own ridge. */
+.sky .layer.layer-near-trees {
+  bottom: 24%;
+  height: 13%;
+  min-height: calc((100vw + 80px) / 8);
+}
+
+/* ---------- Drifting-petals canvas ---------- */
+#sky-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---------- Language toggle ---------- */
+/* position:absolute (not fixed) relative to body.svatba (position:relative):
+   it stays put at the top of the DOCUMENT, so it's visible throughout the
+   hero and the locked screen, then scrolls away with the rest of the page
+   instead of hovering permanently over the card/RSVP text on phones. */
+.lang-toggle {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 50;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  background: rgba(11, 13, 26, 0.55);
+  border: 1px solid rgba(226, 180, 95, 0.4);
+  border-radius: 999px;
+  padding: 4px;
+  backdrop-filter: blur(6px);
+}
+.lang-toggle button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.lang-toggle button[aria-pressed="true"] {
+  background: var(--sv-apricot);
+  color: #2b1706;
+}
+.lang-toggle button:hover:not([aria-pressed="true"]) { background: rgba(226, 180, 95, 0.2); }
+/* Visually a bit smaller on phones — the box stays >=44px per button
+   (min-width/height above, three of them now), only the type and padding
+   shrink so all three still read as compact, evenly-sized pills. */
+@media (max-width: 599px) {
+  .lang-toggle { padding: 3px; gap: 1px; }
+  .lang-toggle button { font-size: 0.68rem; padding: 3px 5px; }
+}
+
+/* ---------- Main content stacking ---------- */
+.invite { position: relative; z-index: 3; }
+
+/* ---------- Hero ---------- */
+.hero {
+  position: relative;
+  height: 100svh;
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  /* Extra bottom padding lifts the centred text block into the sky, clear of the hills and trees. */
+  padding: 24px var(--gutter, 16px) 29svh;
+  text-shadow: 0 1px 2px rgba(20, 8, 4, 0.8), 0 2px 4px rgba(20, 8, 4, 0.6), 0 4px 24px rgba(20, 8, 4, 0.55);
+}
+
+.kicker {
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  margin: 0 0 12px;
+  color: var(--sv-paper);
+}
+
+/* Two name "cards" side by side with the gold ampersand between: each given name with its current
+   surname underneath. The side columns hug the ampersand (end / start), each card centred on itself. */
+.names {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  column-gap: 0.3em;
+  margin: 0;
+  font-style: italic;
+  font-size: clamp(2.8rem, 12vw, 5.4rem);
+  line-height: 1.05;
+  max-width: 100%;
+}
+.names .person { display: flex; flex-direction: column; align-items: center; }
+.names .person:first-child { justify-self: end; }
+.names .person:last-child { justify-self: start; }
+.names .surname {
+  font-family: var(--font-label);
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  /* letter-spacing trails after the last letter; pad the front so the word stays optically centred */
+  padding-left: 0.3em;
+  font-size: clamp(0.72rem, 1.6vw, 0.95rem);
+  line-height: 1.2;
+  color: rgba(246, 239, 228, 0.8);
+  margin-top: 0.45em;
+}
+.names .amp {
+  font-style: normal;
+  color: var(--sv-gold);
+  font-size: 1.1em;
+  line-height: 0.95;
+  padding: 0 0.05em;
+}
+@media (max-width: 420px) {
+  .names { font-size: clamp(2rem, 11vw, 2.8rem); column-gap: 0.25em; }
+  .names .surname { letter-spacing: 0.22em; padding-left: 0.22em; font-size: 0.7rem; }
+}
+
+/* "—— Nečesalovi ——": the family name we become, flanked by thin gold hairlines. */
+.family {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(1.2rem, 2.8vw, 1.7rem);
+  color: var(--sv-gold);
+  margin: 6px 0 0;
+}
+.family::before, .family::after {
+  content: '';
+  width: 28px;
+  height: 1px;
+  background: var(--sv-gold);
+}
+
+.hero-date {
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 3vw, 1.8rem);
+  margin: 10px 0 0;
+  letter-spacing: 0.04em;
+}
+/* Hero button to the RSVP form, so guests who stop at the hero still see there is something to do. */
+html { scroll-behavior: smooth; }
+#rsvp { scroll-margin-top: 24px; }
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 22px;
+  padding: 11px 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ecc478, var(--sv-gold));
+  color: #22162c;
+  font-family: var(--font-label);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: none;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), 0 0 26px rgba(226, 180, 95, 0.28);
+  /* translate, not transform: the hero entrance animation keeps holding transform after it finishes */
+  transition: translate 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.hero-cta:hover { text-decoration: none; translate: 0 -2px; filter: brightness(1.06); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), 0 0 34px rgba(226, 180, 95, 0.4); }
+.hero-cta:focus-visible { outline: 2px solid var(--sv-paper); outline-offset: 3px; }
+
+.hero-place {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35em;
+  font-family: var(--font-label);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(246, 239, 228, 0.88);
+  margin: 4px 0 0;
+}
+/* The venue name can wrap mid-word ("DOLNÍ / KOUNICE"): below ~420px drop the
+   separator dot and stack the two halves on their own centred lines instead. */
+@media (max-width: 420px) {
+  .hero-place { flex-direction: column; gap: 0.15em; }
+  .hero-place .place-sep { display: none; }
+}
+
+.scroll-cue {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  margin-inline: auto;
+  width: 44px;
+  height: 44px;
+  color: var(--sv-paper);
+  display: grid;
+  place-items: center;
+}
+@keyframes sv-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(8px); }
+}
+
+/* ---------- Hero entrance (staggered, only once open) ---------- */
+html[data-state="open"] .hero > * {
+  animation: sv-hero-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+html[data-state="open"] .hero .kicker { animation-delay: 0.05s; }
+html[data-state="open"] .hero .names { animation-delay: 0.18s; }
+html[data-state="open"] .hero .family { animation-delay: 0.3s; }
+html[data-state="open"] .hero .hero-date { animation-delay: 0.4s; }
+html[data-state="open"] .hero .hero-place { animation-delay: 0.56s; }
+html[data-state="open"] .hero .hero-cta { animation-delay: 0.7s; }
+/* The scroll cue needs its OWN full animation list (entrance, then an
+   infinite bob) — relying on animation-delay alone would still inherit the
+   generic .hero > * animation-fill-mode and never run sv-bob at all. The two
+   are timed so they never overlap (bob starts once the entrance has settled),
+   so they never fight over the transform property. */
+html[data-state="open"] .hero .scroll-cue {
+  animation: sv-hero-in 0.8s 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+             sv-bob 2.4s 1.8s ease-in-out infinite;
+}
+@keyframes sv-hero-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Reveal-on-scroll (B toggles .is-visible via IntersectionObserver) ---------- */
+/* Uses the independent `translate` property (not `transform`) so it can
+   coexist with the tilt effect on .paper, which needs `transform` all to
+   itself (perspective + rotateX/rotateY). Both apply at once, no conflict. */
+html.js-reveal .reveal {
+  opacity: 0;
+  translate: 0 24px;
+  transition: opacity 0.7s ease, translate 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+html.js-reveal .reveal.is-visible {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* ---------- Paper cards ---------- */
+.paper {
+  position: relative;
+  max-width: 760px;
+  margin-block: 64px;
+  /* Guarantees >=16px side gutters at EVERY width, including the 600-800px
+     band where max-width alone would otherwise let the card touch the
+     screen edges. */
+  margin-inline: max(16px, calc((100% - 760px) / 2));
+  padding: 40px 36px;
+  background-color: var(--sv-paper);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 120px 120px;
+  color: var(--sv-ink);
+  border: 1px solid rgba(122, 82, 19, 0.7);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 5px rgba(246, 239, 228, 0.9),
+    inset 0 0 0 6px rgba(122, 82, 19, 0.45),
+    0 24px 60px rgba(5, 3, 10, 0.55);
+  transform: perspective(1400px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* Inner gold hairline (the second line of the "gold double border") plus a
+   very subtle warm vignette, so the paper reads as card stock, not a flat fill. */
+.paper::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  border: 1px solid rgba(226, 180, 95, 0.8);
+  border-radius: 3px;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(58, 38, 20, 0.07) 100%);
+}
+.paper::before {
+  /* Four small, fixed-size corner flourishes (a curling filigree + a tiny
+     blossom sprig) — NOT one image stretched to the card's full size (that
+     would blow a tiny motif up into a giant cross). */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: 44px 44px;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cpath d='M6,26 C6,14 14,6 26,6' fill='none' stroke='%23e2b45f' stroke-width='1.3'/%3E%3Cg fill='%23e2b45f'%3E%3Ccircle cx='7' cy='7' r='2'/%3E%3Ccircle cx='4' cy='12' r='1.3'/%3E%3Ccircle cx='12' cy='4' r='1.3'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cpath d='M38,26 C38,14 30,6 18,6' fill='none' stroke='%23e2b45f' stroke-width='1.3'/%3E%3Cg fill='%23e2b45f'%3E%3Ccircle cx='37' cy='7' r='2'/%3E%3Ccircle cx='40' cy='12' r='1.3'/%3E%3Ccircle cx='32' cy='4' r='1.3'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cpath d='M6,18 C6,30 14,38 26,38' fill='none' stroke='%23e2b45f' stroke-width='1.3'/%3E%3Cg fill='%23e2b45f'%3E%3Ccircle cx='7' cy='37' r='2'/%3E%3Ccircle cx='4' cy='32' r='1.3'/%3E%3Ccircle cx='12' cy='40' r='1.3'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cpath d='M38,18 C38,30 30,38 18,38' fill='none' stroke='%23e2b45f' stroke-width='1.3'/%3E%3Cg fill='%23e2b45f'%3E%3Ccircle cx='37' cy='37' r='2'/%3E%3Ccircle cx='40' cy='32' r='1.3'/%3E%3Ccircle cx='32' cy='40' r='1.3'/%3E%3C/g%3E%3C/svg%3E");
+  background-position:
+    10px 10px,
+    right 10px top 10px,
+    left 10px bottom 10px,
+    right 10px bottom 10px;
+}
+
+.paper h2 { font-size: clamp(1.6rem, 4vw, 2.1rem); font-style: italic; margin: 0 0 6px; }
+.paper p { margin: 0 0 14px; line-height: 1.6; color: var(--sv-ink); }
+.paper .greeting { font-style: italic; font-size: 1.4rem; margin-bottom: 10px; }
+
+.card-ornament { display: block; margin: 0 auto 14px; width: 84px; height: 48px; }
+.card-divider { display: block; margin: 28px auto; width: 160px; height: auto; }
+
+/* ---------- Details grid ---------- */
+.details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px 32px;
+  margin-top: 28px;
+}
+.detail-wide { grid-column: 1 / -1; }
+/* Thin gold hairlines between rows, skipping the very first row (KDY/KDE). */
+.details-grid > *:nth-child(n + 3) {
+  border-top: 1px solid rgba(226, 180, 95, 0.35);
+  padding-top: 18px;
+}
+.detail-contact .detail-links { gap: 6px 24px; }
+.detail-label {
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--sv-gold-deep);
+  margin: 0 0 8px;
+}
+.detail p { margin: 0 0 6px; }
+.detail-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.detail a { overflow-wrap: anywhere; } /* color/weight come from the higher-specificity `.paper a` rule above */
+
+.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.timeline li {
+  position: relative;
+  padding: 2px 0 14px 26px;
+  line-height: 1.5;
+}
+.timeline li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--sv-gold);
+  box-shadow: 0 0 0 2px var(--sv-paper);
+}
+.timeline li::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 15px;
+  bottom: -1px;
+  width: 1px;
+  background: rgba(122, 82, 19, 0.35);
+}
+.timeline li:last-child::after { display: none; }
+
+/* ---------- Countdown ---------- */
+.countdown {
+  max-width: 640px;
+  margin: 48px auto;
+  padding: 22px var(--gutter, 16px);
+  text-align: center;
+  border-top: 1px solid rgba(226, 180, 95, 0.45);
+  border-bottom: 1px solid rgba(226, 180, 95, 0.45);
+  position: relative;
+}
+/* Same soft dark backdrop as the footer, so the numbers read cleanly over the stars and petals. */
+.countdown::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: -12px 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.26) 60%, transparent);
+}
+.countdown > * { position: relative; z-index: 1; }
+.countdown-heading {
+  font-family: var(--font-label);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(246, 239, 228, 0.7);
+  margin: 0 0 14px;
+}
+.cd-grid { display: flex; justify-content: center; gap: 40px; }
+.cd-item { display: flex; flex-direction: column; align-items: center; }
+.cd-num {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--sv-gold);
+  line-height: 1;
+}
+.cd-label {
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-top: 6px;
+  color: rgba(246, 239, 228, 0.75);
+}
+
+/* "Neboli 6 328 meruněk, ..." — the little apricot-counting line under the grid. */
+.cd-apricots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px 0 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.05rem;
+  color: rgba(246, 239, 228, 0.75);
+}
+.cd-apricot-icon { flex: none; }
+/* A very subtle per-tick breathing on the seconds digit — CSS-only, no JS hook needed. */
+@media (prefers-reduced-motion: no-preference) {
+  #cd-secs { display: inline-block; animation: sv-cd-sec-tick 1s ease-in-out infinite; }
+}
+@keyframes sv-cd-sec-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.82; }
+}
+
+/* ---------- RSVP form ---------- */
+.rsvp-deadline { color: var(--sv-ink-2); font-style: italic; margin-bottom: 26px !important; }
+
+.field { margin-bottom: 22px; }
+/* Reset the browser's default fieldset chrome (border box, inset padding,
+   inline margin, min-width) so it looks like the rest of the form, not a
+   boxed HTML default. */
+fieldset.field {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+  min-width: 0;
+}
+.field legend {
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sv-gold-deep);
+  padding: 0;
+  margin-bottom: 10px;
+}
+.field > label {
+  display: block;
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sv-gold-deep);
+  margin-bottom: 8px;
+}
+
+.field input[type="text"],
+.field input[type="email"],
+.field textarea {
+  width: 100%;
+  font: inherit;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--sv-ink);
+  background: rgba(255, 255, 255, 0.35);
+  border: none;
+  border-bottom: 2px solid rgba(122, 82, 19, 0.45);
+  border-radius: 2px;
+  padding: 10px 8px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.field input[type="text"]:focus,
+.field input[type="email"]:focus,
+.field textarea:focus {
+  border-color: var(--sv-ink);
+  background: rgba(255, 255, 255, 0.55);
+}
+.field textarea { resize: vertical; min-height: 90px; }
+.field input::placeholder, .field textarea::placeholder { color: rgba(43, 34, 48, 0.4); }
+
+.field.has-error input,
+.field.has-error textarea { border-color: var(--sv-error); }
+.field-error {
+  min-height: 1.2em;
+  margin: 6px 0 0 !important;
+  font-size: 0.85rem;
+  color: var(--sv-error);
+  font-weight: 600;
+}
+
+/* Pill-style radio choices */
+.pill-group { display: flex; flex-wrap: wrap; gap: 10px; }
+.pill-group input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 2px solid rgba(122, 82, 19, 0.45);
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--sv-ink);
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.pill:hover { border-color: var(--sv-gold-deep); }
+.pill-group input[type="radio"]:checked + .pill {
+  background: var(--sv-gold);
+  border-color: var(--sv-gold-deep);
+  color: #2b1706;
+}
+.pill-group input[type="radio"]:focus-visible + .pill {
+  outline: 2px solid var(--sv-ink);
+  outline-offset: 2px;
+}
+
+/* ALTCHA proof-of-work widget slot: svatba.js mounts the actual widget here;
+   this file only reserves layout so the form doesn't jump when it mounts. */
+.captcha-slot { margin: 8px 0 20px; min-height: 56px; }
+
+/* Honeypot: off-screen, not display:none (so it stays a real focus/tab target for bots, not for people) */
+.hp {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+#rsvp-submit {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 32px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 999px;
+  background: var(--sv-wine);
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+#rsvp-submit:hover:not(:disabled) { background: var(--sv-wine-hover); }
+#rsvp-submit:disabled { opacity: 0.7; cursor: default; }
+
+.spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(246, 239, 228, 0.35);
+  border-top-color: var(--sv-paper);
+  animation: sv-spin 0.8s linear infinite;
+}
+#rsvp-submit.is-sending .spinner { display: inline-block; }
+
+@keyframes sv-spin { to { transform: rotate(360deg); } }
+
+.rsvp-status {
+  min-height: 1.4em;
+  margin: 16px 0 0;
+  font-weight: 600;
+}
+.rsvp-status.is-error {
+  color: var(--sv-error);
+  background: rgba(155, 28, 44, 0.08);
+  border: 1px solid rgba(155, 28, 44, 0.35);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.rsvp-status.is-error a { color: var(--sv-error); text-decoration: underline; font-weight: 700; }
+
+.rsvp-thanks { text-align: center; padding: 12px 0; }
+.rsvp-thanks h3 { font-style: italic; font-size: 1.7rem; margin: 12px 0 8px; }
+.rsvp-thanks h3:focus { outline: none; }
+.thanks-blossom { display: block; margin: 0 auto; }
+
+/* ---------- Footer ---------- */
+/* .invite (position:relative + explicit z-index:3, above) is a stacking
+   context, so the footer — and everything in it, including the ::before
+   below — already paints above #sky-canvas (z-index:2) regardless of the
+   footer's own internal layering. */
+.svatba-foot {
+  position: relative;
+  text-align: center;
+  padding: 56px var(--gutter, 16px) 72px;
+  color: rgba(246, 239, 228, 0.85);
+}
+/* Soft dark backdrop so the text stays readable over the stars/petals behind
+   it. No hard edge: a wide, low ellipse fading all the way to transparent. */
+.svatba-foot::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  /* Compact box around the text; closest-side makes the ellipse reach zero exactly at the box edges,
+     so there is never a visible cut line. */
+  top: 12px;
+  bottom: 24px;
+  left: 50%;
+  width: min(460px, 100%);
+  translate: -50% 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.3) 55%, transparent);
+}
+/* Lifted into their own stacking position (z-index:auto still, but now
+   positioned) so they paint after — on top of — the ::before backdrop above,
+   per DOM order. */
+.svatba-foot > * { position: relative; z-index: 1; }
+.foot-line { font-style: italic; font-size: 1.2rem; margin: 0 0 4px; }
+.monogram { font-size: 1.4rem; letter-spacing: 0.1em; color: var(--sv-gold); margin: 0 0 14px; }
+.foot-home { font-family: var(--font-label); font-size: 0.85rem; letter-spacing: 0.04em; }
+
+/* ---------- Locked screen ---------- */
+.locked {
+  position: relative;
+  z-index: 3;
+  min-height: 100svh;
+  /* Same lift as the hero: keep the envelope and text in the sky, above the hills. */
+  padding: 24px var(--gutter, 16px) 26svh;
+  gap: 14px;
+  text-shadow: 0 1px 2px rgba(20, 8, 4, 0.8), 0 2px 4px rgba(20, 8, 4, 0.6), 0 4px 24px rgba(20, 8, 4, 0.55);
+}
+.locked .envelope { max-width: 100%; height: auto; margin-bottom: 8px; }
+.locked h1 { font-size: clamp(1.5rem, 4.5vw, 2.1rem); font-style: italic; max-width: 26ch; }
+.locked p { max-width: 40ch; color: rgba(246, 239, 228, 0.88); }
+#locked a {
+  font-weight: 700;
+  color: var(--sv-paper);
+  text-decoration: underline;
+  text-decoration-color: var(--sv-gold);
+  text-underline-offset: 4px;
+  display: inline-block;
+  padding: 10px 4px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 700px) {
+  .details-grid { grid-template-columns: 1fr; }
+  /* margin-block only — margin-inline keeps the max(16px, ...) gutter rule
+     from the base .paper declaration, so cards never touch the edges. */
+  .paper { padding: 30px 20px; margin-block: 40px; border-radius: 4px; }
+  .cd-grid { gap: 20px; }
+}
+
+@media (max-width: 400px) {
+  /* Four columns (days/hours/mins/secs) need tighter numbers to fit at 360px
+     without overflow or wrapping. */
+  .cd-grid { gap: 8px; }
+  .cd-num { font-size: clamp(1.5rem, 6.6vw, 2.1rem); }
+  .cd-label { font-size: 0.6rem; letter-spacing: 0.08em; margin-top: 4px; }
+  .cd-apricots { font-size: 0.9rem; gap: 5px; }
+  .pill { padding: 10px 14px; font-size: 0.85rem; }
+}
+
+/* Phones / tablets: guard hero side padding (paper gutters come from the base rule) */
+@media (max-width: 599px) {
+  .hero {
+    padding-left: 16px;
+    padding-right: 16px;
+    /* The surnames + family lines add height below the names; claw some of
+       it back so the whole block still clears the treeline on short phones. */
+    padding-bottom: 30svh;
+    padding-top: 72px;
+    justify-content: safe center;
+  }
+  .kicker { margin-bottom: 10px; }
+  .family { margin-top: 5px; font-size: clamp(1.1rem, 4.4vw, 1.4rem); }
+  .hero-date { margin: 3px 0; }
+  .hero-place { margin-top: 4px; }
+  .cd-grid { flex-wrap: wrap; }
+}
+
+/* Shortest phones (e.g. 360x640, 375x667): every bit of vertical room counts.
+   Bigger bottom padding is what actually buys clearance here — the hero's
+   centred flex content sits higher on screen the more room is reserved below
+   it, so this is larger than the ≥600px-tall phone value above, not smaller. */
+@media (max-width: 599px) and (max-height: 700px) {
+  /* Short phones: slightly smaller names, and reserve the language toggle's height at the top. */
+  .hero { padding-bottom: 30svh; padding-top: 64px; justify-content: safe center; }
+  .names { font-size: clamp(1.9rem, 10vw, 2.4rem); }
+  .kicker { margin-bottom: 6px; font-size: 0.7rem; }
+  .family { margin-top: 3px; font-size: clamp(1rem, 4vw, 1.2rem); }
+  .hero-date { margin: 2px 0; font-size: clamp(1.2rem, 3vw, 1.6rem); }
+  .hero-place { margin-top: 3px; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html[data-state="open"] .hero > * { animation: none; opacity: 1; transform: none; }
+  /* Same selector/specificity as the scroll-cue's own animation rule above,
+     but declared later, so it wins while this media query is active. */
+  html[data-state="open"] .hero .scroll-cue { animation: none; }
+  html.js-reveal .reveal { transition: none; opacity: 1; translate: none; }
+  .paper { transition: none; }
+  .spinner { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
