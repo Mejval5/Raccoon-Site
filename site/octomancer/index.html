@@ -39,14 +39,13 @@
     }
     .octo-scene-wrap.is-ready { opacity: 1; }
 
-    /* At least 150% of the viewport width like the original menu, so the cave opening fills the view,
-       and never smaller than a cover fit, so no edges show at any aspect ratio (all layers are 16:9).
+    /* Never smaller than a cover fit, so no edges show at any aspect ratio (all layers are 16:9).
        No will-change on the layers: forcing 22 full-screen GPU layers broke compositing in Chromium. */
     .octo-scene {
       position: absolute;
       top: 50%;
       left: 50%;
-      width: max(150vw, 177.78vh);
+      width: max(2000px, 177.78vh);
       aspect-ratio: 16 / 9;
       transform: translate(-50%, -50%);
     }
@@ -60,12 +59,10 @@
     /* A huge outline hides the gap this layer's drift would otherwise expose at the scene edges. */
     .octo-layer-mask { outline: 1000px solid rgba(8, 18, 20, 1); }
 
-    @media (min-width: 1264px) {
-      @media (prefers-reduced-motion: no-preference) {
-        .octo-layer {
-          transition: transform 12s ease-in-out;
-        }
-      }
+    /* The original drew the scene at a fixed 2560px on desktop and 2000px on phones, so the dark
+       frame of the cave sits mostly off-screen and the opening fills the view. */
+    @media (min-width: 960px) {
+      .octo-scene { width: max(2560px, 100vw, 177.78vh); }
     }
 
     /* ---------- Loading veil ---------- */
@@ -247,67 +244,46 @@
       });
     })();
 
-    // Slow dreamy drift of the cave-art layers: desktop only, paused off-screen, skipped for
-    // reduced motion. Ports mainMenu.vue's danparallax.js (Perlin noise) to a simple smoothed
-    // random walk, keeping the same per-layer formula, timing and 12s CSS transition.
+    // Parallax: layers follow the mouse, nearer layers more (depth grows with the square of the layer
+    // index, like the original's i*i/500). Without a mouse, or after a few idle seconds, the scene sways
+    // gently on its own. Eased every frame; off for reduced motion; rAF pauses itself in hidden tabs.
     (function () {
-      var desktopQuery = window.matchMedia('(min-width: 1264px)');
-      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (reduceMotion) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
       var layers = [];
-      for (var i = 1; i <= 22; i++) {
-        layers[i] = document.getElementById('bg' + i);
-      }
+      for (var i = 1; i <= 22; i++) layers.push({ el: document.getElementById('bg' + i), depth: Math.pow(Math.min(i, 20) / 20, 2) });
 
-      function depthFor(i) {
-        return (i >= 20 && i <= 22) ? 20 : i;
-      }
+      var MAX_X = 60; // px the front layer moves at the screen edge
+      var MAX_Y = 35;
+      var IDLE_AFTER = 4000; // ms without mouse movement before the idle sway takes over
+      var target = { x: 0, y: 0 };
+      var current = { x: 0, y: 0 };
+      var lastPointer = -Infinity;
 
-      var timer = null;
-      var running = false;
-      var hidden = document.hidden;
+      window.addEventListener('pointermove', function (event) {
+        if (event.pointerType !== 'mouse') return;
+        target.x = (event.clientX / window.innerWidth) * 2 - 1;
+        target.y = (event.clientY / window.innerHeight) * 2 - 1;
+        lastPointer = performance.now();
+      });
 
-      function tick() {
-        if (!hidden && desktopQuery.matches) {
-          var angle = Math.random() * Math.PI * 2;
-          var r = (Math.random() * 2 - 1) * 300;
-          for (var i = 1; i <= 22; i++) {
-            var d = depthFor(i);
-            var x = Math.round(Math.cos(angle) * r * d * d / 500);
-            var y = Math.round(Math.sin(angle) * r * d * d / 500);
-            if (layers[i]) layers[i].style.transform = 'translate(' + x + 'px,' + y + 'px)';
-          }
+      function frame(now) {
+        if (now - lastPointer > IDLE_AFTER) {
+          target.x = Math.sin(now * 0.00017) * 0.6;
+          target.y = Math.sin(now * 0.00023 + 1.3) * 0.6;
         }
-        schedule();
+        current.x += (target.x - current.x) * 0.06;
+        current.y += (target.y - current.y) * 0.06;
+        for (var i = 0; i < layers.length; i++) {
+          var l = layers[i];
+          if (!l.el) continue;
+          var x = -current.x * l.depth * MAX_X;
+          var y = -current.y * l.depth * MAX_Y;
+          l.el.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px,0)';
+        }
+        requestAnimationFrame(frame);
       }
-
-      function schedule() {
-        var wait = (Math.random() * 6 + 3) * 1000; // 3-9s, matching the original's timing
-        timer = setTimeout(tick, wait);
-      }
-
-      function start() {
-        if (running) return;
-        running = true;
-        schedule();
-      }
-
-      function stop() {
-        running = false;
-        if (timer) clearTimeout(timer);
-        timer = null;
-      }
-
-      document.addEventListener('visibilitychange', function () {
-        hidden = document.hidden;
-      });
-
-      desktopQuery.addEventListener('change', function (event) {
-        if (event.matches) start(); else stop();
-      });
-
-      if (desktopQuery.matches) start();
+      requestAnimationFrame(frame);
     })();
   </script>
 </body>
