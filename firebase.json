@@ -53,6 +53,15 @@
             "value": "public, max-age=604800"
           }
         ]
+      },
+      {
+        "source": "/svatba/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
