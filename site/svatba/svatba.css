@@ -902,3 +902,12 @@ fieldset.field {
   .spinner { animation: none; }
   * { scroll-behavior: auto !important; }
 }
+
+/* Wide but short desktop windows (e.g. 1750x760, ultrawide 2560x900): the tree rows grow with the
+   window width, so the hero text plus the RSVP button would reach the crowns. Size the names by height
+   instead and lift the block a little. */
+@media (min-width: 900px) and (max-height: 820px), (min-width: 900px) and (min-aspect-ratio: 2/1) {
+  .hero { padding-bottom: 33svh; }
+  .names { font-size: clamp(2.8rem, 9svh, 5.4rem); }
+  .hero-cta { margin-top: 14px; }
+}
