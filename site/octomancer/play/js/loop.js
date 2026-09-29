@@ -92,9 +92,10 @@ export function createLoop(step, render) {
     };
   }
 
-  document.addEventListener('visibilitychange', () => setPaused(document.hidden));
-  window.addEventListener('blur', () => setPaused(true));
-  window.addEventListener('focus', () => { if (!document.hidden) setPaused(false); });
+  // Hidden-tab/blur pausing is driven from main.js (M4-1), which also owns
+  // manual (Esc/button) pause and needs the two combined without one
+  // silently overriding the other (e.g. a focus event must not resume a
+  // manually-paused game). See main.js's `applyPaused()`.
 
-  return { start, stop, setPaused, manualStep, metrics, get stepCount() { return stepCount; }, get drawCount() { return drawCount; } };
+  return { start, stop, setPaused, manualStep, metrics, get paused() { return paused; }, get stepCount() { return stepCount; }, get drawCount() { return drawCount; } };
 }

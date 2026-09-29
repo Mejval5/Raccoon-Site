@@ -81,3 +81,117 @@ body {
 .octo-btn.is-active {
   background: rgba(255,255,255,0.32);
 }
+
+/* --- HUD bar (hearts + score/depth/bombs/pearls), M4-1 --- */
+.octo-hud-bar {
+  position: absolute;
+  left: calc(12px + var(--safe-l));
+  top: calc(10px + var(--safe-t));
+  right: calc(64px + var(--safe-r));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 600 13px 'Quicksand', sans-serif;
+  color: #baffea;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+}
+.octo-hud-hearts {
+  display: flex;
+  gap: 4px;
+}
+.octo-heart {
+  width: 20px;
+  height: auto;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.6));
+}
+.octo-hud-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.octo-hud-stat { white-space: nowrap; }
+.octo-hud-score { color: #fff; font-weight: 700; }
+.octo-hud-best { opacity: .8; }
+
+.octo-pause-btn {
+  position: absolute;
+  right: calc(12px + var(--safe-r));
+  top: calc(8px + var(--safe-t));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.octo-pause-btn:active { background: rgba(255,255,255,0.32); }
+
+/* --- Overlays: pause + game over --- */
+.octo-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 12, 18, 0.72);
+  z-index: 5;
+  padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
+}
+.octo-overlay-panel {
+  background: rgba(10, 28, 42, 0.92);
+  border: 1px solid rgba(186, 255, 234, 0.25);
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: min(90vw, 360px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  font-family: 'Quicksand', sans-serif;
+  color: #eafffa;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.octo-overlay-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.octo-overlay-hint {
+  font-size: 13px;
+  opacity: .75;
+}
+.octo-overlay-score {
+  font-size: 18px;
+  font-weight: 600;
+}
+.octo-overlay-best {
+  font-size: 14px;
+  opacity: .8;
+  margin-bottom: 6px;
+}
+.octo-btn-wide {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: none;
+  background: #3fd6a8;
+  color: #04231a;
+  font: 700 15px 'Quicksand', sans-serif;
+  cursor: pointer;
+}
+.octo-btn-wide:active { background: #2fb890; }
+.octo-btn-wide.octo-btn-ghost {
+  background: transparent;
+  border: 2px solid rgba(255,255,255,0.35);
+  color: #eafffa;
+}
+.octo-btn-wide.octo-btn-ghost:active { background: rgba(255,255,255,0.12); }
+.octo-credit {
+  font-size: 11px;
+  opacity: .6;
+  margin-top: 4px;
+}

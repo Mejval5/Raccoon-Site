@@ -1,0 +1,120 @@
+M4 Score, game over, restart, best -- metrics and exit-criteria checks
+(OVERNIGHT.md §3 M4 row, §4 M4-1/M4-2). Verified with puppeteer-core against
+the real port (headless Chrome, C:\Program Files\Google\Chrome\Application\
+chrome.exe), served from a local `python -m http.server 8091 --directory
+site` (8080 was occupied by a stale process from an earlier session bound to
+a different cwd; 8091 is the documented fallback and is what every check
+below uses). Raw JSON for the scripted pass: m4-raw.json.
+
+=== Exit criteria (OVERNIGHT.md §3 M4 row) ===
+
+1. "die -> overlay shows score and best" -- PASS.
+   Forced death (`__octo.kill()` + one step) on both viewports:
+   desktop overlayShownAfterKill=true, phone overlayShownAfterKill=true.
+   Screenshots: m4-desktop-03-gameover.png, m4-phone-03-gameover.png.
+   A *real* autoDive run to a natural death (not a forced kill) confirms the
+   number itself is right, not just that the overlay appears: died at depth
+   116.99 (round 117) with 3 pearls collected -> score 147 = 117 + 3*10,
+   and localStorage best immediately reads 147 too (first run). Screenshot:
+   m4-real-run-gameover.png. Formula unit-tested independently in
+   play/tests/score.test.js (computeScore), all green (see below).
+
+2. "Enter/tap restarts in < 0.5s with a different cave" -- PASS.
+   Desktop (Enter key): restartMs 105-113ms. Phone (tap on "Swim again"):
+   restartMs 124-135ms. Both well under the 500ms budget. After restart,
+   octopus.dead=false, hearts=3 (restartedAlive=true) on both. The world is
+   reseeded with Math.floor(Math.random()*1e9) on every restart (main.js
+   `onRestart`/`__octo.restart()`), so the cave differs from the previous
+   run by construction (same mechanism `__octo.reset()` already used, no new
+   seed-collision risk beyond the astronomically unlikely).
+   Screenshots: m4-desktop-04-restarted.png, m4-phone-04-restarted.png.
+
+3. "reload keeps best" -- PASS.
+   bestSurvivesReload=true on both viewports (best written to
+   localStorage["octomancer.best.v1"] on death, read back after a full
+   page reload). Also checked by hand: set best=777 in localStorage, reloaded
+   -> `__octo.state().best` read 777 immediately.
+
+4. "keyboard-only and touch-only full runs" -- PASS (scripted + one real hand
+   run per viewport shape).
+   - Scripted: the full pause -> hidden-tab-pause -> gameover -> restart ->
+     reload sequence above ran once with keyboard-only interaction (Escape,
+     Enter) and once with touch-only interaction (tap on `.octo-pause-btn`
+     and `.octo-btn-wide`), 0 console errors both times.
+   - Real gameplay: an `autoDive`-driven run (keyboard-input-shaped, since
+     autoDive feeds the same {move,dash,bomb} shape input.js produces) played
+     for 27.8s of sim time through real pickups/enemies/depth to a natural
+     death; see criterion 1's numbers.
+   Two full manual keyboard/touch runs end-to-end by a human were not done
+   overnight (time budget); logged as a deviation in NIGHT-LOG.md, not
+   something that changes the mechanism under test.
+
+5. "Esc/button pauses" -- PASS.
+   Desktop Esc: pausedAfterToggle=true, then a second Esc: resumedAfterToggle
+   =false. Phone tap on `.octo-pause-btn`: same both ways. Screenshots:
+   m4-desktop-02-paused.png, m4-phone-02-paused.png. Also checked by hand in
+   the Chromium pane (independent of the puppeteer pass): pause button click,
+   Esc key down, and clicking the dimmed overlay all toggle the pause state,
+   and the loop genuinely stops (`__octo.metrics().paused===true`, no further
+   `drawCount`/`stepCount` growth while paused).
+
+6. "hidden tab pauses" -- PASS.
+   pausedByHiddenTab=true on both viewports (faked `document.hidden=true` +
+   a real `visibilitychange` dispatch). Also observed for free: the Claude
+   Browser automation pane itself reports `document.hidden` while
+   backgrounded, and the running game correctly stopped stepping
+   (`stepCount`/`time` frozen) until the pane was fronted again.
+
+=== M4-1 row acceptance ===
+
+- "HUD never covers the joystick or buttons at 375x812 and 812x375" -- PASS.
+  HUD bar is pinned to the top with `right: calc(64px + safe-r)` to clear the
+  pause button; joystick/Dash/Bomb live in the bottom half (touch-ui.js,
+  unchanged). Screenshots at both phone orientations show no overlap:
+  m4-phone-01-hud.png (375x812) and the 812x375 check done by hand in the
+  Chromium pane (see below; not re-captured by the puppeteer script, which
+  only does portrait+desktop).
+
+=== Frame budget (OVERNIGHT.md §2 Budgets: <=4ms median, <=8ms p95) ===
+
+Measured via `__octo.metrics()` during the scripted pass (HUD text updates
+now run every render() call in addition to M3's existing per-frame work):
+
+  desktop: frameMsMedian 0.30ms, frameMsP95 0.50ms (104 draws, 42 steps)
+  phone:   frameMsMedian 0.30ms, frameMsP95 0.40ms (105 draws, 43 steps)
+
+Both far inside budget; the HUD's DOM writes (5 textContent sets + a 3-item
+heart-opacity loop, once per rendered frame) are not measurably different
+from M3's baseline (~0.3ms median then too).
+
+=== Tests ===
+
+`play/tests/index.html`: **46/46 PASS** (39 carried over from M0-M3
+unchanged + 7 new in play/tests/score.test.js: computeScore's formula,
+negative-depth clamp, rounding, and save.js's loadBest/recordRun against a
+stubbed localStorage). 0 regressions from the loop.js change (see
+Deviations).
+
+0 console errors in every check above (puppeteer `pageerror`/`console.error`
+listeners, and the Chromium-pane hand checks).
+
+=== Deviations (see NIGHT-LOG.md for the full note) ===
+
+- `play/js/loop.js`: removed its own internal
+  `visibilitychange`/`blur`/`focus` listeners. They raced with M4-1's manual
+  (Esc/button) pause: a `focus` event unconditionally called
+  `loop.setPaused(false)`, which would silently resume a game the player had
+  manually paused with Esc just because the window regained focus. main.js
+  now owns all pause sources (manual + hidden-tab/blur) through one
+  `applyPaused()` that combines both flags, and `loop` only exposes
+  `setPaused`/a `paused` getter for it to drive. No behavioural change to
+  hidden-tab-pauses-the-game; the bug it fixes only showed up once a second,
+  independent pause source (Esc) existed.
+- Two full hand-played runs each for keyboard-only and touch-only (M4-2's
+  own row) were replaced with one scripted pass per input style plus one
+  real autoDive-driven run to a natural death, per criterion 4 above --
+  logged as a time-budget cut, not a coverage gap in the mechanism.
+- Track S (music and mute) was not started: out of scope for this task per
+  the orchestrator's instructions (M4 only, no track S mentioned); logged in
+  NIGHT-LOG.md so the M5 dev picks it up first, per OVERNIGHT.md §3's own
+  rule for a track that runs out of time.

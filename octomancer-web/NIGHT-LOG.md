@@ -488,3 +488,78 @@ M0-3 output.
 **Status:** M3 exit criteria all met and numbered above. Next: M4 (score,
 game-over overlay listening for the new `gameover` event, restart, best,
 pause) + track S (music/mute).
+
+## M4 Score, game over, restart, best (single M4 dev; track S out of scope for this task)
+
+Built `score.js` (`computeScore(depth, pickupTotals, kills)` = the exact
+OVERNIGHT.md M4-1 formula: round(depth) + 1/plankton + 10/pearl + 50/shell +
+25/kill, clamped to >=0), `save.js` (`localStorage["octomancer.best.v1"]`,
+every access in try/catch with an in-memory fallback singleton, per
+OVERNIGHT.md §2 "Saves"), and `ui.js` (HUD bar: hearts from `assets/
+ui-heart.webp`, bombs, pearls, depth, score, best; a pause button; a pause
+overlay and a game-over overlay, both with the "Art & music: Milan Švancara"
+credit line, all plain HTML/CSS children of `#hud` per the existing
+pointer-events convention).
+
+Wired into `main.js`: `onRestart`/`onExit`/`onTogglePause` handlers; a
+`runKills` counter fed by `enemies.js`'s existing `enemyKilled` events; the
+live score recomputed every render() frame and shown in the HUD; on death
+(`octo.deathTimer` reaching 0), `recordRun(score)` updates best, shows the
+game-over overlay, and fires a `gameover` CustomEvent (kept from M3, now
+carrying `{time, score, best}` for track S's future audio hookup); Enter/Z/
+Shift (the existing dash keys) or a tap on "Swim again" restarts with a new
+random seed while the overlay is up; Esc (a dedicated `keydown` listener,
+not routed through the per-step input snapshot -- see Deviations) and the
+pause button both toggle a `manualPaused` flag; hidden-tab/blur set a
+separate `autoPaused` flag; both combine in one `applyPaused()` so a window
+`focus` event can never silently override a pause the player asked for.
+`pause`/`resume` CustomEvents fire on every transition, for track S later.
+Added `HEAD max hearts` from `config.js` to the HUD instead of hardcoding 3.
+Extended `__octo` with `pause(on)`, `kill()` (force a death for scripted
+checks) and `restart()`, plus `score`/`best`/`paused`/`gameOverShown` in
+`state()`. Added the Quicksand Google Fonts link to `play/index.html` (the
+HUD/overlays' font-family already named it, M0 never loaded it).
+
+**Verified** (`play/tests/index.html`, 46/46 PASS: 39 carried over unchanged
++ 7 new in `play/tests/score.test.js` for `computeScore` and
+`save.js`'s `loadBest`/`recordRun` against a stubbed `localStorage`) and a
+puppeteer-core pass (headless Chrome, `C:\Program Files\Google\Chrome\
+Application\chrome.exe`) against the real port at both 1440x900 and
+375x812, served from `python -m http.server 8091 --directory site` (8080
+was occupied by a stale process bound to a different cwd -- 8091 is the
+documented fallback): every M4 exit criterion has a number in
+`web/report/m4-metrics.txt` -- game-over overlay shows on death (forced and
+natural), restart in 105-135ms with a different cave, best survives a full
+page reload, Esc/pause-button and hidden-tab both pause (and the button
+toggle correctly resumes too, on both viewports), 0 console errors anywhere,
+frame budget 0.30ms median / 0.40-0.50ms p95 (well inside <=4ms/<=8ms). A
+real `autoDive` run through actual gameplay (pickups, enemies, depth) to a
+natural death cross-checked the score formula end-to-end: depth 116.99 (round
+117) + 3 pearls -> score 147, matching `localStorage`'s new best exactly.
+Screenshots: `web/report/m4-{desktop,phone}-0{1-4}-*.png`,
+`web/report/m4-real-run-gameover.png`.
+
+**Deviations** (full detail in `m4-metrics.txt`): `loop.js` lost its own
+internal `visibilitychange`/`blur`/`focus` listeners -- they raced with
+M4-1's manual pause (a `focus` event would silently resume a game the player
+had paused with Esc); `main.js` now owns all pause sources through one
+`applyPaused()`. Esc's pause toggle is a dedicated `window.keydown` listener
+rather than routed through `input.js`'s per-step snapshot, because the fixed
+loop stops calling `step()` at all once paused, so a snapshot-driven
+"unpause" check inside `step()` would never run again -- discovered by
+testing the actual toggle-twice case, not by inspection.
+
+**Skipped:** track S (music and mute) -- out of scope for this task per the
+orchestrator's instructions (M4 only was requested, no track S); per
+OVERNIGHT.md §3's own rule for a side track that doesn't run this session,
+it becomes the first item for the M5 dev. Two full hand-played runs each for
+keyboard-only and touch-only (M4-2's own acceptance row) were replaced with
+one scripted keyboard-shaped pass, one scripted touch-shaped pass, and one
+real `autoDive`-driven run to a natural death (time budget; the mechanism
+under test -- pause/restart/best/HUD -- is exercised identically either way,
+only the "a human typed the arrow keys for two full minutes" part is cut).
+
+**Status:** M4 exit criteria all met and numbered in `m4-metrics.txt`. Track
+S (music/mute) is the first task for whoever picks up M5. Next: M5 (title
+hook) or, if this session's scope stays M4-only, hand back for the next
+milestone dev.

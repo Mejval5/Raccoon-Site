@@ -1,0 +1,80 @@
+{
+  "desktop": {
+    "errors": [],
+    "hudState": {
+      "hearts": 3,
+      "bombs": 3,
+      "score": 0,
+      "best": 0
+    },
+    "pausedAfterToggle": true,
+    "resumedAfterToggle": false,
+    "pausedByHiddenTab": true,
+    "overlayShownAfterKill": true,
+    "scoreAtGameOver": 0,
+    "bestAtGameOver": 0,
+    "restartedAlive": true,
+    "restartMs": 113,
+    "bestSurvivesReload": true,
+    "assetReqCount": 63,
+    "metrics": {
+      "stepCount": 42,
+      "drawCount": 104,
+      "frameMsMedian": 0.2999999523162842,
+      "frameMsP95": 0.5,
+      "samples": 104,
+      "paused": false,
+      "running": true,
+      "simTime": 0.8400000000000004,
+      "octoSpeed": 0.03960419966649652,
+      "residentChunks": 3,
+      "depth": 0.02139990016675153,
+      "pickups": {
+        "pearls": 0,
+        "plankton": 0,
+        "shells": 0
+      },
+      "octoBaked": true,
+      "enemyCount": 5
+    }
+  },
+  "phone": {
+    "errors": [],
+    "hudState": {
+      "hearts": 3,
+      "bombs": 3,
+      "score": 0,
+      "best": 0
+    },
+    "pausedAfterToggle": true,
+    "resumedAfterToggle": false,
+    "pausedByHiddenTab": true,
+    "overlayShownAfterKill": true,
+    "scoreAtGameOver": 0,
+    "bestAtGameOver": 0,
+    "restartedAlive": true,
+    "restartMs": 135,
+    "bestSurvivesReload": true,
+    "assetReqCount": 63,
+    "metrics": {
+      "stepCount": 43,
+      "drawCount": 105,
+      "frameMsMedian": 0.2999999523162842,
+      "frameMsP95": 0.40000009536743164,
+      "samples": 105,
+      "paused": false,
+      "running": true,
+      "simTime": 0.8600000000000004,
+      "octoSpeed": 0.039967499679323566,
+      "residentChunks": 3,
+      "depth": 0.022199250160337858,
+      "pickups": {
+        "pearls": 0,
+        "plankton": 0,
+        "shells": 0
+      },
+      "octoBaked": true,
+      "enemyCount": 5
+    }
+  }
+}

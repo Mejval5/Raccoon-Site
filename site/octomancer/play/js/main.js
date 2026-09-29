@@ -6,7 +6,7 @@ import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
 import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
-import { createOctopus, stepOctopus } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
@@ -15,6 +15,10 @@ import { isBaked } from './octopus-draw.js';
 import { createEnemies } from './enemies.js';
 import { createBombs } from './bomb.js';
 import { createParticles } from './particles.js';
+import { createUI } from './ui.js';
+import { computeScore } from './score.js';
+import { loadBest, recordRun } from './save.js';
+import { HEART_MAX } from './config.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -56,16 +60,59 @@ let enemies = createEnemies();
 let bombs = createBombs();
 let particles = createParticles();
 let autoDiveOn = false;
+let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
 
 const sim = {
   time: 0,
   lastInput: { move: { x: 0, y: 0 }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } },
 };
 
-hudEl.innerHTML = '<div id="hud-placeholder" style="position:absolute;left:calc(12px + var(--safe-l));top:calc(8px + var(--safe-t));color:#baffea;font:600 13px \'Quicksand\',sans-serif;text-shadow:0 1px 3px rgba(0,0,0,.7);">Octomancer &mdash; seed <span id="hud-seed"></span> &mdash; depth <span id="hud-depth">0</span>m</div>';
-const hudSeedEl = document.getElementById('hud-seed');
-const hudDepthEl = document.getElementById('hud-depth');
-hudSeedEl.textContent = String(seed);
+// --- M4-1: score, game over, restart, best, pause ---
+let bestScore = loadBest().best;
+let liveScore = 0;
+
+const ui = createUI(hudEl, {
+  onRestart() {
+    ui.hideGameOver();
+    resetWorld(Math.floor(Math.random() * 1e9));
+    manualPaused = false;
+    applyPaused();
+  },
+  onExit() {
+    location.href = '/octomancer/';
+  },
+  onTogglePause() {
+    if (octo.dead) return; // no pausing over the game-over overlay
+    manualPaused = !manualPaused;
+    applyPaused();
+  },
+});
+
+// Manual (Esc/button) and automatic (hidden tab/blur) pause are tracked
+// separately and combined, so a window focus event can never silently
+// override a pause the player asked for.
+let manualPaused = false;
+let autoPaused = false;
+function applyPaused() {
+  const wasPaused = loop.paused;
+  const isPaused = manualPaused || autoPaused;
+  if (isPaused === wasPaused) { if (isPaused) ui.showPause(); else ui.hidePause(); return; }
+  loop.setPaused(isPaused);
+  if (isPaused) { ui.showPause(); window.dispatchEvent(new CustomEvent('pause')); }
+  else { ui.hidePause(); window.dispatchEvent(new CustomEvent('resume')); }
+}
+document.addEventListener('visibilitychange', () => { autoPaused = document.hidden; applyPaused(); });
+window.addEventListener('blur', () => { autoPaused = true; applyPaused(); });
+window.addEventListener('focus', () => { if (!document.hidden) { autoPaused = false; applyPaused(); } });
+
+// Esc toggles pause directly (not routed through step()'s input snapshot:
+// the fixed-step loop stops calling step() at all while paused, so a
+// pause-driven "unpause" check inside step() would never run again).
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || octo.dead) return;
+  manualPaused = !manualPaused;
+  applyPaused();
+});
 
 const autoDive = { path: [], recalc: 0 };
 
@@ -94,6 +141,17 @@ function step(dt) {
     snap = { move: { x: dx, y: dy }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } };
   }
   sim.lastInput = snap;
+
+  // Game-over overlay is up: Enter/Z/Shift (the dash keys) or a tap on
+  // "Swim again" restarts; Esc/pause button do nothing there (handled by
+  // onTogglePause's own `octo.dead` guard).
+  if (octo.dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
+    if (snap.dash.pressed) {
+      ui.hideGameOver();
+      resetWorld(Math.floor(Math.random() * 1e9));
+    }
+    return;
+  }
   stepOctopus(octo, snap, dt, world);
   world.update(octo.y);
   const resident = world.residentChunks();
@@ -102,14 +160,20 @@ function step(dt) {
   enemies.update(dt, sim.time, octo, world, resident);
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) if (ev.type === 'exploded') particles.bombDebris(ev.x, ev.y);
-  for (const ev of enemies.events) if (ev.type === 'enemyKilled') particles.deathPoof(ev.x, ev.y);
+  for (const ev of enemies.events) if (ev.type === 'enemyKilled') { particles.deathPoof(ev.x, ev.y); runKills++; }
   particles.update(dt);
   if (snap.bomb.pressed) bombs.place(octo, octo.x, octo.y);
+
+  const depth = Math.max(0, world.depth() - world.startY);
+  liveScore = computeScore(depth, pickups.totals, runKills);
+
   if (octo.dead && !octo.gameoverEmitted && octo.deathTimer === 0) {
     octo.gameoverEmitted = true;
-    window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time } }));
+    const rec = recordRun(liveScore);
+    bestScore = rec.best;
+    ui.showGameOver(liveScore, bestScore);
+    window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
-  if (hudDepthEl) hudDepthEl.textContent = String(Math.max(0, Math.round(world.depth() - world.startY)));
 }
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -157,16 +221,22 @@ function planDiveBFS(world, x, y) {
 function render(alpha, frameMs) {
   const w = canvas.width, h = canvas.height;
   const resident = world.residentChunks();
+  const depth = Math.max(0, world.depth() - world.startY);
   renderer.render(w, h, octo, alpha, sim.time, {
     resident,
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),
-    depth: Math.max(0, world.depth() - world.startY),
+    depth,
     enemies: enemies.all(),
     shots: enemies.shots(),
     bombs: bombs.list(),
     particles: particles.pool,
     shakeOffset: particles.shakeOffset(),
+  });
+  ui.updateHud({
+    hearts: octo.hearts, heartMax: HEART_MAX,
+    bombs: octo.bombs, pearls: pickups.totals.pearls,
+    depth: Math.round(depth), score: liveScore, best: bestScore,
   });
   debug.tick();
 }
@@ -187,7 +257,9 @@ function resetWorld(newSeed) {
   bombs = createBombs();
   particles = createParticles();
   sim.time = 0;
-  if (hudSeedEl) hudSeedEl.textContent = String(seed);
+  runKills = 0;
+  liveScore = 0;
+  ui.hideGameOver();
 }
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
@@ -205,6 +277,10 @@ window.__octo = {
       pickups: { ...pickups.totals },
       enemyCount: enemies.count(),
       beholder: enemies.beholder() ? { x: enemies.beholder().x, y: enemies.beholder().y } : null,
+      score: liveScore,
+      best: bestScore,
+      paused: loop.paused,
+      gameOverShown: ui.isGameOverShown(),
     };
   },
   step(n) {
@@ -240,5 +316,26 @@ window.__octo = {
   autoDive(on) {
     autoDiveOn = !!on;
     return { autoDive: autoDiveOn, implemented: true };
+  },
+  // --- M4-1: manual test hooks for score/pause/restart, not in the
+  // OVERNIGHT.md §2 mandatory list but handy for the same kind of scripted
+  // verification (kept minimal, alongside `state()`'s paused/score fields).
+  pause(on) {
+    manualPaused = on == null ? !manualPaused : !!on;
+    applyPaused();
+    return loop.paused;
+  },
+  kill() {
+    // Force game over, for scripted checks of the overlay/restart without
+    // waiting on an enemy or the Beholder.
+    killOctopus(octo);
+    octo.deathTimer = 0; // skip the 1s ink-burst wait for the test
+    return true;
+  },
+  restart() {
+    resetWorld(Math.floor(Math.random() * 1e9));
+    manualPaused = false;
+    applyPaused();
+    return seed;
   },
 };
