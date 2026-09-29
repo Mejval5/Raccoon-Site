@@ -129,7 +129,14 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
       const wallSide = chunk.tiles[y * chunkW + (x - 1)] !== 0 || chunk.tiles[y * chunkW + (x + 1)] !== 0;
       const h = hash2(chunkIndex * 92821 + x, y * 131 + chunkIndex);
       if (floorCap || ceilingCap || wallSide) {
-        if (h % 11 !== 0) continue; // ~1 eligible wall cell in 11
+        // Round-12 "fill the cave" pass, density bump (Daniel: "still very
+        // empty" comparing against the promo video stills): 1-in-11 read as
+        // sparse scattered dots even with this file's own bubble/rune/bush
+        // layer added on top; 1-in-7 roughly matches the video's density of
+        // wall marks/growth without carpeting every cell (still gated by
+        // every corner/thin-wall/rim-crossing skip below, so a busier hash
+        // hit just means more CANDIDATES get a chance to actually place).
+        if (h % 7 !== 0) continue;
         const kind = CRITTER_KINDS_WALL[h % CRITTER_KINDS_WALL.length];
         // Round-2 fix (Daniel's screenshot review: critters/decor float
         // detached from walls -- a bushmini anchored for side-wall cell
@@ -333,6 +340,31 @@ function findVents(chunk, yOffset, chunkW, chunkH) {
     }
   }
   return vents;
+}
+
+/** Round-12 "fill the cave" pass, density test support: the same anchor
+ * cells + hash gate render.js's `drawPlants` uses for floor/ceiling foliage
+ * (plant1/plant2.webp), factored out here as a pure function of chunk tile
+ * data so `decor.test.js` can assert on real density/placement numbers
+ * without needing a canvas. Returns `{tx, ty, onCeiling}` local-tile anchors
+ * only (render.js still owns the actual draw position/size/clustering) --
+ * every entry is guaranteed `onFloor`/`onCeiling`-consistent with the tile
+ * grid (solid at the anchor cell, open on the side the sprite grows toward),
+ * i.e. never "floating" or anchored with its growth side inside rock.
+ */
+export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
+  const out = [];
+  for (let ty = 1; ty < chunkH - 1; ty++) {
+    for (let tx = 1; tx < chunkW - 1; tx++) {
+      if (chunk.tiles[ty * chunkW + tx] === 0) continue; // must itself be solid
+      const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
+      const openAbove = chunk.tiles[(ty - 1) * chunkW + tx] === 0;
+      const openBelow = chunk.tiles[(ty + 1) * chunkW + tx] === 0;
+      if (openAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
+      else if (openBelow && h % 7 === 0) out.push({ tx, ty, onCeiling: true, hash: h });
+    }
+  }
+  return out;
 }
 
 export function createDecor(chunkW, chunkH) {

@@ -2155,3 +2155,86 @@ several hundred metres of depth. Screenshots: `octomancer-web/night/fix-r11-
 plankton-s5,cannon-floor-s5,cannon-floor-s19,cannon-wall-s42,octopus-s5,
 wall-s5}.png` (piranha crops re-check all 4 of Daniel's reported spots;
 cannon crops cover both a concave floor corner and a wall placement).
+
+## Visual fixes round 12 ("fill the cave" pass + round-11 leftovers)
+
+Scoped this round to what could be done safely and be fully verified
+alongside the now-stable outline/collision code from rounds 8-11: the two
+concrete round-11 review leftovers, plus section 1-2 of the "fill the cave"
+brief (foreground foliage density + a new background ambient layer) with a
+density test backing both. Section 3 (porting Clamissaint/Acidator and the
+other not-yet-in-game creatures from Milan's manifest) is NOT attempted
+this round -- it needs its own dedicated pass (new sprite exports, A*/
+collision porting, its own test coverage) rather than being squeezed in
+alongside a density/collision-tuning pass, same call round 10 made for this
+exact section before. Left for a dedicated round; NOT considered done.
+
+1. **Manta wingtips sink into rock (enemies.js).** Same root cause as
+   round-11's piranha fix: wall collision and the "turn around near a wall"
+   probe both used the small physics radius (`MANTA_RADIUS`=0.5) or the
+   enemy-separation circle (0.55), while the drawn glide sprite reads about
+   2.8 tiles wide. `collideMantaWithWalls` now samples both wingtips plus
+   centre (`MANTA_WING_HALF_LEN`=1.4) against the traced wall segments, same
+   3-point pattern as `collidePiranhaWithWalls`; the turn-around probe uses
+   the same wing length instead of the physics radius.
+
+2. **Same-kind enemies overlap (enemies.js).** `separateEnemies` used one
+   isotropic circle per kind (under/over-covering an elongated sprite
+   depending on approach angle) and skipped any pair unless BOTH sides were
+   `moving`, so a static urchin or mine never pushed back and a moving enemy
+   could sit right on top of one. Replaced with a per-axis (x,y) half-extent
+   per kind (manta 1.4x0.4, piranha 0.9x0.55 -- matches
+   `PIRANHA_BODY_HALF_LEN`/`_HEIGHT` from round 11, urchin 0.5x0.5),
+   projected onto the connecting direction; a moving-vs-static pair now
+   resolves too, pushing only the moving side.
+
+3. **Foreground foliage density (render.js, decor.js).** `drawPlants`'s
+   floor-anchor density gate (1-in-9) read as scattered dots against the
+   promo video stills' thick floor growth; dropped to 1-in-3 (still gated by
+   every existing anchor-correctness check) plus a new ceiling-hanging
+   variant (1-in-7, mirrored, same art) it never had before, plus an
+   occasional small cluster-mate beside an accepted floor anchor so plants
+   read as growing in clumps rather than a perfectly even grid. No new
+   side-wall variant: decor.js's own round-5 note already found this exact
+   vine/frond art (one narrow root, tall silhouette) doesn't read right
+   rotated onto a side-wall face; not repeating that mistake. The
+   anchor-picking logic itself moved into a new pure export,
+   `decor.js`'s `findPlantAnchors` (same hash/gate render.js used inline
+   before), so `decor.test.js` can assert on it directly without a canvas.
+   Otter's wall-critter density (decor.js) also bumped 1-in-11 -> 1-in-7 for
+   the same reason, still behind every existing corner/thin-wall/rim skip.
+
+4. **Background ambient layer (render.js, new).** `drawAmbientBackground`:
+   3-4 distant plant silhouettes per resident chunk (reused plant1/2.webp --
+   no dedicated FGFoliageTiles sheet made it into the harvest, see
+   MANIFEST.md/ART-SORT.md -- baked once into a dark `source-atop` tinted
+   canvas per image, not a per-frame `ctx.filter`, per decor-draw.js's own
+   round-7 note on filter cost/softness) at a slower parallax
+   (`AMBIENT_PARALLAX`=0.5) than the foreground, plus a few slow drifting
+   motes per chunk; both fade/darken with depth like the rest of the
+   background. Drawn behind the wall bake (same layering the existing
+   drawCaveArt/drawBackground already use), between drawCaustics and
+   drawPlants in the draw list.
+
+5. **Density test (decor.test.js, new).** `findPlantAnchors` is exercised
+   directly (not re-implemented in the test): asserts the per-chunk average
+   sits in [6, 40] (brackets a bare-cave regression at the low end and a
+   carpet-every-cell regression at the high end), that floor foliage
+   outnumbers ceiling foliage ("most on floors" per the brief), and that
+   every anchor across a multi-seed sample sits on solid rock with its
+   specific growth side open (never floating, never growing into rock).
+
+Verification: `tests/` 354/354 (91 unchanged + a round-12 density/
+attachment suite of ~270 assertions across `findPlantAnchors`'s per-anchor
+checks over 8 seeds; own threading `http.server` with no-cache headers on a
+free port, stopped after); puppeteer-core headless Chrome: 0 console errors
+across fresh spawn frames at 1440x900 and 375x812 (2x, touch-emulated), and
+scripted autodives on seeds 1, 42 and 7 through ~100 units of depth;
+`window.__octo.metrics()` sampled on a 12s phone-emulated (375x812, 2x)
+autodive run through several chunk bakes and dense decor: frame time median
+0.6ms / P95 1ms, nowhere near the fixed 50Hz step budget. Screenshots:
+`octomancer-web/night/fix-r12-{desk-s1-spawn,desk-s1-dive2,desk-s42-dive1,
+desk-s42-dive3,phone-s7-spawn,phone-s7-dive1}.png`, zoomed crops
+`fix-r12-zoom-{urchin-plants,fish-plants,phone-walls-cannon}.png` (urchin/
+cannon crops re-confirm rim anchoring holds with the new denser foliage
+layered in).

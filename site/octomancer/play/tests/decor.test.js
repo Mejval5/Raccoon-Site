@@ -3,11 +3,53 @@
 // non-hostile (no collision/damage hooks -- they carry no radius or
 // contactDamage field the way enemies do, so they can never block or block
 // the generator's guaranteed path).
-import { createDecor } from '../js/decor.js';
+import { createDecor, findPlantAnchors } from '../js/decor.js';
 import { generateChunk } from '../js/gen.js';
 
 export function runDecorTests(assert, approx) {
   const chunkW = 32, chunkH = 24;
+
+  // --- Round-12 "fill the cave" pass: floor/ceiling foliage density test
+  // (brief: "a density test -- decorations per chunk within a range; none
+  // floating or inside rock"). `findPlantAnchors` is the exact pure
+  // anchor-picking function render.js's drawPlants uses, so this exercises
+  // the real placement logic, not a re-implementation of it. ---
+  {
+    let counts = [];
+    let floorCount = 0, ceilingCount = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const chunk = generateChunk(seed, 0, 16);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, 0);
+      counts.push(anchors.length);
+      for (const a of anchors) { if (a.onCeiling) ceilingCount++; else floorCount++; }
+    }
+    const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+    // A bare-cave regression (density gate broken/inverted) would read as
+    // ~0; a carpet-every-cell regression would read as ~1/9th of a chunk's
+    // ~450 open-water cells (~50+). This brackets the intended "noticeably
+    // fuller, still readable" range from the brief.
+    assert(`decor: foliage anchors average within [6, 40] per chunk (got ${avg.toFixed(2)}, samples ${JSON.stringify(counts)})`, avg >= 6 && avg <= 40);
+    assert(`decor: floor foliage (${floorCount}) outnumbers ceiling foliage (${ceilingCount}) -- "most on floors" per the brief`, floorCount > ceilingCount);
+  }
+
+  // --- Round-12: every foliage anchor is genuinely attached, never floating
+  // in open water or growing into solid rock -- the anchor tile itself must
+  // be solid, and the specific side the sprite grows toward must be open. ---
+  {
+    let checked = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const chunk = generateChunk(seed, 0, 16);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, 0);
+      for (const { tx, ty, onCeiling } of anchors) {
+        checked++;
+        const anchorSolid = chunk.tiles[ty * chunkW + tx] !== 0;
+        const growSide = onCeiling ? chunk.tiles[(ty + 1) * chunkW + tx] : chunk.tiles[(ty - 1) * chunkW + tx];
+        assert(`decor: foliage anchor (seed ${seed}, ${tx},${ty}) sits on solid rock`, anchorSolid);
+        assert(`decor: foliage anchor (seed ${seed}, ${tx},${ty}) grows into open water, not rock`, growSide === 0);
+      }
+    }
+    assert(`decor: foliage anchor attachment checked across a meaningful sample (${checked})`, checked >= 40);
+  }
 
   // --- Density: many chunks should carry a good number of wall critters,
   // clearly more than "a couple of plants" (Daniel: "a lot more critters on

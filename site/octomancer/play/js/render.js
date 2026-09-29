@@ -61,7 +61,7 @@
 
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
-import { depthTint } from './decor.js';
+import { depthTint, findPlantAnchors } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
@@ -526,6 +526,93 @@ export function createRenderer(ctx, world) {
     ctx.restore();
   }
 
+  // Round-12 "fill the cave" pass, section 2: background ambient layer --
+  // distant plant silhouettes behind everything (walls draw over this, same
+  // as drawCaveArt/drawBackground before it), with their own slower
+  // parallax so they read as farther away than the foreground foliage, plus
+  // a handful of slow drifting motes (distinct from decor.js's vent bubbles
+  // -- those rise from a fixed vent and pop; these just drift, ambient dust/
+  // plankton in the water column). Both darken and fade out with depth,
+  // same falloff shape as drawBackground's own gradient. Deterministic per
+  // chunk (own tiny LCG, `ambientRng`) so nothing here needs a persistent
+  // RNG stream to stay in sync across re-renders.
+  const AMBIENT_PARALLAX = 0.5; // < 1: scrolls slower than the foreground -> reads farther back
+  function ambientRng(seed) {
+    let m = seed >>> 0 || 1;
+    return () => { m = (m * 1664525 + 1013904223) >>> 0; return m / 4294967296; };
+  }
+  // Baked once per plant image (not a per-frame `ctx.filter` -- decor-draw.js's
+  // round-7 note already found a filter graph reads soft/blurry and costs a
+  // rasterize pass per draw; a plain `source-atop` darken, cached, is free at
+  // draw time and stays crisp) so the many silhouette instances below are
+  // ordinary `drawImage` calls.
+  const ambientSilCache = [];
+  function getAmbientSilhouette(i) {
+    if (ambientSilCache[i]) return ambientSilCache[i];
+    const img = plants[i];
+    if (!img.complete || !img.naturalWidth) return null;
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const cctx = c.getContext('2d');
+    cctx.drawImage(img, 0, 0);
+    cctx.globalCompositeOperation = 'source-atop';
+    cctx.fillStyle = 'rgba(2,10,16,0.88)';
+    cctx.fillRect(0, 0, c.width, c.height);
+    ambientSilCache[i] = c;
+    return c;
+  }
+  function parallaxScreen(canvasW, canvasH, wx, wy) {
+    const s = worldToScreen(camera, canvasW, canvasH, wx, wy);
+    return {
+      x: canvasW / 2 + (s.x - canvasW / 2) * AMBIENT_PARALLAX,
+      y: canvasH / 2 + (s.y - canvasH / 2) * AMBIENT_PARALLAX,
+    };
+  }
+  function drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced) {
+    if (!plants[0].complete || !plants[0].naturalWidth) return;
+    const t = Math.min(1, depth / 500);
+    const silAlpha = Math.max(0.05, 0.22 - t * 0.14); // fades toward black with depth
+    const moteAlpha = Math.max(0.04, 0.18 - t * 0.1);
+    ctx.save();
+    for (const { index, yOffset } of resident) {
+      const rng = ambientRng(index * 7919 + 11);
+      const count = 3 + Math.floor(rng() * 2); // 3-4 distant silhouettes per chunk
+      for (let i = 0; i < count; i++) {
+        const idx = Math.floor(rng() * 2);
+        const img = getAmbientSilhouette(idx);
+        const src = plants[idx];
+        if (!img || !src.naturalWidth) continue;
+        const wx = rng() * chunkW;
+        const wy = yOffset + rng() * chunkH;
+        const scale = 2.2 + rng() * 1.8; // bigger, distance-scaled read vs. the FG plants
+        const p = parallaxScreen(canvasW, canvasH, wx, wy);
+        const h = camera.pxPerUnit * scale;
+        const w = h * (src.naturalWidth / src.naturalHeight);
+        ctx.globalAlpha = silAlpha;
+        ctx.drawImage(img, p.x - w / 2, p.y - h, w, h);
+      }
+    }
+    // A few slow drifting motes per resident chunk, own slower parallax
+    // still (closer than the silhouettes, farther than the foreground).
+    for (const { index, yOffset } of resident) {
+      const rng = ambientRng(index * 104729 + 3);
+      const count = 6;
+      for (let i = 0; i < count; i++) {
+        const baseX = rng() * chunkW, baseY = yOffset + rng() * chunkH;
+        const phase = rng() * Math.PI * 2;
+        const drift = reduced ? 0 : time * 0.06 + phase;
+        const wx = baseX + Math.sin(drift) * 0.6;
+        const wy = baseY - (reduced ? 0 : (time * 0.15 + phase) % chunkH);
+        const p = parallaxScreen(canvasW, canvasH, wx, wy);
+        const r = camera.pxPerUnit * 0.02;
+        ctx.globalAlpha = moteAlpha * (0.5 + 0.5 * Math.sin(drift * 2));
+        ctx.fillStyle = 'rgba(210,240,255,1)';
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   function drawDepthTint(canvasW, canvasH, depth) {
     const { overlay } = depthTint(depth);
     ctx.fillStyle = overlay;
@@ -610,32 +697,81 @@ export function createRenderer(ctx, world) {
   // of leaving it exposed above it.
   const PLANT_INTO_WALL = 0.4;
 
+  // Round-12 "fill the cave" pass, section 1 (Daniel: "still very empty, add
+  // all the other critters and decorations" -- comparing against the promo
+  // video stills, site/img/octomancer/video/*.webp, which show floors and
+  // ceilings both thick with plant growth, not the bare rock this had).
+  // Reused the only foreground-foliage art actually harvested (plant1/
+  // plant2.webp, Milan's Assets/Sprites/Background/Plant{1,2}.png -- no
+  // dedicated "FGFoliageTiles" sheet made it into the harvest, see
+  // MANIFEST.md/ART-SORT.md) rather than pulling in new art out of scope for
+  // a code-only pass: same art, denser placement plus two new anchor
+  // orientations (ceiling-hanging, side-wall) it never had before.
+  //
+  // Density: floor divisor dropped 9 -> 3 (per the Unity `FoliagePlanterTiles`
+  // spawner reference this round's brief points at -- PatternGenerator.cs's
+  // density knob runs a similar 1-in-3 to 1-in-5 duty cycle per eligible
+  // anchor cell, not 1-in-9). Ceiling/wall stay sparser (1-in-7 / 1-in-8):
+  // the video stills show floor growth dominating, with hanging/wall growth
+  // as an occasional accent, matching the brief's "most on floors, hanging
+  // less, wall orientation too".
+  //
+  // Clustering: "cluster naturally" (brief) -- each accepted anchor has a
+  // further chance (own local hash, no RNG stream) of a second, smaller
+  // sprite right beside it, rather than every plant standing alone in a
+  // perfectly even grid.
+  //
+  // The anchor cells + density gate themselves live in decor.js's
+  // `findPlantAnchors` (pure function of chunk tile data, no canvas), shared
+  // with `decor.test.js`'s round-12 density test -- this file only turns
+  // those anchors into an actual draw position/size/cluster-mate.
+  function plantHash(a, b) {
+    let h = (Math.imul(a, 2654435761) + Math.imul(b, 40503)) | 0;
+    h = Math.imul(h ^ (h >>> 15), 2246822519);
+    return (h ^ (h >>> 13)) >>> 0;
+  }
+
+  function drawOnePlant(cx, cy, tiltRad, mirrorY, seed, sizeMul = 1) {
+    const img = plants[seed % 2];
+    if (!img.complete || !img.naturalWidth) return;
+    const s = worldToScreen(camera, canvasW_, canvasH_, cx, cy);
+    const h = camera.pxPerUnit * 1.4 * sizeMul;
+    const w = h * (img.naturalWidth / img.naturalHeight);
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    if (tiltRad) ctx.rotate(tiltRad);
+    if (mirrorY) ctx.scale(1, -1);
+    ctx.drawImage(img, -w / 2, -h, w, h);
+    ctx.restore();
+  }
+
+  // worldToScreen/camera don't need per-call canvas dims beyond what the
+  // caller already has; stashed on module-local vars each call so
+  // `drawOnePlant` (used from three separate loops below) doesn't need its
+  // own canvasW/canvasH parameters threaded through every call site.
+  let canvasW_ = 0, canvasH_ = 0;
+
   function drawPlants(canvasW, canvasH, resident) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
+    canvasW_ = canvasW; canvasH_ = canvasH;
     for (const { index, yOffset, chunk } of resident) {
-      let seedI = index * 97;
-      for (let ty = 1; ty < chunkH - 1; ty++) {
-        for (let tx = 1; tx < chunkW - 1; tx++) {
-          const v = chunk.tiles[ty * chunkW + tx];
-          if (v === 0) continue;
-          // Round-1 fix (Daniel's screenshot review: "a tentacle is not
-          // attached to the wall"): this condition was inverted -- `=== 0`
-          // kept solid tiles that are NOT a floor cap (buried rock, or a
-          // ceiling tile with solid still above it) and skipped the actual
-          // floor caps the comment above describes, so the vine sprite's
-          // root (its image's bottom edge, per PLANT_INTO_WALL below) landed
-          // on a tile with no open water above it to grow into -- reading as
-          // a plant floating detached from any surface. `!== 0` keeps only
-          // true floor caps: solid here, open water directly above.
-          if (chunk.tiles[(ty - 1) * chunkW + tx] !== 0) continue;
-          seedI++;
-          if (seedI % 9 !== 0) continue; // sparse: Daniel's screenshot showed these carpeting every wall top
-          const img = plants[seedI % 2];
-          if (!img.complete || !img.naturalWidth) continue;
-          const s = worldToScreen(camera, canvasW, canvasH, tx + 0.5, ty + yOffset + PLANT_INTO_WALL);
-          const h = camera.pxPerUnit * 1.4;
-          const w = h * (img.naturalWidth / img.naturalHeight);
-          ctx.drawImage(img, s.x - w / 2, s.y - h, w, h);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, index);
+      for (const { tx, ty, onCeiling, hash: h } of anchors) {
+        if (!onCeiling) {
+          // Floor cap: solid here, open water directly above -- grows up.
+          const cx = tx + 0.5, cy = ty + yOffset + PLANT_INTO_WALL;
+          drawOnePlant(cx, cy, 0, false, h);
+          if (h % 15 === 0) { // occasional small cluster-mate beside it
+            const h2 = plantHash(h, 91);
+            drawOnePlant(cx + (h2 % 2 === 0 ? 0.45 : -0.45), cy + 0.05, (h2 % 7 - 3) * 0.03, false, h2, 0.65);
+          }
+        } else {
+          // Ceiling cap: solid here, open water directly below -- hangs
+          // down (mirrored vertically, same art). No side-wall variant:
+          // decor.js's own round-5 note already found this exact art (a
+          // tall vine/frond growing from one narrow root) doesn't read
+          // right rotated onto a side-wall face -- not repeating that here.
+          drawOnePlant(tx + 0.5, ty + yOffset + 1 - PLANT_INTO_WALL, 0, true, h);
         }
       }
     }
@@ -791,6 +927,10 @@ export function createRenderer(ctx, world) {
       const reduced = prefersReducedMotion();
       drawBackground(canvasW, canvasH, time, depth);
       drawCaustics(canvasW, canvasH, time, reduced);
+      // Round-12 "fill the cave" pass, section 2: distant background
+      // silhouettes/motes, behind everything (drawWalls, below, composites
+      // opaque rock right over this same as it does the FG plants).
+      drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced);
       // Layering pass: plants/decor draw BEFORE the walls now (was after), so
       // the wall bake -- opaque rock art -- composites on top and occludes
       // each sprite's anchor-tucked base (see PLANT_INTO_WALL / decor.js's
