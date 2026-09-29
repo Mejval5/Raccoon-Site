@@ -17,8 +17,10 @@
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/svatba/svatba.css">
   <link rel="stylesheet" href="/svatba/captcha.css">
+  <link rel="stylesheet" href="/svatba/dary.css">
   <script src="/svatba/svatba-i18n.js" defer></script>
   <script src="/svatba/svatba.js" defer></script>
+  <script src="/svatba/dary.js" defer></script>
   <script src="/js/site.js" defer></script>
   <noscript><style>#locked{display:grid !important}</style></noscript>
 </head>
@@ -359,6 +361,45 @@
         </svg>
         <h3 id="rsvp-thanks-title" tabindex="-1"></h3>
         <p id="rsvp-thanks-text"></p>
+      </div>
+    </section>
+
+    <section id="dary-meter" class="paper dary-meter reveal">
+      <p class="dary-chip" data-i18n="dary.demo">Ukázka · posuňte meruňkou</p>
+      <h2 data-i18n="dary.title">Kam až to dotáhneme?</h2>
+      <p class="dary-intro" data-i18n="dary.intro">Každá koruna ve svatební kasičce nás posune o kousek dál. Tady je náš velmi vážně míněný plán:</p>
+
+      <div class="dary-amount">
+        <span id="dary-amount-value" class="dary-amount-value">0 Kč</span>
+        <span class="dary-amount-label" data-i18n="dary.raised">vybráno</span>
+      </div>
+
+      <div class="dary-track-wrap">
+        <div id="dary-track" class="dary-track">
+          <div class="dary-track-base"></div>
+          <div id="dary-track-fill" class="dary-track-fill"></div>
+          <div id="dary-nodes" class="dary-nodes"></div>
+          <div id="dary-handle" class="dary-handle" role="slider" tabindex="0"
+               aria-valuemin="0" aria-valuemax="250000" aria-valuenow="0" aria-valuetext="0 Kč"
+               data-i18n-attr="aria-label:dary.slider.label" aria-label="Vybraná částka" style="left:0%">
+            <svg viewBox="0 0 32 32" width="30" height="30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <radialGradient id="dary-apricot-grad" cx="35%" cy="30%" r="75%">
+                  <stop offset="0%" stop-color="#ffcf8a"></stop>
+                  <stop offset="55%" stop-color="#f5a55a"></stop>
+                  <stop offset="100%" stop-color="#e07b39"></stop>
+                </radialGradient>
+              </defs>
+              <circle cx="16" cy="17" r="12" fill="url(#dary-apricot-grad)"></circle>
+              <path d="M16,7 C14.5,10 14.5,13 16,16" fill="none" stroke="#c96a30" stroke-width="1" stroke-linecap="round" opacity=".55"></path>
+              <path d="M17,6 C19,3 22.5,2.7 24,4 C22,5 19.5,5.6 17,6 Z" fill="#6f9b52"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div id="dary-panel" class="dary-panel">
+        <p class="dary-panel-empty" data-i18n="dary.none">Zatím jen sen. Posuňte meruňku doprava.</p>
       </div>
     </section>
 

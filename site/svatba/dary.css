@@ -1,0 +1,317 @@
+/* "Gift milestone meter" — mockup progress meter for the wedding invitation.
+   Lives on the cream .paper card, so all colours are ink/gold-deep-on-cream,
+   not the pale-on-night palette used elsewhere on the page (sky, footer). */
+
+.dary-meter {
+  text-align: center;
+}
+
+.dary-chip {
+  display: inline-block;
+  margin: 0 0 14px;
+  padding: 6px 16px;
+  border: 1px dashed rgba(122, 82, 19, 0.5);
+  border-radius: 999px;
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sv-gold-deep);
+}
+
+.dary-meter h2 { text-align: center; }
+.dary-meter > p.dary-intro {
+  max-width: 52ch;
+  margin-inline: auto;
+  text-align: center;
+}
+
+/* ---------- Amount display ---------- */
+.dary-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 22px 0 4px;
+}
+.dary-amount-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: clamp(2.1rem, 7vw, 3rem);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--sv-gold-deep);
+}
+.dary-amount-currency {
+  font-family: var(--font-label);
+  font-size: 0.42em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0 0.12em;
+  vertical-align: 0.55em;
+}
+.dary-amount-label {
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sv-ink-2);
+}
+
+/* ---------- Track + nodes + handle ---------- */
+.dary-track-wrap {
+  position: relative;
+  margin: 12px 6px 6px;
+  height: 116px;
+}
+@media (max-width: 699px) {
+  .dary-track-wrap { height: 60px; margin: 10px 2px 4px; }
+}
+
+.dary-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.dary-track-base,
+.dary-track-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+}
+.dary-track-base {
+  width: 100%;
+  background: rgba(122, 82, 19, 0.25);
+}
+.dary-track-fill {
+  width: 0%;
+  overflow: hidden;
+  background: linear-gradient(90deg, #ecc478, var(--sv-gold), #f5a55a);
+  transition: width 0.08s linear;
+}
+.dary-track-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  opacity: 0.5;
+  animation: dary-shimmer 2.6s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes dary-shimmer {
+  0% { background-position: -60% 0; }
+  100% { background-position: 160% 0; }
+}
+
+.dary-nodes {
+  position: absolute;
+  inset: 0;
+}
+/* Only the dot is in flow, so every dot sits centred on the track; the price label hangs above or
+   below it (alternating, so neighbours never collide). */
+.dary-node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.dary-node .dary-node-amount {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.dary-node.label-below .dary-node-amount { top: calc(100% + 9px); }
+.dary-node.label-above .dary-node-amount { bottom: calc(100% + 9px); }
+
+.dary-node-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(43, 34, 48, 0.35);
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(43, 34, 48, 0.45);
+  transition: width 0.25s ease, height 0.25s ease, background 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+.dary-node-dot svg { width: 13px; height: 13px; }
+
+.dary-node.is-lit .dary-node-dot {
+  width: 27px;
+  height: 27px;
+  background: var(--sv-gold);
+  border-color: var(--sv-gold-deep);
+  color: var(--sv-paper);
+  box-shadow: 0 0 0 4px rgba(226, 180, 95, 0.25), 0 0 14px rgba(226, 180, 95, 0.65);
+}
+.dary-node.is-lit .dary-node-dot svg { width: 15px; height: 15px; }
+
+.dary-node.is-lighting .dary-node-dot { animation: dary-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes dary-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.dary-node-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid var(--sv-gold);
+  opacity: 0.9;
+  animation: dary-ring 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes dary-ring {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.dary-spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: var(--sv-gold);
+  opacity: 1;
+  animation: dary-spark 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes dary-spark {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx, 12px), var(--dy, -12px)) scale(0.3); opacity: 0; }
+}
+
+.dary-node-amount {
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sv-gold-deep);
+  white-space: nowrap;
+}
+@media (max-width: 699px) {
+  .dary-node-amount { display: none; }
+  /* Nine dots share ~30px each on a phone: keep lit dots and their glow inside that. */
+  .dary-node-dot { width: 20px; height: 20px; }
+  .dary-node-dot svg { width: 11px; height: 11px; }
+  .dary-node.is-lit .dary-node-dot { width: 23px; height: 23px; box-shadow: 0 0 0 2px rgba(226, 180, 95, 0.25), 0 0 7px rgba(226, 180, 95, 0.55); }
+  .dary-node.is-lit .dary-node-dot svg { width: 13px; height: 13px; }
+}
+
+/* Draggable apricot handle. Visible fruit is ~30px; the element itself is a
+   44px square so the tap/click target meets the minimum on phones. */
+.dary-handle {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  z-index: 3;
+  transition: left 0.08s linear;
+  border-radius: 50%;
+}
+.dary-handle svg {
+  width: 30px;
+  height: 30px;
+  filter: drop-shadow(0 4px 8px rgba(43, 20, 4, 0.35));
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.dary-handle.is-dragging { cursor: grabbing; }
+.dary-handle.is-dragging svg {
+  transform: scale(1.14);
+  filter: drop-shadow(0 6px 14px rgba(43, 20, 4, 0.45));
+}
+.dary-handle:focus-visible {
+  outline: 2px solid var(--sv-ink);
+  outline-offset: 4px;
+}
+
+/* ---------- Detail panel ---------- */
+.dary-panel {
+  margin-top: 14px;
+  min-height: 88px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(226, 180, 95, 0.35);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+  text-align: left;
+  transition: opacity 0.15s ease;
+}
+.dary-panel.is-fading { opacity: 0; }
+
+.dary-panel-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--sv-gold);
+  color: var(--sv-paper);
+  box-shadow: 0 0 0 4px rgba(226, 180, 95, 0.2);
+}
+.dary-panel-icon svg { width: 22px; height: 22px; }
+
+.dary-panel-body { flex: 1 1 220px; min-width: 0; }
+.dary-panel-title {
+  font-style: italic;
+  font-size: 1.25rem;
+  margin: 0 0 4px;
+  color: var(--sv-ink);
+}
+.dary-panel-desc { margin: 0; color: var(--sv-ink); }
+
+.dary-panel-next {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-family: var(--font-label);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--sv-gold-deep);
+}
+
+.dary-panel-empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--sv-ink-2);
+  text-align: center;
+  width: 100%;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .dary-track-fill::after { animation: none; opacity: 0; }
+  .dary-node.is-lighting .dary-node-dot { animation: none; }
+  .dary-node-ring,
+  .dary-spark { display: none; }
+  .dary-handle,
+  .dary-track-fill,
+  .dary-node-dot,
+  .dary-panel { transition: none; }
+}
