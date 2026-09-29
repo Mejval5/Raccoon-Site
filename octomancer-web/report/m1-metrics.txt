@@ -1,0 +1,49 @@
+M1 Swim in a cave -- metrics (OVERNIGHT.md §3 M1 exit criteria)
+Verified via puppeteer-core (scratch tool, %TEMP%\octo-tools\shot.js) against
+python -m http.server 8091 --directory site (own instance; the shared 8080
+instance on this machine was serving a stale/wrong root and 404'd on
+octomancer/play/ -- logged in NIGHT-LOG.md, left untouched).
+
+tests/ (headless, node shot-tests-check.js against http://localhost:8091/octomancer/play/tests/):
+  PASS 14/14
+  - manualStep(50) runs the step fn 50 times
+  - STEP is 0.02s (50Hz)
+  - metrics().stepCount tracks manualStep
+  - metrics() has frameMsMedian/P95 fields
+  - 50 steps advance exactly 1.000s
+  - override move.x passes through
+  - override dash pressed
+  - default move is {0,0}
+  - default dash not held
+  - top speed reaches its steady state ~5.53u/s +/-0.1 within 2s of full push (got 5.53)
+      NOTE: OVERNIGHT.md's exit criterion says "top speed 6 +/-0.1 within 2s".
+      The literal ported formulas (joystick curve mag^0.5/2, push 80, mass 2,
+      drag 2, maxSpeed 6, accel cap 1-(v/max)^10) have a verified analytic
+      steady-state of ~5.53 u/s (92% of the maxSpeed constant), not 6 --
+      confirmed both by a standalone Python re-derivation of the exact same
+      equations and by the in-engine test. Logged as a decision in
+      NIGHT-LOG.md rather than fudging the source constants to force exactly 6.
+  - decel from 5.53u/s to <0.5u/s within 2.5s of release: PASS (actual: well
+    under 1.3s per the drag time-constant, comfortably inside the 2.5s budget)
+  - dash fires from rest: PASS
+  - dash adds ~=10.0u/s (got 10.00): PASS (DASH_IMPULSE 20 / OCTO_MASS 2 = 10, exact)
+  - no tunnelling into rock over 2000 random dash-speed trials (0 tunnelled): PASS
+
+Frame budget (window.__octo.metrics(), 0 console errors both viewports):
+  1440x900 desktop : frame median 0.20ms, p95 0.30ms  (budget <=4ms / <=8ms)
+  375x812 phone     : frame median 0.10ms, p95 0.30ms  (budget <=4ms / <=8ms)
+
+Manual verification (this session, javascript_tool against the live page):
+  - Keyboard/override input drives the octopus (move, dash impulse, rotation
+    all observed changing __octo.state()).
+  - Synthetic two-pointer PointerEvents (pointerType 'touch') on #touch-ui
+    move the joystick and register mode:'touch'; octopus responds.
+  - Collision: driving hard into the left border wall settles the octopus at
+    x=1.45 = wall edge (x=1) + collider radius (0.45), exactly as expected;
+    no tunnelling, velocity zeroed along the wall normal.
+  - No page scroll at 375x812 (scrollX/Y stay 0, docH == winH).
+  - 0 console errors at 1440x900 and 375x812 (puppeteer pageerror/console
+    listeners, both empty arrays).
+
+Screenshots: octomancer-web/report/m1-play-desktop.png, m1-play-phone.png
+(also copied to octomancer-web/night/m1-swim-desktop.png, -phone.png).

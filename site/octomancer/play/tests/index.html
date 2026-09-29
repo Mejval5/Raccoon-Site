@@ -67,6 +67,10 @@ import { createInput } from '../js/input.js';
   assert('default dash not held', snap.dash.held === false);
 }
 
+// --- M1 swim tests (octopus.js / physics.js) ---
+import { runSwimTests } from './swim.test.js';
+runSwimTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

@@ -1,14 +1,18 @@
-// Octomancer play skeleton: canvas, fixed-step loop, input, test hooks.
-// M0 has no game yet -- this wires the foundations M1+ builds on.
+// Octomancer play: wires input -> octopus -> camera -> render for the fixed
+// M1 test cave. OVERNIGHT.md §2, M1-3.
 import { createLoop, STEP } from './loop.js';
 import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
 import { createDebugOverlay } from './debug.js';
+import { createTestCave } from './world.js';
+import { createOctopus, stepOctopus } from './octopus.js';
+import { createRenderer } from './render.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const touchRoot = document.getElementById('touch-ui');
 const debugEl = document.getElementById('debug-overlay');
+const hudEl = document.getElementById('hud');
 
 let dpr = 1;
 function isCoarsePointer() {
@@ -30,25 +34,29 @@ window.addEventListener('orientationchange', resize);
 const input = createInput();
 const touchUI = createTouchUI(touchRoot, input);
 
-// --- Minimal simulation state for M0 (no gameplay yet) ---
+// --- Simulation state ---
+let world = createTestCave();
+let octo = createOctopus(world.startX, world.startY);
+const renderer = createRenderer(ctx, world);
+
 const sim = {
   time: 0,
   lastInput: { move: { x: 0, y: 0 }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } },
 };
 
+// HUD placeholder (M4 builds the real HUD); shows the octopus is alive here.
+hudEl.innerHTML = '<div id="hud-placeholder" style="position:absolute;left:calc(12px + var(--safe-l));top:calc(8px + var(--safe-t));color:#baffea;font:600 13px \'Quicksand\',sans-serif;text-shadow:0 1px 3px rgba(0,0,0,.7);">Octomancer &mdash; swim test</div>';
+
 function step(dt) {
   sim.time += dt;
-  sim.lastInput = input.snapshot();
+  const snap = input.snapshot();
+  sim.lastInput = snap;
+  stepOctopus(octo, snap, dt, world);
 }
 
 function render(alpha, frameMs) {
   const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#0a1c2a';
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = `${16 * dpr}px 'Quicksand', sans-serif`;
-  ctx.fillText('Octomancer — foundations (M0)', 16 * dpr, 64 * dpr);
+  renderer.render(w, h, octo, alpha, sim.time);
   debug.tick();
 }
 
@@ -60,7 +68,11 @@ loop.start();
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
   state() {
-    return { time: sim.time, input: sim.lastInput };
+    return {
+      time: sim.time,
+      input: sim.lastInput,
+      octopus: { x: octo.x, y: octo.y, vx: octo.vx, vy: octo.vy, angle: octo.angle, swimming: octo.swimming },
+    };
   },
   step(n) {
     loop.manualStep(n || 1);
@@ -70,18 +82,20 @@ window.__octo = {
     input.setOverride(actions || null);
   },
   reset(seed) {
+    world = createTestCave();
+    octo = createOctopus(world.startX, world.startY);
     sim.time = 0;
     return seed;
   },
   metrics() {
-    return { ...loop.metrics(), simTime: sim.time };
+    return { ...loop.metrics(), simTime: sim.time, octoSpeed: Math.hypot(octo.vx, octo.vy) };
   },
   spawn(kind, x, y) {
     // No enemies yet (M3). Stub kept so scripted tests can call it early.
     return { kind, x, y, spawned: false, reason: 'not implemented before M3' };
   },
   autoDive(on) {
-    // No world yet (M2). Stub.
+    // No infinite world yet (M2). Stub.
     return { autoDive: !!on, implemented: false };
   },
 };
