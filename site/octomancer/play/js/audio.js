@@ -3,8 +3,9 @@
 // One AudioContext, created only on the first player input (never before:
 // autoplay policies aside, §2 says "Nothing audio is requested before the
 // first input" and the budgets exclude music from the initial transfer).
-// Medles loops during play; Flûte de forêt crossfades in on `pause` and
-// `gameover`, Medles crossfades back on `resume` and `restart`. Both tracks
+// Flûte de forêt loops during play; the softer Medles crossfades in on `pause`,
+// `gameover` and when the tab loses focus, Flûte crossfades back on `resume`,
+// `restart` and refocus (Daniel's call). Both tracks
 // are `<audio loop>` elements routed through a MediaElementAudioSourceNode
 // into a master gain node, so `mute` (persisted via save.js) silences
 // everything in one place, music and code-synth SFX alike.
@@ -51,7 +52,7 @@ export function createAudio() {
   let medlesGain = null, fluteGain = null;
   let started = false;
   let muted = getMuted();
-  let current = 'medles'; // which track is the crossfade target
+  let current = 'flute'; // which track is the crossfade target
   // M7-2: two continuous, near-silent-by-default synth layers, gain-driven
   // each frame from main.js rather than one-shot like sfx.js's dash/pearl/
   // hurt/bomb. Created lazily in start() alongside the AudioContext, so
@@ -98,15 +99,15 @@ export function createAudio() {
 
     const medlesSrc = ctx.createMediaElementSource(medles);
     medlesGain = ctx.createGain();
-    medlesGain.gain.value = 1;
+    medlesGain.gain.value = 0;
     medlesSrc.connect(medlesGain).connect(master);
 
     const fluteSrc = ctx.createMediaElementSource(flute);
     fluteGain = ctx.createGain();
-    fluteGain.gain.value = 0;
+    fluteGain.gain.value = 1;
     fluteSrc.connect(fluteGain).connect(master);
 
-    medles.play().catch(() => {});
+    flute.play().catch(() => {});
     // resume(): some browsers create the context suspended until a gesture;
     // this call is itself inside the first-input handler, so it is one.
     ctx.resume().catch(() => {});
@@ -143,10 +144,17 @@ export function createAudio() {
   window.addEventListener('pointerdown', kickoff, { once: true });
   window.addEventListener('touchstart', kickoff, { once: true, passive: true });
 
-  window.addEventListener('pause', () => crossfadeTo('flute'));
-  window.addEventListener('gameover', () => crossfadeTo('flute'));
-  window.addEventListener('resume', () => crossfadeTo('medles'));
-  window.addEventListener('restart', () => crossfadeTo('medles'));
+  // In play and focused: Flûte. Paused, game over or tab unfocused: Medles.
+  let playing = true;
+  let focused = !document.hidden && document.hasFocus();
+  const pick = () => crossfadeTo(playing && focused ? 'flute' : 'medles');
+  window.addEventListener('pause', () => { playing = false; pick(); });
+  window.addEventListener('gameover', () => { playing = false; pick(); });
+  window.addEventListener('resume', () => { playing = true; pick(); });
+  window.addEventListener('restart', () => { playing = true; pick(); });
+  window.addEventListener('blur', () => { focused = false; pick(); });
+  window.addEventListener('focus', () => { focused = true; pick(); });
+  document.addEventListener('visibilitychange', () => { focused = !document.hidden && document.hasFocus(); pick(); });
 
   return {
     isMuted() { return muted; },
