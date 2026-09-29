@@ -95,6 +95,29 @@ function collidePiranhaWithWalls(e, world) {
   e.radius = origRadius;
 }
 
+// Round-12 fix (review round 11 leftover: "the manta's wings go into rock").
+// Same root cause as round-11's piranha fix: `collideWithWalls`'s single
+// circle for a manta used `ENEMY_SEP_HALF_EXTENT.manta` (0.55), tuned for
+// enemy-vs-enemy separation, not the ~1.4-tile-wide glide sprite (twice the
+// piranha's own long axis) -- a wingtip could sink well into rock the body
+// centre never touched, and the "turn around near a wall" look-ahead check
+// in `updateManta` used the even smaller physics radius (`MANTA_RADIUS`=0.5)
+// for its own probe, so the manta often only reversed after a wingtip was
+// already inside the rock. Samples 3 points along the fixed wing axis (both
+// tips + centre), same pattern as `collidePiranhaWithWalls`.
+const MANTA_WING_HALF_LEN = 1.4; // tiles, wingtip-to-wingtip half length (sprite reads ~2.8 tiles wide)
+const MANTA_BODY_HALF_HEIGHT = 0.4; // tiles, perpendicular (top/bottom) half-extent
+function collideMantaWithWalls(e, world) {
+  const origRadius = e.radius;
+  e.radius = MANTA_BODY_HALF_HEIGHT;
+  for (const off of [MANTA_WING_HALF_LEN, -MANTA_WING_HALF_LEN, 0]) {
+    e.x += off;
+    resolveWallsAt(e, world);
+    e.x -= off;
+  }
+  e.radius = origRadius;
+}
+
 function collideWithWalls(e, world) {
   if (e.kind === 'piranha') { collidePiranhaWithWalls(e, world); return; }
   // Swap in the (possibly larger) wall-collision radius just for the
@@ -128,25 +151,67 @@ const ENEMY_SEP_HALF_EXTENT = {
 };
 function sepHalfExtent(kind) { return ENEMY_SEP_HALF_EXTENT[kind] ?? ENEMY_MIN_SEP_DEFAULT_HALF; }
 
+// Round-12 fix (review round 11 leftover, item "same-kind enemies overlap"):
+// the pairwise separation above only ever used one ISOTROPIC half-extent per
+// kind (a circle), which under-covers a long, thin sprite along its own axis
+// (a manta's ~1.4-tile wingspan, a piranha's ~0.9-tile nose-to-tail length)
+// while over-covering the perpendicular axis. Each kind now also carries a
+// per-AXIS (x, y) half-extent, matched to the drawn sprite footprint --
+// manta ~1.4x0.4, piranha ~0.9x0.55 (matches `PIRANHA_BODY_HALF_LEN`/
+// `_HEIGHT` above so the enemy-vs-enemy and enemy-vs-wall checks agree),
+// urchin ~0.5 (its spiky sphere reads round, so x=y). Kinds without an entry
+// fall back to the old scalar default on both axes. Also, `separateEnemies`
+// used to skip any pair unless BOTH sides were `moving` -- a static
+// emplacement (urchin, mine) never pushed back, so a moving enemy pathing
+// past one could visibly sit right on top of it. The loop below still skips
+// two STATIC enemies against each other (they never move, nothing to
+// resolve), but now separates a moving enemy from a static one too, pushing
+// only the moving side.
+const ENEMY_SEP_EXTENT = {
+  piranha: { hx: 0.9, hy: 0.55 },
+  manta: { hx: 1.4, hy: 0.4 },
+  urchin: { hx: 0.5, hy: 0.5 },
+  crab: { hx: 0.45, hy: 0.45 },
+  mine: { hx: 0.4, hy: 0.4 },
+};
+function sepExtent(kind) {
+  const e = ENEMY_SEP_EXTENT[kind];
+  return e || { hx: ENEMY_MIN_SEP_DEFAULT_HALF, hy: ENEMY_MIN_SEP_DEFAULT_HALF };
+}
+
 /** Cheap O(n^2) pairwise separation pass (enemy counts per chunk are small,
- * single digits) -- pushes any two moving enemies that drifted closer than
- * the sum of their visual half-extents back out along the line between them,
- * split evenly. */
+ * single digits) -- pushes any two enemies whose per-axis half-extent boxes,
+ * projected along the line between them, overlap back apart along that
+ * line. A static enemy (urchin, mine, horns, cannon) never moves itself, but
+ * still pushes a moving enemy off of it. */
 function separateEnemies(list) {
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
-    if (a.dead || !a.moving) continue;
+    if (a.dead) continue;
     for (let j = i + 1; j < list.length; j++) {
       const b = list[j];
-      if (b.dead || !b.moving) continue;
-      const minSep = sepHalfExtent(a.kind) + sepHalfExtent(b.kind);
+      if (b.dead) continue;
+      if (!a.moving && !b.moving) continue; // two static emplacements: nothing to resolve
+      const ea = sepExtent(a.kind), eb = sepExtent(b.kind);
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
-      if (d >= minSep || d < 1e-6) continue;
-      const push = (minSep - d) / 2;
+      if (d < 1e-6) continue;
       const nx = dx / d, ny = dy / d;
-      a.x -= nx * push; a.y -= ny * push;
-      b.x += nx * push; b.y += ny * push;
+      // Box half-extent sum projected onto the connecting direction --
+      // cheap stand-in for a proper ellipse/box-vs-box test, but (unlike a
+      // single circle) scales down on the short axis and up on the long
+      // one, matching an elongated sprite far better.
+      const minSep = Math.abs(nx) * (ea.hx + eb.hx) + Math.abs(ny) * (ea.hy + eb.hy);
+      if (d >= minSep) continue;
+      const push = minSep - d;
+      if (a.moving && b.moving) {
+        a.x -= nx * push / 2; a.y -= ny * push / 2;
+        b.x += nx * push / 2; b.y += ny * push / 2;
+      } else if (a.moving) {
+        a.x -= nx * push; a.y -= ny * push;
+      } else {
+        b.x += nx * push; b.y += ny * push;
+      }
     }
   }
 }
@@ -390,8 +455,12 @@ export function createEnemies() {
     // Round-6 task 5: the manta spawns in open water but its sine glide can
     // carry it into a wall it patrolled toward; bounce off rock the same way
     // the octopus does rather than overlapping it.
-    collideWithWalls(e, world);
-    if (world.isSolid(e.x + Math.sign(e.dir || 1) * (e.radius + 0.1), e.y)) e.dir *= -1;
+    // Round-12 fix: both the wall-collision call and the turn-around probe
+    // below now use the wing axis (`collideMantaWithWalls`/
+    // `MANTA_WING_HALF_LEN`), not the small physics radius, so a wingtip
+    // never has to already be inside rock before the manta reacts.
+    collideMantaWithWalls(e, world);
+    if (world.isSolid(e.x + Math.sign(e.dir || 1) * (MANTA_WING_HALF_LEN + 0.1), e.y)) e.dir *= -1;
     const d = dist(e.x, e.y, octo.x, octo.y);
     if (d < MANTA_RANGE) {
       e.dropCooldown -= dt;
