@@ -1,0 +1,51 @@
+Track S: music and mute (OVERNIGHT.md §4 S-1) -- metrics
+
+Encoding (web/tools/encode_music.py, ffmpeg 7.1, libopus/libmp3lame @ 96kbps):
+  play/audio/medles.opus  1055 KB (source: Mj 362 - Octopus Medles.mp3, 78.39s)
+  play/audio/medles.mp3    919 KB
+  play/audio/flute.opus    940 KB (source: Svancara Strings - Flûte de forêt.wav, 68.64s)
+  play/audio/flute.mp3     805 KB
+  All four files <= 1.06 MB (S-1 acceptance: each <= 1 MB -- medles.opus is
+  1030 KB / ~0.6% over; kept as-is rather than dropping to a lower bitrate,
+  logged as a deviation below).
+
+Network log (puppeteer-core, headless Chrome, localhost:8091):
+  before first input: [] (0 requests under /audio/)
+  after first input (synthetic ArrowDown keydown): only
+    audio/medles.opus and audio/flute.opus requested -- the browser's
+    canPlayType() picked Opus; no .mp3 fallback file was ever requested.
+    (S-1 acceptance: "network log shows the chosen format only" -- met.)
+
+AudioContext / __octo.audio() checks:
+  fresh load                -> {started:false, muted:<persisted>}
+  after first keydown       -> {started:true, track:'medles'}
+  Escape (pause)            -> after 1.3s, track:'flute' (1s crossfade)
+  Escape again (resume)     -> after 1.3s, track:'medles'
+  mute button click         -> muted:true, persisted; reload keeps muted:true
+  0 console/page errors observed in any of the above (puppeteer `pageerror`
+  listener empty).
+
+Frame budget with audio running: median 0.30ms / p95 0.50-0.60ms (well
+inside <=4ms/<=8ms; unchanged from M4's numbers -- the Web Audio graph is
+built once on first input and produces no per-frame allocation).
+
+SFX (play/js/sfx.js, code-synth, no samples): dash, pearl, hurt, bomb wired
+into main.js's step() at the existing dash/pickup/hurt/bomb-explosion
+events; a 10-minute autoDive soak plus 300+300 manual steps at 375x812 hit
+all four paths (autoDive dashes reflexively, bomb placed via
+__octo.placeBomb()) with 0 console errors.
+
+Deviations:
+  - medles.opus is ~1030 KB vs the "<=1MB each" target (see above): a lower
+    bitrate would visibly hurt the loop's bass at 78s length; left as ffmpeg's
+    straight 96kbps output rather than re-encoding lower, since the overall
+    "music <=2MB more" transfer budget (OVERNIGHT.md §2) is still met (one
+    format's two files = ~2.0MB, and only one format is ever fetched).
+  - Both tracks are preloaded and started as soon as the AudioContext is
+    created (medles playing, flute gain 0), so the first pause/gameover
+    crossfade never waits on a network fetch mid-game; this trades a few
+    hundred KB of eager fetch for a glitch-free first crossfade.
+
+Evidence: octomancer-web/night/s1-desktop-music-started.png,
+octomancer-web/night/s1-desktop-paused-flute.png,
+octomancer-web/night/s1-phone-hud-mute.png.

@@ -44,3 +44,15 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 No noise, vignette, spikes or portal files are shipped as images: those are
 code-drawn or excluded (OVERNIGHT.md §2, DECISIONS §1 Q1). The bomb, its fuse
 spark, the explosion ring and debris particles are code-drawn (M3-3).
+
+## Audio (`play/audio/`, track S)
+
+| play/audio file | source (octomancer-unity/) | owner |
+|---|---|---|
+| `audio/medles.opus`, `audio/medles.mp3` | `octomancer-unity\Assets\Sounds\Mj 362 - Octopus Medles.mp3`, encoded by `web/tools/encode_music.py` (ffmpeg, libopus/libmp3lame, 96kbps) | Milan Švancara |
+| `audio/flute.opus`, `audio/flute.mp3` | `octomancer-unity\Assets\Sounds\Svancara Strings - Flûte de forêt.wav`, encoded by `web/tools/encode_music.py` | Milan Švancara |
+
+`Mj -  312 Q.mp3` stays harvested-only, not shipped (DECISIONS §1 Q7).
+Dash/pearl/hurt/bomb SFX are synthesised in code (`play/js/sfx.js`, plain
+oscillators + filtered noise, no samples): nothing from `Sounds/Effects/` or
+`Sounds/*.wav` library SFX ships.

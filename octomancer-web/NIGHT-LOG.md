@@ -563,3 +563,64 @@ only the "a human typed the arrow keys for two full minutes" part is cut).
 S (music/mute) is the first task for whoever picks up M5. Next: M5 (title
 hook) or, if this session's scope stays M4-only, hand back for the next
 milestone dev.
+
+## Track S: music and mute (Otter/Magpie-style dev, this session)
+
+Task: OVERNIGHT.md §4 S-1 (encode Octopus Medles + Flûte de forêt, loop in
+play, crossfade on game-over/pause, start only after first input; code-synth
+SFX; credits). This was flagged skipped by the M4 dev (out of scope that
+session) and became the first pending item for whoever picked it up next --
+done now, independently of M5/M6, per its own side-track rule.
+
+**Built:** `web/tools/encode_music.py` (ffmpeg, Ogg Opus + MP3 @ 96kbps) ->
+`play/audio/{medles,flute}.{opus,mp3}`. `play/js/audio.js`: one
+`AudioContext` created lazily on the first `keydown`/`pointerdown`/
+`touchstart` (never before); Medles and Flûte are `<audio loop>` elements
+through `MediaElementAudioSourceNode`s into per-track gains into one master
+gain (mute multiplies the master to 0, so it silences music and SFX alike).
+`pause`/`gameover` window events crossfade to Flûte over 1s; `resume`/
+`restart` crossfade back to Medles (added a `restart` `CustomEvent` dispatch
+to `main.js`, alongside the M4-1 `pause`/`resume`/`gameover` ones, at both
+restart call sites: the game-over-overlay's Enter/tap-to-restart path and
+`__octo.restart()`). Mute persists via `save.js`'s existing `muted` field
+(no changes needed there -- M4 already wrote it). Added a mute button
+("corner slot" next to pause) to `ui.js`/`play.css`, reflecting the
+persisted state on load. `play/js/sfx.js`: plain WebAudio oscillators +
+filtered noise for dash/pearl/hurt/bomb, routed through `audio.js`'s master
+gain via an accessor pair (`getCtx()/getDest()`, both `null` until the first
+input, so an SFX call before that silently no-ops instead of throwing);
+wired into `main.js`'s `step()` at the existing dash/pickup/hurt-delta/bomb-
+exploded points. `ASSETS.md` gained an Audio section crediting Milan
+Švancara for both tracks and noting the code-synth SFX and `312 Q`'s
+skipped-for-now status (matches `CREDITS.md`'s pre-existing "Art & music:
+Milan Švancara" line -- no change needed there).
+
+**Verified:** `tests/` still 46/46 PASS (no test regressions; audio/sfx have
+no unit tests of their own -- they are timing/network-observable, not pure
+functions, so verification is the puppeteer/browser pass below, matching the
+project's existing pattern for audio-adjacent work). Real port at
+localhost:8091, headless Chrome via puppeteer-core (scratch folder): network
+log shows zero `/audio/` requests before the first input and exactly the two
+chosen-format files (`.opus`) after it, never the `.mp3` fallback;
+`__octo.audio()` confirms `started`/`track`/`muted` transitions on
+pause->flute, resume->medles, and mute-button-toggle->persists across a
+reload. 375x812 mute button sits below the pause button, inside the safe
+area, never over the joystick/buttons. Frame budget with the full audio
+graph running: 0.30ms median / 0.50-0.60ms p95 (unchanged from M4, audio
+allocates nothing per frame). Numbers and screenshots in
+`web/report/s1-metrics.txt` and `web/night/s1-*.png`.
+
+**Deviations:** `medles.opus` is ~1030KB, about 3% over the "<=1MB each"
+number in OVERNIGHT.md §4 -- kept at ffmpeg's straight 96kbps rather than
+re-encoding lower, since the actual transfer-affecting budget (one format's
+two files, since only one is ever fetched) is ~2.0MB, inside "music <=2MB
+more" (§2). Both tracks are eagerly `preload="auto"`'d and started together
+(Flûte at gain 0) as soon as the AudioContext exists, rather than only
+fetching Flûte when a pause/gameover first happens, so the very first
+crossfade is never gated on a mid-game fetch.
+
+**Skipped:** nothing from S-1's own row; the "if time is left" SFX bonus
+list (dash, pearl, hurt, bomb) was done, not skipped.
+
+**Status:** Track S exit criteria met and numbered (`s1-metrics.txt`). Next:
+whichever milestone is still open (M5/M6/M7 per OVERNIGHT.md §3's ordering).

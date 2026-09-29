@@ -14,7 +14,7 @@ function el(tag, className, text) {
 
 /**
  * @param {HTMLElement} root the #hud element (pointer-events:none, children opt back in via CSS)
- * @param {{onRestart:()=>void, onExit:()=>void, onTogglePause:()=>void}} handlers
+ * @param {{onRestart:()=>void, onExit:()=>void, onTogglePause:()=>void, onToggleMute?:()=>boolean, muted?:boolean}} handlers
  */
 export function createUI(root, handlers) {
   // --- HUD bar (hearts + stats), always visible during play ---
@@ -34,7 +34,18 @@ export function createUI(root, handlers) {
   pauseBtn.setAttribute('aria-label', 'Pause');
   pauseBtn.addEventListener('click', () => handlers.onTogglePause && handlers.onTogglePause());
 
-  root.append(bar, pauseBtn);
+  // Mute button: track S's "corner slot" (OVERNIGHT.md §4 S-1). Lives next
+  // to the pause button, above the safe-area inset, and reflects whatever
+  // `save.js`'s persisted `muted` flag already was on load.
+  const muteBtn = el('button', 'octo-mute-btn', handlers.muted ? '🔇' : '🔊');
+  muteBtn.type = 'button';
+  muteBtn.setAttribute('aria-label', 'Mute');
+  muteBtn.addEventListener('click', () => {
+    const nowMuted = handlers.onToggleMute && handlers.onToggleMute();
+    muteBtn.textContent = nowMuted ? '🔇' : '🔊';
+  });
+
+  root.append(bar, pauseBtn, muteBtn);
 
   /** @type {HTMLImageElement[]} */
   const heartEls = [];

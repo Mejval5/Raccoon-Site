@@ -19,6 +19,8 @@ import { createUI } from './ui.js';
 import { computeScore } from './score.js';
 import { loadBest, recordRun } from './save.js';
 import { HEART_MAX } from './config.js';
+import { createAudio } from './audio.js';
+import { createSfx } from './sfx.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -62,6 +64,12 @@ let particles = createParticles();
 let autoDiveOn = false;
 let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
 
+// --- Track S: music and code-synth SFX (OVERNIGHT.md §4 S-1) ---
+const audio = createAudio();
+const sfx = createSfx(audio);
+let prevHearts = octo.hearts;
+let prevPearls = pickups.totals.pearls;
+
 const sim = {
   time: 0,
   lastInput: { move: { x: 0, y: 0 }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } },
@@ -72,11 +80,13 @@ let bestScore = loadBest().best;
 let liveScore = 0;
 
 const ui = createUI(hudEl, {
+  muted: audio.isMuted(),
   onRestart() {
     ui.hideGameOver();
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
     applyPaused();
+    window.dispatchEvent(new CustomEvent('restart'));
   },
   onExit() {
     location.href = '/octomancer/';
@@ -85,6 +95,9 @@ const ui = createUI(hudEl, {
     if (octo.dead) return; // no pausing over the game-over overlay
     manualPaused = !manualPaused;
     applyPaused();
+  },
+  onToggleMute() {
+    return audio.toggleMute();
   },
 });
 
@@ -149,17 +162,23 @@ function step(dt) {
     if (snap.dash.pressed) {
       ui.hideGameOver();
       resetWorld(Math.floor(Math.random() * 1e9));
+      window.dispatchEvent(new CustomEvent('restart'));
     }
     return;
   }
   stepOctopus(octo, snap, dt, world);
+  if (octo.dashedThisStep) sfx.dash();
   world.update(octo.y);
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident);
+  if (pickups.totals.pearls > prevPearls) sfx.pearl();
+  prevPearls = pickups.totals.pearls;
+  if (octo.hearts < prevHearts) sfx.hurt();
+  prevHearts = octo.hearts;
   decor.update(dt, resident);
   enemies.update(dt, sim.time, octo, world, resident);
   bombs.update(dt, world, octo, enemies);
-  for (const ev of bombs.events) if (ev.type === 'exploded') particles.bombDebris(ev.x, ev.y);
+  for (const ev of bombs.events) if (ev.type === 'exploded') { particles.bombDebris(ev.x, ev.y); sfx.bomb(); }
   for (const ev of enemies.events) if (ev.type === 'enemyKilled') { particles.deathPoof(ev.x, ev.y); runKills++; }
   particles.update(dt);
   if (snap.bomb.pressed) bombs.place(octo, octo.x, octo.y);
@@ -259,6 +278,8 @@ function resetWorld(newSeed) {
   sim.time = 0;
   runKills = 0;
   liveScore = 0;
+  prevHearts = octo.hearts;
+  prevPearls = pickups.totals.pearls;
   ui.hideGameOver();
 }
 
@@ -336,6 +357,10 @@ window.__octo = {
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
     applyPaused();
+    window.dispatchEvent(new CustomEvent('restart'));
     return seed;
+  },
+  audio() {
+    return { started: audio.isStarted(), muted: audio.isMuted(), track: audio.currentTrack() };
   },
 };
