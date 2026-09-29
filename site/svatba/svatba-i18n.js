@@ -140,7 +140,9 @@ window.SVATBA_I18N = {
     "dary.raised": "vybráno",
     "dary.slider.label": "Vybraná částka",
     "dary.none": "Zatím jen sen. Posuňte meruňku doprava.",
-    "dary.next": "Do další zastávky zbývá {amount}",
+    "dary.nextLabel": "Další zastávka",
+    "dary.reached": "Na tohle už máme",
+    "dary.next": "Chybí ještě {amount}",
     "dary.beyond": "A pak už jen kočky až do konce života.",
 
     "dary.m1.title": "Kočičí pamlsky na rok",
@@ -283,7 +285,9 @@ window.SVATBA_I18N = {
     "dary.raised": "raised",
     "dary.slider.label": "Amount raised",
     "dary.none": "Just a dream for now. Drag the apricot to the right.",
-    "dary.next": "{amount} to the next stop",
+    "dary.nextLabel": "Next stop",
+    "dary.reached": "Already covered",
+    "dary.next": "{amount} to go",
     "dary.beyond": "After that, just cats for the rest of our lives.",
 
     "dary.m1.title": "Cat treats for a year",
@@ -426,7 +430,9 @@ window.SVATBA_I18N = {
     "dary.raised": "collectés",
     "dary.slider.label": "Montant collecté",
     "dary.none": "Pour l'instant, ce n'est qu'un rêve. Faites glisser l'abricot vers la droite.",
-    "dary.next": "Encore {amount} jusqu'à la prochaine étape",
+    "dary.nextLabel": "Prochaine étape",
+    "dary.reached": "Déjà financé",
+    "dary.next": "Encore {amount}",
     "dary.beyond": "Après ça, plus que des chats jusqu'à la fin de nos jours.",
 
     "dary.m1.title": "Des friandises pour chat pendant un an",

@@ -115,9 +115,7 @@
   var root, track, fill, handle, nodesWrap, amountValueEl, panelEl;
   var currentPct = 0;
   var litState = [];
-  var panelKey = null; // null (not yet rendered) | 'none' | 'beyond' | <milestone index>
   var dragging = false;
-  var crossfadeTimer = null;
 
   // ---- i18n helpers ---------------------------------------------------------
   function currentLang() {
@@ -289,75 +287,82 @@
   }
 
   // ---- Detail panel -----------------------------------------------------------
-  function lastLitIndex(litArr) {
-    var last = -1;
-    for (var i = 0; i < litArr.length; i++) {
-      if (litArr[i]) last = i;
-    }
-    return last;
-  }
+  // Top: the next goal as a faded row with the amount still missing. Below it: every milestone
+  // already reached, newest first (the newest one is featured). Rows are added and removed
+  // incrementally, so only a newly reached milestone animates in and dragging stays smooth.
+  var panelBuilt = false;
+  var shownCount = 0;   // how many reached milestones are in the list
+  var nextShown = -2;   // index shown in the "next" row; -1 = everything reached
+  var nextBox, emptyEl, reachedLabel, reachedList;
 
-  function panelMilestoneHtml(idx) {
+  function milestoneInner(idx) {
     var m = MILESTONES[idx];
-    var titleKey = 'dary.' + m.key + '.title';
-    var textKey = 'dary.' + m.key + '.text';
     return (
-      '<div class="dary-panel-icon">' + m.icon + '</div>' +
-      '<div class="dary-panel-body">' +
-      '<h3 class="dary-panel-title">' + escapeHtml(t(titleKey)) + '</h3>' +
-      '<p class="dary-panel-desc">' + escapeHtml(t(textKey)) + '</p>' +
+      '<div class="dary-row-icon">' + m.icon + '</div>' +
+      '<div class="dary-row-body">' +
+      '<h3 class="dary-row-title">' + escapeHtml(t('dary.' + m.key + '.title')) + '</h3>' +
+      '<p class="dary-row-desc">' + escapeHtml(t('dary.' + m.key + '.text')) + '</p>' +
       '</div>'
     );
   }
 
-  function crossfadeContent(updateFn) {
-    if (prefersReducedMotion()) {
-      updateFn();
-      return;
-    }
-    window.clearTimeout(crossfadeTimer);
-    panelEl.classList.add('is-fading');
-    crossfadeTimer = window.setTimeout(function () {
-      updateFn();
-      panelEl.classList.remove('is-fading');
-    }, 150);
+  function buildPanel() {
+    panelEl.innerHTML =
+      '<div class="dary-next"></div>' +
+      '<p class="dary-panel-empty"></p>' +
+      '<p class="dary-reached-label"></p>' +
+      '<ol class="dary-reached"></ol>';
+    nextBox = panelEl.querySelector('.dary-next');
+    emptyEl = panelEl.querySelector('.dary-panel-empty');
+    reachedLabel = panelEl.querySelector('.dary-reached-label');
+    reachedList = panelEl.querySelector('.dary-reached');
+    emptyEl.textContent = t('dary.none');
+    reachedLabel.textContent = t('dary.reached');
+    shownCount = 0;
+    nextShown = -2;
+    panelBuilt = true;
   }
 
   function updatePanel(amount, litArr) {
-    var last = lastLitIndex(litArr);
-    var key = last < 0 ? 'none' : last === MILESTONES.length - 1 ? 'beyond' : last;
+    var fresh = !panelBuilt;
+    if (fresh) buildPanel();
 
-    var nextLine = '';
-    if (last < 0) {
-      nextLine = '';
-    } else if (last === MILESTONES.length - 1) {
-      nextLine = t('dary.beyond');
-    } else {
-      var remaining = Math.max(0, MILESTONES[last + 1].amount - amount);
-      nextLine = t('dary.next').replace('{amount}', formatAmount(remaining));
-    }
+    var count = 0;
+    while (count < litArr.length && litArr[count]) count++;
+    var animate = !fresh && !prefersReducedMotion();
 
-    var contentChanged = key !== panelKey;
-
-    function paint() {
-      if (last < 0) {
-        panelEl.innerHTML = '<p class="dary-panel-empty">' + escapeHtml(t('dary.none')) + '</p>';
+    var nextIdx = count < MILESTONES.length ? count : -1;
+    if (nextIdx !== nextShown) {
+      if (nextIdx < 0) {
+        nextBox.className = 'dary-next is-beyond';
+        nextBox.innerHTML = '<p class="dary-beyond">' + escapeHtml(t('dary.beyond')) + '</p>';
       } else {
-        panelEl.innerHTML = panelMilestoneHtml(last) + '<p class="dary-panel-next">' + escapeHtml(nextLine) + '</p>';
+        nextBox.className = 'dary-next';
+        nextBox.innerHTML =
+          '<p class="dary-next-label">' + escapeHtml(t('dary.nextLabel')) + '</p>' +
+          '<div class="dary-row is-next">' + milestoneInner(nextIdx) + '</div>' +
+          '<p class="dary-next-missing"></p>';
       }
+      nextShown = nextIdx;
+    }
+    if (nextIdx >= 0) {
+      var missing = nextBox.querySelector('.dary-next-missing');
+      if (missing) missing.textContent = t('dary.next').replace('{amount}', formatAmount(Math.max(0, MILESTONES[nextIdx].amount - amount)));
     }
 
-    if (contentChanged) {
-      panelKey = key;
-      crossfadeContent(paint);
-    } else if (last >= 0) {
-      // Same milestone still shown: just keep the "next stop" line current,
-      // without a fade, since it changes continuously while dragging.
-      var nextEl = panelEl.querySelector('.dary-panel-next');
-      if (nextEl) nextEl.textContent = nextLine;
-    } else {
-      var emptyEl = panelEl.querySelector('.dary-panel-empty');
-      if (emptyEl) emptyEl.textContent = t('dary.none');
+    emptyEl.hidden = count > 0;
+    reachedLabel.hidden = count === 0;
+
+    while (shownCount < count) {
+      var li = document.createElement('li');
+      li.className = 'dary-row' + (animate ? ' is-new' : '');
+      li.innerHTML = milestoneInner(shownCount);
+      reachedList.insertBefore(li, reachedList.firstChild);
+      shownCount++;
+    }
+    while (shownCount > count) {
+      reachedList.removeChild(reachedList.firstChild);
+      shownCount--;
     }
   }
 
@@ -491,7 +496,7 @@
   }
   function onLangChange() {
     renderNodeLabels();
-    panelKey = null; // force the panel to rebuild its text in the new language
+    panelBuilt = false; // rebuild the panel text in the new language (without replaying animations)
     render({ silent: true });
   }
 
