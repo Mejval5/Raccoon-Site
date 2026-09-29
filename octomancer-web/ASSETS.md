@@ -1,0 +1,37 @@
+# Octomancer play/assets — shipped file ledger
+
+Every file under `site/octomancer/play/assets/` must have a row here.
+The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
+
+| play/assets file | source (octomancer-unity/) | owner |
+|---|---|---|
+| `assets/tiles/tile-0.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\0.png` | Milan Švancara |
+| `assets/tiles/tile-1.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\1.png` | Milan Švancara |
+| `assets/tiles/tile-2-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-2.png` | Milan Švancara |
+| `assets/tiles/tile-2-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-3.png` | Milan Švancara |
+| `assets/tiles/tile-2-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-4.png` | Milan Švancara |
+| `assets/tiles/tile-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2.png` | Milan Švancara |
+| `assets/tiles/tile-2A.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2A.png` | Milan Švancara |
+| `assets/tiles/tile-3-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\3-2.png` | Milan Švancara |
+| `assets/tiles/tile-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\3.png` | Milan Švancara |
+| `assets/tiles/tile-4-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-2.png` | Milan Švancara |
+| `assets/tiles/tile-4-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-3.png` | Milan Švancara |
+| `assets/tiles/tile-4-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-4.png` | Milan Švancara |
+| `assets/tiles/tile-4-5.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-5.png` | Milan Švancara |
+| `assets/tiles/tile-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4.png` | Milan Švancara |
+| `assets/tiles/tile-5.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\5.png` | Milan Švancara |
+| `assets/tiles/tile-6.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\6.png` | Milan Švancara |
+| `assets/bg-far.webp` | `octomancer-unity\Assets\Sprites\Background\BGFar.png` | Milan Švancara |
+| `assets/plant1.webp` | `octomancer-unity\Assets\Sprites\Background\Plant1.png` | Milan Švancara |
+| `assets/plant2.webp` | `octomancer-unity\Assets\Sprites\Background\Plant2.png` | Milan Švancara |
+| `assets/bubble-bubble3.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\Bubble3.png` | Milan Švancara |
+| `assets/bubble-bubblepop.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\BubblePop.png` | Milan Švancara |
+| `assets/bubble-bubblesingle.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\BubbleSingle.png` | Milan Švancara |
+| `assets/bubble-bubblestream.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\BubbleStream.png` | Milan Švancara |
+| `assets/shell-blue.webp` | `octomancer-unity\Assets\Sprites\Gems\SymbolBlue.png` | Milan Švancara |
+| `assets/shell-green.webp` | `octomancer-unity\Assets\Sprites\Gems\SymbolGreen.png` | Milan Švancara |
+| `assets/shell-red.webp` | `octomancer-unity\Assets\Sprites\Gems\SymbolRed.png` | Milan Švancara |
+| `assets/ui-heart.webp` | `octomancer-unity\Assets\Sprites\UI\Heart.png` | Milan Švancara |
+
+No noise, vignette, spikes or portal files are shipped as images: those are
+code-drawn or excluded (OVERNIGHT.md §2, DECISIONS §1 Q1).
