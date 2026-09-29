@@ -77,6 +77,16 @@ const HORNS_RIM_INSET = 0.18; // push = 0.5-0.45+0.18 = 0.23 (was 0.31)
 // enough that the sphere itself sits at the rim, letting the spikes overlap
 // the solid tile the way they visibly do in the promo stills.
 const URCHIN_RIM_INSET = 0.1; // push = 0.5-0.45+0.1 = 0.15 (was 0.31)
+// Round-11 fix (review round 10 leftover, issue 3: "a floor cannon in a
+// concave corner sinks 0.2-0.3 tile below the floor rim ... looks
+// half-buried"). Same round-8/round-10 root cause as urchin/crab/horns
+// above: the cannon's floor/wall `surfaceDrawOffsetXY` call never got its
+// own inset and was still using the shared `GROUND_RIM_INSET` (0.26, tuned
+// pre-round-8 for the raw tile grid), which overshoots the smoothed/traced
+// rim collision now rests on (push = 0.5-0.45+0.26 = 0.31 for its 0.9
+// worldSize). A smaller, urchin-sized inset brings its base flush with the
+// rim instead of sunk into the rock.
+const CANNON_RIM_INSET = 0.1; // push = 0.5-0.45+0.1 = 0.15 (was 0.31)
 function surfaceDrawOffset(placement, worldSize, inset = GROUND_RIM_INSET) {
   const push = 0.5 - worldSize / 2 + inset;
   if (placement === 'floor') return push;
@@ -157,7 +167,7 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       const vx = e.vx || (e.dir || 0);
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, ex, ey, 1.15, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
-      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
+      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9, CANNON_RIM_INSET);
       // Round-10 fix (review round 9 leftover, issue A1: "wall-placed
       // cannons: rotate the sprite by wallDir so the base sits on the wall
       // rim, body in open water"). The sprite art is drawn base-down for a

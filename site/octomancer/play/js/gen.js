@@ -448,7 +448,19 @@ export function generateChunk(seed, chunkIndex, entryCol) {
         else flatRun = !isCornerAnchor(smoothed, ax, ay);
       }
       if (placement === 'open' && !hasOpenClearance(smoothed, x, y, 1)) continue;
-      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir });
+      // Round-11 fix (review round 10 leftover, issue 3: "a floor cannon in
+      // a concave corner sinks below the rim AND overlaps the adjacent side
+      // wall's rim"). `flatRun`/`isCornerAnchor` above only look at the
+      // ANCHOR tile's own row (e.g. the floor tile's left/right neighbours),
+      // which never sees a concave corner where the floor is perfectly flat
+      // but a side wall rises immediately next to the ENEMY's own cell
+      // (x,y) -- exactly the "bottom-right corner of a notch" case reported.
+      // Recorded here (grid access only exists in gen.js) so enemies.js's
+      // `pickKind` can skip a cannon at this slot -- the round cannon body
+      // has no per-side inset to correct for a second, perpendicular wall.
+      const nearSideWall = (placement === 'floor' || placement === 'ceiling')
+        && (smoothed[idx(x - 1, y)] !== 0 || smoothed[idx(x + 1, y)] !== 0);
+      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall });
       placedSlots.push({ x, y });
     }
   }

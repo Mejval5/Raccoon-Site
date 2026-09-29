@@ -59,7 +59,44 @@ function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 // half-extent the separation pass uses where one is defined for this kind,
 // otherwise falls back to the physics radius unchanged.
 function wallCollisionRadius(e) { return Math.max(e.radius, ENEMY_SEP_HALF_EXTENT[e.kind] ?? 0); }
+function resolveWallsAt(e, world) {
+  if (typeof world.wallSegmentsNear === 'function') {
+    resolveCircleVsSegments(e, world.wallSegmentsNear(e.x, e.y, e.radius));
+  } else {
+    resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
+  }
+}
+
+// Round-11 fix (review round 10 leftover, issue 1: "piranhas still visibly
+// swim into rock -- head and belly cross the rim by 0.2-0.4 tile"). A single
+// 0.68-tile circle (the round-10 fix's `ENEMY_SEP_HALF_EXTENT.piranha`,
+// tuned for enemy-vs-enemy separation) can only bound one axis of the
+// piranha's actual footprint at once: the sprite (enemy-draw.js, worldSize
+// 1.15 at the image's 204x128 aspect) reads about 1.83 tiles long and 1.15
+// tiles tall, but is only ever flipped left/right, never rotated -- its long
+// axis is always screen/world x. A 0.68 circle covers the 0.58-tile
+// perpendicular (top/bottom) half-extent with room to spare, but falls
+// 0.25-0.3 tile short of the 0.9-tile nose-to-tail half-length, letting the
+// head or tail sink into a wall the fish is swimming straight at or along.
+// `collidePiranhaWithWalls` samples 3 points along that fixed body axis
+// (nose, centre, tail) with the smaller perpendicular radius instead of one
+// big circle -- close to the review's suggested capsule/3-point check,
+// without needing a full capsule-vs-segments resolver.
+const PIRANHA_BODY_HALF_LEN = 0.85; // tiles, nose-to-tail half length (image aspect 204/128 * 1.15 worldSize / 2 ~= 0.92, kept slightly inside the art edge)
+const PIRANHA_BODY_HALF_HEIGHT = 0.52; // tiles, perpendicular (top/bottom) half-extent
+function collidePiranhaWithWalls(e, world) {
+  const origRadius = e.radius;
+  e.radius = PIRANHA_BODY_HALF_HEIGHT;
+  for (const off of [PIRANHA_BODY_HALF_LEN, -PIRANHA_BODY_HALF_LEN, 0]) {
+    e.x += off;
+    resolveWallsAt(e, world);
+    e.x -= off;
+  }
+  e.radius = origRadius;
+}
+
 function collideWithWalls(e, world) {
+  if (e.kind === 'piranha') { collidePiranhaWithWalls(e, world); return; }
   // Swap in the (possibly larger) wall-collision radius just for the
   // resolve call, then restore `e.radius` -- the resolvers mutate `e.x`/
   // `e.y` in place, so `e` itself (not a copy) must be passed through, but
@@ -67,11 +104,7 @@ function collideWithWalls(e, world) {
   // keep meaning the small physics circle.
   const origRadius = e.radius;
   e.radius = wallCollisionRadius(e);
-  if (typeof world.wallSegmentsNear === 'function') {
-    resolveCircleVsSegments(e, world.wallSegmentsNear(e.x, e.y, e.radius));
-  } else {
-    resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
-  }
+  resolveWallsAt(e, world);
   e.radius = origRadius;
 }
 
@@ -174,7 +207,7 @@ function makeRng(seedSalt) {
 // and ceiling, but only on a "flat run" anchor (gen.js's `flatRun`, set
 // false at convex ceiling/floor corners) -- Daniel's review: "horns at
 // convex ceiling corners hang in open water below the rim".
-function pickKind(placement, depth, rng, flatRun) {
+function pickKind(placement, depth, rng, flatRun, nearSideWall) {
   const candidates = [];
   if (placement === 'open') {
     candidates.push('piranha');
@@ -192,7 +225,13 @@ function pickKind(placement, depth, rng, flatRun) {
     if (placement === 'floor' && flatRun) candidates.push('crab');
     if ((placement === 'floor' || placement === 'ceiling') && flatRun) candidates.push('horns');
   }
-  if (depth > 80 && (placement === 'floor' || placement === 'wall')) candidates.push('cannon');
+  // Round-11 fix (review round 10 leftover, issue 3): skip a cannon slot at
+  // a concave floor/ceiling-meets-wall corner (gen.js's `nearSideWall`) --
+  // its round body has no per-side inset to correct for a second,
+  // perpendicular wall, so it reads half-buried and drawn over the wall's
+  // rim there. `wall` placements are unaffected (their own solid side isn't
+  // a corner).
+  if (depth > 80 && (placement === 'floor' || placement === 'wall') && !nearSideWall) candidates.push('cannon');
   if (candidates.length > 1) return candidates[Math.floor(rng() * candidates.length)];
   return candidates[0];
 }
@@ -265,7 +304,7 @@ export function createEnemies() {
       if (s.type !== 'enemy-slot') continue;
       const wy = s.y + yOffset;
       if (wy < ENEMY_MIN_DEPTH) continue;
-      const kind = pickKind(s.placement, wy, rng, s.flatRun !== false);
+      const kind = pickKind(s.placement, wy, rng, s.flatRun !== false, !!s.nearSideWall);
       list.push(makeEnemy(kind, s.x, wy, index, s.placement, s.wallDir || 0));
     }
     if (list.length) byChunk.set(index, list);
@@ -495,6 +534,21 @@ export function createEnemies() {
         }
       }
       separateEnemies(allEnemies());
+      // Round-11 fix (review round 10 leftover, issue 1's ordering note:
+      // "check that enemy-separation, or the push from an urchin, runs
+      // BEFORE collideWithWalls -- if separation runs after, it pushes
+      // piranhas back into rock after the wall resolve"). It does run after
+      // (each enemy's own `update*` already resolves its OWN wall
+      // collision, inline, before this pass) -- `separateEnemies` above can
+      // push either side of a too-close pair straight into a wall the pair
+      // is swimming along, with nothing to resolve it again until next
+      // step's movement happens to pull it back out. Re-clamp every moving
+      // enemy against walls once more right after separation so a push from
+      // this step never gets to render as an overlap.
+      for (const e of allEnemies()) {
+        if (e.dead || !e.moving) continue;
+        collideWithWalls(e, world);
+      }
       // Prune dead enemies out of their chunk lists (dash/bomb kills).
       for (const [ci, list] of byChunk) {
         const filtered = list.filter((e) => !e.dead);

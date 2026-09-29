@@ -213,7 +213,7 @@ function step(dt) {
   }
   world.update(octo.y);
   const resident = world.residentChunks();
-  pickups.update(dt, sim.time, octo, resident);
+  pickups.update(dt, sim.time, octo, resident, world);
   for (const ev of pickups.events) {
     const color = ev.type === 'pearl' ? '#dff3ff' : ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);

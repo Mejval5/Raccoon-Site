@@ -2090,3 +2090,68 @@ enemies on screen at once. Screenshots: `octomancer-web/night/fix-r10-
 {desk-1440x900,phone-375x812,dive-s5-mid,dive-s5-deep,dive-s7-mid}.png`,
 zoomed crops `fix-r10-zoom-{emplacements,cannons}.png` (forced-spawn
 showcase of both cannon wallDir orientations, mirrored as expected).
+
+## Visual fixes round 11 (Daniel's screenshot review round 10 leftovers)
+
+1. **Piranhas still visibly swim into rock (enemies.js).** Round 10's fix
+   (issue 5) used a single circle sized to the piranha's *perpendicular*
+   half-extent (`ENEMY_SEP_HALF_EXTENT.piranha = 0.68`, tuned for enemy-vs-
+   enemy separation) for wall collision too. The sprite is ~1.8 tiles long
+   but never rotated (only flipped left/right), so that one circle covers
+   the ~0.58-tile top/bottom half-extent fine but falls ~0.25-0.3 tile short
+   along the ~0.9-tile nose-to-tail half-length -- exactly the "head and
+   belly cross the rim" Daniel reported. `collidePiranhaWithWalls` now
+   samples 3 points along the fixed body axis (nose, centre, tail) with the
+   smaller perpendicular radius, resolving each against the wall segments/
+   grid in turn, instead of one big circle. Also addressed the ordering
+   question Daniel raised: `collideWithWalls` was already called per-enemy
+   before `separateEnemies`, but `separateEnemies` itself (enemy-vs-enemy
+   push, including an urchin shoving a piranha) ran LAST each step with
+   nothing after it to re-clamp -- so a same-step separation push could
+   land an enemy back in rock with nothing to catch it until next frame's
+   movement happened to pull it out. Added a second `collideWithWalls` pass
+   over every moving enemy right after `separateEnemies`.
+
+2. **Plankton swarm dots drawn inside/on rock (pickups.js).** The scatter
+   only checked the swarm's baked-open centre, then placed each of the
+   swarm's dots up to 1.6 tiles away with zero solid check -- easily far
+   enough to land inside a nearby wall. `planktonSpotOpen` now checks the
+   candidate tile plus a small margin (0.25 tile, above the 0.12-tile idle
+   wobble amplitude) in the 4 axis directions against the chunk's raw tile
+   grid (`buildChunkPickups` doesn't have the traced outline available, so
+   this is a cheap solid/near-solid stand-in for "too close to the rim");
+   `buildChunkPickups` re-rolls a candidate a few times and drops the dot
+   entirely rather than ever embedding it. Also fixed the follow-up Daniel
+   flagged: the pull-toward-octopus step and the idle wobble both moved a
+   plankton by a raw per-step add with no solid check of their own, so
+   either could drag an already-valid dot across a thin wall over time --
+   `pickups.update` now takes an optional `world` (threaded through from
+   main.js's `step`) and undoes that step's move if it lands `world.isSolid`.
+
+3. **Floor cannon sunk into a concave corner (enemy-draw.js, gen.js).** Same
+   round-8/round-10 root cause as urchin/crab/horns: the cannon's floor/wall
+   draw offset was still using the shared `GROUND_RIM_INSET` (0.26, tuned
+   pre-round-8 for the raw tile grid, push 0.31) instead of an inset sized
+   for the smoothed/traced rim collision now uses. Added a urchin-sized
+   `CANNON_RIM_INSET = 0.1` (push 0.15) for its own `surfaceDrawOffsetXY`
+   call. Separately, the "also overlaps the adjacent side wall's rim" half
+   of the report needed a gen.js-side fix: `pickKind`'s existing
+   `flatRun`/corner check only looks at the anchor tile's own row, which
+   never sees a concave corner where the floor is flat but a side wall
+   rises right next to the enemy slot's own cell. `generateChunk` now also
+   records `nearSideWall` (solid immediately left or right of a floor/
+   ceiling slot) on each spawn record, and `pickKind` skips the `cannon`
+   candidate there entirely (its round body has no per-side inset to
+   correct for a second, perpendicular wall) -- `wall` placements are
+   unaffected since their own solid side isn't a corner case.
+
+Verification: `tests/` 91/91 unchanged (own threading `http.server` with
+no-cache headers on a free port, stopped after); puppeteer-core headless
+Chrome: 0 console errors across fresh spawn frames at 1440x900 and
+375x812 (touch-emulated), and scripted autodives on seeds 5, 7, 42 through
+several hundred metres of depth. Screenshots: `octomancer-web/night/fix-r11-
+{desk-s5,desk-s7,desk-s42,phone-s3}-{spawn,0..5}.png`, zoomed crops
+`fix-r11-zoom-{piranha-s5,piranha-s7,piranha-s42,piranha-s8-pair,
+plankton-s5,cannon-floor-s5,cannon-floor-s19,cannon-wall-s42,octopus-s5,
+wall-s5}.png` (piranha crops re-check all 4 of Daniel's reported spots;
+cannon crops cover both a concave floor corner and a wall placement).
