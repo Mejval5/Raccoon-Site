@@ -19,7 +19,7 @@
 // have a piece for. The background swap and plant floor-anchoring are
 // separate fixes logged inline below.
 //
-// Texture pass (this session, per Daniel): the walls read as flat single-tone
+// Texture pass (earlier session, per Daniel): the walls read as flat single-tone
 // shapes -- no rock surface detail. In the Unity original this came from
 // `Assets/Shaders/My shaders/Map/SquidTilemap.shader`'s `SamplePerlinTexture`,
 // which tiles a set of fBm-noise textures (baked by
@@ -39,11 +39,31 @@
 // cost for a static rock surface). Soft/breakable rock reuses the identical
 // field through a coral-tinted lookup so both textures line up pixel-for-
 // pixel with the rock's own grain.
+//
+// Video-match pass (this session, per Daniel: "that is not really anything
+// like the video" -- comparing against octo-video-{hero,hub,cave-urchin,
+// fish-swarm}.webp in site/img/octomancer/video/). Sampling those frames
+// pixel-by-pixel (see the render task notes) found the actual look is much
+// simpler than what was baked here: a flat navy-blue rock fill (~rgb(34,56,
+// 112), not the near-black/dark-teal it was), Milan's existing teal-green rim
+// art basically as-is (~rgb(8,104,88), the old RIM_COLOR was already close),
+// and a bright flat cyan background (~rgb(120,235,248)) instead of the
+// near-black gradient this file had -- the promo footage barely darkens with
+// depth at all in these frames. Milan's tile art (`tiles/tile-*.webp`) is
+// drawn with a pure-black fill and the green rim baked in; `recolorWallTile`
+// below remaps just the near-black fill pixels to the navy fill once per tile
+// image (not per chunk, not per frame) so the rim art is untouched. The fBm
+// texture pass is kept (Daniel's shader ground-truth note still applies) but
+// dialled way down -- low alpha, tinted as navy-on-navy variation instead of
+// a contrasting teal speckle -- since the reference frames read as close to
+// flat at this art style's resolution; a loud grain was fighting the video
+// look as much as the wrong base colour was.
 
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
 import { depthTint } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
+import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
@@ -77,6 +97,33 @@ export function createRenderer(ctx, world) {
   const tileCorner = loadImage(ASSET('tiles/tile-3.webp'));
   const tileCorridor = loadImage(ASSET('tiles/tile-5.webp'));
   const tileIsland = loadImage(ASSET('tiles/tile-0.webp'));
+  // Video-match: Milan's tile art is a solid-black fill plus the teal-green
+  // rim; recolour just the black fill to the sampled navy (see module-header
+  // comment) once per source image, so the bake loop below keeps drawing
+  // these exactly like the raw Image objects but gets the right base colour
+  // for free, with zero added per-chunk or per-frame cost.
+  const WALL_FILL_COLOR = [34, 56, 112];
+  const WALL_FILL_THRESHOLD = 24; // tile art's fill is pure (0,0,0); the rim art is nowhere near this dark
+  function recolorWallTile(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const cctx = c.getContext('2d');
+    cctx.drawImage(img, 0, 0);
+    const id = cctx.getImageData(0, 0, c.width, c.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      if (d[i] < WALL_FILL_THRESHOLD && d[i + 1] < WALL_FILL_THRESHOLD && d[i + 2] < WALL_FILL_THRESHOLD) {
+        d[i] = WALL_FILL_COLOR[0]; d[i + 1] = WALL_FILL_COLOR[1]; d[i + 2] = WALL_FILL_COLOR[2];
+      }
+    }
+    cctx.putImageData(id, 0, 0);
+    return c;
+  }
+  // Recoloured tile canvases, filled in as each source image loads; bakeChunkWalls
+  // draws from here (via pickWallArt's `key`) instead of the raw Image objects.
+  const wallArt = {};
   const caveArt = loadImage(ASSET('bg-cave.webp'));
   // Feathered once the source image loads: the raw art is a bright cave
   // mouth on a big flat near-black rectangle, and even under a 'screen'
@@ -112,11 +159,13 @@ export function createRenderer(ctx, world) {
     green: loadImage(ASSET('shell-green.webp')),
     red: loadImage(ASSET('shell-red.webp')),
   };
-  const wallTiles = [tileFull, tileEdgeA, tileEdgeB, tileCorner, tileCorridor, tileIsland];
+  const wallTileSources = { full: tileFull, edgeA: tileEdgeA, edgeB: tileEdgeB, corner: tileCorner, corridor: tileCorridor, island: tileIsland };
   let tilesReady = false;
-  let pending = wallTiles.length;
+  let pending = Object.keys(wallTileSources).length;
   function onTileReady() { if (--pending === 0) tilesReady = true; }
-  for (const img of wallTiles) img.addEventListener('load', onTileReady, { once: true });
+  for (const [key, img] of Object.entries(wallTileSources)) {
+    img.addEventListener('load', () => { wallArt[key] = recolorWallTile(img); onTileReady(); }, { once: true });
+  }
 
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
@@ -138,17 +187,17 @@ export function createRenderer(ctx, world) {
   // returned quarter-turn count moves that edge to match.
   function pickWallArt(openN, openE, openS, openW, altParity) {
     const count = (openN ? 1 : 0) + (openE ? 1 : 0) + (openS ? 1 : 0) + (openW ? 1 : 0);
-    if (count === 0) return { img: tileFull, turns: 0 };
-    if (count >= 3) return { img: tileIsland, turns: 0 }; // rare thin spur, closest available shape
+    if (count === 0) return { key: 'full', turns: 0 };
+    if (count >= 3) return { key: 'island', turns: 0 }; // rare thin spur, closest available shape
     if (count === 1) {
       const turns = openN ? 0 : openE ? 1 : openS ? 2 : 3;
-      return { img: altParity ? tileEdgeB : tileEdgeA, turns };
+      return { key: altParity ? 'edgeB' : 'edgeA', turns };
     }
     // count === 2
-    if (openN && openS) return { img: tileCorridor, turns: 0 };
-    if (openE && openW) return { img: tileCorridor, turns: 1 };
+    if (openN && openS) return { key: 'corridor', turns: 0 };
+    if (openE && openW) return { key: 'corridor', turns: 1 };
     const turns = (openN && openW) ? 0 : (openN && openE) ? 1 : (openE && openS) ? 2 : 3; // 3 = S+W
-    return { img: tileCorner, turns };
+    return { key: 'corner', turns };
   }
 
   // Concave (inward) corners -- where both edges touching that corner are
@@ -157,7 +206,9 @@ export function createRenderer(ctx, world) {
   // the tileset's own rim colour, then a smaller destination-out wedge to
   // cut the actual water notch. k = 0..3 for TL/TR/BR/BL, matching the
   // quarter-turn convention above.
-  const RIM_COLOR = 'rgba(15,90,66,0.95)';
+  // Sampled from the rim art in the promo-video reference frames (~rgb(8,104,88));
+  // close to the old value, nudged to match exactly.
+  const RIM_COLOR = 'rgba(9,100,84,0.95)';
   function carveConcaveCorner(bctx, cx, cy, k, r) {
     const a0 = k * (Math.PI / 2), a1 = a0 + Math.PI / 2;
     bctx.save();
@@ -263,12 +314,16 @@ export function createRenderer(ctx, world) {
   }
 
   const noiseField = generateFbmField(NOISE_FIELD_PX, 1337);
-  // Rock: a quiet dark-teal crevice to pale sea-green speckle, so it reads as
-  // grain on Milan's existing rim colour rather than a new material.
-  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [6, 26, 20], [150, 190, 165], 0.42);
+  // Rock: navy-on-navy variation (darker/lighter than WALL_FILL_COLOR) rather
+  // than a contrasting teal speckle, and much lower alpha -- the promo-video
+  // reference frames read as close to flat at this art style's resolution,
+  // so a loud grain fought the video look as much as the old wrong base
+  // colour did. Kept (rather than dropped) per Daniel's Unity-shader
+  // ground-truth note, just dialled down to a subtle rock-grain hint.
+  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [20, 34, 74], [58, 88, 165], 0.14);
   // Soft/breakable rock: the same field, tinted through the coral palette
   // already used for its rim so the grain matches its own material.
-  const coralNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [90, 46, 26], [235, 175, 120], 0.46);
+  const coralNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [90, 46, 26], [235, 175, 120], 0.20);
   // CanvasPattern only needs *a* 2D context to be created from, not the one
   // it will later be drawn into -- build both patterns once, up front.
   const patternCtx = document.createElement('canvas').getContext('2d');
@@ -316,7 +371,8 @@ export function createRenderer(ctx, world) {
         const openE = !solidAt(tx + 1, ty);
         const openS = !solidAt(tx, ty + 1);
         const openW = !solidAt(tx - 1, ty);
-        const { img, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
+        const { key, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
+        const img = wallArt[key];
 
         bctx.save();
         bctx.translate(px + s / 2, py + s / 2);
@@ -391,11 +447,19 @@ export function createRenderer(ctx, world) {
   // to screen-bottom for an immediate sense of depth even before the depth
   // tint (decor.js) kicks in. Replaces the old bg-far.webp tiling strip,
   // which was too bright/saturated and showed a visible seam every 40 units.
+  //
+  // Video-match: the previous stops (a near-black dark-teal gradient) were
+  // nowhere near the promo footage -- pixel sampling every reference frame
+  // (hero/hub/cave-urchin/fish-swarm) found a flat bright cyan
+  // (~rgb(120,235,248)) that barely darkens with depth at all in-clip. Kept
+  // the existing depth falloff shape (still goes dark at extreme depth, for
+  // gameplay readability) but recalibrated both endpoints to start from that
+  // bright cyan instead of the old near-black base.
   function drawBackground(canvasW, canvasH, time, depth) {
     const t = Math.min(1, depth / 400);
     const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
-    grad.addColorStop(0, `rgb(${lerp(10, 4, t)},${lerp(34, 12, t)},${lerp(46, 16, t)})`);
-    grad.addColorStop(1, `rgb(${lerp(4, 2, t)},${lerp(13, 5, t)},${lerp(18, 7, t)})`);
+    grad.addColorStop(0, `rgb(${lerp(120, 20, t)},${lerp(235, 46, t)},${lerp(248, 76, t)})`);
+    grad.addColorStop(1, `rgb(${lerp(95, 10, t)},${lerp(205, 26, t)},${lerp(228, 46, t)})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
     drawCaveArt(canvasW, canvasH, depth);
@@ -507,6 +571,18 @@ export function createRenderer(ctx, world) {
     ctx.restore();
   }
 
+  // Layering pass (this session, per Daniel: "the plants are on top of
+  // terrain which was not the case, they need to be behind so they poke out
+  // of the terrain"). drawPlants/drawCritters now run BEFORE drawWalls (see
+  // the render() draw list below), so the wall bake composites over them;
+  // this constant tucks each plant's anchor point a little way down into the
+  // solid floor-cap tile (rather than sitting exactly on its top edge) so
+  // the wall art occludes the base of the sprite once it draws on top --
+  // same "anchor slightly into the solid neighbour" idea Otter's critter
+  // placement in decor.js already uses (`INTO_WALL`) for the wall-critter
+  // layer, ported here for the plant sprites drawPlants places directly.
+  const PLANT_INTO_WALL = 0.22;
+
   function drawPlants(canvasW, canvasH, resident) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     for (const { index, yOffset, chunk } of resident) {
@@ -520,7 +596,7 @@ export function createRenderer(ctx, world) {
           if (seedI % 9 !== 0) continue; // sparse: Daniel's screenshot showed these carpeting every wall top
           const img = plants[seedI % 2];
           if (!img.complete || !img.naturalWidth) continue;
-          const s = worldToScreen(camera, canvasW, canvasH, tx + 0.5, ty + yOffset);
+          const s = worldToScreen(camera, canvasW, canvasH, tx + 0.5, ty + yOffset + PLANT_INTO_WALL);
           const h = camera.pxPerUnit * 1.4;
           const w = h * (img.naturalWidth / img.naturalHeight);
           ctx.drawImage(img, s.x - w / 2, s.y - h, w, h);
@@ -610,7 +686,7 @@ export function createRenderer(ctx, world) {
   return {
     camera,
     render(canvasW, canvasH, octo, alpha, time, {
-      resident, pickups, bubbles, depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0,
+      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -624,8 +700,17 @@ export function createRenderer(ctx, world) {
       const reduced = prefersReducedMotion();
       drawBackground(canvasW, canvasH, time, depth);
       drawCaustics(canvasW, canvasH, time, reduced);
-      drawWalls(canvasW, canvasH, resident);
+      // Layering pass: plants/decor draw BEFORE the walls now (was after), so
+      // the wall bake -- opaque rock art -- composites on top and occludes
+      // each sprite's anchor-tucked base (see PLANT_INTO_WALL / decor.js's
+      // own INTO_WALL for critters). Matches the sorting-layer order in the
+      // Unity original too: the foliage prefabs sit on the "Default" sorting
+      // layer, the tilemap on "Map", which renders after "Default" -- i.e.
+      // walls were always meant to composite over decor, not the other way
+      // round.
       drawPlants(canvasW, canvasH, resident);
+      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time); // Otter's alive pass
+      drawWalls(canvasW, canvasH, resident);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);
       drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time);
