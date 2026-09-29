@@ -7,9 +7,17 @@
 - `grep octomancer/play firebase.json`: hit (`"octomancer/play/**"` in `hosting.ignore`).
 - `octomancer-unity/Assets/Sprites/` exists.
 - `python -m http.server 8080 --directory site` serves `/octomancer/` (verified below).
-- `grep -c octoStartGame site/octomancer/index.html` = 0 → the Information-page redesign is **not** merged to master. M5-1 will need patch mode.
+- `grep -c octoStartGame site/octomancer/index.html` = 0 at that instant → the Information-page redesign looked **not** merged to master.
 
 All pre-flight checks passed. Proceeding with M0.
+
+**Correction (found right after M0-1 commit):** Daniel merged `octomancer-archive` into
+master himself, concurrently, in commit `8e9aaf39` ("Merge the Octomancer Information
+page redesign", 02:35:11, landed a couple of seconds after my pre-flight grep ran and
+before my first commit). `site/octomancer/index.html` now does contain `octoStartGame`
+(`grep -c` = 2). **M5-1 should run in in-place mode** (edit `site/octomancer/index.html`
+directly), not patch mode. I did not touch that file and made no commits that conflict
+with the merge; noting this so the M5 dev doesn't rely on the stale M0-0 reading above.
 
 ## M0-1/M0-2 Skeleton, loop, input, test harness
 Built `site/octomancer/play/{index.html,css/play.css,js/{loop,input,touch-ui,debug,main}.js,tests/index.html}`.
