@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Octomancer | Raccoon Website</title>
-  <meta name="description" content="The Octomancer title screen: start the archived 2021 underwater arcade/platformer, or head back to the games list.">
+  <meta name="description" content="The Octomancer title screen. Octomancer is being rebuilt as a small browser game and isn't playable yet — see Information for the story so far, or head back to the games list.">
   <meta property="og:title" content="Octomancer">
-  <meta property="og:description" content="The Octomancer title screen: start the archived 2021 underwater arcade/platformer, or head back to the games list.">
-  <meta property="og:image" content="https://raccoon.website/img/octomancer/hero.webp">
+  <meta property="og:description" content="The Octomancer title screen. Octomancer is being rebuilt as a small browser game and isn't playable yet — see Information for the story so far, or head back to the games list.">
+  <meta property="og:image" content="https://raccoon.website/img/octomancer/cave-bg.webp">
   <meta property="og:url" content="https://raccoon.website/octomancer/">
   <meta property="og:type" content="website">
   <link rel="icon" href="/racc-light.png">
@@ -128,9 +128,12 @@
     .octo-menu-item:active { transform: scale(0.98); }
 
     .octo-menu-item.is-disabled {
+      position: relative;
       opacity: 0.35;
       cursor: default;
-      pointer-events: none;
+      background: none;
+      border: none;
+      appearance: none;
     }
     .octo-menu-item.is-disabled:hover,
     .octo-menu-item.is-disabled:focus-visible {
@@ -138,6 +141,37 @@
       text-shadow: none;
       transform: none;
       outline: none;
+    }
+
+    /* A small styled label stands in for a native tooltip (hover on desktop, a brief tap on touch). */
+    .octo-wip-label {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translate(-50%, -6px);
+      white-space: nowrap;
+      font-family: 'Quicksand', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.68rem;
+      color: #9eb2bd;
+      background: rgba(8, 18, 20, 0.92);
+      border: 1px solid rgba(158, 178, 189, 0.4);
+      padding: 6px 12px;
+      border-radius: 6px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .octo-menu-item.is-disabled:hover .octo-wip-label,
+    .octo-menu-item.is-disabled:focus-visible .octo-wip-label,
+    .octo-menu-item.is-disabled.is-tapped .octo-wip-label {
+      opacity: 1;
+      transform: translate(-50%, -12px);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .octo-wip-label { transition: none; }
     }
   </style>
 </head>
@@ -154,7 +188,10 @@
   <div class="octo-menu-wrap">
     <p class="octo-title">Octomancer</p>
     <nav class="octo-menu" aria-label="Octomancer menu">
-      <span class="octo-menu-item is-disabled" aria-disabled="true" title="Coming soon">Start Game</span>
+      <button type="button" class="octo-menu-item is-disabled" id="octoStartGame" aria-disabled="true">
+        Start Game
+        <span class="octo-wip-label" role="status">Work in progress</span>
+      </button>
       <a class="octo-menu-item" href="/octomancer/archive/">Information</a>
       <a class="octo-menu-item" href="/">Exit</a>
     </nav>
@@ -167,6 +204,21 @@
         if (event.key === 'Escape') {
           window.location.href = '/';
         }
+      });
+    })();
+
+    // Start Game is disabled (no browser build yet). Hover/focus already reveals its "Work in
+    // progress" label via CSS; touch devices have no hover, so a tap reveals it briefly instead.
+    (function () {
+      var startBtn = document.getElementById('octoStartGame');
+      if (!startBtn) return;
+      var hideTimer = null;
+      startBtn.addEventListener('click', function () {
+        startBtn.classList.add('is-tapped');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+          startBtn.classList.remove('is-tapped');
+        }, 1600);
       });
     })();
 
