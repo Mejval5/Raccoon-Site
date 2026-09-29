@@ -59,6 +59,23 @@ function surfaceDrawOffset(placement, worldSize) {
   return 0;
 }
 
+// Round-5 fix (Daniel's screenshot review round 4, issue 3: "urchins float
+// in open water 0.3-0.6 tile off the wall/ceiling they were placed against").
+// `urchin` never called `surfaceDrawOffset` at all, so it always drew at the
+// open cell's own centre regardless of placement; `cannon` had the same gap
+// for its `floor`/`wall` placements (only ever seen past 80m depth). Also
+// adds the horizontal case `surfaceDrawOffset` never had, for a `wall`
+// placement, using the spawn's own `wallDir` (gen.js: +1 = solid tile is to
+// the right, -1 = to the left) to push toward whichever side is solid.
+function surfaceDrawOffsetXY(placement, wallDir, worldSize) {
+  const dy = surfaceDrawOffset(placement, worldSize);
+  if (placement === 'wall' && wallDir) {
+    const push = 0.5 - worldSize / 2 + GROUND_RIM_INSET;
+    return { dx: push * wallDir, dy: 0 };
+  }
+  return { dx: 0, dy };
+}
+
 /** Draw one image centered at world (x,y), sized to `worldSize` units tall
  * (width follows the image's own aspect ratio), tinted red briefly on hit. */
 function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, worldSize, angle, hitFlash) {
@@ -80,7 +97,8 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
   for (const e of enemies) {
     if (e.dead) continue;
     if (e.kind === 'urchin') {
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, e.x, e.y, 0.9, 0, e.hitFlash);
+      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, e.x + dx, e.y + dy, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'piranha') {
       // Round-1 fix (Daniel's screenshot review: "some enemies render upside
       // down"): this used to rotate the full sprite by atan2(vy,vx), as if
@@ -97,7 +115,8 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       const vx = e.vx || (e.dir || 0);
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 1.15, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, e.x, e.y, 0.9, 0, e.hitFlash);
+      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, e.x + dx, e.y + dy, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'beholder') {
       const frame = beholderFrames[Math.floor(time * 8) % beholderFrames.length];
       const pulse = 1 + Math.sin(time * 6) * 0.04;

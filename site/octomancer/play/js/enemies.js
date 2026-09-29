@@ -64,8 +64,8 @@ function pickKind(placement, depth, rng, flatRun) {
 
 let nextId = 1;
 
-function makeEnemy(kind, x, y, chunkIndex, placement) {
-  const base = { id: nextId++, kind, x, y, vx: 0, vy: 0, dead: false, chunkIndex, placement, hitFlash: 0 };
+function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
+  const base = { id: nextId++, kind, x, y, vx: 0, vy: 0, dead: false, chunkIndex, placement, wallDir, hitFlash: 0 };
   if (kind === 'urchin') {
     return { ...base, radius: URCHIN_RADIUS, contactDamage: true, dashKillable: false };
   }
@@ -124,7 +124,7 @@ export function createEnemies() {
       const wy = s.y + yOffset;
       if (wy < ENEMY_MIN_DEPTH) continue;
       const kind = pickKind(s.placement, wy, rng, s.flatRun !== false);
-      list.push(makeEnemy(kind, s.x, wy, index, s.placement));
+      list.push(makeEnemy(kind, s.x, wy, index, s.placement, s.wallDir || 0));
     }
     if (list.length) byChunk.set(index, list);
   }

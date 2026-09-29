@@ -284,32 +284,66 @@ export function createRenderer(ctx, world) {
   // meets the flat (closed, unrimmed) edge exactly at its own two corners
   // and lines up with whatever rim a neighbouring corridor/edge tile draws
   // there.
+  // Round-5 fix (Daniel's screenshot review round 4, issue 1: "the cap
+  // sticks out past the stem as square shoulders, joins it along a hard
+  // straight line, and cuts off the neighbour's rim and concave-corner
+  // curves"). The round-4 shape (a full-tile-width flat top edge dropping
+  // straight down the sides to a semicircle) is exactly that: the straight
+  // sides met the semicircle's own flat diameter at a sharp corner (the
+  // "square shoulder"), and the flat top ran the tile's FULL width, wider
+  // than a sprite tile's own rim-inset rock face, so it visibly overhung the
+  // neighbour it welds onto. Two changes: inset the flush (closed) top edge
+  // by about 0.125 tile each side -- roughly the same inset the sprite
+  // tiles' own rim sits at -- so the cap no longer sticks out past the stem,
+  // and fillet (`arcTo`) the two corners where that inset edge meets the
+  // open sides instead of turning a hard corner into the semicircle, so the
+  // whole open boundary (fillet, straight run down to the arc's start,
+  // semicircle, mirrored fillet) reads as one continuous curve with no
+  // sharp transition anywhere -- no more "stepped chamfer" on either corner.
   function drawNubTile(bctx, px, py, s, turns) {
     const hw = s / 2;
+    // topR: how far each of the two corners nearest the flush (closed) edge
+    // is inset/filleted -- keeps the flat edge narrower than the tile (so it
+    // no longer overhangs the stem it welds onto) and rounds its corners
+    // instead of leaving them sharp. botR: the far corners' radius, set to
+    // exactly half the tile width so those two quarter-circles meet at the
+    // tile's own centreline with a zero-length straight run between them --
+    // i.e. one continuous 180-degree curve, same as an explicit semicircle,
+    // built the same well-tested way any rounded rect is (four `arcTo`
+    // calls, standard corner-by-corner order -- the earlier version here
+    // free-handed the two side fillets against a separate `arc()` call and
+    // got the winding wrong for half the rotations, so three of every four
+    // nubs rendered as almost bare fill with no rim at all).
+    const x = -hw, y = -hw, w = s, h = s;
+    const topR = s * 0.15;
+    const botR = hw;
+    function boundary() {
+      bctx.lineTo(x + w - topR, y);
+      bctx.arcTo(x + w, y, x + w, y + botR, topR);
+      bctx.arcTo(x + w, y + h, x + w - botR, y + h, botR);
+      bctx.lineTo(x + botR, y + h);
+      bctx.arcTo(x, y + h, x, y + h - botR, botR);
+      bctx.arcTo(x, y, x + topR, y, topR);
+    }
     bctx.save();
     bctx.beginPath();
     bctx.rect(px, py, s, s);
     bctx.clip();
     bctx.translate(px + hw, py + hw);
     bctx.rotate(turns * (Math.PI / 2));
-    // Fill: flat top edge (flush against the real solid neighbour) down to
-    // a full semicircular cap at the bottom (the three open sides).
+    // Fill: the flush top edge (flat, unrimmed -- matches the real solid
+    // neighbour it welds onto), inset by `topR` each side, plus the whole
+    // open boundary (three open sides), closed.
     bctx.beginPath();
-    bctx.moveTo(-hw, -hw);
-    bctx.lineTo(hw, -hw);
-    bctx.lineTo(hw, 0);
-    bctx.arc(0, 0, hw, 0, Math.PI, false);
-    bctx.lineTo(-hw, -hw);
+    bctx.moveTo(x + topR, y);
+    boundary();
     bctx.closePath();
     bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     bctx.fill();
-    // Rim along the whole open boundary -- both straight side edges AND the
-    // semicircular cap -- as one continuous stroke from corner to corner.
+    // Rim: just the open boundary, never the flush top edge.
     bctx.beginPath();
-    bctx.moveTo(hw, -hw);
-    bctx.lineTo(hw, 0);
-    bctx.arc(0, 0, hw, 0, Math.PI, false);
-    bctx.lineTo(-hw, -hw);
+    bctx.moveTo(x + w - topR, y);
+    boundary();
     bctx.strokeStyle = RIM_COLOR;
     bctx.lineWidth = s * 0.1;
     bctx.lineJoin = 'round';
@@ -883,8 +917,18 @@ export function createRenderer(ctx, world) {
     // Invulnerability blink (M3-2): flicker the octopus while it can't be
     // hurt again, skipped once it's dead (death fades via the hurt clip
     // itself, not this flicker).
-    if (o.invulnTimer > 0 && !o.dead) ctx.globalAlpha = Math.sin(time * 24) > 0 ? 1 : 0.35;
-    drawOctopus(ctx, o);
+    // Round-5 fix (Daniel's screenshot review round 4, issue 5: "during the
+    // invulnerability fade the semi-transparent body shows internal
+    // overlapping layers, an x-ray look with red smears"). Setting
+    // `ctx.globalAlpha` here used to make EVERY draw call inside
+    // `drawOctopus` (the body frame, then each eye overlay) apply that same
+    // alpha independently -- two or three partially-transparent layers
+    // stacked on top of each other blend differently than one flattened
+    // image at that alpha, which is exactly an "x-ray" look. Passing the
+    // alpha into `drawOctopus` instead lets it draw fully opaque to an
+    // offscreen buffer first and composite that flattened result once.
+    const octoAlpha = o.invulnTimer > 0 && !o.dead ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
+    drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }
 

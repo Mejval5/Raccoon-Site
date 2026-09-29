@@ -331,6 +331,19 @@ export function generateChunk(seed, chunkIndex, entryCol) {
     softPockets = kept;
   }
 
+  // Round-5 fix (Daniel's screenshot review round 4, issue 1: "1-wide
+  // peninsula tips still break the border art in every seed"). The shave
+  // pass above (line ~275) runs BEFORE this sealing step, which can itself
+  // turn small open pockets solid again (comp.length < MIN_SOFT_POCKET,
+  // just above) -- that re-solidified cell can leave a fresh 3-open-side
+  // nub next to it that the earlier pass never saw, and `render.js`'s
+  // procedural nub cap (`drawNubTile`) can't match the sprite tileset's
+  // rim shape/weight, so it always reads as a seam. Re-running the shave
+  // here, as the last tile-shape edit before the reachable-cells list is
+  // built (below), removes any nub this step just created -- same
+  // solid-to-open-only, connectivity-safe guarantee documented above.
+  shaveNubsAndSmallIslands(smoothed);
+
   // --- Spawns ---
   const spawns = [];
   const openCells = [];
@@ -418,14 +431,24 @@ export function generateChunk(seed, chunkIndex, entryCol) {
       // to flat runs only in enemies.js, since a spike anchored right at a
       // corner reads as hanging in open water below the actual rim there.
       let flatRun = true;
+      // Round-5 fix (Daniel's screenshot review round 4, issue 3: "urchins
+      // float in open water off the wall/ceiling they were placed against").
+      // A `wall` placement needs to know which side (x+1 or x-1) is the
+      // solid neighbour so the draw code can push the sprite horizontally
+      // toward it, the same way `floor`/`ceiling` already push vertically --
+      // recorded once here since gen.js already has to look this up for the
+      // thin-surface/corner checks just below.
+      let wallDir = 0;
       if (placement !== 'open') {
+        const wallOnRight = smoothed[idx(x + 1, y)] !== 0;
         const [ax, ay] = placement === 'floor' ? [x, y + 1] : placement === 'ceiling' ? [x, y - 1]
-          : (smoothed[idx(x + 1, y)] !== 0 ? [x + 1, y] : [x - 1, y]);
+          : (wallOnRight ? [x + 1, y] : [x - 1, y]);
+        if (placement === 'wall') wallDir = wallOnRight ? 1 : -1;
         if (isThinSurface(smoothed, ax, ay)) placement = 'open';
         else flatRun = !isCornerAnchor(smoothed, ax, ay);
       }
       if (placement === 'open' && !hasOpenClearance(smoothed, x, y, 1)) continue;
-      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun });
+      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir });
       placedSlots.push({ x, y });
     }
   }

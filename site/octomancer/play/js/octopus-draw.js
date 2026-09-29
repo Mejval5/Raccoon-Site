@@ -176,7 +176,17 @@ function drawBaked(ctx, o, bakeData) {
     // over-wide bar shape (round-3 note above), but a full-width slit at the
     // open eye's own width still reads as a single flat bar rather than a
     // narrowed, closing eyelid. Narrow just the CLOSED state's width too.
-    const eyeWorldW = eyeState === 'closed' ? openWorldW * 0.8 : openWorldW;
+    // Round-5 fix (Daniel's screenshot review round 4, issue 5: "both eye
+    // slits merge into one long diagonal bar across the face"). 0.8x still
+    // left the two slits wide enough, combined with their own rotation, to
+    // visually bridge the gap between the eyes on some clips/frames --
+    // reproduced directly (an isolated render of every eye state) with the
+    // `hurting`/`angry` state specifically: the same full-open-eye-width bug
+    // this round-4 note already diagnosed for `closed`, but the round-4 fix
+    // only ever narrowed `closed`, leaving `angry` (drawn on every hurt
+    // frame, not just an occasional blink) at the full open-eye width.
+    // Narrow both non-open states now.
+    const eyeWorldW = eyeState !== 'open' ? openWorldW * 0.55 : openWorldW;
     const eyeWorldH = eyeWorldW * (rect.h / rect.w);
     const ex = (a.x - cell / 2) * toWorld;
     const ey = (a.y - cell / 2) * toWorld;
@@ -190,6 +200,20 @@ function drawBaked(ctx, o, bakeData) {
     ctx.save();
     ctx.translate(ex, ey);
     ctx.rotate(a.angle - baseAngle);
+    // Round-5 fix (Daniel's screenshot review round 4, issue 5: "faint
+    // pale-pink outline fragments show through around the closed/hurt eye").
+    // The BODY frame itself bakes in a darker eye-socket patch sized to fit
+    // the full 60x60 `open` eye sprite (see `bake_creature.py`'s source
+    // rig); the much smaller `closed`/`angry` overlays only cover part of
+    // that socket, leaving its edges visible as a stray outline. Painting a
+    // body-coloured ellipse over the full open-eye footprint first erases
+    // the socket before the (smaller) actual eye state draws on top.
+    if (eyeState !== 'open') {
+      ctx.fillStyle = BODY;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
     ctx.restore();
   }
@@ -264,6 +288,35 @@ function drawPlaceholder(ctx, o) {
   }
 }
 
+function drawOctopusUnclipped(ctx, o) {
+  if (!FORCE_CODE && bake && !bakeFailed) {
+    drawBaked(ctx, o, bake);
+  } else {
+    drawPlaceholder(ctx, o);
+  }
+}
+
+// Round-5 fix (Daniel's screenshot review round 4, issue 5): a reused
+// offscreen canvas for the alpha < 1 (invulnerability flicker) path below,
+// sized to the main canvas so it can hold a straight copy of the current
+// transform. Grown, never shrunk, and cleared per use rather than
+// reallocated every frame.
+let compositeCanvas = null;
+let compositeCtx = null;
+function getCompositeCtx(w, h) {
+  if (!compositeCanvas) {
+    compositeCanvas = document.createElement('canvas');
+    compositeCtx = compositeCanvas.getContext('2d');
+  }
+  if (compositeCanvas.width !== w || compositeCanvas.height !== h) {
+    compositeCanvas.width = w;
+    compositeCanvas.height = h;
+  } else {
+    compositeCtx.clearRect(0, 0, w, h);
+  }
+  return compositeCtx;
+}
+
 /**
  * Draws the octopus in *local* space: the caller has already translated the
  * canvas to the octopus's interpolated screen position, rotated it to the
@@ -271,13 +324,29 @@ function drawPlaceholder(ctx, o) {
  *
  * @param {CanvasRenderingContext2D} ctx pre-transformed to the octopus's frame
  * @param {{radius:number, swimming:boolean, dashCooldown:number, hurting?:boolean, __t:number, __speed:number}} o
+ * @param {number} [alpha] overall opacity (invulnerability flicker). At 1
+ *   (the default) this draws straight to `ctx`, same as always. Below 1, it
+ *   draws fully opaque to an offscreen buffer first and composites that
+ *   flattened result once, so the body frame and eye overlays never blend
+ *   as separate translucent layers (see the round-5 fix note at the call
+ *   site in render.js).
  */
-export function drawOctopus(ctx, o) {
-  if (!FORCE_CODE && bake && !bakeFailed) {
-    drawBaked(ctx, o, bake);
-  } else {
-    drawPlaceholder(ctx, o);
+export function drawOctopus(ctx, o, alpha = 1) {
+  if (alpha >= 1) {
+    drawOctopusUnclipped(ctx, o);
+    return;
   }
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  if (!w || !h) { drawOctopusUnclipped(ctx, o); return; } // e.g. headless/test canvases with no size
+  const cctx = getCompositeCtx(w, h);
+  cctx.setTransform(ctx.getTransform());
+  drawOctopusUnclipped(cctx, o);
+  cctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(compositeCanvas, 0, 0);
+  ctx.restore();
 }
 
 /** Test/debug hook: true once the baked sheet is in use (not the placeholder). */

@@ -1490,3 +1490,96 @@ console errors, 0 failed requests across ~30 fresh spawn/mid-dive frames over
 soak-desktop,soak-phone}.png`, zoomed crops `fix-r4-zoom-{wall-stub,
 enemy-crab,enemy-horns-ceiling,enemies-general,octopus-blink,
 octopus-open}.png`.
+
+## Visual fixes round 5 (Daniel's screenshot review of round 4, this session)
+
+Seven remaining issues from a screenshot review of round 4's output
+(`octomancer-web/night/review-r4-*.png`), each with its own root cause:
+
+1. **A 1-tile-wide peninsula tip's rimmed cap still read as a rimless
+   flat-top rectangle with a semicircle bottom, joined to the neighbouring
+   sprite tile along a hard straight line ("square shoulders").** Two fixes:
+   `gen.js`'s `shaveNubsAndSmallIslands` pass ran once, before the "seal
+   small pockets back to solid rock" step -- which can itself create a fresh
+   nub next to the cell it just re-solidified -- so it's now called again
+   right after that step. More importantly, `render.js`'s `drawNubTile`
+   itself was rebuilt on the standard four-`arcTo` rounded-rect algorithm
+   (small fillet radius at the two corners nearest the flush/closed edge,
+   half-tile radius at the two far corners so they merge into one
+   continuous semicircle) instead of a hand-rolled arc+lineTo path that got
+   the winding wrong for two of the four rotations (confirmed directly: an
+   isolated render of all four `turns` values, and a raw dump of a live
+   baked chunk canvas, both before and after). The flush edge is now inset
+   ~0.15 tile each side too, so it no longer overhangs the stem it welds
+   onto.
+2. **Side-wall bushes (bush2/bushmini) still floated detached in open
+   water**, ~0.3-0.6 tile off a vertical wall, often past its corner.
+   `decor.js`'s `findWallCritters` now drops these two kinds entirely for a
+   plain side-wall anchor (the promo video only ever shows them on
+   floors/ceilings) and, for every wall-mounted kind, skips a side-wall
+   anchor whose row above or below is open -- the same "end of a wall run"
+   corner check floor/ceiling anchors already had.
+3. **Urchins (and, at depth, cannons) floated 0.3-0.6 tile off the wall or
+   ceiling they were placed against.** `enemy-draw.js` never called
+   `surfaceDrawOffset` for the `urchin` branch at all, and `cannon`'s own
+   call only ever handled `floor`/`ceiling`, never `wall`. Added
+   `surfaceDrawOffsetXY`, which also covers the missing horizontal case for
+   a `wall` placement using a new `wallDir` (+1/-1, which side is solid)
+   that `gen.js` now records on each `enemy-slot` spawn and threads through
+   `enemies.js`'s `makeEnemy`, matching how `crab`/`horns` already push
+   vertically.
+4. **Runes still read as faint glyphs floating in the water**, most of each
+   mark sitting over the open-water side of the rim rather than the dark
+   rock face. `decor.js`'s anchor depth is now kind-specific: eyes stay at
+   the round-3 depth (they peer out at the rim), but runes anchor ~1.15
+   tiles into solid rock -- ONLY where the cell one tile further in is also
+   solid, so a rune can never poke out the far side of a thin wall -- and
+   fall back to the shallower depth otherwise.
+5. **The octopus hurt/closed-eye face looked glitchy**: both eye slits (and,
+   worse, the `angry`/hurting-state marks, drawn on every hurt frame, not
+   just an occasional blink) read as one merged bar, with faint pale-pink
+   fragments visible around them, and the invulnerability fade showed an
+   "x-ray" look with red smears. Three fixes in `octopus-draw.js`, confirmed
+   with an isolated render of every eye state: narrowed BOTH non-open eye
+   states (not just `closed`, which round 4 fixed) to 0.55x the open eye's
+   width, so the two marks never bridge the gap between the eyes; paint a
+   body-coloured ellipse over the full open-eye footprint before drawing a
+   closed/angry sprite, masking the body frame's own baked-in eye-socket
+   patch (sized for the full round `open` sprite) that a smaller overlay
+   left partly visible as those fragments; and `drawOctopus` now accepts an
+   `alpha` parameter and, below 1, draws fully opaque to a reused offscreen
+   canvas first and composites that flattened result once via `globalAlpha`
+   -- `render.js`'s invulnerability flicker used to set `ctx.globalAlpha`
+   directly around the whole draw call, which applied that alpha
+   independently to the body frame AND each eye overlay, and two or three
+   separately-translucent layers stacked on each other is exactly an x-ray.
+6. **A wall eye critter's blink read as a thin black dash floating off the
+   rock**, worst on side walls and under ceiling corners. `decor-draw.js`:
+   the closed-state squash (0.12x height) flattened the whole round sprite
+   to a near-invisible hairline rather than a lid closing over it (bumped to
+   0.25x, keeping enough of the sprite's own lash/lid rim visible to read as
+   an eyelid); and the squash always ran along the image's own Y axis
+   regardless of mount surface -- on a side wall the lid should close along
+   the wall (world-horizontal), so a side-wall eye (`c.wallDir`) now gets a
+   quarter-turn rotation before the squash, same wall-normal idea the
+   ceiling flip already used.
+7. **On phone (375x812) the HUD wrapped once depth reached two digits**,
+   pushing "Best 0" onto its own line and jumping the row's height mid-run.
+   `play.css`'s `.octo-hud-stats` gets `flex-wrap: nowrap` with a smaller
+   font and tighter gaps under 400px width.
+
+Everything previously fixed (seams, piranha orientation, octopus scale,
+floor crab/horns anchoring, camera framing, chunk-seam nubs) reconfirmed
+still holding across this round's screenshots.
+
+Verification: `tests/` 65/65 (own threading `http.server` with no-cache
+headers on a free port, stopped after); puppeteer-core headless Chrome: 0
+console errors (aside from the pre-existing, unrelated `favicon.ico` 404
+every round has had) across ~35 fresh spawn/mid-dive frames over 6 seeds at
+1440x900 (1x and 2x) and 375x812 (2x), plus isolated renders of the nub tile
+(all four rotations, and a raw pixel dump of a live baked chunk canvas) and
+every octopus eye/invuln-alpha state to pin down the two root causes that
+needed more than a screenshot to diagnose. Screenshots:
+`octomancer-web/night/fix-r5-{desk-s13,desk-s21,desk-s42,desk-s7,phone-s3,
+phone-s99}-*.png`, zoomed crops `fix-r5-zoom-{nub-wall,runes,urchin-horns,
+wall-eyes,octopus-eyes}.png`.

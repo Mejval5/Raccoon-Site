@@ -101,7 +101,23 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // A rare blink: mostly open, briefly squashed flat.
     const cycle = (t * 0.18 + c.phase) % (Math.PI * 2);
     const blink = Math.sin(cycle * 6);
-    scaleY = blink > 0.985 ? 0.12 : 1;
+    // Round-5 fix (Daniel's screenshot review round 4, issue 6: "the closed
+    // state is just a thin black horizontal dash [that] reads as a stray
+    // line floating a few px off the rock" on side walls and under ceiling
+    // corners). Two causes: 0.12 squashed the whole round eye sprite down to
+    // a near-invisible hairline instead of a lid closing over it (bumped to
+    // 0.25 -- still a clear blink, but keeps enough of the sprite's own
+    // lash/lid rim visible to read as an eyelid, not a line); and the
+    // squash always ran along the image's own Y axis regardless of mount
+    // surface, so on a side wall (blink axis should run along the wall,
+    // i.e. world-horizontal) it drew a vertical-looking dash sitting off to
+    // the side of the rim instead of a lid flush against it. Rotating a
+    // side-wall eye a quarter turn before the squash (same wall-normal idea
+    // `onCeiling`'s flip already applies) lines the lid closure up with the
+    // wall surface, same as the open circular sprite already reads fine
+    // either way.
+    scaleY = blink > 0.985 ? 0.25 : 1;
+    if (c.wallDir) rot = Math.PI / 2;
   } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
     worldSize = 0.36;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;

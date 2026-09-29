@@ -115,6 +115,22 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
           const cornerOpen = (nx) => nx < 0 || nx >= chunkW || chunk.tiles[anchorSolidY * chunkW + nx] === 0;
           if (cornerOpen(anchorSolidX - 1) || cornerOpen(anchorSolidX + 1)) continue;
         }
+        // Round-5 fix (Daniel's screenshot review round 4, issue 2: "side-wall
+        // bushes still float detached in open water" -- the promo video only
+        // ever shows bush2/bushmini growing out of a floor or ceiling; a
+        // side-wall face was never a placement the art was drawn for, and no
+        // anchor depth reads right there. Drop the kind entirely for a plain
+        // side-wall anchor rather than trying to tune INTO_WALL further.
+        if ((kind === 'bush2' || kind === 'bushmini') && wallSide && !floorCap && !ceilingCap) continue;
+        // Same "end of a wall run" corner check floor/ceiling anchors already
+        // get above, applied to side-wall anchors too: skip whenever the row
+        // above or below the anchor's solid neighbour is open, i.e. the rock
+        // face's rim curves away right there instead of running flat past
+        // this cell.
+        if (wallSide && !floorCap && !ceilingCap) {
+          const rowOpen = (ny) => ny < 0 || ny >= chunkH || chunk.tiles[ny * chunkW + anchorSolidX] === 0;
+          if (rowOpen(anchorSolidY - 1) || rowOpen(anchorSolidY + 1)) continue;
+        }
         // Anchor slightly into the solid neighbour tile, not the open
         // cell's centre: ported from the original's `PositionOffset`
         // (`FoliagePlant1.asset` PositionOffset.y=-0.58, almost a full tile
@@ -138,19 +154,37 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // now the rune's own tint (decor-draw.js's `getTintedRune`) -- lands
         // on the rock face itself, matching the promo video's runes/crosses
         // painted onto the rock.
-        const isRimKind = kind === 'eye' || kind === 'eyeblue' || kind.startsWith('rune');
+        const isEye = kind === 'eye' || kind === 'eyeblue';
+        const isRune = kind.startsWith('rune');
+        const isRimKind = isEye || isRune;
         const isBush = kind === 'bush2' || kind === 'bushmini';
-        // Round-4 fix (Daniel's screenshot review round 3: "bush2 and
-        // bushmini float above floors/below ceilings" -- 0.3 tile in left
-        // most of a 0.55-world-unit-tall bush sprite sitting past the rim).
-        // Deepened to the same range eyes/runes already got in round 3.
-        const INTO_WALL = isRimKind ? 0.65 : isBush && !wallSide ? 0.6 : (wallSide ? 0.5 : 0.3);
-        let ax = x + 0.5, ay = y + yOffset + 0.5;
         let wallDir = 0;
+        if (wallSide) wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;
+        // Round-5 fix (Daniel's screenshot review round 4, issue 4: "runes
+        // still read as faint glyphs floating in the water, not marks
+        // painted on rock" -- even 0.65 tile in still leaves most of the
+        // glyph over the open-water side of the rim). Runes (unlike eyes,
+        // which are meant to peer out right at the rim) want to sit well
+        // inside the rock face, like the promo video's cave-urchin/hub
+        // frames -- but only where the cell one tile further into the rock
+        // is ALSO solid, so a rune never pokes out the far side of a thin
+        // (1-tile) wall. Falls back to the eye/bush depth otherwise.
+        let runeDeepOk = false;
+        if (isRune) {
+          if (floorCap) runeDeepOk = (y + 2 < chunkH) && chunk.tiles[(y + 2) * chunkW + x] !== 0;
+          else if (ceilingCap) runeDeepOk = (y - 2 >= 0) && chunk.tiles[(y - 2) * chunkW + x] !== 0;
+          else if (wallSide) {
+            const farX = anchorSolidX + wallDir;
+            runeDeepOk = farX >= 0 && farX < chunkW && chunk.tiles[y * chunkW + farX] !== 0;
+          }
+        }
+        const RUNE_INTO_WALL = 1.15;
+        const INTO_WALL = isRune ? (runeDeepOk ? RUNE_INTO_WALL : 0.65)
+          : isRimKind ? 0.65 : isBush && !wallSide ? 0.6 : (wallSide ? 0.5 : 0.3);
+        let ax = x + 0.5, ay = y + yOffset + 0.5;
         if (floorCap) ay += INTO_WALL;
         else if (ceilingCap) ay -= INTO_WALL;
         else if (wallSide) {
-          wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;
           ax += wallDir * INTO_WALL;
         }
         // Round-3 fix (Daniel's screenshot review: "some wall eye critters
