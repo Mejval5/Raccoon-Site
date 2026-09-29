@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Octomancer tests</title>
+<style>
+  body { background:#0a1c2a; color:#baffea; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 16px; }
+  #result { white-space: pre-wrap; }
+  .pass { color:#7CFC9A; }
+  .fail { color:#ff8a8a; }
+</style>
+</head>
+<body>
+<h3>Octomancer play tests</h3>
+<div id="result">running…</div>
+<script type="module">
+import { createLoop, STEP } from '../js/loop.js';
+
+const results = [];
+function assert(name, cond) {
+  results.push({ name, pass: !!cond });
+}
+function approx(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps; }
+
+// --- loop.js: fixed-step accumulator ---
+{
+  let steps = 0;
+  const loop = createLoop(() => { steps++; }, () => {});
+  loop.manualStep(50);
+  assert('manualStep(50) runs the step fn 50 times', steps === 50);
+  assert('STEP is 0.02s (50Hz)', approx(STEP, 0.02));
+}
+
+// --- loop.js: metrics shape ---
+{
+  const loop = createLoop(() => {}, () => {});
+  loop.manualStep(10);
+  const m = loop.metrics();
+  assert('metrics().stepCount tracks manualStep', m.stepCount === 10);
+  assert('metrics() has frameMsMedian/P95 fields', typeof m.frameMsMedian === 'number' && typeof m.frameMsP95 === 'number');
+}
+
+// --- 50 steps == 1.000s of simulated time ---
+{
+  let time = 0;
+  const loop = createLoop((dt) => { time += dt; }, () => {});
+  loop.manualStep(50);
+  assert('50 steps advance exactly 1.000s', approx(time, 1.0, 1e-9));
+}
+
+// --- input.js: keyboard vector normalisation ---
+import { createInput } from '../js/input.js';
+{
+  const input = createInput();
+  input.setOverride({ move: { x: 1, y: 0 }, dash: true, bomb: false, pause: false });
+  const snap = input.snapshot();
+  assert('override move.x passes through', snap.move.x === 1);
+  assert('override dash pressed', snap.dash.held === true);
+  input.setOverride(null);
+}
+
+// --- input.js: default state is neutral ---
+{
+  const input = createInput();
+  const snap = input.snapshot();
+  assert('default move is {0,0}', snap.move.x === 0 && snap.move.y === 0);
+  assert('default dash not held', snap.dash.held === false);
+}
+
+const pass = results.filter(r => r.pass).length;
+const total = results.length;
+const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
+lines.push('');
+lines.push(pass === total ? `PASS ${pass}/${total}` : `FAIL ${pass}/${total}`);
+document.getElementById('result').textContent = lines.join('\n');
+document.getElementById('result').className = pass === total ? 'pass' : 'fail';
+</script>
+</body>
+</html>

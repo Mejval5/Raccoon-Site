@@ -1,0 +1,83 @@
+/* Octomancer play page. Full-viewport canvas, no scroll/pinch, HUD/menus as HTML/CSS over it. */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #061018;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#touch-ui, #hud, #debug-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#touch-ui > * , #hud > * {
+  pointer-events: auto;
+}
+
+#debug-overlay {
+  font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  color: #baffea;
+  padding: calc(6px + var(--safe-t)) 6px 6px calc(6px + var(--safe-l));
+  white-space: pre;
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  z-index: 2;
+}
+
+/* Touch joystick + buttons, drawn by touch-ui.js */
+.octo-stick-base, .octo-stick-nub {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  border: 2px solid rgba(255,255,255,0.35);
+  pointer-events: none;
+}
+.octo-stick-nub {
+  background: rgba(255,255,255,0.28);
+}
+
+.octo-btn {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  font: 600 13px 'Quicksand', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.octo-btn.is-active {
+  background: rgba(255,255,255,0.32);
+}

@@ -1,0 +1,17 @@
+M0 Foundations — metrics (Chromium, headless, puppeteer-core against chrome.exe)
+
+Desktop 1440x900:
+  console errors: 0
+  frame median: 0.10 ms   p95: 0.20 ms   (budget: <=4 ms median / <=8 ms p95)
+  __octo.step(50) advances sim.time by exactly 1.000s (checked via JS: before/after diff = 1.0)
+
+Phone 375x812 (touch emulation, DPR 2):
+  console errors: 0
+  frame median: 0.10 ms   p95: 0.20 ms
+
+tests/index.html: PASS 9/9
+
+Screenshots:
+  octomancer-web/report/M0-1-skeleton-desktop.png
+  octomancer-web/report/M0-1-skeleton-phone.png
+  octomancer-web/report/m0-tests.png
