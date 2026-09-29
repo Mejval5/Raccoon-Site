@@ -188,7 +188,22 @@ export function createRenderer(ctx, world) {
   function pickWallArt(openN, openE, openS, openW, altParity) {
     const count = (openN ? 1 : 0) + (openE ? 1 : 0) + (openS ? 1 : 0) + (openW ? 1 : 0);
     if (count === 0) return { key: 'full', turns: 0 };
-    if (count >= 3) return { key: 'island', turns: 0 }; // rare thin spur, closest available shape
+    if (count === 4) return { key: 'island', turns: 0 }; // true isolated tile, the only case tile-0 actually depicts
+    if (count === 3) {
+      // A 1-wide nub/peninsula tip: solid on exactly one side, still
+      // attached to real rock there. Round-2 fix (Daniel's screenshot
+      // review: "the level is still full of lone circles, and many of them
+      // look broken" -- tile-0 is a floating-island sprite with a rim baked
+      // in on all 4 sides, so using it here drew a rim across the one side
+      // that's actually flush against solid rock, leaving a gap/flat-cut
+      // seam there). No tileset art fits "3 open, 1 closed", so this is
+      // drawn procedurally by `drawNubTile` (below) as a rounded cap flush
+      // against its one solid neighbour instead. `turns` picks which side
+      // is the closed one, same rotation convention as every other case
+      // here (0=N, 1=E, 2=S, 3=W).
+      const turns = !openN ? 0 : !openE ? 1 : !openS ? 2 : 3;
+      return { key: 'nub', turns };
+    }
     if (count === 1) {
       const turns = openN ? 0 : openE ? 1 : openS ? 2 : 3;
       return { key: altParity ? 'edgeB' : 'edgeA', turns };
@@ -198,6 +213,44 @@ export function createRenderer(ctx, world) {
     if (openE && openW) return { key: 'corridor', turns: 1 };
     const turns = (openN && openW) ? 0 : (openN && openE) ? 1 : (openE && openS) ? 2 : 3; // 3 = S+W
     return { key: 'corner', turns };
+  }
+
+  // Round-2 fix: procedural art for a "nub" tile (pickWallArt's count===3
+  // case) -- flat full-width on the one closed side (flush against the real
+  // solid neighbour, no gap), rounded on the other three. `turns` rotates
+  // the canonical orientation (closed side at the top) to the true closed
+  // direction, same convention `bakeChunkWalls` already uses for rotating
+  // the sprite-based tiles.
+  function drawNubTile(bctx, px, py, s, turns) {
+    const hw = s / 2;
+    const r = hw * 0.92;
+    bctx.save();
+    bctx.beginPath();
+    bctx.rect(px, py, s, s);
+    bctx.clip();
+    bctx.translate(px + hw, py + hw);
+    bctx.rotate(turns * (Math.PI / 2));
+    bctx.beginPath();
+    bctx.moveTo(-hw, -hw);
+    bctx.lineTo(hw, -hw);
+    bctx.arcTo(hw, hw, -hw, hw, r);
+    bctx.arcTo(-hw, hw, -hw, -hw, r);
+    bctx.closePath();
+    bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+    bctx.fill();
+    // Rim along the open (rounded) edge only -- the flat top edge is flush
+    // against real rock, an interior boundary that should stay unrimmed,
+    // same rule `carveConcaveCorner`'s callers already follow.
+    bctx.beginPath();
+    bctx.moveTo(hw, -hw * 0.1);
+    bctx.lineTo(hw, hw - r);
+    bctx.arcTo(hw, hw, -hw, hw, r);
+    bctx.arcTo(-hw, hw, -hw, -hw, r);
+    bctx.lineTo(-hw, -hw * 0.1);
+    bctx.strokeStyle = RIM_COLOR;
+    bctx.lineWidth = s * 0.1;
+    bctx.stroke();
+    bctx.restore();
   }
 
   // Concave (inward) corners -- where both edges touching that corner are
@@ -382,15 +435,25 @@ export function createRenderer(ctx, world) {
         const openS = !solidAt(tx, ty + 1);
         const openW = !solidAt(tx - 1, ty);
         const { key, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
-        const img = wallArt[key];
+        if (key === 'nub') {
+          drawNubTile(bctx, px, py, s, turns);
+        } else {
+          const img = wallArt[key];
+          bctx.save();
+          bctx.translate(px + s / 2, py + s / 2);
+          bctx.rotate(turns * (Math.PI / 2));
+          bctx.drawImage(img, -s / 2, -s / 2, s, s);
+          bctx.restore();
+        }
 
-        bctx.save();
-        bctx.translate(px + s / 2, py + s / 2);
-        bctx.rotate(turns * (Math.PI / 2));
-        bctx.drawImage(img, -s / 2, -s / 2, s, s);
-        bctx.restore();
-
-        if (v === 2) {
+        // Round-2 fix (Daniel's screenshot review: soft rock buried inside
+        // solid rock rendered as a flat blocky patch with hard square edges
+        // and no rim -- looked like a missing texture, no counterpart in the
+        // promo video). Only tint a soft-rock tile if it actually has an
+        // open face to be reached/blown open from; a fully-buried v===2 tile
+        // (surrounded by solid rock on all 4 sides) stays visually identical
+        // to normal rock instead.
+        if (v === 2 && (openN || openE || openS || openW)) {
           // Soft (breakable) rock: same shape, a warm coral tint (flat base
           // colour so it reads as diggable/distinct even before its own
           // noise pass below) so it stays distinct from unbreakable
@@ -591,7 +654,12 @@ export function createRenderer(ctx, world) {
   // same "anchor slightly into the solid neighbour" idea Otter's critter
   // placement in decor.js already uses (`INTO_WALL`) for the wall-critter
   // layer, ported here for the plant sprites drawPlants places directly.
-  const PLANT_INTO_WALL = 0.22;
+  // Round-2 fix (Daniel's screenshot review: "vines fade out 6-9px above the
+  // floor rim, some read as slightly hovering"): the vine art's own bottom
+  // edge fades out before its true root; sinking the anchor further into the
+  // solid tile hides that faded stem base under the wall bake's rim instead
+  // of leaving it exposed above it.
+  const PLANT_INTO_WALL = 0.4;
 
   function drawPlants(canvasW, canvasH, resident) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
@@ -624,14 +692,50 @@ export function createRenderer(ctx, world) {
     }
   }
 
+  // Round-2 fix (Daniel's screenshot review: a 1px lighter horizontal line
+  // running the full level width at chunk boundaries inside rock, in 5/9
+  // desktop frames and on phone). Each chunk's baked canvas used to be drawn
+  // at a fractional device-pixel `topLeft.y`/height, so neighbouring chunks'
+  // anti-aliased top/bottom edges didn't land on the same physical pixel row
+  // and left a hairline gap (or a doubled, lighter-blended row) between them.
+  // Snapping both this chunk's top edge AND the next chunk's top edge (used
+  // as this chunk's bottom) to the same rounding gives adjacent chunks an
+  // exactly shared edge with no seam, matching the "line through the screen"
+  // fix already applied to the vertical case.
   function drawWalls(canvasW, canvasH, resident) {
     for (const entry of resident) {
       const canvas = getBakedWalls(entry);
       if (!canvas) continue;
       const topLeft = worldToScreen(camera, canvasW, canvasH, 0, entry.yOffset);
-      const scale = camera.pxPerUnit / BAKE_PX_PER_UNIT;
-      ctx.drawImage(canvas, topLeft.x, topLeft.y, canvas.width * scale, canvas.height * scale);
+      const bottomRight = worldToScreen(camera, canvasW, canvasH, chunkW, entry.yOffset + chunkH);
+      const x0 = Math.round(topLeft.x), y0 = Math.round(topLeft.y);
+      const x1 = Math.round(bottomRight.x), y1 = Math.round(bottomRight.y);
+      ctx.drawImage(canvas, x0, y0, x1 - x0, y1 - y0);
     }
+  }
+
+  // Round-2 fix (Daniel's screenshot review: "a 120px flat light-teal band
+  // on each side, outside the 32-tile level" -- the outer walls end in a
+  // hard straight vertical cut against open water instead of rock filling
+  // the frame, as in the promo video). The camera can show more world width
+  // than the level's 32 tiles on a wide/short viewport (CAMERA_MIN_HEIGHT
+  // dominates); fill everything outside the level's tile-x range with the
+  // same rock fill + noise the walls use, so it reads as more cave rather
+  // than open water.
+  function drawOuterRock(canvasW, canvasH) {
+    if (!tilesReady) return;
+    const left = worldToScreen(camera, canvasW, canvasH, 0, 0).x;
+    const right = worldToScreen(camera, canvasW, canvasH, chunkW, 0).x;
+    ctx.save();
+    ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+    if (left > 0) ctx.fillRect(0, 0, left, canvasH);
+    if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
+    if (rockNoisePattern) {
+      ctx.fillStyle = rockNoisePattern;
+      if (left > 0) ctx.fillRect(0, 0, left, canvasH);
+      if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
+    }
+    ctx.restore();
   }
 
   function drawPickups(canvasW, canvasH, items, time) {
@@ -718,6 +822,7 @@ export function createRenderer(ctx, world) {
       ctx.translate(shakePx.x, shakePx.y);
       const reduced = prefersReducedMotion();
       drawBackground(canvasW, canvasH, time, depth);
+      drawOuterRock(canvasW, canvasH);
       drawCaustics(canvasW, canvasH, time, reduced);
       // Layering pass: plants/decor draw BEFORE the walls now (was after), so
       // the wall bake -- opaque rock art -- composites on top and occludes

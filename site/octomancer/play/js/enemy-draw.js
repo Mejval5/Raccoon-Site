@@ -60,8 +60,12 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       // both horizontally AND vertically, landing belly-up. A left/right
       // mirror (matching how crab/horns/manta already handle direction) reads
       // correctly at every heading and never turns it upside down.
+      // Round-2 fix (Daniel's screenshot review: piranhas read ~1.3x the
+      // octopus, video shows ~3x; the Unity `Piranha` prefab's own collider
+      // is 2.04x1.28 at 0.9 scale, ~1.8 tiles long -- 0.7 world units tall
+      // (~1.2 tiles) undersold that).
       const vx = e.vx || (e.dir || 0);
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 0.7, vx > 0, false, e.hitFlash);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 1.15, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
       drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, e.x, e.y, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'beholder') {

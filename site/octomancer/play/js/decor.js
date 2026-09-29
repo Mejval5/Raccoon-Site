@@ -7,10 +7,10 @@
 // more critters on the walls". The Unity foliage system (PatternGenerator +
 // a `FoliagePlanterTiles` with DynamicDensity on) spawns ~5-6 distinct
 // non-hostile items per pattern at 9-45 instances each across a full 3-room
-// level, plus a denser background ambient layer (eyes/holes/runes, density
+// level, plus a denser background ambient layer (eyes/runes, density
 // 16, cap 10-15 each) -- see NIGHT-LOG.md for the exact numbers. This adds a
 // matching non-hostile layer here: snails, a reef fish, a jellyfish,
-// background eyes, wall holes, runes and a couple of the kept 2021 bushes,
+// background eyes, runes and a couple of the kept 2021 bushes,
 // picked and placed purely from each chunk's own tile data + a small
 // integer hash (same "no extra RNG stream" style as `findVents` below and
 // `drawPlants` in render.js), so they stay in sync across re-renders without
@@ -38,8 +38,23 @@ function hash2(a, b) {
   return h >>> 0;
 }
 
+/** True if the solid tile at (x,y) is a thin nub/island -- open on 3 or more
+ * of its own 4 orthogonal sides, same test render.js's `pickWallArt` uses to
+ * pick its rounded-nub/island art -- so wall decor never anchors to a tile
+ * that barely reads as "wall" itself. Out-of-bounds (chunk seam, unknown
+ * neighbour) is treated as solid/safe rather than thin. */
+function isThinWallCell(chunk, chunkW, chunkH, x, y) {
+  const openAt = (nx, ny) => {
+    if (nx < 0 || nx >= chunkW || ny < 0 || ny >= chunkH) return false;
+    return chunk.tiles[ny * chunkW + nx] === 0;
+  };
+  const open = (openAt(x, y - 1) ? 1 : 0) + (openAt(x, y + 1) ? 1 : 0)
+    + (openAt(x - 1, y) ? 1 : 0) + (openAt(x + 1, y) ? 1 : 0);
+  return open >= 3;
+}
+
 /** Finds candidate cells for non-hostile wall decor: floor caps, ceiling
- * caps and side-wall faces get the wall-mounted kinds (snail/eye/hole/rune/
+ * caps and side-wall faces get the wall-mounted kinds (snail/eye/rune/
  * bush); open water away from any wall occasionally gets a drifting fish or
  * jelly. Sparse sampling (same idea as `drawPlants`'s "every 9th cell") so
  * this reads as inhabited walls, not a solid carpet of sprites. */
@@ -56,6 +71,24 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
       if (floorCap || ceilingCap || wallSide) {
         if (h % 11 !== 0) continue; // ~1 eligible wall cell in 11
         const kind = CRITTER_KINDS_WALL[h % CRITTER_KINDS_WALL.length];
+        // Round-2 fix (Daniel's screenshot review: critters/decor float
+        // detached from walls -- a bushmini anchored for side-wall cell
+        // (18,4) at y=3.84, a tile above where it belongs). `h` is an
+        // unsigned 32-bit hash (`hash2` returns `h >>> 0`), but `h >> 5` is
+        // a *signed* right shift: once bit 31 of `h` is set, `h >> 5` comes
+        // out negative, so `(h >> 5) % 21` ranges over negative values too
+        // and the jitter below skews to about -0.9..+0.3 tiles instead of
+        // the intended +-0.3 -- almost a full tile of unwanted drift on
+        // roughly half of all placements. `h >>> 5` (unsigned shift) keeps
+        // it a plain 0..2^27-1 value.
+        //
+        // Skip an anchor tile that's itself a thin nub/island (open on 3+
+        // of its own 4 sides, render.js's `pickWallArt` count>=3 case): it
+        // reads as a lone floating dot, not a readable wall to be "on", so
+        // no decor should be pinned to it.
+        const anchorSolidX = floorCap || ceilingCap ? x : (chunk.tiles[y * chunkW + (x + 1)] !== 0 ? x + 1 : x - 1);
+        const anchorSolidY = floorCap ? y + 1 : ceilingCap ? y - 1 : y;
+        if (isThinWallCell(chunk, chunkW, chunkH, anchorSolidX, anchorSolidY)) continue;
         // Anchor slightly into the solid neighbour tile, not the open
         // cell's centre: ported from the original's `PositionOffset`
         // (`FoliagePlant1.asset` PositionOffset.y=-0.58, almost a full tile
@@ -66,7 +99,13 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // decor layer this session (NIGHT-LOG.md) -- with that order, an
         // anchor 0.3 tiles into the wall reads the same way: mostly visible,
         // its base tucked under the rock.
-        const INTO_WALL = 0.3;
+        //
+        // Round-2 fix: eyes/runes and anything on a side wall sat about 0.25
+        // tile off the visible rim even unjittered, because the rim art
+        // itself is inset from the tile edge -- a deeper anchor for those
+        // brings them flush against the rim instead of hovering just past it.
+        const isRimKind = kind === 'eye' || kind === 'eyeblue' || kind.startsWith('rune');
+        const INTO_WALL = (isRimKind || wallSide) ? 0.5 : 0.3;
         let ax = x + 0.5, ay = y + yOffset + 0.5;
         let wallDir = 0;
         if (floorCap) ay += INTO_WALL;
@@ -75,7 +114,7 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
           wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;
           ax += wallDir * INTO_WALL;
         }
-        const jitter = (((h >> 5) % 21) - 10) / 10 * 0.3; // ~RandomOffsetRangeX/Y
+        const jitter = (((h >>> 5) % 21) - 10) / 10 * 0.3; // ~RandomOffsetRangeX/Y
         if (floorCap || ceilingCap) ax += jitter; else ay += jitter;
         out.push({
           kind, x: ax, y: ay,

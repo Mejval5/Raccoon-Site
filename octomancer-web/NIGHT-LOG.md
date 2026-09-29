@@ -1196,3 +1196,90 @@ octopus scale/tile-0 circles/plant anchoring), `fix-r1-deep-desktop.png`
 (mid-run after `autoDive`, checks the chunk-seam fix and enemy orientation
 at depth), plus zoomed crops `fix-r1-zoom-{octopus,octopus-deep,walls,
 enemies}.png`.
+
+## Visual fixes round 2 (this session, per Daniel's screenshot review)
+
+Twelve items, root-caused rather than patched at the symptom:
+
+1. **Lone circles still everywhere, some broken.** `pickWallArt` drew
+   `tile-0` (a rim-on-all-4-sides "island" sprite) for any solid tile with
+   3 *or* 4 open sides, but round 1's cleanup ran *before* `carvePath` and
+   `world.js`'s `carveStartPool` -- both of which carve new water into the
+   grid afterwards and can leave fresh nubs neither pass ever saw. A 3-open
+   tile is a real peninsula tip/pillar (still attached to rock on the 4th
+   side), not an island, and tile-0's baked-in rim on that 4th side left a
+   floating circle next to a flat, rimless cut. Fixed both halves: moved
+   `gen.js`'s shave/small-island cleanup (now exported as
+   `shaveNubsAndSmallIslands`) to run *after* `carvePath`, and again from
+   `world.js`'s `carveStartPool` once it has carved chunk 0's start room
+   (both only ever turn solid to water, so neither can disconnect the
+   carved path -- no separate re-check needed); and gave `pickWallArt`'s
+   3-open case its own procedural art (`drawNubTile`, render.js) -- a
+   rounded cap flush against the one real solid neighbour, no tileset sprite
+   needed. `tile-0` now only ever draws for a genuine 4-open island. Probe
+   (seed 42, first 3 chunks, same methodology as the bug report): 3-open
+   tiles 13 -> 1, 4-open (true islands) 5 -> 0.
+2. **Horizontal seam at chunk boundaries, still there.** `drawWalls` drew
+   each chunk's baked canvas at a fractional device-pixel `topLeft.y` and a
+   fractional scaled height, so adjacent chunks' anti-aliased top/bottom
+   edges didn't land on the same physical pixel row. `worldToScreen`'s y
+   depends only on world-y, not world-x, so rounding both this chunk's top
+   edge and the next chunk's top edge (used as this chunk's bottom) with the
+   same `Math.round` makes them provably identical -- adjacent chunks always
+   share an exact edge row now, same fix shape as round 1's vertical seam.
+3. **Octopus eyes 2x too big.** `OCTO_VISUAL_SCALE` (round 1) shrank the
+   body and the eye *positions* (`toWorld` already carries it), but
+   `eyeWorldH`/`eyeWorldW` were computed straight from the unscaled mesh
+   data -- two oversized eyes on a now-smaller head. Multiplied by
+   `OCTO_VISUAL_SCALE` too.
+4. **Wall critters/decor floating off walls.** `findWallCritters`'s jitter
+   used `h >> 5` (signed shift) on an unsigned hash -- once bit 31 was set
+   this went negative, skewing the jitter to about -0.9..+0.3 tiles instead
+   of +-0.3. Fixed to `h >>> 5`. Also: `INTO_WALL` deepened from 0.3 to 0.5
+   for side-wall placements and eye/rune kinds (their rim art sits inset
+   from the tile edge); and any critter whose anchor tile is itself a thin
+   nub/island (open on 3+ of its own sides) is skipped rather than placed on
+   a tile that barely reads as wall.
+5. **Enemies anchored to nothing, or to lone circles.** Mostly the same
+   root cause as #1 (a crab/horns/eyes anchored to a tile that gen.js later
+   shaved to water, or a genuine lone island); the reordered cleanup fixes
+   the common case. Added a defence-in-depth check too: an enemy-slot's
+   floor/ceiling/wall placement falls back to `open` if its anchor tile is a
+   thin nub/island (not "at least 2 tiles wide"), instead of ever landing on
+   one. (Crabs already turned around at ledges -- `updateCrab`'s existing
+   ahead-tile check -- nothing to fix there.)
+6. **Soft rock buried inside solid rock renders as a flat tinted block.**
+   `bakeChunkWalls` tinted every v===2 tile the same coral colour regardless
+   of whether it was reachable. Now only tinted (and only added to the
+   noise-texture pass) if it has at least one open orthogonal face.
+7. **Octopus spawns under the HUD.** The camera clamps to the world top
+   whenever the octopus is within one half-viewport of y=0, and `startY`
+   was 2 -- close enough to pin the camera to the ceiling with the octopus
+   drawn right under the HUD row on both phone and desktop. Moved `startY`
+   to 8 and widened `carveStartPool`'s guaranteed-open room from 4 to 12
+   rows to comfortably cover it.
+8. **Fish/piranha scale vs. the video.** Critter fish 0.45 -> 0.25 world
+   units (video: about a third of the octopus); piranha 0.7 -> 1.15 (the
+   Unity prefab's own collider is ~1.8 tiles long at its 0.9 scale).
+9. **120px light-teal bands outside the 32-tile level.** The camera can
+   show more world width than the level on a wide/short viewport
+   (`CAMERA_MIN_HEIGHT` dominates); added `drawOuterRock` to fill everything
+   outside the level's tile-x range with the same rock fill + noise the
+   walls use, drawn right after the background.
+10. **Decor colours vs. the video.** `bushmini` desaturated/warmed at draw
+    time via a canvas filter (no new art) toward a pale sage/beige;
+    rune glyphs tinted pale blue (`source-atop`) and dimmed, reading as a
+    faint mark near the rock rather than a bright floating glyph (snails
+    were already wall-only).
+11. **Faint plant vines reading as hovering.** `PLANT_INTO_WALL` 0.22 ->
+    0.4, sinking the anchor far enough that the art's own faded stem base
+    sits under the wall bake's rim instead of exposed above it.
+12. **Stale "hole" critter comments** (decor.js) -- the critter itself was
+    already removed in round 1, just the comments hadn't caught up. Dropped.
+
+Verification: `tests/` 65/65 (own threading `http.server` with no-cache
+headers on a free port, stopped after); puppeteer-core headless Chrome: 0
+console errors at 1440x900 and 375x812, fresh spawn and mid-dive (multiple
+seeds, multiple chunk boundaries crossed). Screenshots:
+`octomancer-web/night/fix-r2-{desktop,phone,deep-desktop,deep-phone}.png`,
+zoomed crops `fix-r2-zoom-{octopus,walls}.png`.

@@ -7,7 +7,7 @@
 // nominal height so render.js's camera-bounds call site did not need to
 // change shape.
 
-import { createGenerator, CHUNK_W, CHUNK_H } from './gen.js';
+import { createGenerator, CHUNK_W, CHUNK_H, shaveNubsAndSmallIslands } from './gen.js';
 
 export const WORLD_W = CHUNK_W;
 // There is no real bottom; a very large nominal height keeps camera.js's
@@ -50,14 +50,30 @@ export function createWorld(seed) {
   // want the first few rows guaranteed open above the octopus's spawn so it
   // never spawns touching rock. Punch a simple open room into chunk 0's
   // upper rows after generation (cheap, still deterministic per seed).
+  //
+  // Round-2 fix (Daniel's screenshot review: "on phone, the octopus spawns
+  // underneath the HUD... on desktop it also spawns at y~78 against the HUD
+  // row" -- the camera clamps to the world top whenever the octopus is
+  // within one half-viewport of it, so a startY this close to 0 pins the
+  // camera to the ceiling and the octopus draws right under the HUD row).
+  // Widened from 4 to 12 rows so it comfortably covers the new deeper
+  // `startY` (world.js's own `startY: 8` below) with room to spare above
+  // and below it, rather than spawning the octopus outside the guaranteed-
+  // open area.
   function carveStartPool(c) {
     const cx = Math.floor(CHUNK_W / 2);
-    for (let y = 0; y < 4; y++) {
+    for (let y = 0; y < 12; y++) {
       for (let x = cx - 3; x <= cx + 3; x++) {
         if (x < 2 || x >= CHUNK_W - 2) continue;
         c.tiles[y * CHUNK_W + x] = 0;
       }
     }
+    // carveStartPool can leave a fresh 3-open nub/small island right at the
+    // pool's own boundary (Daniel #1's round-2 fix); re-run the same
+    // cleanup gen.js runs at the end of generateChunk, now that this pool
+    // exists too (only ever turns solid to water, so it can't disturb the
+    // pool or the path gen.js already carved).
+    shaveNubsAndSmallIslands(c.tiles);
   }
 
   const chunk0 = ensureNext();
@@ -92,7 +108,12 @@ export function createWorld(seed) {
     height: WORLD_H,
     chunkH: CHUNK_H,
     startX: Math.floor(CHUNK_W / 2) + 0.5,
-    startY: 2,
+    // Round-2 fix (Daniel's screenshot review: spawn point pinned against
+    // the HUD -- see `carveStartPool`'s comment above). Moved down from 2 to
+    // 8 so the camera (clamped to the world top only while the octopus is
+    // within one half-viewport of y=0) settles below the HUD row instead of
+    // right against it.
+    startY: 8,
 
     isSolid(tx, ty) {
       const v = tileAt(Math.floor(tx), Math.floor(ty));

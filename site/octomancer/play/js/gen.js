@@ -88,6 +88,89 @@ function carvePath(tiles, rng, entryCol) {
 
 function clampInt(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/** Visual pass (Daniel's screenshot review: "the lone-island tile-0 appearing
+ * where it shouldn't"): `pickWallArt` (render.js) picks a lone-circle/nub
+ * shape for any solid tile with 3+ open orthogonal neighbours, whether or
+ * not that tile's own rock mass is actually small -- a single-tile-wide nub
+ * still attached to a much bigger wall mass reads the same as a true
+ * isolated island. The noise+smoothing generator readily leaves both shapes
+ * scattered through open, reached water, same as it leaves the small water
+ * pockets `MIN_SOFT_POCKET` cleans up elsewhere.
+ *
+ * Two cleanup passes, in order: first shave any interior solid tile with 3+
+ * open sides straight to water regardless of its component's size (twice,
+ * since shaving one nub can expose its former neighbour in turn); then
+ * demote any remaining solid component smaller than MIN_ROCK_ISLAND as a
+ * whole (catches small blobs -- an L-tromino, say -- where no single tile
+ * has 3 open sides but the group still reads as clutter). Both skip the
+ * level's own unbreakable side border (a real wall, not noise) and the
+ * chunk's top/bottom row (may continue into a neighbouring chunk, generated
+ * independently, so neither its true shape nor its component size is known
+ * here). Mutates `tiles` in place; only ever turns solid tiles to water,
+ * never the reverse, so it can only add connectivity, never remove it --
+ * safe to call after path carving without re-checking connectivity. */
+export function shaveNubsAndSmallIslands(tiles) {
+  const countOpen = (x, y) => {
+    let n = 0;
+    if (tiles[idx(x, y - 1)] === 0) n++;
+    if (tiles[idx(x, y + 1)] === 0) n++;
+    if (tiles[idx(x - 1, y)] === 0) n++;
+    if (tiles[idx(x + 1, y)] === 0) n++;
+    return n;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 1; y < CHUNK_H - 1; y++) {
+      for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
+        const i = idx(x, y);
+        if (tiles[i] === 0) continue;
+        if (countOpen(x, y) >= 3) tiles[i] = 0;
+      }
+    }
+  }
+  const MIN_ROCK_ISLAND = 4;
+  const visited = new Uint8Array(tiles.length);
+  for (let y = 0; y < CHUNK_H; y++) {
+    for (let x = 0; x < CHUNK_W; x++) {
+      const i0 = idx(x, y);
+      if (visited[i0] || tiles[i0] === 0) continue;
+      const comp = [[x, y]];
+      const stack = [[x, y]];
+      visited[i0] = 1;
+      let touchesEdge = false;
+      while (stack.length) {
+        const [cx, cy] = stack.pop();
+        if (cx < BORDER || cx >= CHUNK_W - BORDER || cy === 0 || cy === CHUNK_H - 1) touchesEdge = true;
+        const neigh = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
+        for (const [nx, ny] of neigh) {
+          if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H) continue;
+          const ni = idx(nx, ny);
+          if (visited[ni] || tiles[ni] === 0) continue;
+          visited[ni] = 1;
+          comp.push([nx, ny]);
+          stack.push([nx, ny]);
+        }
+      }
+      if (!touchesEdge && comp.length < MIN_ROCK_ISLAND) {
+        for (const [cx, cy] of comp) tiles[idx(cx, cy)] = 0;
+      }
+    }
+  }
+}
+
+/** True if the solid tile at (x,y) is a thin nub/island (open on 3+ of its
+ * own 4 sides) -- same test `shaveNubsAndSmallIslands` and render.js's
+ * `pickWallArt` use. Out-of-range coords are treated as safe/solid (not
+ * thin), since this is only ever called with in-chunk coordinates here. */
+function isThinSurface(tiles, x, y) {
+  if (x < 0 || x >= CHUNK_W || y < 0 || y >= CHUNK_H) return false;
+  let n = 0;
+  if (y - 1 < 0 || tiles[idx(x, y - 1)] === 0) n++;
+  if (y + 1 >= CHUNK_H || tiles[idx(x, y + 1)] === 0) n++;
+  if (x - 1 < 0 || tiles[idx(x - 1, y)] === 0) n++;
+  if (x + 1 >= CHUNK_W || tiles[idx(x + 1, y)] === 0) n++;
+  return n >= 3;
+}
+
 /** BFS flood-fill of water tiles reachable from (startX, startY). Returns a
  * Uint8Array mask, 1 = reachable. 4-connected (matches the "≥2 tiles wide"
  * passage requirement: a 1-wide diagonal squeeze does not count as open). */
@@ -146,77 +229,20 @@ export function generateChunk(seed, chunkIndex, entryCol) {
     }
   }
 
-  // Visual pass, round 1 (Daniel's screenshot review: "one tile is drawn as
-  // a circle -- the lone-island tile-0 appearing where it shouldn't"):
-  // `pickWallArt` (render.js) picks the `tile-0` lone-circle art for *any*
-  // solid tile with 3-4 open orthogonal neighbours, whether or not that
-  // tile's own component is small -- a single-tile-wide nub still attached
-  // to a much bigger wall mass gets the same circle as a true isolated
-  // island. The noise+smoothing above readily leaves both shapes scattered
-  // through open, reached water, same as it leaves the small water pockets
-  // the MIN_SOFT_POCKET pass below already cleans up.
-  //
-  // Two cleanup passes, in order: first shave any interior solid tile with
-  // 3+ open sides straight to water regardless of its component's size (a
-  // couple of passes, since shaving one nub can expose its former neighbour
-  // in turn); then demote any remaining solid component smaller than
-  // MIN_ROCK_ISLAND as a whole (catches small blobs -- an L-tromino, say --
-  // where no single tile has 3 open sides but the group still reads as
-  // clutter). Both skip the level's own unbreakable side border (a real
-  // wall, not noise) and the chunk's top/bottom row (may continue into a
-  // neighbouring chunk, generated independently, so neither its true shape
-  // nor its component size is known here).
-  {
-    const countOpen = (x, y) => {
-      let n = 0;
-      if (smoothed[idx(x, y - 1)] === 0) n++;
-      if (smoothed[idx(x, y + 1)] === 0) n++;
-      if (smoothed[idx(x - 1, y)] === 0) n++;
-      if (smoothed[idx(x + 1, y)] === 0) n++;
-      return n;
-    };
-    for (let pass = 0; pass < 2; pass++) {
-      for (let y = 1; y < CHUNK_H - 1; y++) {
-        for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
-          const i = idx(x, y);
-          if (smoothed[i] === 0) continue;
-          if (countOpen(x, y) >= 3) smoothed[i] = 0;
-        }
-      }
-    }
-  }
-  const MIN_ROCK_ISLAND = 4;
-  {
-    const visited = new Uint8Array(smoothed.length);
-    for (let y = 0; y < CHUNK_H; y++) {
-      for (let x = 0; x < CHUNK_W; x++) {
-        const i0 = idx(x, y);
-        if (visited[i0] || smoothed[i0] === 0) continue;
-        const comp = [[x, y]];
-        const stack = [[x, y]];
-        visited[i0] = 1;
-        let touchesEdge = false;
-        while (stack.length) {
-          const [cx, cy] = stack.pop();
-          if (cx < BORDER || cx >= CHUNK_W - BORDER || cy === 0 || cy === CHUNK_H - 1) touchesEdge = true;
-          const neigh = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
-          for (const [nx, ny] of neigh) {
-            if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H) continue;
-            const ni = idx(nx, ny);
-            if (visited[ni] || smoothed[ni] === 0) continue;
-            visited[ni] = 1;
-            comp.push([nx, ny]);
-            stack.push([nx, ny]);
-          }
-        }
-        if (!touchesEdge && comp.length < MIN_ROCK_ISLAND) {
-          for (const [cx, cy] of comp) smoothed[idx(cx, cy)] = 0;
-        }
-      }
-    }
-  }
-
   const exitCol = carvePath(smoothed, rng, entryCol);
+
+  // Visual pass, round 2 (Daniel's screenshot review: "the level is still
+  // full of lone circles, and many of them look broken" -- round 1 ran this
+  // cleanup BEFORE `carvePath`/`carveStartPool`, but both of those carve new
+  // water into the grid and can leave fresh 3-open nubs or small islands in
+  // their wake, which this pass never saw. Running it here, as the very
+  // last tile-shape edit before flood-fill, catches those too. It can only
+  // ever turn solid tiles to water, never the reverse, so it can only ever
+  // add connectivity to the path `carvePath` just carved, never remove it --
+  // no separate re-check needed. `carveStartPool` (world.js) punches chunk
+  // 0's start room in *after* this returns, so it calls
+  // `shaveNubsAndSmallIslands` again itself once it has.
+  shaveNubsAndSmallIslands(smoothed);
 
   // Flood-fill from the carved path; anything not reached is sealed off and
   // becomes soft (breakable) rock rather than an unreachable pocket.
@@ -337,6 +363,20 @@ export function generateChunk(seed, chunkIndex, entryCol) {
       else if (smoothed[idx(x, y - 1)] !== 0) placement = 'ceiling';
       else if (smoothed[idx(x - 1, y)] !== 0 || smoothed[idx(x + 1, y)] !== 0) placement = 'wall';
       if (depthStart + y < 40) continue; // keep the first 40 units enemy-free
+      // Round-2 fix (Daniel's screenshot review: "enemies attach to nothing,
+      // or to the lone circles" -- a crab floating in open water, a horns
+      // spike hanging off a single lone-circle tile, wall eyes mounted mid-
+      // room). `shaveNubsAndSmallIslands` above already removes nearly all
+      // of these, but as a defence in depth, never anchor a wall-mounted
+      // enemy slot (crab/horns/urchin/cannon) to a thin nub/island (open on
+      // 3+ of its own 4 sides, not "a surface at least 2 tiles wide"); fall
+      // back to an open-water placement (piranha/mine/manta) instead of
+      // dropping the slot outright, so per-chunk enemy density is unaffected.
+      if (placement !== 'open') {
+        const [ax, ay] = placement === 'floor' ? [x, y + 1] : placement === 'ceiling' ? [x, y - 1]
+          : (smoothed[idx(x + 1, y)] !== 0 ? [x + 1, y] : [x - 1, y]);
+        if (isThinSurface(smoothed, ax, ay)) placement = 'open';
+      }
       spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5 });
     }
   }

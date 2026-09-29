@@ -50,7 +50,10 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   const t = reduced ? 0 : time;
 
   if (c.kind === 'fish') {
-    worldSize = 0.45;
+    // Round-2 fix (Daniel's screenshot review: critter fish read ~25px,
+    // nearly octopus-sized; octo-video-fish-swarm.webp shows them at about a
+    // third of the octopus).
+    worldSize = 0.25;
     dx = Math.sin(t * 0.6 + c.phase) * 0.5;
     dy = Math.sin(t * 1.3 + c.phase * 1.7) * 0.12;
   } else if (c.kind === 'jelly') {
@@ -72,7 +75,15 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
     worldSize = 0.36;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;
-    alpha = 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase));
+    // Round-2 fix (Daniel's screenshot review: "the white rune glyphs float
+    // in open water beside walls; in the video, rune and cross marks are
+    // drawn ON the rock face in a pale blue"). decor.js's round-2 INTO_WALL
+    // bump already pulls these flush against the rim; lowering the alpha
+    // ceiling here (was 0.65-1.0, bright white) makes them read as a faint
+    // mark on the rock rather than a floating bright glyph, and the pale-
+    // blue tint below (drawn after the sprite, `source-atop`) replaces the
+    // source art's white with the video's pale-blue rune colour.
+    alpha = 0.3 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase));
   } else if (c.kind === 'bush2' || c.kind === 'bushmini') {
     worldSize = 0.55;
     rot = Math.sin(t * 0.8 + c.phase) * 0.1;
@@ -90,7 +101,16 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // (wallDir -1/+1); everything else keeps its deterministic random flip.
   const flip = c.wallDir ? c.wallDir < 0 : c.flip;
   ctx.scale(flip ? -1 : 1, scaleY);
+  // Round-2 fix (Daniel's screenshot review): the bright lime `bushmini`
+  // blobs read far more saturated than the video's pale sage/beige plants;
+  // mute it at draw time (no new art) rather than editing the source webp.
+  if (c.kind === 'bushmini') ctx.filter = 'grayscale(0.6) sepia(0.45) saturate(1.4) brightness(1.15)';
   ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = 'rgba(150,205,255,0.75)';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+  }
   ctx.restore();
 }
 

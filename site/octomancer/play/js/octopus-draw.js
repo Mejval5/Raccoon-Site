@@ -130,7 +130,16 @@ function drawBaked(ctx, o, bakeData) {
     const rect = sprites[side];
     if (!a || !rect || !img.complete) continue;
     const restSize = data.eyeRestSize[side];
-    const eyeWorldH = restSize.meshH * data.meshUnitsToWorld * a.scale;
+    // Round-2 fix (Daniel's screenshot review: "the octopus looks wrong and
+    // too big" -- the eyes were drawn at 2x their correct size). This used
+    // to skip OCTO_VISUAL_SCALE entirely -- the body/eye *positions* go
+    // through `toWorld` (which is itself `worldSize / cell`, and `worldSize`
+    // already carries OCTO_VISUAL_SCALE), but the eye *size* was computed
+    // straight from the unscaled mesh data, so it stayed at the pre-round-1
+    // (too-large) scale while the body shrank around it -- two oversized
+    // white eyeballs covering most of the now-smaller head. Multiplying by
+    // the same OCTO_VISUAL_SCALE keeps eyes and body in the same ratio.
+    const eyeWorldH = restSize.meshH * data.meshUnitsToWorld * a.scale * OCTO_VISUAL_SCALE;
     const eyeWorldW = eyeWorldH * (rect.w / rect.h);
     const ex = (a.x - cell / 2) * toWorld;
     const ey = (a.y - cell / 2) * toWorld;
