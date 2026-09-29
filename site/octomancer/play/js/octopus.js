@@ -18,6 +18,8 @@ import {
   SWIM_PUSH_FORCE, SWIM_MAX_SPEED, SWIM_TURN_DELAY, SWIM_TURN_SPEED,
   SWIM_REST_ROTATE_CONST, SWIM_JOYSTICK_POWER, SWIM_JOYSTICK_DIVISOR,
   SWIM_ACCEL_CAP_EXP, DASH_IMPULSE, DASH_COOLDOWN,
+  HEART_MAX, HURT_INVULN, HURT_KNOCKBACK, HURT_RAGDOLL, DEATH_DURATION,
+  BOMB_START, BOMB_MAX,
 } from './config.js';
 import { applyImpulse, applyDrag, integrateWithCollision, len, clamp } from './physics.js';
 
@@ -35,7 +37,54 @@ export function createOctopus(x, y) {
     dashCooldown: 0,
     swimming: false,
     dashedThisStep: false, // for tests/juice hooks
+    // --- M3: health, bombs (OVERNIGHT.md §4 M3-2) ---
+    hearts: HEART_MAX,
+    invulnTimer: 0,
+    hurting: false, // read by octopus-draw.js (Idle4Swirl clip, angry eyes)
+    hurtTimer: 0, // "ragdoll spin for 0.4s"
+    dead: false,
+    deathTimer: 0,
+    gameoverEmitted: false,
+    bombs: BOMB_START,
   };
+}
+
+/** Hurt the octopus (contact damage): knockback away from (fromX,fromY), 1s
+ * invulnerability, 0.4s ragdoll/angry state. A no-op while already
+ * invulnerable or dead (OVERNIGHT.md M3-2: "no second loss within 1s"). */
+export function hurtOctopus(o, fromX, fromY) {
+  if (o.invulnTimer > 0 || o.dead) return false;
+  o.hearts = Math.max(0, o.hearts - 1);
+  const dx = o.x - fromX, dy = o.y - fromY;
+  const d = len(dx, dy) || 1;
+  // applyImpulse divides by mass, so scale by mass here to get a flat
+  // HURT_KNOCKBACK u/s velocity change regardless of body mass.
+  applyImpulse(o, (dx / d) * HURT_KNOCKBACK * o.mass, (dy / d) * HURT_KNOCKBACK * o.mass);
+  o.invulnTimer = HURT_INVULN;
+  o.hurting = true;
+  o.hurtTimer = HURT_RAGDOLL;
+  if (o.hearts <= 0) killOctopus(o);
+  return true;
+}
+
+/** Instant kill (Beholder touch): bypasses invulnerability entirely. */
+export function killOctopus(o) {
+  if (o.dead) return;
+  o.hearts = 0;
+  o.dead = true;
+  o.deathTimer = DEATH_DURATION;
+  o.swimming = false;
+}
+
+/** Try to place a bomb: consumes one from the stock. Returns true if placed. */
+export function tryUseBomb(o) {
+  if (o.bombs <= 0 || o.dead) return false;
+  o.bombs--;
+  return true;
+}
+
+export function addBomb(o) {
+  o.bombs = Math.min(BOMB_MAX, o.bombs + 1);
 }
 
 export function facingDir(angleDeg) {
@@ -142,6 +191,17 @@ export function tryDash(o) {
 export function stepOctopus(o, input, dt, grid) {
   o.prevX = o.x; o.prevY = o.y;
   o.dashedThisStep = false;
+
+  if (o.invulnTimer > 0) o.invulnTimer = Math.max(0, o.invulnTimer - dt);
+  if (o.hurtTimer > 0) { o.hurtTimer = Math.max(0, o.hurtTimer - dt); if (o.hurtTimer === 0) o.hurting = false; }
+  if (o.dead) {
+    // Death: limp tentacles / fading, no input, 1s ink burst then `gameover`
+    // (M4 wires the real overlay; main.js's __octo state exposes the flag).
+    if (o.deathTimer > 0) o.deathTimer = Math.max(0, o.deathTimer - dt);
+    applyDrag(o, OCTO_LINEAR_DRAG, dt);
+    integrateWithCollision(o, dt, grid);
+    return;
+  }
 
   const joy = joystickCurve(input.move);
   o.swimming = joy.mag >= 0.01;

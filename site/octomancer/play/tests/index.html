@@ -75,6 +75,10 @@ runSwimTests(assert, approx);
 import { runGenTests } from './gen.test.js';
 runGenTests(assert, approx);
 
+// --- M3 enemy/health/bomb tests (enemies.js / octopus.js / bomb.js) ---
+import { runEnemyTests } from './enemies.test.js';
+runEnemyTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

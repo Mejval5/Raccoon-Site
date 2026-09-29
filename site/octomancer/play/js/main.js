@@ -12,6 +12,9 @@ import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { CHUNK_H, CHUNK_W } from './gen.js';
 import { isBaked } from './octopus-draw.js';
+import { createEnemies } from './enemies.js';
+import { createBombs } from './bomb.js';
+import { createParticles } from './particles.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -49,6 +52,9 @@ let octo = createOctopus(world.startX, world.startY);
 let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
 let decor = createDecor(CHUNK_W, CHUNK_H);
+let enemies = createEnemies();
+let bombs = createBombs();
+let particles = createParticles();
 let autoDiveOn = false;
 
 const sim = {
@@ -93,6 +99,16 @@ function step(dt) {
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident);
   decor.update(dt, resident);
+  enemies.update(dt, sim.time, octo, world, resident);
+  bombs.update(dt, world, octo, enemies);
+  for (const ev of bombs.events) if (ev.type === 'exploded') particles.bombDebris(ev.x, ev.y);
+  for (const ev of enemies.events) if (ev.type === 'enemyKilled') particles.deathPoof(ev.x, ev.y);
+  particles.update(dt);
+  if (snap.bomb.pressed) bombs.place(octo, octo.x, octo.y);
+  if (octo.dead && !octo.gameoverEmitted && octo.deathTimer === 0) {
+    octo.gameoverEmitted = true;
+    window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time } }));
+  }
   if (hudDepthEl) hudDepthEl.textContent = String(Math.max(0, Math.round(world.depth() - world.startY)));
 }
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
@@ -146,6 +162,11 @@ function render(alpha, frameMs) {
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),
     depth: Math.max(0, world.depth() - world.startY),
+    enemies: enemies.all(),
+    shots: enemies.shots(),
+    bombs: bombs.list(),
+    particles: particles.pool,
+    shakeOffset: particles.shakeOffset(),
   });
   debug.tick();
 }
@@ -162,6 +183,9 @@ function resetWorld(newSeed) {
   renderer = createRenderer(ctx, world);
   pickups = createPickups();
   decor = createDecor(CHUNK_W, CHUNK_H);
+  enemies = createEnemies();
+  bombs = createBombs();
+  particles = createParticles();
   sim.time = 0;
   if (hudSeedEl) hudSeedEl.textContent = String(seed);
 }
@@ -172,10 +196,15 @@ window.__octo = {
     return {
       time: sim.time,
       input: sim.lastInput,
-      octopus: { x: octo.x, y: octo.y, vx: octo.vx, vy: octo.vy, angle: octo.angle, swimming: octo.swimming },
+      octopus: {
+        x: octo.x, y: octo.y, vx: octo.vx, vy: octo.vy, angle: octo.angle, swimming: octo.swimming,
+        hearts: octo.hearts, invulnTimer: octo.invulnTimer, dead: octo.dead, bombs: octo.bombs,
+      },
       depth: Math.max(0, world.depth() - world.startY),
       residentChunks: world.residentChunkCount(),
       pickups: { ...pickups.totals },
+      enemyCount: enemies.count(),
+      beholder: enemies.beholder() ? { x: enemies.beholder().x, y: enemies.beholder().y } : null,
     };
   },
   step(n) {
@@ -198,11 +227,15 @@ window.__octo = {
       depth: Math.max(0, world.depth() - world.startY),
       pickups: { ...pickups.totals },
       octoBaked: isBaked(),
+      enemyCount: enemies.count(),
     };
   },
   spawn(kind, x, y) {
-    // No enemies yet (M3). Stub kept so scripted tests can call it early.
-    return { kind, x, y, spawned: false, reason: 'not implemented before M3' };
+    const e = enemies.spawnAt(kind, x, y);
+    return { kind, x, y, spawned: true, id: e.id };
+  },
+  placeBomb(x, y) {
+    return bombs.place(octo, x != null ? x : octo.x, y != null ? y : octo.y);
   },
   autoDive(on) {
     autoDiveOn = !!on;

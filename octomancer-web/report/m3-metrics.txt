@@ -1,0 +1,46 @@
+M3 core enemies, damage, death -- metrics (OVERNIGHT.md §3 M3 exit criteria)
+Verified via: python -m http.server on site/, headless Chromium pane, __octo
+test hooks + play/tests/index.html. Screenshots: m3-play-desktop.jpg (1440x900,
+seed=1), m3-play-phone.jpg (375x812, seed=2).
+
+Unit/scripted tests (play/tests/index.html, enemies.test.js): 39/39 PASS,
+including every M3 acceptance row:
+  - urchin contact -> exactly 1 heart lost, no second loss within 1s: PASS
+  - dash (>=8u/s) through a piranha kills it, no damage taken: PASS
+  - ordinary (non-dash) piranha contact hurts, does not kill it: PASS
+  - bomb clears soft rock within r2.5, leaves rock outside r2.5: PASS
+  - bomb hurts the octopus if still inside the blast: PASS
+  - bomb kills an enemy caught in its radius: PASS
+  - Beholder does not exist before 120s, spawns at 120s: PASS
+  - Beholder touch kills the octopus (bypasses invulnerability): PASS
+  - Beholder is immune to bombs: PASS
+  - generator keeps the first 40 units enemy-free (checked 3 chunks, 0 violations): PASS
+  - urchin is immune to a dash-speed hit (bombs only): PASS
+
+Integration (real game, autoDive soak):
+  - seed=1, 1440x900: 130s simulated (autoDive), Beholder spawned at 120s and
+    killed the octopus on contact exactly as scripted (octopus.dead=true,
+    hearts=0) -- screenshot at depth ~124m shows the Beholder overlapping the
+    octopus, urchins and pickups visible and readable.
+  - seed=2, 375x812: 60s simulated (autoDive) + 30 enemies force-spawned via
+    __octo.spawn (urchin/piranha/cannon) for a resident-enemy-count check:
+    enemyCount reached 40. frameMsMedian 0.30ms, frameMsP95 0.60ms (budget:
+    <=4ms median, <=8ms p95) -- comfortably inside budget with far more than
+    the 30-enemy floor the exit criteria ask for.
+  - 0 console errors in either run.
+
+Frame budget (375x812, 40 enemies resident): median 0.30ms, p95 0.60ms.
+Depth reached in the two soaks: 124m (desktop, 130s) and 96m (phone, 60s).
+
+Deviations (logged in NIGHT-LOG.md too):
+  - Enemy-kind assignment per generator slot is a small hand-written table in
+    enemies.js (urchin on floor/ceiling/wall, piranha in open water, cannon
+    added past depth 80 on floor/wall), not a separate depth-curve asset --
+    matches OVERNIGHT.md's "simple and fun" instruction for M3; M6 extends
+    the same table.
+  - Cannon has no contact damage of its own (only its shot does), matching
+    OVERNIGHT.md's M3-1 row, which lists contact damage for urchin and
+    piranha but not the cannon body.
+  - The Beholder's "dread" light-cone/vignette-pulse callout in the M3-3 art
+    row is left as a one-line stub (a pulsing scale on its sprite only);
+    the fuller version is explicitly M7's job (OVERNIGHT.md M7-1).

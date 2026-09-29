@@ -8,6 +8,7 @@
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
 import { depthTint } from './decor.js';
+import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -268,25 +269,38 @@ export function createRenderer(ctx, world) {
     ctx.scale(camera.pxPerUnit, camera.pxPerUnit);
     o.__t = time;
     o.__speed = Math.hypot(o.vx, o.vy);
+    // Invulnerability blink (M3-2): flicker the octopus while it can't be
+    // hurt again, skipped once it's dead (death fades via the hurt clip
+    // itself, not this flicker).
+    if (o.invulnTimer > 0 && !o.dead) ctx.globalAlpha = Math.sin(time * 24) > 0 ? 1 : 0.35;
     drawOctopus(ctx, o);
     ctx.restore();
   }
 
   return {
     camera,
-    render(canvasW, canvasH, octo, alpha, time, { resident, pickups, bubbles, depth }) {
+    render(canvasW, canvasH, octo, alpha, time, {
+      resident, pickups, bubbles, depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset,
+    }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
       // of the run (~10 min soak test caught this: heap kept climbing).
       const liveIdx = new Set(resident.map((r) => r.index));
       for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) wallCache.delete(ci);
       updateCamera(camera, canvasW, canvasH, octo.x, octo.y, world.width, world.height);
+      const shakePx = shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
+      ctx.save();
+      ctx.translate(shakePx.x, shakePx.y);
       drawBackground(canvasW, canvasH, time);
       drawWalls(canvasW, canvasH, resident);
       drawPlants(canvasW, canvasH, resident);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);
+      drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time);
+      drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
+      if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       drawOcto(octo, alpha, canvasW, canvasH, time);
+      ctx.restore();
       drawDepthTint(canvasW, canvasH, depth);
       drawVignette(canvasW, canvasH);
     },

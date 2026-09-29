@@ -436,3 +436,55 @@ already harvested read-only from `octomancer-unity/`).
 
 Track B status: **done**, all of M2-B-1's and B-2's own exit criteria met.
 M2's own exit criteria (already met last session) are unaffected.
+
+## M3 Core enemies, damage, death (Otter/Magpie/Owl role, single M3 dev)
+
+Built `enemies.js` (urchin, piranha, cannon+shot, Beholder, spawned from the
+generator's `enemy-slot` tags and despawned with their chunk), health/death on
+the octopus itself (`octopus.js`: `hearts`, 1s invulnerability with a render
+blink, knockback, `hurtOctopus`/`killOctopus`), `bomb.js` (place/fuse/explode:
+breaks soft rock in r2.5, kills enemies in radius, hurts the octopus if still
+inside), `particles.js` (pooled hit/death/debris particles + reduced-motion-
+aware screen shake), and `enemy-draw.js` (Milan's urchin/piranha/cannon/shot/
+Beholder sprites, code-drawn bomb + fuse spark + explosion ring). Exported the
+four enemy sprites plus 6 downscaled Beholder frames from the M0-3 harvest
+into `play/assets/` (`web/tools/export_m3_assets.py`; `web/ASSETS.md` updated).
+
+Wired into `main.js`: enemies/bombs/particles step every fixed tick, `bomb`
+input places a bomb at the octopus, a `gameover` CustomEvent fires once
+`deathTimer` runs out after death (M4 will listen for it), and
+`__octo.spawn(kind,x,y)` / a new `__octo.placeBomb(x,y)` are real now instead
+of the M1/M2 stubs.
+
+**Verified** (`play/tests/enemies.test.js`, 15 new scripted checks, all
+green; full suite 39/39 PASS): urchin contact takes exactly 1 heart with no
+second loss inside 1s; dash at >=8u/s through a piranha kills it without
+damage, a slower contact hurts instead; a bomb clears soft rock inside r2.5,
+leaves it untouched outside r2.5, hurts the octopus inside the blast, and
+kills any enemy caught in it; the Beholder does not exist before 120s of run
+time, spawns at 120s, kills the octopus on touch regardless of invulnerability,
+and is immune to bombs; the generator's first-40-units enemy-free rule holds.
+Integration soaks (autoDive, both `?fps=1` viewports): 1440x900/seed=1 ran to
+130s and the Beholder killed the octopus exactly on schedule; 375x812/seed=2
+ran to 60s then had 30 more enemies force-spawned (enemyCount 40) with
+frameMsMedian 0.30ms / p95 0.60ms, both far inside the <=4ms/<=8ms budget. 0
+console errors either run. Screenshots: `web/report/m3-play-desktop.jpg`,
+`web/report/m3-play-phone.jpg`. Numbers: `web/report/m3-metrics.txt`.
+
+**Deviations** (all logged in `m3-metrics.txt` too): enemy-kind-per-slot is a
+small hand-written table (urchin on floor/ceiling/wall, piranha in open
+water, cannon added past depth 80), not a separate curve asset -- simple and
+fun, per the plan, and M6 only needs to add rows to it. The cannon's body has
+no contact damage of its own (only its shot does), matching the M3-1 row as
+written. The Beholder's "dread" vignette/light-cone callout in M3-3 is a
+one-line stub (a pulsing sprite scale) since the fuller version is
+explicitly M7's job.
+
+**Skipped:** nothing on the M3 task list; sprite export used a hand-written
+`export_m3_assets.py` (mirroring M0-3's tool) rather than extending
+`export_assets.py` in place, to avoid touching that tool's already-verified
+M0-3 output.
+
+**Status:** M3 exit criteria all met and numbered above. Next: M4 (score,
+game-over overlay listening for the new `gameover` event, restart, best,
+pause) + track S (music/mute).

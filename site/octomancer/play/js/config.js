@@ -45,3 +45,38 @@ export const CAMERA_MIN_HEIGHT = 24;
 // Sub-step when |v|*dt > r/2 (OVERNIGHT.md §2 "Physics").
 export const SUBSTEP_RADIUS_FACTOR = 0.5;
 export const MAX_SUBSTEPS = 8;
+
+// --- M3: health, bombs, enemies (OVERNIGHT.md §4 M3-1/M3-2) ---
+export const HEART_MAX = 3;
+export const HURT_INVULN = 1.0; // s
+export const HURT_KNOCKBACK = 6; // u/s, away from the hurt source
+export const HURT_RAGDOLL = 0.4; // s, "the original's ragdoll spin"
+export const DEATH_DURATION = 1.0; // s of ink-burst before the gameover event
+
+export const BOMB_START = 3;
+export const BOMB_MAX = 5;
+// Tonight's deviation from the plan's "4s fuse" default (logged in
+// NIGHT-LOG.md): OVERNIGHT.md M3-2 itself calls out 1.5s as the row's own
+// number, "deviation from 4 s, noted".
+export const BOMB_FUSE = 1.5;
+export const BOMB_RADIUS = 2.5;
+
+export const DASH_KILL_SPEED = 8; // u/s: dash-through-piranha kill threshold
+export const ENEMY_MIN_DEPTH = 40; // "enemy-free first 40 units" (also gen.js)
+
+export const URCHIN_RADIUS = 0.42;
+export const PIRANHA_RADIUS = 0.4;
+export const PIRANHA_PATROL_SPEED = 2.5;
+export const PIRANHA_CHASE_SPEED = 4;
+export const PIRANHA_CHASE_RANGE = 6;
+export const CANNON_RADIUS = 0.45;
+export const CANNON_RANGE = 10;
+export const CANNON_FIRE_PERIOD = 2.5;
+export const CANNON_SHOT_SPEED = 5;
+export const CANNON_SHOT_RADIUS = 0.25;
+
+export const BEHOLDER_SPAWN_TIME = 120; // s of run time
+export const BEHOLDER_SPAWN_HEIGHT = 20; // world units above the octopus
+export const BEHOLDER_RADIUS = 0.9;
+export const BEHOLDER_SPEED = 4.5; // u/s
+export const BEHOLDER_SPEED_RAMP = 0.1; // +u/s per 10s alive
