@@ -1,7 +1,10 @@
-// Pooled particle system + screen shake for enemy/bomb feedback.
+// Pooled particle system + screen shake for enemy/bomb feedback, plus the
+// M7-1 juice effects (dash ink, pickup sparkle, speed-scaled bubble trail):
 // OVERNIGHT.md §4 M3-3: "particles pooled, 0 allocations per frame". A fixed
 // array is pre-allocated once; `spawn()` reuses a dead slot instead of
 // pushing, and `update()` mutates in place.
+
+import { prefersReducedMotion } from './config.js';
 
 const POOL_SIZE = 256;
 
@@ -39,6 +42,36 @@ export function createParticles() {
       }
       shakeScreen(0.35);
     },
+    /** M7-1: a small ink puff kicked out behind the octopus on dash, in the
+     * direction it dashed from (opposite `angle`). Skipped under reduced
+     * motion like the rest of the pool's decorative bursts. */
+    dashInk(x, y, angleRad) {
+      if (prefersReducedMotion()) return;
+      const back = angleRad + Math.PI;
+      for (let i = 0; i < 6; i++) {
+        const a = back + (Math.random() - 0.5) * 1.1;
+        const speed = 0.6 + Math.random() * 1.2;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.09, 'rgba(20,15,30,0.75)');
+      }
+    },
+    /** M7-1: a bright sparkle on any pickup (pearl/plankton/shell), colour
+     * matching what was collected. */
+    pickupSparkle(x, y, color = '#dff3ff') {
+      if (prefersReducedMotion()) return;
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = 0.8 + Math.random() * 1.4;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.2 + Math.random() * 0.15, 0.045, color);
+      }
+    },
+    /** M7-1: bubble trail scaled by speed - one small rising mote behind the
+     * octopus, called at a rate `main.js` scales with how fast it's moving
+     * (`TRAIL_BUBBLE_PERIOD_*` in config.js), so a fast dive leaves a denser
+     * trail than a gentle drift. */
+    trailBubble(x, y) {
+      if (prefersReducedMotion()) return;
+      spawnOne(x, y, (Math.random() - 0.5) * 0.2, -0.4 - Math.random() * 0.3, 0.5 + Math.random() * 0.3, 0.035, 'rgba(210,240,255,0.55)');
+    },
     /** 0.2s screen shake, skipped entirely under reduced motion (M7 also
      * reads this; wired here since M3 is the first thing that shakes). */
     shakeOffset() {
@@ -62,7 +95,6 @@ export function createParticles() {
   };
 
   function shakeScreen(mag) {
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!reduced) shake = Math.max(shake, mag);
+    if (!prefersReducedMotion()) shake = Math.max(shake, mag);
   }
 }

@@ -109,3 +109,22 @@ export const MANTA_DROP_PERIOD = 3; // s between ball drops
 export const MANTA_RANGE = 8; // u, must be this close before it drops
 export const MANTA_BALL_SPEED = 3; // u/s, aimed at the octopus
 export const MANTA_BALL_RADIUS = 0.22;
+
+// --- M7: juice and polish (OVERNIGHT.md §4 M7-1) ---
+// Beholder dread: how close (world units) before the vignette pulse and its
+// light cone start ramping in, reaching full intensity at touch range.
+export const DREAD_RANGE = 15;
+// Bubble trail: spawned from the octopus while it pushes, rate and speed
+// scaled by how fast it's swimming (OVERNIGHT.md M7-1 "bubble trail scaled
+// by speed").
+export const TRAIL_BUBBLE_PERIOD_MIN = 0.05; // s between trail bubbles at max speed
+export const TRAIL_BUBBLE_PERIOD_MAX = 0.35; // s between trail bubbles near rest
+
+/** One `matchMedia` query, reused by every M7 juice effect (and the M3
+ * screen shake) so a single OS/browser setting turns off all of the
+ * decorative motion at once (OVERNIGHT.md M7-1: "every effect respects
+ * prefers-reduced-motion"). Guarded for environments without `matchMedia`
+ * (the `tests/` harness), where it safely reads as "no preference". */
+export function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}

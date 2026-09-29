@@ -9,6 +9,7 @@ import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
 import { depthTint } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
+import { prefersReducedMotion } from './config.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -177,6 +178,56 @@ export function createRenderer(ctx, world) {
     ctx.fillRect(0, 0, canvasW, canvasH);
   }
 
+  // M7-1: caustic light - one drifting code pattern of soft diagonal streaks
+  // (never OverlayNoise.jpg/Stripes.jpg, both excluded by the art rule).
+  // Drift is frozen under reduced motion; the streaks themselves still show,
+  // just static, per OVERNIGHT.md M7-1's per-effect reduced-motion rule.
+  function drawCaustics(canvasW, canvasH, time, reduced) {
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = 'rgba(190,235,255,0.9)';
+    ctx.lineWidth = Math.max(canvasW, canvasH) * 0.05;
+    const spacing = Math.max(canvasW, canvasH) * 0.18;
+    const drift = reduced ? 0 : (time * 14) % spacing;
+    for (let x = -spacing * 2 + drift; x < canvasW + spacing; x += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(x, -spacing);
+      ctx.lineTo(x + spacing * 1.4, canvasH + spacing);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // M7-1: Beholder dread - a reddish vignette pulse plus a light cone at its
+  // own screen position, both ramping in with DREAD_RANGE proximity (M7's
+  // `dreadLevel`, computed once per step in main.js and passed straight
+  // through here so render.js never has to search the enemy list itself).
+  // The pulse is a flat static intensity under reduced motion instead of a
+  // sine flicker.
+  function drawBeholderDread(canvasW, canvasH, beholder, dreadLevel, time, reduced) {
+    if (!beholder || !dreadLevel) return;
+    const pulse = reduced ? 1 : 0.8 + Math.sin(time * 5) * 0.2;
+    const intensity = dreadLevel * pulse;
+    ctx.save();
+    const vGrad = ctx.createRadialGradient(
+      canvasW / 2, canvasH / 2, 0,
+      canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.75,
+    );
+    vGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    vGrad.addColorStop(1, `rgba(130,0,10,${(intensity * 0.45).toFixed(3)})`);
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    const s = worldToScreen(camera, canvasW, canvasH, beholder.x, beholder.y);
+    const r = camera.pxPerUnit * (2.5 + intensity * 4);
+    const cGrad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+    cGrad.addColorStop(0, `rgba(255,60,60,${(0.4 * intensity).toFixed(3)})`);
+    cGrad.addColorStop(1, 'rgba(255,60,60,0)');
+    ctx.fillStyle = cGrad;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   function drawPlants(canvasW, canvasH, resident) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     for (const { index, yOffset, chunk } of resident) {
@@ -280,7 +331,7 @@ export function createRenderer(ctx, world) {
   return {
     camera,
     render(canvasW, canvasH, octo, alpha, time, {
-      resident, pickups, bubbles, depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset,
+      resident, pickups, bubbles, depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -291,7 +342,9 @@ export function createRenderer(ctx, world) {
       const shakePx = shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
+      const reduced = prefersReducedMotion();
       drawBackground(canvasW, canvasH, time);
+      drawCaustics(canvasW, canvasH, time, reduced);
       drawWalls(canvasW, canvasH, resident);
       drawPlants(canvasW, canvasH, resident);
       drawBubbles(canvasW, canvasH, bubbles);
@@ -303,6 +356,8 @@ export function createRenderer(ctx, world) {
       ctx.restore();
       drawDepthTint(canvasW, canvasH, depth);
       drawVignette(canvasW, canvasH);
+      const beholder = enemies.find((e) => e.kind === 'beholder' && !e.dead);
+      drawBeholderDread(canvasW, canvasH, beholder, dreadLevel, time, reduced);
     },
   };
 }

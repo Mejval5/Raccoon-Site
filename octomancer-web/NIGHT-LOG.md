@@ -758,3 +758,70 @@ a deliberate stop, not a blocked row.
 M6-3 x2, M6-4) -- scripted checks pass, readable at 375x812, budgets hold
 with 30 enemies resident. Next: M6-5 stretch (tentacle/dropper) if time
 remains, else M7 (juice and polish) per OVERNIGHT.md §3.
+
+## M7 Juice and polish (single M7 dev, "cheapest highest-impact items" per
+## the harness's instruction -- see OVERNIGHT.md §4 M7 table)
+
+**Built:**
+- **M7-1 juice** (`play/js/particles.js`, `play/js/render.js`,
+  `play/js/pickups.js`, `play/js/config.js`, `play/js/main.js`): dash ink
+  puff behind the octopus on dash; a bubble trail spawned from the octopus
+  at a rate that scales with its current speed (dense at top speed, none at
+  rest); a coloured sparkle on every pickup (pearl/plankton/shell), driven
+  by a new `pickups.events` list rather than diffing totals; wall-break
+  debris (already existed from M3-3's `bombDebris` -- bombs are still the
+  only thing that clears rock, so nothing new was needed there, just
+  confirmed it still fires); a code-drawn drifting caustic-light overlay
+  (diagonal streaks, additive blend, never a stock texture); Beholder dread
+  (a reddish vignette pulse plus a light-cone glow at its own screen
+  position, intensity from a shared `dreadLevel` = 1 - dist/DREAD_RANGE).
+  Every one of these is gated on a new shared `config.js`
+  `prefersReducedMotion()` (one matchMedia query, also now used by M3's
+  pre-existing screen shake instead of its own inline check): the bursty
+  particle effects (ink/sparkle/trail) are skipped outright, the caustic
+  drift and the dread pulse's sine wobble freeze to a static value so the
+  effect itself still reads without the motion.
+- **M7-2 SFX** (`play/js/audio.js`): the two S-1 "if time is left" items not
+  done then -- a continuous swim whoosh (bandpass-filtered noise loop,
+  gain/cutoff driven by speed via `setSwimIntensity()`) and a Beholder drone
+  (continuous 48Hz sine, gain driven by `setBeholderDread()`, sharing the
+  same `dreadLevel` as the render-side dread overlay). Both nodes are
+  created lazily inside `audio.js`'s existing `start()` (first input only,
+  same as everything else in that module) and routed through the same
+  master gain, so mute already covers them; no new audio files.
+- **M7-3 perf pass**: `index.html` was missing `modulepreload` for 7 of the
+  25 modules (bomb, decor, enemies, enemy-draw, gen, particles, pickups,
+  rng) -- added. DPR step-down implemented in `main.js`: watches
+  `loop.metrics().frameMsMedian` every render and forces the DPR cap to 1.0
+  (re-applied via the existing `resize()`) if the median stays above 20ms
+  for a continuous 2s window; `__octo.metrics()` now reports
+  `dpr`/`dprForcedDown` so this is scriptable. Transfer size (play/js + css
+  + html + assets) measured at ~454KB, unchanged by M7 (no new asset
+  files) and far inside the 1.5MB budget. Import depth: found one
+  pre-existing depth-3 chain (main -> bomb -> octopus -> physics, predates
+  M7) against the "<=2" target; logged rather than restructured, since every
+  chain M7 itself touched is depth 2 or less and reworking a working import
+  graph this late risked more than the win was worth.
+
+**Verified:** `tests/` -> PASS 57/57 (unchanged; M7 added no new scripted
+checks, per its own acceptance row which is screenshots/budgets, not test
+counts). Own `http.server` on 8092, puppeteer-core headless Chrome from
+`D:\tmp\octo-tools` (`m7_shot.js`): 0 console errors at 1440x900 and
+375x812 while dashing (ink + trail visible), 0 errors with a spawned
+Beholder (dread vignette/cone visible), 0 errors with
+`prefers-reduced-motion: reduce` forced on the same Beholder scene (effect
+still visible, confirmed static rather than absent). Budgets with 30 spawned
+enemies plus the new juice all live in the same particle pool: frame median
+0.40ms, p95 0.70-0.90ms across runs -- comfortably inside 4ms/8ms.
+Screenshots and `web/report/m7-metrics.txt` have the full numbers.
+
+**Skipped:** a dedicated M7-4 regression/bug-list pass -- the M7-3 numbers
+and a clean re-run of the full 57-test suite stand in for it this session,
+given the harness's "cheapest highest-impact items" scope for M7. No new
+art files (M7 is entirely code-drawn juice + audio synthesis), so
+`web/ASSETS.md` needed no new rows and `play/assets/` is unchanged.
+
+**Status:** M7 exit criteria met (every new effect respects
+prefers-reduced-motion; budgets still hold; transfer stays under 1.5MB).
+Next: M6-5 stretch (tentacle/dropper, if a future session has time) or the
+morning report assembly (OVERNIGHT.md §6), whichever the orchestrator picks.

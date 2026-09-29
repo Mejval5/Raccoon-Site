@@ -18,7 +18,7 @@ import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
 import { loadBest, recordRun } from './save.js';
-import { HEART_MAX } from './config.js';
+import { HEART_MAX, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
 
@@ -32,11 +32,16 @@ const params = new URLSearchParams(location.search);
 const initialSeed = Number(params.get('seed')) || 1;
 
 let dpr = 1;
+// M7-3 perf pass: "DPR step-down to 1.0 if median > 20ms for 2s". Once
+// tripped this stays down for the rest of the run (a device that's this
+// slow once will be again); `resize()` re-applies it on every orientation
+// change/resize too, not just at the moment it trips.
+let dprForcedDown = false;
 function isCoarsePointer() {
   return matchMedia('(pointer: coarse)').matches;
 }
 function resize() {
-  const cap = isCoarsePointer() ? 1.5 : 2;
+  const cap = dprForcedDown ? 1 : (isCoarsePointer() ? 1.5 : 2);
   dpr = Math.min(window.devicePixelRatio || 1, cap);
   const w = window.innerWidth, h = window.innerHeight;
   canvas.width = Math.round(w * dpr);
@@ -63,6 +68,8 @@ let bombs = createBombs();
 let particles = createParticles();
 let autoDiveOn = false;
 let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
+let trailTimer = 0; // M7-1: bubble-trail spawn accumulator, rate scaled by speed
+let dreadLevel = 0; // M7-1/M7-2: Beholder proximity in [0,1], shared by render's dread overlay and audio's drone
 
 // --- Track S: music and code-synth SFX (OVERNIGHT.md §4 S-1) ---
 const audio = createAudio();
@@ -167,16 +174,40 @@ function step(dt) {
     return;
   }
   stepOctopus(octo, snap, dt, world);
-  if (octo.dashedThisStep) sfx.dash();
+  if (octo.dashedThisStep) {
+    sfx.dash();
+    particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
+  }
+  // M7-1: bubble trail scaled by speed - faster swimming spawns bubbles more
+  // often (TRAIL_BUBBLE_PERIOD_MIN..MAX in config.js), none at rest.
+  if (!octo.dead) {
+    const speed = Math.hypot(octo.vx, octo.vy);
+    const speedFrac = Math.min(1, speed / SWIM_MAX_SPEED);
+    trailTimer -= dt;
+    if (speedFrac > 0.05 && trailTimer <= 0) {
+      trailTimer = TRAIL_BUBBLE_PERIOD_MAX - (TRAIL_BUBBLE_PERIOD_MAX - TRAIL_BUBBLE_PERIOD_MIN) * speedFrac;
+      particles.trailBubble(octo.x, octo.y);
+    }
+  }
   world.update(octo.y);
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident);
+  for (const ev of pickups.events) {
+    const color = ev.type === 'pearl' ? '#dff3ff' : ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
+    particles.pickupSparkle(ev.x, ev.y, color);
+  }
   if (pickups.totals.pearls > prevPearls) sfx.pearl();
   prevPearls = pickups.totals.pearls;
   if (octo.hearts < prevHearts) sfx.hurt();
   prevHearts = octo.hearts;
   decor.update(dt, resident);
   enemies.update(dt, sim.time, octo, world, resident);
+  // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
+  // step (a no-op until the first input creates the audio nodes).
+  audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
+  const beholder = enemies.beholder();
+  dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
+  audio.setBeholderDread(dreadLevel);
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) if (ev.type === 'exploded') { particles.bombDebris(ev.x, ev.y); sfx.bomb(); }
   for (const ev of enemies.events) if (ev.type === 'enemyKilled') { particles.deathPoof(ev.x, ev.y); runKills++; }
@@ -237,7 +268,25 @@ function planDiveBFS(world, x, y) {
   return path;
 }
 
+let overBudgetSince = 0; // performance.now() timestamp, 0 = not currently over budget
+function checkPerfStepDown() {
+  if (dprForcedDown) return;
+  const m = loop.metrics();
+  if (m.samples < 30) return; // not enough of a window yet to judge
+  const now = performance.now();
+  if (m.frameMsMedian > 20) {
+    if (!overBudgetSince) overBudgetSince = now;
+    else if (now - overBudgetSince > 2000) {
+      dprForcedDown = true;
+      resize();
+    }
+  } else {
+    overBudgetSince = 0;
+  }
+}
+
 function render(alpha, frameMs) {
+  checkPerfStepDown();
   const w = canvas.width, h = canvas.height;
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
@@ -251,6 +300,7 @@ function render(alpha, frameMs) {
     bombs: bombs.list(),
     particles: particles.pool,
     shakeOffset: particles.shakeOffset(),
+    dreadLevel,
   });
   ui.updateHud({
     hearts: octo.hearts, heartMax: HEART_MAX,
@@ -278,6 +328,8 @@ function resetWorld(newSeed) {
   sim.time = 0;
   runKills = 0;
   liveScore = 0;
+  trailTimer = 0;
+  dreadLevel = 0;
   prevHearts = octo.hearts;
   prevPearls = pickups.totals.pearls;
   ui.hideGameOver();
@@ -325,6 +377,8 @@ window.__octo = {
       pickups: { ...pickups.totals },
       octoBaked: isBaked(),
       enemyCount: enemies.count(),
+      dpr,
+      dprForcedDown,
     };
   },
   spawn(kind, x, y, placement) {

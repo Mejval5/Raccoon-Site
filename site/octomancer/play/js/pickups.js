@@ -42,6 +42,10 @@ export function createPickups() {
   /** @type {Map<number, any[]>} */
   const byChunk = new Map();
   const totals = { pearls: 0, plankton: 0, shells: 0 };
+  // M7-1: one 'collected' event per pickup this step, for main.js to spawn a
+  // sparkle (particles.js) at the exact pickup spot - cheaper and more
+  // precise than diffing `totals` the way S-1's pearl SFX does.
+  const events = [];
 
   function ensureChunk(ci, chunk, yOffset) {
     if (byChunk.has(ci)) return byChunk.get(ci);
@@ -55,6 +59,7 @@ export function createPickups() {
     /** One fixed step: pull nearby plankton toward the octopus, resolve
      * collection, and drop pickup lists for chunks the world has evicted. */
     update(dt, time, octo, resident) {
+      events.length = 0;
       const liveChunks = new Set(resident.map((r) => r.index));
       for (const ci of [...byChunk.keys()]) {
         if (!liveChunks.has(ci)) byChunk.delete(ci);
@@ -80,10 +85,12 @@ export function createPickups() {
             if (it.type === 'pearl') totals.pearls++;
             else if (it.type === 'shell') totals.shells++;
             else if (it.type === 'plankton') totals.plankton++;
+            events.push({ type: it.type, x: it.x, y: it.y });
           }
         }
       }
     },
+    events,
     /** Visible, uncollected pickups in world space, for render.js. */
     visible(resident) {
       const out = [];

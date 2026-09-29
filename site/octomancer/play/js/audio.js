@@ -34,6 +34,16 @@ function makeTrack(base, ext) {
   return a;
 }
 
+/** M7-2: a short loop of filtered white noise, source for both the swim
+ * whoosh (bandpass sweeping with speed) and cheap enough to build once and
+ * reuse via `AudioBufferSourceNode.loop`. */
+function makeNoiseBuffer(ctx, seconds = 2) {
+  const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+
 export function createAudio() {
   let ctx = null;
   let master = null;
@@ -42,6 +52,12 @@ export function createAudio() {
   let started = false;
   let muted = getMuted();
   let current = 'medles'; // which track is the crossfade target
+  // M7-2: two continuous, near-silent-by-default synth layers, gain-driven
+  // each frame from main.js rather than one-shot like sfx.js's dash/pearl/
+  // hurt/bomb. Created lazily in start() alongside the AudioContext, so
+  // nothing is requested before the first input either.
+  let swimFilter = null, swimGain = null;
+  let dreadOsc = null, dreadGain = null;
 
   function fadeGain(node, target) {
     if (!ctx) return;
@@ -94,6 +110,30 @@ export function createAudio() {
     // resume(): some browsers create the context suspended until a gesture;
     // this call is itself inside the first-input handler, so it is one.
     ctx.resume().catch(() => {});
+
+    // M7-2 swim whoosh: a bandpass-filtered noise loop, silent until
+    // setSwimIntensity() opens its gain as the octopus speeds up.
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = makeNoiseBuffer(ctx);
+    noiseSrc.loop = true;
+    swimFilter = ctx.createBiquadFilter();
+    swimFilter.type = 'bandpass';
+    swimFilter.frequency.value = 500;
+    swimFilter.Q.value = 0.7;
+    swimGain = ctx.createGain();
+    swimGain.gain.value = 0;
+    noiseSrc.connect(swimFilter).connect(swimGain).connect(master);
+    noiseSrc.start();
+
+    // M7-2 Beholder drone: a low sine, silent until setBeholderDread() opens
+    // its gain as the Beholder closes in.
+    dreadOsc = ctx.createOscillator();
+    dreadOsc.type = 'sine';
+    dreadOsc.frequency.value = 48;
+    dreadGain = ctx.createGain();
+    dreadGain.gain.value = 0;
+    dreadOsc.connect(dreadGain).connect(master);
+    dreadOsc.start();
   }
 
   // First input, any modality: keydown, pointerdown (mouse and touch alike)
@@ -124,5 +164,20 @@ export function createAudio() {
     },
     /** For `__octo` test hooks: play/gameover-driven state without waiting on real audio playback. */
     currentTrack() { return current; },
+    /** M7-2 swim whoosh: `frac` is speed/maxSpeed in [0,1]. A no-op before
+     * the first input (swimGain doesn't exist yet). */
+    setSwimIntensity(frac) {
+      if (!swimGain) return;
+      const f = Math.max(0, Math.min(1, frac));
+      swimGain.gain.setTargetAtTime(f * 0.06, ctx.currentTime, 0.1);
+      swimFilter.frequency.setTargetAtTime(300 + f * 900, ctx.currentTime, 0.15);
+    },
+    /** M7-2 Beholder drone: `frac` is dread intensity in [0,1] (0 = Beholder
+     * absent or far away, matching render.js's own dread falloff). */
+    setBeholderDread(frac) {
+      if (!dreadGain) return;
+      const f = Math.max(0, Math.min(1, frac));
+      dreadGain.gain.setTargetAtTime(f * 0.16, ctx.currentTime, 0.2);
+    },
   };
 }

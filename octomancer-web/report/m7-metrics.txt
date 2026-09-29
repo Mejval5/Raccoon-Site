@@ -1,0 +1,82 @@
+M7 Juice and polish -- metrics (OVERNIGHT.md §3 M7 exit criteria)
+
+Tests: tests/index.html -> PASS 57/57 (unchanged from M6; M7 added no new
+scripted checks of its own, only render/audio juice, verified visually and
+via __octo.metrics()/state() instead per the row's own "budgets still met"
+acceptance rather than a numeric per-effect check).
+
+Built (OVERNIGHT.md §4 M7-1/M7-2/M7-3):
+  - M7-1 juice: dash ink puff (particles.js `dashInk`, fired from main.js on
+    `octo.dashedThisStep`), bubble trail scaled by speed (`trailBubble`,
+    spawn period lerped TRAIL_BUBBLE_PERIOD_MAX..MIN by speed/SWIM_MAX_SPEED
+    in config.js), pickup sparkle (`pickupSparkle`, colour per pickup type,
+    driven by a new `pickups.events` list so main.js doesn't have to diff
+    totals the way S-1's pearl SFX does), wall-break debris (already existed
+    from M3-3's `bombDebris`, confirmed still fires -- bombs are the only
+    thing that breaks rock), caustic light overlay (`render.js`
+    `drawCaustics`: one code-drawn drifting diagonal-streak pattern, additive
+    'screen' blend, never OverlayNoise.jpg/Stripes.jpg per the art rule),
+    Beholder dread (`render.js` `drawBeholderDread`: a reddish vignette pulse
+    plus a light-cone glow at the Beholder's own screen position, intensity
+    from `dreadLevel` = 1 - dist/DREAD_RANGE, computed once per step in
+    main.js and shared with audio.js's drone below).
+  - Reduced motion: every new effect gates on `config.js`'s shared
+    `prefersReducedMotion()` (one matchMedia query, also now used by the
+    pre-existing M3 screen shake instead of its own inline check). Dash ink,
+    pickup sparkle and the bubble trail are skipped outright; the caustic
+    drift and the dread pulse's sine wobble freeze to a static value instead
+    of disappearing (the effect itself still reads, just without motion).
+  - M7-2 SFX not done in S-1: swim whoosh (continuous bandpass-filtered
+    noise loop in audio.js, gain + cutoff frequency driven by
+    `setSwimIntensity(speed/maxSpeed)` every step) and a Beholder drone (a
+    continuous 48Hz sine, gain driven by `setBeholderDread(dreadLevel)`).
+    Both are silent (`gain=0`) until the first input creates them, both are
+    routed through the existing master gain so mute already covers them, no
+    new audio files.
+  - M7-3 perf pass: modulepreload was missing for 7 of the 25 modules
+    (bomb.js, decor.js, enemies.js, enemy-draw.js, gen.js, particles.js,
+    pickups.js, rng.js) -- all now preloaded in index.html. DPR step-down:
+    `main.js` now tracks `loop.metrics().frameMsMedian` and forces
+    dpr's cap to 1.0 (re-applied through the existing `resize()`) once the
+    median has stayed above 20ms for a continuous 2s window
+    (`__octo.metrics()` now reports `dpr`/`dprForcedDown` so this is
+    scriptable to verify); never seen to trip in this session's testing
+    (medians stayed under 1ms). Transfer: play/js + play/css + index.html +
+    play/assets totals ~454KB (130.8KB JS + 326.7KB assets + 4.6KB CSS +
+    1.5KB HTML), unchanged by M7 (no new asset files) and well inside the
+    1.5MB "to playable" budget; music stays a separate, post-first-input
+    fetch as built in S-1. Import depth: flagged, not fixed -- main.js's
+    existing bomb.js -> octopus.js -> physics.js chain (predates M7) is
+    depth 3, one over the OVERNIGHT.md §2 "import depth <= 2" target; left
+    alone rather than restructuring a working import graph this late in a
+    solo pass (every other chain, including the ones M7 touched, is depth 2
+    or less).
+
+Verified (own http.server on 8092; puppeteer-core headless Chrome from the
+D:\tmp\octo-tools scratch dir, `m7_shot.js`): 0 console errors at 1440x900
+and 375x812 while dashing (ink puff + bubble trail visible,
+`m7-juice-{desktop,phone}.png`), 0 errors with a spawned Beholder showing
+the dread vignette/cone (`m7-beholder-dread-desktop.png`), 0 errors with
+`matchMedia('(prefers-reduced-motion: reduce)')` forced true and the same
+Beholder scene (`m7-reduced-motion-desktop.png` -- vignette/cone still show,
+static). `tests/` PASS 57/57 in a real browser tab (Chromium pane,
+1440x900 desktop and 375x812 mobile-preset).
+
+Budgets with 30 spawned enemies + the M7 juice active (375x812, 300 steps =
+6s simulated, dash/trail/pickup particles all live in the same pool as
+death-poof/bomb-debris): frame median 0.40ms, p95 0.70-0.90ms across runs --
+still well inside the 4ms median / 8ms p95 budget. `enemyCount` held at
+30-33 (a few of the pre-existing 3 starting enemies plus the 30 spawned),
+no leak.
+
+Screenshots (octomancer-web/night/): m7-juice-desktop.png,
+m7-juice-phone.png, m7-beholder-dread-desktop.png,
+m7-reduced-motion-desktop.png.
+
+Skipped: M7-4 (regression pass / bug list) is not attempted as a separate
+pass in this session -- the M7-3 numbers above and the M0-M6 test suite
+(57/57, re-run clean) stand in for it; OVERNIGHT.md's per-row Owl slot for a
+dedicated 5-min hand-play regression list was not run given the "cheapest
+highest-impact items" instruction for tonight's M7 scope. No new "never"
+art files were added (M7 is entirely code-drawn juice + audio synthesis);
+`play/assets/` is unchanged (~319KB apparent size, inside the 900KB M0-3 budget).
