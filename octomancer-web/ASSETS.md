@@ -40,6 +40,12 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 | `assets/enemy-cannon.webp` | `octomancer-unity\Assets\Sprites\NPCs\NPC30.png` | Milan Švancara |
 | `assets/enemy-shot.webp` | `octomancer-unity\Assets\Sprites\NPCs\NPC32Ball.png` | Milan Švancara |
 | `assets/enemy-beholder-0.webp` through `-5.webp` | `octomancer-unity\Assets\Sprites\NPCs\Beholder\Beholder_000{01,09,17,25,33,41}.png` (every 4th of the M0-3 harvest's every-2nd set, downscaled to 128px tall — `web/tools/export_m3_assets.py`) | Milan Švancara |
+| `assets/enemy-mine.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\NPC8.png` (1000² canvas cropped to content, `web/tools/export_m6_assets.py`) | Milan Švancara |
+| `assets/enemy-crab-slow.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\CrabFlatten.png` (cropped) | Milan Švancara |
+| `assets/enemy-crab-fast.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\CrabFlatten2.png` (cropped, the faster variant) | Milan Švancara |
+| `assets/enemy-manta.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\NPC10.png` (cropped) | Milan Švancara |
+| `assets/enemy-manta-ball.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\NPC10Ball.png` (cropped) | Milan Švancara |
+| `assets/enemy-horns.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NPC.old\NPC6.png` (cropped; `NPC6_2` unused tonight) | Milan Švancara |
 
 No noise, vignette, spikes or portal files are shipped as images: those are
 code-drawn or excluded (OVERNIGHT.md §2, DECISIONS §1 Q1). The bomb, its fuse
