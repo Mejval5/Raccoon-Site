@@ -1095,3 +1095,104 @@ expected behaviour (this pass makes the descent harder by design), not a
 soak failure. Screenshots: `octomancer-web/night/alive-pass-{desktop,
 phone}.png` (12s of `autoDive`, taken against the final committed render
 order).
+
+## Visual fixes round 1 (this session, per Daniel's screenshot review)
+
+Seven bugs, each root-caused rather than patched at the symptom:
+
+1. **Vertical/horizontal seam at chunk boundaries.** `render.js`'s wall
+   baker (`bakeChunkWalls`) picked wall art per tile from its 4 orthogonal
+   neighbours, but for the row directly above/below a chunk's own 24-row
+   grid it used to just assume solid ("a chunk boundary seam at worst shows
+   a harmless extra edge/corner" -- the old comment already flagged this as
+   a known deviation). Whenever the neighbouring chunk was actually open
+   there, that baked a false closed rim cap across a passage that in truth
+   continues into the next chunk -- a solid-looking band running the full
+   width at every chunk seam (confirmed via `autoDive` screenshots at
+   several depths; not visible in a single static near-surface frame, which
+   is why it read as intermittent). Fixed by exposing `world.tileAt(tx,ty)`
+   (`world.js`) and having the wall baker's `solidAt` cross into the real
+   neighbouring chunk's data for ty outside the local chunk's rows, instead
+   of assuming solid; `world.js`'s `ensureNext()` now also re-dirties the
+   chunk above a newly generated one, so a chunk baked before its lower
+   neighbour existed gets rebaked with the real data once it does.
+2. **Some enemies render upside down.** `enemy-draw.js`'s piranha rotated
+   the whole sprite by `atan2(vy,vx)`, as if its default art pointed along
+   +x. `enemy-piranha.webp` actually faces -x (dorsal fin up, nose left);
+   rotating that by close to 180 deg (moving right, vy~=0) flips it both
+   horizontally *and* vertically, landing belly-up with the dorsal fin at
+   the bottom. Switched to a left/right mirror (`drawFlippableSprite`,
+   already used for crab/horns/manta) keyed off `vx` (falling back to `dir`
+   at zero velocity) instead of a full rotation -- reads right-side-up at
+   every heading. (Checked crab/horns' ceiling-flip too, debug-spawning one
+   of each on floor and ceiling side by side: both already read correctly --
+   the ceiling variant is meant to show claws-down/base-up, i.e. "hanging",
+   and does.)
+3. **Octopus far too big vs. tiles/enemies.** `octopus.json`'s
+   `cellWorldSize` (1.9171 world units) comes from `bake_creature.py`'s own
+   logged approximation: `cell_world_size = cell/S * (colliderRadius /
+   head_radius_mesh)`, where `head_radius_mesh` is a median
+   point-to-centroid distance over the body mesh -- a stand-in the script
+   itself flags ("no numeric scale field was found on the Octopus
+   transform"), not a measured radius. That proxy undershoots the sheet's
+   true half-width, so cellWorldSize overshoots: worldSize/colliderRadius
+   comes out ~4.3x for the octopus vs. ~1.7-2.3x for every other creature's
+   own worldSize/radius ratio (crab 0.7/0.42, urchin 0.9/0.42, horns
+   0.9/0.4, manta 0.9/0.5). Confirmed against the promo-video frames
+   (`octo-video-hub.webp`, `octo-video-cave-urchin.webp`), where the octopus
+   reads roughly tile-sized, not ~2 tiles across. Rather than re-run the
+   offline bake (needs the Creature-pack export -- out of scope for a
+   round-1 fix), added `OCTO_VISUAL_SCALE = 0.5` in `octopus-draw.js`,
+   applied only to the baked sprite's draw size (not `OCTO_RADIUS`, so
+   physics/collision are untouched) -- lands the ratio back in the same
+   band as every other creature. The eye overlays scale off the same
+   `worldSize` so they track automatically.
+4. **A tile draws as a lone circle where it shouldn't.** `pickWallArt`
+   (render.js) picks `tile-0` -- Milan's art for a genuine rare isolated
+   island -- for any solid tile with 3-4 open orthogonal neighbours, with no
+   regard for whether that tile's own rock mass is actually small. The
+   noise+smoothing cave generator (`gen.js`) readily leaves both single-tile
+   islands *and* single-tile-wide nubs still attached to a bigger wall mass
+   (which have 3 open sides too) scattered through open, reached water --
+   exactly the small-clutter problem the existing `MIN_SOFT_POCKET` pass
+   already solves for water pockets, just never applied to rock. Added two
+   gen.js cleanup passes (before path-carving, so the carve/flood-fill still
+   see final geometry): first shave any interior solid tile with 3+ open
+   sides straight to water regardless of its component's size (twice, since
+   shaving one nub can expose its neighbour in turn), then demote any
+   *remaining* solid component smaller than `MIN_ROCK_ISLAND` (4) as a whole
+   (catches shapes like an L-tromino, where no single tile hits 3 open sides
+   but the group is still clutter). Both skip the level's real unbreakable
+   side border and the chunk's own top/bottom row (may continue into a
+   still-ungenerated neighbouring chunk). Verified: the two circles left in
+   the round-1 screenshots are genuine isolated single tiles, fully
+   surrounded by water on all four sides -- tile-0's actual intended case.
+5. **Wall "hole" critter removed entirely.** `decor-hole1.webp`/
+   `decor-hole2.webp` (a grey spiky ring around a dark centre -- reads as a
+   bullet hole, not a cave feature at this art scale) is gone from
+   `CRITTER_KINDS_WALL` (`decor.js`), its `IMAGES`/draw-case in
+   `decor-draw.js`, the two source `.webp` files under `play/assets/`, and
+   its two rows in `web/ASSETS.md`.
+6. **Wall borders look broken.** Same root cause as #1 -- the chunk-seam
+   rim-cap bug baked a spurious closed border across passages at every
+   chunk boundary; fixed by the same `world.tileAt` change.
+7. **A tentacle (plant) not attached to the wall.** `drawPlants` (render.js)
+   is meant to grow the vine sprite from "floor caps": solid tile with open
+   water directly above. Its own guard was inverted -- `if (tiles[ty-1] ===
+   0) continue` skipped exactly the tiles the comment next to it says are
+   the floor caps, and instead kept solid tiles buried under more rock (tile
+   above also solid) -- so the vine's root (the image's bottom edge, where
+   `PLANT_INTO_WALL` anchors it) landed on a tile with no open water above
+   it to grow into, reading as a plant floating detached from any surface.
+   Flipped to `!== 0`.
+
+Root causes only; no config-only hacks. Verification: `tests/` 65/65 (own
+threading `http.server` with no-store headers on a free port, stopped
+after); puppeteer-core headless Chrome from `%TEMP%\octo-tools`: 0 console
+errors, 0 failed requests (favicon.ico excepted) at both 1440x900 and
+375x812, including a 20s `autoDive` soak at each size. Screenshots:
+`octomancer-web/night/fix-r1-{desktop,phone}.png` (fresh spawn, checks
+octopus scale/tile-0 circles/plant anchoring), `fix-r1-deep-desktop.png`
+(mid-run after `autoDive`, checks the chunk-seam fix and enemy orientation
+at depth), plus zoomed crops `fix-r1-zoom-{octopus,octopus-deep,walls,
+enemies}.png`.

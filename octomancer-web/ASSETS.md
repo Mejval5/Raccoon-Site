@@ -52,8 +52,6 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 | `assets/critter-snail.webp` | `octomancer-unity\Assets\Sprites\NPCs\Critters\Critter5Snail\Critter5_character_img.png` (cropped) | Milan Švancara |
 | `assets/decor-eye.webp` | `octomancer-unity\Assets\Sprites\Background\Eye.png` (cropped) | Milan Švancara |
 | `assets/decor-eyeblue.webp` | `octomancer-unity\Assets\Sprites\Background\EyeBlue.png` (cropped) | Milan Švancara |
-| `assets/decor-hole1.webp` | `octomancer-unity\Assets\Sprites\Background\Hole01.png` (cropped) | Milan Švancara |
-| `assets/decor-hole2.webp` | `octomancer-unity\Assets\Sprites\Background\Hole02.png` (cropped) | Milan Švancara |
 | `assets/decor-rune1.webp`, `-rune3.webp`, `-rune5.webp` | `octomancer-unity\Assets\Sprites\Runes\Rune{1,3,5}.png` (bucket D, kept; cropped) | Milan Švancara |
 | `assets/decor-bush2.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NeutralPlants.old\Bush2.png` (bucket D, kept; cropped) | Milan Švancara |
 | `assets/decor-bushmini.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NeutralPlants.old\BushMini.png` (bucket D, kept; cropped) | Milan Švancara |

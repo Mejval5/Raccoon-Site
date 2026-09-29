@@ -52,8 +52,16 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
     if (e.kind === 'urchin') {
       drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, e.x, e.y, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'piranha') {
-      const angle = e.vx || e.vy ? Math.atan2(e.vy, e.vx) : 0;
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 0.7, angle, e.hitFlash);
+      // Round-1 fix (Daniel's screenshot review: "some enemies render upside
+      // down"): this used to rotate the full sprite by atan2(vy,vx), as if
+      // its default art pointed along +x. The art (enemy-piranha.webp)
+      // actually faces -x (nose/dorsal-fin-up to the left) -- rotating a
+      // left-facing sprite by close to 180 deg (moving left, vy~=0) flips it
+      // both horizontally AND vertically, landing belly-up. A left/right
+      // mirror (matching how crab/horns/manta already handle direction) reads
+      // correctly at every heading and never turns it upside down.
+      const vx = e.vx || (e.dir || 0);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 0.7, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
       drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, e.x, e.y, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'beholder') {

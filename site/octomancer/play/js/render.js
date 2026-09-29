@@ -354,12 +354,22 @@ export function createRenderer(ctx, world) {
     const bctx = canvas.getContext('2d');
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Treat an out-of-chunk neighbour as solid (border columns are solid in
-    // every chunk; the row above/below is handled per-chunk, so a chunk
-    // boundary seam at worst shows a harmless extra edge/corner).
+    // Round-1 fix (Daniel's screenshot review: the horizontal seam / "wall
+    // borders look broken"): a tile's row above/below a chunk boundary used
+    // to just assume the neighbouring chunk was solid there, which baked a
+    // spurious closed rim cap across passages that actually continue into
+    // the next chunk -- a solid-looking line across the whole width at every
+    // chunk seam. Ask the real world tile (crossing into the neighbouring
+    // chunk via world.tileAt, world.js) for the row above/below instead;
+    // left/right of the chunk is still always solid (the level's real outer
+    // border, not a chunk seam).
     const solidAt = (tx, ty) => {
-      const local = isSolidLocal(chunk, tx, ty);
-      return local === null ? true : local;
+      if (tx < 0 || tx >= chunkW) return true;
+      if (ty < 0 || ty >= chunkH) {
+        const v = world.tileAt(tx, entry.yOffset + ty);
+        return v === 1 || v === 2;
+      }
+      return isSolidLocal(chunk, tx, ty);
     };
     const softTiles = []; // v===2 (breakable) tile rects, textured after the main noise pass
     for (let ty = 0; ty < chunkH; ty++) {
@@ -591,7 +601,16 @@ export function createRenderer(ctx, world) {
         for (let tx = 1; tx < chunkW - 1; tx++) {
           const v = chunk.tiles[ty * chunkW + tx];
           if (v === 0) continue;
-          if (chunk.tiles[(ty - 1) * chunkW + tx] === 0) continue; // this is a "floor cap": solid here, open water directly above -- the only surface plants grow from
+          // Round-1 fix (Daniel's screenshot review: "a tentacle is not
+          // attached to the wall"): this condition was inverted -- `=== 0`
+          // kept solid tiles that are NOT a floor cap (buried rock, or a
+          // ceiling tile with solid still above it) and skipped the actual
+          // floor caps the comment above describes, so the vine sprite's
+          // root (its image's bottom edge, per PLANT_INTO_WALL below) landed
+          // on a tile with no open water above it to grow into -- reading as
+          // a plant floating detached from any surface. `!== 0` keeps only
+          // true floor caps: solid here, open water directly above.
+          if (chunk.tiles[(ty - 1) * chunkW + tx] !== 0) continue;
           seedI++;
           if (seedI % 9 !== 0) continue; // sparse: Daniel's screenshot showed these carpeting every wall top
           const img = plants[seedI % 2];

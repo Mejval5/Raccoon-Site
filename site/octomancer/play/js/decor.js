@@ -22,7 +22,10 @@ const BUBBLE_RISE_SPEED = 1.4; // u/s
 const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 
 // Wall-mounted (floor/ceiling/side-wall) vs free-floating open-water kinds.
-export const CRITTER_KINDS_WALL = ['snail', 'eye', 'eyeblue', 'hole1', 'hole2', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
+// Round-1 fix (Daniel's screenshot review): the wall "hole" critter (looks
+// like a bullet hole -- a grey spiky ring with a dark centre, not a readable
+// cave feature at this art scale) is removed from spawn entirely, below.
+export const CRITTER_KINDS_WALL = ['snail', 'eye', 'eyeblue', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
 export const CRITTER_KINDS_OPEN = ['fish', 'jelly'];
 
 /** Cheap 32-bit integer hash of two ints (no external state, no RNG stream

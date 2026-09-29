@@ -8,8 +8,10 @@
 // Sources (ASSETS.md): `Critter1Fish`/`Critter4JellyFish`/`Critter5Snail`
 // (Assets/Sprites/NPCs/Critters -- Milan's non-hostile critter art,
 // `CritterHealth.cs` marks these immune to enemy damage in the original),
-// `Eye`/`EyeBlue` and `Hole01`/`Hole02` (Assets/Sprites/Background), and the
-// kept bucket-D `Rune{1,3,5}`/`Bush2`/`BushMini`.
+// `Eye`/`EyeBlue` (Assets/Sprites/Background), and the kept bucket-D
+// `Rune{1,3,5}`/`Bush2`/`BushMini`. (The `Hole01`/`Hole02` "wall hole"
+// critter was removed in the round-1 visual-fixes pass -- Daniel's
+// screenshot review: it read as a bullet hole, not a cave feature.)
 
 import { prefersReducedMotion } from './config.js';
 
@@ -27,8 +29,6 @@ const IMAGES = {
   snail: loadImage(ASSET('critter-snail.webp')),
   eye: loadImage(ASSET('decor-eye.webp')),
   eyeblue: loadImage(ASSET('decor-eyeblue.webp')),
-  hole1: loadImage(ASSET('decor-hole1.webp')),
-  hole2: loadImage(ASSET('decor-hole2.webp')),
   rune1: loadImage(ASSET('decor-rune1.webp')),
   rune3: loadImage(ASSET('decor-rune3.webp')),
   rune5: loadImage(ASSET('decor-rune5.webp')),
@@ -69,12 +69,6 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     const cycle = (t * 0.18 + c.phase) % (Math.PI * 2);
     const blink = Math.sin(cycle * 6);
     scaleY = blink > 0.985 ? 0.12 : 1;
-  } else if (c.kind === 'hole1' || c.kind === 'hole2') {
-    worldSize = 0.5;
-    // A slow breathing pulse.
-    const s = 1 + Math.sin(t * 0.5 + c.phase) * 0.06;
-    scaleY = s;
-    dx = 0;
   } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
     worldSize = 0.36;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;

@@ -35,6 +35,13 @@ export function createWorld(seed) {
     c.dirty = true; // render cache needs (re)baking
     chunks.set(i, c);
     highestGenerated = i;
+    // The wall baker now looks at the real neighbouring chunk's edge row
+    // instead of assuming it's solid (round-1 fix, chunk-seam rim bug); the
+    // chunk above (i-1) was very likely baked before this one existed, using
+    // that old "assume solid" fallback for its own bottom row, so re-dirty
+    // it now that its true neighbour is known.
+    const prev = chunks.get(i - 1);
+    if (prev) prev.dirty = true;
     return c;
   }
 
@@ -91,6 +98,15 @@ export function createWorld(seed) {
       const v = tileAt(Math.floor(tx), Math.floor(ty));
       return v === 1 || v === 2;
     },
+    /** Raw tile value at integer world tile coords (1/2 = solid, 0 = water),
+     * crossing chunk boundaries via the same resident-chunk lookup `isSolid`
+     * uses. Exposed for the wall baker (render.js), which used to treat a
+     * chunk's own top/bottom row as bordering solid rock unconditionally --
+     * a wrong assumption whenever the neighbouring chunk is actually open
+     * there, baking a spurious rim cap across the passage at every chunk
+     * seam (round-1 fix, Daniel's screenshot review: "wall borders look
+     * broken" / the horizontal seam line). */
+    tileAt,
     isBreakable(tx, ty) { return tileAt(Math.floor(tx), Math.floor(ty)) === 2; },
     /** Break a soft-rock tile (bomb radius, M3) back to water. */
     breakTile(tx, ty) {

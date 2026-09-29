@@ -16,6 +16,27 @@ const SHADE = '#904050';
 const OUTLINE = '#181012';
 const HIGHLIGHT = '#f0e0e0';
 
+// Round-1 fix (Daniel's screenshot review: "the octopus is far too big
+// compared to other elements" -- checked against the promo-video frames,
+// where the octopus reads roughly tile-sized, close to the other creatures,
+// never ~2 tiles across). `octopus.json`'s `cellWorldSize` (1.9171 world
+// units) comes from `bake_creature.py`'s own logged approximation: it scales
+// the whole sprite-sheet cell (sized to fit the widest frame across
+// idle/swim/hurt, including fully-extended swim tentacles) by
+// `colliderRadius / head_radius_mesh`, where `head_radius_mesh` is a median
+// point-to-centroid distance over the body mesh -- a proxy the script itself
+// flags as an approximation, not a real measured radius, because "no
+// numeric scale field was found on the Octopus transform". That proxy comes
+// out small relative to the sheet's true half-width, so the derived scale
+// overshoots: cellWorldSize/colliderRadius is ~4.3x here vs ~1.7-2.3x for
+// every other creature's own worldSize/radius ratio (crab 0.7/0.42, urchin
+// 0.9/0.42, horns 0.9/0.4, manta 0.9/0.5 -- enemy-draw.js/config.js). Rather
+// than re-run the offline bake (needs the Creature-pack export, out of
+// scope for a round-1 fix), correct the visual size at draw time to land in
+// that same ratio band -- confirmed against octo-video-hub.webp/
+// octo-video-cave-urchin.webp, where the octopus reads about tile-sized.
+const OCTO_VISUAL_SCALE = 0.5;
+
 const params = new URLSearchParams(location.search);
 const FORCE_CODE = params.get('octo') === 'code';
 
@@ -85,7 +106,7 @@ function drawBaked(ctx, o, bakeData) {
   updateBlink(1 / 60); // called every draw; ~frame-rate granularity is fine for a cosmetic blink
   const { clipKey, frameIndex, localIndex } = pickFrame(data, o, t);
   const cell = data.cellSize;
-  const worldSize = data.cellWorldSize;
+  const worldSize = data.cellWorldSize * OCTO_VISUAL_SCALE;
   const half = worldSize / 2;
 
   const justDashed = o.dashCooldown && o.dashCooldown > 0.45;

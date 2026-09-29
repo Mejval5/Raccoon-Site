@@ -146,6 +146,76 @@ export function generateChunk(seed, chunkIndex, entryCol) {
     }
   }
 
+  // Visual pass, round 1 (Daniel's screenshot review: "one tile is drawn as
+  // a circle -- the lone-island tile-0 appearing where it shouldn't"):
+  // `pickWallArt` (render.js) picks the `tile-0` lone-circle art for *any*
+  // solid tile with 3-4 open orthogonal neighbours, whether or not that
+  // tile's own component is small -- a single-tile-wide nub still attached
+  // to a much bigger wall mass gets the same circle as a true isolated
+  // island. The noise+smoothing above readily leaves both shapes scattered
+  // through open, reached water, same as it leaves the small water pockets
+  // the MIN_SOFT_POCKET pass below already cleans up.
+  //
+  // Two cleanup passes, in order: first shave any interior solid tile with
+  // 3+ open sides straight to water regardless of its component's size (a
+  // couple of passes, since shaving one nub can expose its former neighbour
+  // in turn); then demote any remaining solid component smaller than
+  // MIN_ROCK_ISLAND as a whole (catches small blobs -- an L-tromino, say --
+  // where no single tile has 3 open sides but the group still reads as
+  // clutter). Both skip the level's own unbreakable side border (a real
+  // wall, not noise) and the chunk's top/bottom row (may continue into a
+  // neighbouring chunk, generated independently, so neither its true shape
+  // nor its component size is known here).
+  {
+    const countOpen = (x, y) => {
+      let n = 0;
+      if (smoothed[idx(x, y - 1)] === 0) n++;
+      if (smoothed[idx(x, y + 1)] === 0) n++;
+      if (smoothed[idx(x - 1, y)] === 0) n++;
+      if (smoothed[idx(x + 1, y)] === 0) n++;
+      return n;
+    };
+    for (let pass = 0; pass < 2; pass++) {
+      for (let y = 1; y < CHUNK_H - 1; y++) {
+        for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
+          const i = idx(x, y);
+          if (smoothed[i] === 0) continue;
+          if (countOpen(x, y) >= 3) smoothed[i] = 0;
+        }
+      }
+    }
+  }
+  const MIN_ROCK_ISLAND = 4;
+  {
+    const visited = new Uint8Array(smoothed.length);
+    for (let y = 0; y < CHUNK_H; y++) {
+      for (let x = 0; x < CHUNK_W; x++) {
+        const i0 = idx(x, y);
+        if (visited[i0] || smoothed[i0] === 0) continue;
+        const comp = [[x, y]];
+        const stack = [[x, y]];
+        visited[i0] = 1;
+        let touchesEdge = false;
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          if (cx < BORDER || cx >= CHUNK_W - BORDER || cy === 0 || cy === CHUNK_H - 1) touchesEdge = true;
+          const neigh = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
+          for (const [nx, ny] of neigh) {
+            if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H) continue;
+            const ni = idx(nx, ny);
+            if (visited[ni] || smoothed[ni] === 0) continue;
+            visited[ni] = 1;
+            comp.push([nx, ny]);
+            stack.push([nx, ny]);
+          }
+        }
+        if (!touchesEdge && comp.length < MIN_ROCK_ISLAND) {
+          for (const [cx, cy] of comp) smoothed[idx(cx, cy)] = 0;
+        }
+      }
+    }
+  }
+
   const exitCol = carvePath(smoothed, rng, entryCol);
 
   // Flood-fill from the carved path; anything not reached is sealed off and
