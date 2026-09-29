@@ -68,6 +68,6 @@ spark, the explosion ring and debris particles are code-drawn (M3-3).
 | `audio/flute.opus`, `audio/flute.mp3` | `octomancer-unity\Assets\Sounds\Svancara Strings - Flûte de forêt.wav`, encoded by `web/tools/encode_music.py` | Milan Švancara |
 
 `Mj -  312 Q.mp3` stays harvested-only, not shipped (DECISIONS §1 Q7).
-Dash/pearl/hurt/bomb SFX are synthesised in code (`play/js/sfx.js`, plain
+Dash/hurt/bomb SFX are synthesised in code (`play/js/sfx.js`, plain
 oscillators + filtered noise, no samples): nothing from `Sounds/Effects/` or
 `Sounds/*.wav` library SFX ships.

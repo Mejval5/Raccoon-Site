@@ -1,5 +1,5 @@
 // Score: depth (m) + pickups + kills. OVERNIGHT.md §4 M4-1:
-// "score = depth + 1 per plankton + 10 per pearl + 50 per shell + 25 per kill"
+// "score = depth + 1 per plankton + 50 per shell + 25 per kill" (pearls removed, round 16)
 // -- round-16 fix (pearls removed entirely, not Milan's art): pearls no
 // longer contribute to score.
 
