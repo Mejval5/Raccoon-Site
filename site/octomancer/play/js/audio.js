@@ -54,8 +54,8 @@ export function createAudio() {
   let muted = getMuted();
   let current = 'flute'; // which track is the crossfade target
   // M7-2: two continuous, near-silent-by-default synth layers, gain-driven
-  // each frame from main.js rather than one-shot like sfx.js's dash/pearl/
-  // hurt/bomb. Created lazily in start() alongside the AudioContext, so
+  // each frame from main.js rather than one-shot like sfx.js's dash/hurt/
+  // bomb. Created lazily in start() alongside the AudioContext, so
   // nothing is requested before the first input either.
   let swimFilter = null, swimGain = null;
   let dreadOsc = null, dreadGain = null;

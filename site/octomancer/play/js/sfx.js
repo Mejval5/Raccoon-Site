@@ -1,5 +1,5 @@
 // Code-synthesised sound effects (OVERNIGHT.md §2 Audio: "SFX are
-// synthesised in code"; §4 S-1's "if time is left" list: dash, pearl, hurt,
+// synthesised in code"; §4 S-1's "if time is left" list: dash, hurt,
 // bomb). No samples, no library: plain WebAudio oscillators/noise through
 // the shared AudioContext and master gain from audio.js, so mute covers SFX
 // too. Every play is a no-op until the AudioContext exists (first input),
@@ -52,7 +52,6 @@ export function createSfx(audio) {
   }
   return {
     dash() { play((ctx, dest) => tone(ctx, dest, { freq: 320, sweep: 720, dur: 0.14, type: 'sawtooth', gain: 0.18 })); },
-    pearl() { play((ctx, dest) => tone(ctx, dest, { freq: 880, sweep: 1400, dur: 0.1, type: 'sine', gain: 0.2 })); },
     hurt() { play((ctx, dest) => tone(ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
     bomb() {
       play((ctx, dest) => {

@@ -297,8 +297,8 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   // cells into 4-connected components and demote anything smaller than
   // MIN_SOFT_POCKET back to unbreakable rock, so what's left reads as a few
   // larger coral-like clusters instead. Runs before spawn selection below, so
-  // shells/hidden pearls only ever land in a pocket that stays soft rock
-  // (gen.test.js asserts that).
+  // shells only ever land in a pocket that stays soft rock (gen.test.js
+  // asserts that).
   const MIN_SOFT_POCKET = 4;
   if (softPockets.length) {
     const sealed = new Uint8Array(smoothed.length);
@@ -417,18 +417,6 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   }
 
   function pick(list) { return list.length ? list[Math.floor(rng() * list.length)] : null; }
-
-  const pearlCount = 6 + Math.floor(rng() * 5); // 6-10
-  for (let i = 0; i < pearlCount; i++) {
-    // ~30% of pearls hide in a sealed soft-rock pocket (need a bomb).
-    if (softPockets.length && rng() < 0.3) {
-      const [x, y] = pick(softPockets);
-      spawns.push({ type: 'pearl', x: x + 0.5, y: y + 0.5, hidden: true });
-    } else if (openCells.length) {
-      const [x, y] = pick(openCells);
-      spawns.push({ type: 'pearl', x: x + 0.5, y: y + 0.5, hidden: false });
-    }
-  }
 
   const swarmCount = 1 + Math.floor(rng() * 2); // 1-2
   for (let i = 0; i < swarmCount; i++) {

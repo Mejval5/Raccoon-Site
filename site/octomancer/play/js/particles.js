@@ -54,7 +54,7 @@ export function createParticles() {
         spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.09, 'rgba(20,15,30,0.75)');
       }
     },
-    /** M7-1: a bright sparkle on any pickup (pearl/plankton/shell), colour
+    /** M7-1: a bright sparkle on any pickup (plankton/shell), colour
      * matching what was collected. */
     pickupSparkle(x, y, color = '#dff3ff') {
       if (prefersReducedMotion()) return;

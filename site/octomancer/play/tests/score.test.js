@@ -8,16 +8,16 @@ import { loadBest, recordRun } from '../js/save.js';
 export function runScoreTests(assert, approx) {
   // --- score.js: the exact formula from OVERNIGHT.md M4-1 ---
   {
-    const s = computeScore(123.6, { pearls: 2, plankton: 5, shells: 1 }, 3);
-    // depth rounds to 124, +5 (plankton*1) +20 (pearls*10) +50 (shell*50) +75 (kills*25)
-    assert('computeScore: depth+pickups+kills matches the M4-1 formula', s === 274);
+    const s = computeScore(123.6, { plankton: 5, shells: 1 }, 3);
+    // depth rounds to 124, +5 (plankton*1) +50 (shell*50) +75 (kills*25)
+    assert('computeScore: depth+pickups+kills matches the M4-1 formula (pearls removed round 16)', s === 254);
   }
   {
-    const s = computeScore(-5, { pearls: 0, plankton: 0, shells: 0 }, 0);
+    const s = computeScore(-5, { plankton: 0, shells: 0 }, 0);
     assert('computeScore: negative depth clamps to 0, not negative score', s === 0);
   }
   {
-    const s = computeScore(10.4, { pearls: 0, plankton: 0, shells: 0 }, 0);
+    const s = computeScore(10.4, { plankton: 0, shells: 0 }, 0);
     assert('computeScore: depth alone rounds to the nearest metre', s === 10);
   }
 

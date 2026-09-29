@@ -22,11 +22,10 @@ export function createUI(root, handlers) {
   const heartsRow = el('div', 'octo-hud-hearts');
   const stats = el('div', 'octo-hud-stats');
   const bombsEl = el('span', 'octo-hud-stat octo-hud-bombs');
-  const pearlsEl = el('span', 'octo-hud-stat octo-hud-pearls');
   const depthEl = el('span', 'octo-hud-stat octo-hud-depth');
   const scoreEl = el('span', 'octo-hud-stat octo-hud-score');
   const bestEl = el('span', 'octo-hud-stat octo-hud-best');
-  stats.append(bombsEl, pearlsEl, depthEl, scoreEl, bestEl);
+  stats.append(bombsEl, depthEl, scoreEl, bestEl);
   bar.append(heartsRow, stats);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
@@ -88,7 +87,6 @@ export function createUI(root, handlers) {
       heartEls[i].style.opacity = i < state.hearts ? '1' : '0.25';
     }
     bombsEl.textContent = `Bombs ${state.bombs}`;
-    pearlsEl.textContent = `Pearls ${state.pearls}`;
     depthEl.textContent = `Depth ${state.depth}m`;
     scoreEl.textContent = `Score ${state.score}`;
     bestEl.textContent = `Best ${state.best}`;

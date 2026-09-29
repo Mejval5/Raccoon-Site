@@ -83,7 +83,6 @@ let dreadLevel = 0; // M7-1/M7-2: Beholder proximity in [0,1], shared by render'
 const audio = createAudio();
 const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
-let prevPearls = pickups.totals.pearls;
 
 const sim = {
   time: 0,
@@ -215,11 +214,9 @@ function step(dt) {
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident, world);
   for (const ev of pickups.events) {
-    const color = ev.type === 'pearl' ? '#dff3ff' : ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
+    const color = ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);
   }
-  if (pickups.totals.pearls > prevPearls) sfx.pearl();
-  prevPearls = pickups.totals.pearls;
   if (octo.hearts < prevHearts) sfx.hurt();
   prevHearts = octo.hearts;
   decor.update(dt, resident);
@@ -327,7 +324,7 @@ function render(alpha, frameMs) {
   });
   ui.updateHud({
     hearts: octo.hearts, heartMax: HEART_MAX,
-    bombs: octo.bombs, pearls: pickups.totals.pearls,
+    bombs: octo.bombs,
     depth: Math.round(depth), score: liveScore, best: bestScore,
   });
   debug.tick();
@@ -354,7 +351,6 @@ function resetWorld(newSeed) {
   trailTimer = 0;
   dreadLevel = 0;
   prevHearts = octo.hearts;
-  prevPearls = pickups.totals.pearls;
   ui.hideGameOver();
 }
 

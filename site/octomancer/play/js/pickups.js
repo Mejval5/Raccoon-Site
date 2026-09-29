@@ -1,4 +1,4 @@
-// Pickups: pearls, plankton swarms and rare shells, spawned from each
+// Pickups: plankton swarms and rare shells, spawned from each
 // chunk's generator output (gen.js `spawns`), collected on overlap with the
 // octopus. Score points themselves are wired up properly in M4; this module
 // just tracks collection so the counts exist to score from.
@@ -51,17 +51,15 @@ function buildChunkPickups(chunk, yOffset, seedSalt) {
   const rnd = () => { m = (m * 9301 + 49297) % 233280; return m / 233280; };
   for (const s of chunk.spawns) {
     const wy = s.y + yOffset;
-    if (s.type === 'pearl') {
-      items.push({ type: 'pearl', x: s.x, y: wy, hidden: !!s.hidden, collected: false });
-    } else if (s.type === 'shell') {
+    if (s.type === 'shell') {
       // Round-3 fix (Daniel's screenshot review: "a shell is drawn inside
       // plain, uniform solid rock, with nothing marking that rock as
       // breakable" -- shells always spawn in a sealed soft-rock pocket
       // (gen.js), but this used to draw them unconditionally, on top of the
-      // still-solid tile, with no `hidden` flag the way pearls already get).
+      // still-solid tile, with no `hidden` flag).
       // `hidden` starts true and is recomputed live in `update()` below from
-      // the chunk's own tile data, same idea as a hidden pearl -- so a shell
-      // only becomes visible once its pocket is actually bombed open.
+      // the chunk's own tile data -- so a shell only becomes visible once
+      // its pocket is actually bombed open.
       items.push({ type: 'shell', x: s.x, y: wy, hidden: true, collected: false });
     } else if (s.type === 'plankton-swarm') {
       for (let i = 0; i < s.count; i++) {
@@ -85,10 +83,10 @@ function buildChunkPickups(chunk, yOffset, seedSalt) {
 export function createPickups() {
   /** @type {Map<number, any[]>} */
   const byChunk = new Map();
-  const totals = { pearls: 0, plankton: 0, shells: 0 };
+  const totals = { plankton: 0, shells: 0 };
   // M7-1: one 'collected' event per pickup this step, for main.js to spawn a
   // sparkle (particles.js) at the exact pickup spot - cheaper and more
-  // precise than diffing `totals` the way S-1's pearl SFX does.
+  // precise than diffing `totals` each frame.
   const events = [];
 
   function ensureChunk(ci, chunk, yOffset) {
@@ -115,7 +113,7 @@ export function createPickups() {
         for (const it of items) {
           if (it.collected) continue;
           if (it.type === 'shell') {
-            // Live re-check (not baked in at spawn like a hidden pearl):
+            // Live re-check (not baked in at spawn):
             // a shell's own tile starts as soft rock (gen.test.js asserts
             // this) and only turns to water once bombed, so `hidden` can
             // simply track the tile's current value each step.
@@ -150,8 +148,7 @@ export function createPickups() {
           const d = dist(octo.x, octo.y, it.x, it.y);
           if (d < COLLECT_RADIUS + octo.radius) {
             it.collected = true;
-            if (it.type === 'pearl') totals.pearls++;
-            else if (it.type === 'shell') totals.shells++;
+            if (it.type === 'shell') totals.shells++;
             else if (it.type === 'plankton') totals.plankton++;
             events.push({ type: it.type, x: it.x, y: it.y });
           }

@@ -2,7 +2,7 @@
 // Milan's marching-squares-style wall tileset, background (a deep-water
 // gradient plus a single non-repeating cave silhouette anchored near the
 // surface, matching the title screen), plants anchored to floor surfaces,
-// pickups (pearls/plankton/shells), bubbles, the depth tint, and the octopus
+// pickups (plankton/shells), bubbles, the depth tint, and the octopus
 // behind the drawOctopus() interface.
 // OVERNIGHT.md §2 "Rendering" (M1-2) and §2 "World" / M2-2/M2-3 (chunked
 // render cache, decor, pickups, depth tint).
@@ -919,21 +919,7 @@ export function createRenderer(ctx, world) {
     for (const it of items) {
       if (it.hidden) continue; // sealed behind soft rock; nothing to draw until it breaks
       const s = worldToScreen(camera, canvasW, canvasH, it.x, it.y);
-      if (it.type === 'pearl') {
-        const r = camera.pxPerUnit * 0.16;
-        const grad = ctx.createRadialGradient(s.x - r * 0.3, s.y - r * 0.3, r * 0.1, s.x, s.y, r);
-        grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-        grad.addColorStop(0.5, 'rgba(200,225,255,0.85)');
-        grad.addColorStop(1, 'rgba(140,170,220,0.55)');
-        ctx.save();
-        ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 3 + it.x);
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(s.x, s.y, r * 1.8, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-      } else if (it.type === 'plankton') {
+      if (it.type === 'plankton') {
         const r = camera.pxPerUnit * 0.045;
         ctx.save();
         ctx.globalAlpha = 0.7 + 0.3 * Math.sin(time * 4 + it.phase);

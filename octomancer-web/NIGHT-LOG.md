@@ -2463,3 +2463,46 @@ wall-step2,octopus,enemy-urchin,enemy-cannon}.png` (`wall-step`/`wall-step2`
 show the border rim now stepping in a real run instead of one straight
 line -- see seed 5's chunk 3-4 border, e.g. `fix-r15-dive-s5-desk-3.png`
 around world y~90-116m).
+
+## Round 16: remove pearls (not Milan's art)
+
+Daniel: the pearl pickup was never part of Milan's art set. Removed it
+completely rather than reworking its look:
+
+- `gen.js`: dropped the `pearlCount` spawn loop entirely (shells/soft-rock
+  pockets untouched -- they were already a separate spawn type).
+- `pickups.js`: removed the `pearl` branch from `buildChunkPickups`, the
+  `pearls` counter from `totals`, and its `totals.pearls++` on collection.
+- `render.js`: removed pearl drawing from `drawPickups` (the glow-gradient
+  circle).
+- `particles.js`/`sfx.js`/`audio.js`: dropped the pearl pickup sound
+  (`sfx.pearl()`) and updated stale comments listing it alongside
+  dash/hurt/bomb.
+- `score.js`: `computeScore` no longer takes/uses `pickupTotals.pearls`;
+  score is depth + plankton*1 + shells*50 + kills*25 only.
+- `ui.js`/`play.css`: removed the `Pearls N` HUD stat element and its
+  container-comment mentions.
+- `main.js`: removed `prevPearls` tracking, the pearl-collected sfx trigger,
+  the pearl sparkle color branch, and `pearls` from the HUD update call.
+- `tests/score.test.js`: updated the M4-1 formula test to the pearl-less
+  pickup shape and expected total (254, was 274 with 2 pearls at +10 each).
+
+No coins or other pickup were added in pearls' place, per instruction.
+
+Did not attempt the round-16 foliage-from-video task in this pass (out of
+scope for what was actually asked this round); left `gen.js`/`decor.js`
+foliage untouched beyond the pearl removal above.
+
+Verification: `tests/` 1816/1817 headless (own `http.server` with no-cache
+headers on a free port, stopped after). The one failure,
+`gen: per-chunk time <= 5ms (max seen 6.2-6.7ms across two runs)`, is a
+pre-existing timing-threshold flake unrelated to this change -- removing the
+pearl-spawn loop can only make `generateChunk` cheaper, not slower, and the
+same test was already borderline in round-15's own log. 0 console errors
+across scripted autodives on seeds 1, 7 (desktop 1440x900) and 42 (phone
+375x812) confirming no pearls render anywhere and the HUD reads
+`Bombs/Depth/Score/Best` with no `Pearls` stat.
+
+Screenshots: `octomancer-web/night/fix-r16-dive-{s1-desk,s7-desk}-{spawn,
+0..3}.png`, `fix-r16-phone-s42-{spawn,0..3}.png`, zoomed crops
+`fix-r16-zoom-{octo,wall-enemy,phone-enemy}.png`.

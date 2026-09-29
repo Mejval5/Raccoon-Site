@@ -82,7 +82,7 @@ body {
   background: rgba(255,255,255,0.32);
 }
 
-/* --- HUD bar (hearts + score/depth/bombs/pearls), M4-1 --- */
+/* --- HUD bar (hearts + score/depth/bombs), M4-1 --- */
 .octo-hud-bar {
   position: absolute;
   left: calc(12px + var(--safe-l));
@@ -116,7 +116,7 @@ body {
 /* Round-5 fix (Daniel's screenshot review round 4, issue 7: "on phone
    (375x812) the HUD wraps, pushing 'Best 0' onto its own second line once
    depth reaches two digits -- the row then jumps in height mid-run"). The
-   stats row (score/depth/best/bombs/pearls) is wide enough to wrap at
+   stats row (score/depth/best/bombs) is wide enough to wrap at
    narrow widths even though every value stays short; keep it on one line
    there with a smaller font and tighter gaps instead of letting a value's
    digit count decide the HUD's own height mid-run. */
