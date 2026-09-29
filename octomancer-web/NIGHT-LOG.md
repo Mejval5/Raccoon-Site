@@ -365,3 +365,74 @@ handful of pickup/bubble draws) stays well inside budget.
   consume; Track B (octopus bake) is also still open and could be picked
   up first per OVERNIGHT.md's "side tracks... first task of the M5 dev" if
   M3's session runs short.
+
+## Track B: octopus bake (picked up this session, per the M2 status note above)
+
+Built `octomancer-web/tools/bake_creature.py` from the DECISIONS-2026-09-29.md
+§4 recipe: a hand-rolled msgpack reader (no `msgpack` package installed),
+loading `OctoRemasteredExport_character_data.creature_pack.bytes` and warping
+each body triangle (from `OctoRemasteredExport2_character_img.png`'s UVs) to
+its deformed per-keyframe position with a per-triangle affine
+(`Image.transform(..., Image.AFFINE, ...)`, bounding-box-clipped per the
+recipe's own perf note, not full-canvas). Baked three clips: `Swim05` (13
+native keyframes), `Idle4` (12), `Idle4Swirl` as the hurt clip (17). Eye
+variants (open/closed/angry, left+right) were cut straight from the atlas by
+scanning its alpha channel for the eye-pair row bands (`uv_swap_items` is
+empty, confirming DECISIONS' note that they're separate atlas rects, not
+UV-swapped) -- verified by eye against the atlas contact print. Per-frame
+per-eye centroid/angle/scale-vs-rest anchors are written to `octopus.json`
+alongside the clip frame ranges and a single global mesh-to-cell-pixel
+transform (one shared bounding-box fit across every baked frame, so frames
+never jitter in scale against each other).
+
+**Scale:** OVERNIGHT.md's M2-B-1 row asks to "report the octopus transform
+scale from `MainGame.unity` near `:39374`" -- checked the Octopus GameObject's
+own Transform and all three of its direct children's Transforms there; every
+one has `m_LocalScale: {x: 1, y: 1, z: 1}`, so no numeric scale multiplier
+exists on the object graph to report. Used the recipe's own fallback instead:
+fit the octopus so its *head* (median body-point distance from the body
+centroid in the `Idle4` rest frame, since a straight bounding-radius would be
+skewed by the trailing tentacle tips) equals the collider's `r=0.45`. Logged
+as a deviation in `web/report/B-1-metrics.txt`; worth a real-build eyeball
+comparison later if one is ever run again (same caveat M1-1 already flagged
+for the top-speed constant).
+
+**Bug found and fixed during this row's own self-check (DPR2 screenshot):** a
+dark patch sat over both eye sockets in the baked body. Root cause: the
+mesh JSON's region `start_index`/`end_index` are positions *within the flat
+1200-entry triangle-index array*, not vertex ids (267 vertices can't reach an
+index of 1043) -- the first pass compared vertex ids against 1044 instead,
+which is always true, so all 52 eye triangles were also warped onto the body
+sheet from their own tiny eye-region UVs. Fixed by filtering on each
+triangle's array position; re-baked, re-screenshotted at DPR2, confirmed
+clean. Also added the recipe's "grow the mask polygon a little against
+seams" step (triangles were leaving hairline gaps at their shared edges
+before the eye-triangle fix made it hard to see) and widened each triangle's
+own clip bounding box to match.
+
+Wired into the game (`site/octomancer/play/js/octopus-draw.js`): `drawOctopus`
+now draws the baked body frame (Swim05 while pushing, rate scaled by speed;
+Idle4 at rest; Swim05 at a fast rate with a squash right after a dash;
+Idle4Swirl behind an `o.hurting` flag M3 will set) then both eyes at their
+baked per-frame anchors (blink every 3-6s for 0.12s, angry while `o.hurting`),
+rotated/scaled exactly like the placeholder's own transform so the swap is a
+drop-in. `?octo=code` keeps the M1 placeholder, and it's also what renders
+until the bake's `fetch`+`Image` load resolves (both are best-effort; a
+failed load logs a console warning and stays on the placeholder rather than
+throwing). `main.js`'s `__octo.metrics()` now also reports `octoBaked` for
+scripted verification.
+
+Verified (puppeteer-core headless, `octo-tools` scratch dir, Chrome):
+0 console errors at 1440x900 and 375x812, both `?octo=` modes; `tests/`
+still PASS 20/20; frame-time delta bake vs placeholder is 0.00ms at desktop
+and -0.10ms (bake faster) at phone, both well inside the "+0.3ms of the
+placeholder" budget; `play/assets/` total 204.4 KB (cap 900 KB, sheet itself
+111.3 KB against its own 200 KB cap); bake runs in 23.0s (cap 60s). Side-by-
+side screenshot at `web/report/B-1-sheet.png`, DPR2 seam check at
+`web/report/B-1-dpr2-desktop-crop.png`, full numbers in
+`web/report/B-1-metrics.txt`. `ASSETS.md` updated with the two new
+`play/assets/` rows (sourced from the same Octopus Creature-pack files M0-3
+already harvested read-only from `octomancer-unity/`).
+
+Track B status: **done**, all of M2-B-1's and B-2's own exit criteria met.
+M2's own exit criteria (already met last session) are unaffected.

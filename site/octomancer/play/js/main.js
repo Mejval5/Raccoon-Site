@@ -11,6 +11,7 @@ import { createRenderer } from './render.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { CHUNK_H, CHUNK_W } from './gen.js';
+import { isBaked } from './octopus-draw.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -196,6 +197,7 @@ window.__octo = {
       residentChunks: world.residentChunkCount(),
       depth: Math.max(0, world.depth() - world.startY),
       pickups: { ...pickups.totals },
+      octoBaked: isBaked(),
     };
   },
   spawn(kind, x, y) {

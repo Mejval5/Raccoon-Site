@@ -1,0 +1,42 @@
+Track B (octopus bake) metrics -- OVERNIGHT.md M2 exit criteria
+================================================================
+
+Bake tool: octomancer-web/tools/bake_creature.py
+  Run time: 23.0s (budget <= 60s)
+  Sheet size: 111.3 KB (budget <= 200 KB), 7272x160 px, 42 body frames
+    (13 Swim05 + 12 Idle4 + 17 Idle4Swirl-as-hurt) + 6 eye-state sprites
+    (open/closed/angry x left/right) packed into the same sheet.
+  octopus.json: cellSize 160, cellWorldSize 1.9171 world units,
+    meshUnitsToWorld 0.383808 (derived from median body-point-to-centroid
+    distance in the Idle4 rest frame vs the 0.45 collider radius -- no
+    numeric scale field was found on the Octopus transform or its three
+    direct children in MainGame.unity; all m_LocalScale 1,1,1).
+
+Frame-time comparison (bake vs placeholder), puppeteer-core headless,
+Chrome, __octo.metrics() after a 60-step swim + a fresh-reset 300-step
+diagonal swim:
+  desktop 1440x900   bake: median 0.30ms   placeholder: median 0.30ms   (delta 0.00ms)
+  phone   375x812     bake: median 0.20ms   placeholder: median 0.30ms   (delta -0.10ms, bake faster)
+  Budget: within +0.3ms of the placeholder. Met (both directions).
+
+Console errors: 0 at both viewports, both modes (bake and ?octo=code).
+tests/index.html: PASS 20/20 (unchanged by this change).
+play/assets/ total: 204.4 KB (budget <= 900 KB; octopus.webp is 111.3 KB
+  of that).
+
+Side-by-side screenshot: web/report/B-1-sheet.png (bake vs placeholder,
+same pose, same swim-down input, desktop viewport) -- same octopus shape
+as the atlas (mantle + 8 trailing tentacles), no visible seams at DPR 2
+(web/report/B-1-dpr2-desktop-crop.png).
+
+Bug found and fixed during this session's own verification: the tool's
+first pass compared each triangle's *vertex ids* (0-266) against 1044 to
+decide "is this a body triangle", but the .json's region start_index/
+end_index are positions *within the flat 1200-entry triangle-index array*,
+not vertex ids (267 vertices can't have an index of 1043). That comparison
+was always true, so every eye triangle (52 of them) was ALSO warped onto
+the body sheet using its tiny eye-region atlas UVs, producing a dark
+patch over both eye sockets (visible at DPR 2, see the "before" note in
+NIGHT-LOG.md). Fixed by filtering on each triangle's position in the flat
+index array instead; re-verified with a fresh bake + DPR2 screenshot
+(clean, no patch) before wiring it in.
