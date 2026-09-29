@@ -1,0 +1,208 @@
+/* Svatba gift admin — plain but tidy, reusing the invitation's cream/gold/ink
+   palette (variables come from /svatba/svatba.css) without any of its dark
+   starfield/hero styling. Private page: no animation flourishes needed. */
+
+body.dary-admin {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--sv-paper-2);
+  color: var(--sv-ink);
+  font-family: var(--font-body);
+  line-height: 1.5;
+}
+
+.admin-wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px 16px 60px;
+}
+
+.admin-head h1 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  color: var(--sv-gold-deep);
+}
+.admin-sub {
+  margin: 0 0 22px;
+  font-family: var(--font-label);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--sv-ink-2);
+}
+
+.admin-card {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  background: var(--sv-paper);
+  border: 1px solid rgba(122, 82, 19, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(20, 8, 4, 0.08);
+}
+.admin-card h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-label);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sv-ink);
+}
+.admin-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--sv-ink-2);
+}
+
+.admin-key-status { margin: 0 0 12px; font-size: 0.92rem; color: var(--sv-ink-2); }
+.admin-key-status.is-ok { color: #2f6f3e; }
+.admin-key-status.is-bad { color: var(--sv-error); }
+
+.admin-key-form,
+.admin-cash-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.admin-key-form label,
+.admin-cash-form label {
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-ink-2);
+}
+.admin-key-form input,
+.admin-cash-form input {
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid rgba(122, 82, 19, 0.4);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--sv-ink);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+}
+.admin-key-form input#admin-key-input { flex: 1 1 220px; min-width: 0; }
+.admin-cash-form input#admin-cash-amount { width: 140px; }
+.admin-cash-form input#admin-cash-note { flex: 1 1 220px; min-width: 0; }
+
+.admin-btn,
+.admin-key-form button,
+.admin-cash-form button {
+  min-height: 40px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--sv-wine);
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+.admin-btn:hover:not(:disabled),
+.admin-key-form button:hover,
+.admin-cash-form button:hover { background: var(--sv-wine-hover); }
+.admin-btn:disabled { opacity: 0.6; cursor: default; }
+
+.admin-inline-msg {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 0.85rem;
+  color: var(--sv-ink-2);
+}
+.admin-inline-msg.is-ok { color: #2f6f3e; }
+.admin-inline-msg.is-bad { color: var(--sv-error); }
+
+.admin-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 20px;
+  margin: 0 0 14px;
+}
+.admin-status-grid dt {
+  margin: 0 0 2px;
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sv-ink-2);
+}
+.admin-status-grid dd {
+  margin: 0;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.admin-total-big {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--sv-gold-deep);
+}
+.status-good { color: #2f6f3e; font-weight: 600; }
+.status-bad { color: var(--sv-error); font-weight: 600; }
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.admin-table th,
+.admin-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(122, 82, 19, 0.2);
+  vertical-align: top;
+}
+.admin-table th {
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-ink-2);
+}
+.admin-table td.admin-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-empty { color: var(--sv-ink-2); font-style: italic; }
+.admin-row-delete {
+  padding: 4px 10px;
+  min-height: 30px;
+  border: 1px solid rgba(155, 28, 44, 0.4);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sv-error);
+  font-family: var(--font-label);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.admin-row-delete:hover { background: rgba(155, 28, 44, 0.08); }
+.admin-row-delete:disabled { opacity: 0.5; cursor: default; }
+
+.admin-error {
+  margin-top: 10px;
+  padding: 12px 16px;
+  border: 1px solid rgba(155, 28, 44, 0.4);
+  border-radius: 8px;
+  background: rgba(155, 28, 44, 0.08);
+  color: var(--sv-error);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 480px) {
+  .admin-wrap { padding: 20px 14px 48px; }
+  .admin-card { padding: 14px 14px; }
+  .admin-table { font-size: 0.82rem; }
+  .admin-table th, .admin-table td { padding: 6px 6px; }
+}

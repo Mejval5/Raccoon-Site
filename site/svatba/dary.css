@@ -32,6 +32,7 @@
 
 /* ---------- Amount display ---------- */
 .dary-amount {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -475,6 +476,131 @@
   text-align: center;
 }
 
+/* ---------- Live-update toast ---------- */
+/* "Právě přibyl dar!" — shown briefly near the big amount whenever the
+   real total jumps up while the page is open (a poll, or the test hook). */
+.dary-toast {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--sv-gold-deep);
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 6;
+}
+.dary-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+@media (max-width: 420px) {
+  .dary-toast {
+    font-size: 0.64rem;
+    padding: 4px 12px;
+    white-space: normal;
+    max-width: 88vw;
+    text-align: center;
+  }
+}
+
+/* ---------- QR contribution block ---------- */
+/* Lives under the panel, inside the same cream .paper card — a small white/
+   paper-cream QR chip with a thin gold border, so it reads as part of the
+   card rather than a bolted-on widget. */
+.dary-qr {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(226, 180, 95, 0.35);
+  text-align: center;
+}
+.dary-qr-title {
+  margin: 0 0 14px;
+  font-style: italic;
+  font-size: 1.15rem;
+  color: var(--sv-ink);
+}
+.dary-qr-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: left;
+}
+.dary-qr-code {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  background: var(--sv-paper);
+  border: 1px solid rgba(122, 82, 19, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(20, 8, 4, 0.16);
+}
+.dary-qr-code canvas { display: block; width: 132px; height: 132px; }
+.dary-qr-info { flex: 1 1 220px; min-width: 0; max-width: 280px; }
+.dary-qr-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 0 8px;
+}
+.dary-qr-account-label {
+  flex-basis: 100%;
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sv-ink-2);
+}
+.dary-qr-account-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--sv-ink);
+  overflow-wrap: anywhere;
+}
+.dary-qr-copy {
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid rgba(122, 82, 19, 0.5);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sv-gold-deep);
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.dary-qr-copy:hover { background: rgba(226, 180, 95, 0.16); }
+.dary-qr-copy.is-copied {
+  background: var(--sv-gold);
+  border-color: var(--sv-gold-deep);
+  color: var(--sv-paper);
+}
+.dary-qr-envelope { margin: 0; font-size: 0.88rem; font-style: italic; color: var(--sv-ink-2); }
+
+@media (max-width: 560px) {
+  .dary-qr-body { flex-direction: column; text-align: center; }
+  .dary-qr-info { max-width: 320px; }
+  .dary-qr-account { justify-content: center; }
+  .dary-qr-account-label { flex-basis: auto; }
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .dary-track-fill::after { animation: none; opacity: 0; }
@@ -485,5 +611,6 @@
   .dary-handle,
   .dary-track-fill,
   .dary-node-dot,
-  .dary-panel { transition: none; }
+  .dary-panel,
+  .dary-toast { transition: none; }
 }

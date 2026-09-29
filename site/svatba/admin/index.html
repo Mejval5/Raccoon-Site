@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Svatba – správa darů</title>
+  <link rel="icon" href="/racc-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Josefin+Sans:wght@400;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/svatba/svatba.css">
+  <link rel="stylesheet" href="/svatba/admin/admin.css">
+  <script src="/svatba/admin/admin.js" defer></script>
+</head>
+<body class="dary-admin">
+
+  <main class="admin-wrap">
+    <header class="admin-head">
+      <h1>Svatba – správa darů</h1>
+      <p class="admin-sub">Soukromá stránka. Nikam neodkazujte.</p>
+    </header>
+
+    <section id="admin-key-gate" class="admin-card">
+      <h2>Přístupový klíč</h2>
+      <p id="admin-key-status" class="admin-key-status">Klíč zatím nezadán.</p>
+      <form id="admin-key-form" class="admin-key-form">
+        <label for="admin-key-input">X-Admin-Key</label>
+        <input id="admin-key-input" name="key" type="password" autocomplete="off" spellcheck="false" placeholder="Vložte admin klíč">
+        <button type="submit">Použít klíč</button>
+      </form>
+    </section>
+
+    <div id="admin-dashboard" hidden>
+      <section id="admin-status" class="admin-card">
+        <h2>Stav synchronizace</h2>
+        <dl class="admin-status-grid">
+          <div><dt>Token Fio</dt><dd id="admin-tokenOk">–</dd></div>
+          <div><dt>Poslední chyba</dt><dd id="admin-lastError">–</dd></div>
+          <div><dt>Poslední sync</dt><dd id="admin-lastSyncAt">–</dd></div>
+          <div><dt>Aktualizováno</dt><dd id="admin-updatedAt">–</dd></div>
+        </dl>
+        <button id="admin-sync-btn" type="button" class="admin-btn">Sync now</button>
+        <span id="admin-sync-msg" class="admin-inline-msg" role="status" aria-live="polite"></span>
+      </section>
+
+      <section id="admin-totals" class="admin-card">
+        <h2>Součty</h2>
+        <dl class="admin-status-grid">
+          <div><dt>Z banky</dt><dd id="admin-bankTotal">–</dd></div>
+          <div><dt>Hotovost</dt><dd id="admin-cashTotal">–</dd></div>
+          <div><dt>Celkem</dt><dd id="admin-total" class="admin-total-big">–</dd></div>
+        </dl>
+      </section>
+
+      <section id="admin-cash-add" class="admin-card">
+        <h2>Přidat hotovost</h2>
+        <form id="admin-cash-form" class="admin-cash-form">
+          <label for="admin-cash-amount">Částka (Kč)</label>
+          <input id="admin-cash-amount" name="amount" type="number" min="1" max="10000000" step="1" required>
+          <label for="admin-cash-note">Poznámka</label>
+          <input id="admin-cash-note" name="note" type="text" maxlength="200" placeholder="např. obálka od tety Jany">
+          <button type="submit" class="admin-btn">Přidat</button>
+        </form>
+        <p id="admin-cash-msg" class="admin-inline-msg" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="admin-cash-list" class="admin-card">
+        <h2>Hotovost</h2>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Datum</th><th>Částka</th><th>Poznámka</th><th></th></tr>
+          </thead>
+          <tbody id="admin-cash-tbody">
+            <tr><td colspan="4" class="admin-empty">Zatím žádná hotovost.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="admin-bank-list" class="admin-card">
+        <h2>Platby z banky <span class="admin-hint">(pro děkovné dopisy)</span></h2>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Datum</th><th>Částka</th><th>Jméno</th><th>Zpráva</th><th>VS</th></tr>
+          </thead>
+          <tbody id="admin-bank-tbody">
+            <tr><td colspan="5" class="admin-empty">Zatím žádné platby.</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <p id="admin-error" class="admin-error" role="alert" hidden></p>
+  </main>
+
+</body>
+</html>

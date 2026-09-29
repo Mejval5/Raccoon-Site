@@ -70,6 +70,20 @@
           "functionId": "rsvp",
           "region": "europe-west1"
         }
+      },
+      {
+        "source": "/api/dary",
+        "function": {
+          "functionId": "dary",
+          "region": "europe-west1"
+        }
+      },
+      {
+        "source": "/api/dary/**",
+        "function": {
+          "functionId": "dary",
+          "region": "europe-west1"
+        }
       }
     ],
     "predeploy": [
