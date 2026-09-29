@@ -327,8 +327,8 @@ window.__octo = {
       enemyCount: enemies.count(),
     };
   },
-  spawn(kind, x, y) {
-    const e = enemies.spawnAt(kind, x, y);
+  spawn(kind, x, y, placement) {
+    const e = enemies.spawnAt(kind, x, y, placement);
     return { kind, x, y, spawned: true, id: e.id };
   },
   placeBomb(x, y) {

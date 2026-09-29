@@ -128,6 +128,105 @@ export function runEnemyTests(assert, approx) {
     assert('Beholder: a bomb does not kill it', b.dead === false);
   }
 
+  // --- M6-1 Spiked mine: touch arms it, explodes after 0.5s (OVERNIGHT M6-1) ---
+  {
+    const world = makeBombWorld();
+    const o = createOctopus(0, 0.1); // just touching a mine at (0,0)
+    const enemies = createEnemies();
+    const m = enemies.spawnAt('mine', 0, 0);
+    enemies.update(0.02, 0, o, world, []); // contact -> armed
+    assert('mine: touch arms it, does not explode immediately', m.dead === false && m.state === 'armed');
+    for (let i = 0; i < 30; i++) enemies.update(0.02, 0.02 * (i + 2), o, world, []); // + 0.6s
+    assert('mine: explodes about 0.5s after arming', m.dead === true);
+    let cleared = 0;
+    for (const v of world.tiles.values()) if (v === 0) cleared++;
+    assert('mine: explosion clears soft rock like a bomb', cleared > 0);
+  }
+
+  // --- M6-1 Spiked mine: a bomb blast arms it, and two mines chain ---
+  {
+    const world = makeBombWorld();
+    const o = createOctopus(20, 20); // far away
+    const enemies = createEnemies();
+    const m1 = enemies.spawnAt('mine', 0.3, 0);
+    const m2 = enemies.spawnAt('mine', -0.3, 0); // within m1's blast radius too
+    const bombs = createBombs();
+    bombs.place(o, 0, 0);
+    for (let i = 0; i < 200; i++) { bombs.update(0.02, world, o, enemies); enemies.update(0.02, i * 0.02, o, world, []); }
+    assert('mine: a bomb blast chains into both nearby mines', m1.dead === true && m2.dead === true);
+  }
+
+  // --- M6-3 Crab: never walks off a ledge, turns at the edge instead ---
+  {
+    // A floor world with solid ground under x in [-3,3] only (a ledge at x=3).
+    const tiles = new Map();
+    for (let y = -1; y <= 6; y++) {
+      for (let x = -6; x <= 6; x++) {
+        const ground = y === 1 && x >= -3 && x <= 3;
+        tiles.set(`${x},${y}`, ground ? 1 : 0);
+      }
+    }
+    const world = {
+      isSolid(tx, ty) { const v = tiles.get(`${Math.floor(tx)},${Math.floor(ty)}`); return v === 1; },
+      breakTile() {},
+    };
+    const enemies = createEnemies();
+    const c = enemies.spawnAt('crab', 0, 0, 'floor');
+    const o = createOctopus(20, 20);
+    for (let i = 0; i < 3000; i++) enemies.update(0.02, i * 0.02, o, world, []); // 60s
+    assert('crab: never walks off its ledge in 60s', c.x >= -3.5 && c.x <= 3.5);
+  }
+
+  // --- M6-3 Crab: dies to a dash, contact hurts otherwise ---
+  {
+    const world = { isSolid: () => false, breakTile() {} };
+    const enemies = createEnemies();
+    const o = createOctopus(5, 5);
+    o.vx = 9; o.vy = 0;
+    const c = enemies.spawnAt('crab', 5.1, 5, 'floor');
+    enemies.update(0.02, 0, o, world, []);
+    assert('crab: dash-speed contact kills it', c.dead === true);
+  }
+
+  // --- M6-3 Horns: static trap, contact hurts, immune to dash and bombs ---
+  {
+    const world = makeBombWorld();
+    const enemies = createEnemies();
+    const o = createOctopus(5, 5);
+    o.vx = 9; o.vy = 0;
+    const h = enemies.spawnAt('horns', 5.1, 5, 'floor');
+    enemies.update(0.02, 0, o, world, []);
+    assert('horns: contact damages the octopus', o.hearts === 2);
+    assert('horns: a dash-speed hit does not kill it', h.dead === false);
+    const n = enemies.killInRadius(5.1, 5, 3);
+    assert('horns: immune to bomb blasts too', h.dead === false);
+  }
+
+  // --- M6-4 Manta: drops an aimed ball within ~3.1s of the octopus in range ---
+  {
+    const world = { isSolid: () => false, breakTile() {} };
+    const enemies = createEnemies();
+    const o = createOctopus(0, 0);
+    const m = enemies.spawnAt('manta', 3, 0, 'open');
+    let firedBy = null;
+    for (let i = 0; i < 160; i++) { // 3.2s
+      enemies.update(0.02, i * 0.02, o, world, []);
+      if (enemies.shots().length && firedBy === null) firedBy = i * 0.02;
+    }
+    assert('manta: fires an aimed ball within 3.1s of the octopus entering range', firedBy !== null && firedBy <= 3.1);
+  }
+
+  // --- M6-4 Manta: dies to a dash ---
+  {
+    const world = { isSolid: () => false, breakTile() {} };
+    const enemies = createEnemies();
+    const o = createOctopus(5, 5);
+    o.vx = 9; o.vy = 0;
+    const m = enemies.spawnAt('manta', 5.1, 5, 'open');
+    enemies.update(0.02, 0, o, world, []);
+    assert('manta: dash-speed contact kills it', m.dead === true);
+  }
+
   // --- Generator: enemy-free first 40 units ---
   {
     let violations = 0, slotsSeen = 0;

@@ -10,6 +10,10 @@
 // `NPC30`+`NPC32Ball` (cannon+shot), `Beholder_*` (46 frames) --
 // octomancer-unity/Assets/Sprites/NPCs/**, `unity/Scripts/Player/EyeChaser.cs`
 // for the Beholder's straight-line chase. DECISIONS-2026-09-29.md §2.
+//
+// M6 (2021 creatures, `OldAssets/.../NPC.old/`): spiked mine (`NPC8`), crabs
+// (`CrabFlatten`/`CrabFlatten2`), spike horns (`NPC6`), manta (`NPC10` +
+// `NPC10Ball`). OVERNIGHT.md §4 M6.
 
 import {
   URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_PATROL_SPEED, PIRANHA_CHASE_SPEED,
@@ -17,6 +21,11 @@ import {
   CANNON_SHOT_SPEED, CANNON_SHOT_RADIUS, BEHOLDER_SPAWN_TIME,
   BEHOLDER_SPAWN_HEIGHT, BEHOLDER_RADIUS, BEHOLDER_SPEED, BEHOLDER_SPEED_RAMP,
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
+  MINE_RADIUS, MINE_BLAST_RADIUS, MINE_ARM_TIME, MINE_BOB_AMPLITUDE, MINE_BOB_SPEED,
+  CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
+  HORNS_RADIUS,
+  MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
+  MANTA_DROP_PERIOD, MANTA_RANGE, MANTA_BALL_SPEED, MANTA_BALL_RADIUS,
 } from './config.js';
 import { hurtOctopus, killOctopus } from './octopus.js';
 
@@ -32,10 +41,19 @@ function makeRng(seedSalt) {
 
 function pickKind(placement, depth, rng) {
   const candidates = [];
-  if (placement === 'open') candidates.push('piranha');
-  else candidates.push('urchin');
+  if (placement === 'open') {
+    candidates.push('piranha');
+    if (depth > 60) candidates.push('mine');
+    if (depth > 100) candidates.push('manta');
+  } else {
+    candidates.push('urchin');
+    if (placement === 'floor' || placement === 'ceiling') {
+      candidates.push('crab');
+      candidates.push('horns');
+    }
+  }
   if (depth > 80 && (placement === 'floor' || placement === 'wall')) candidates.push('cannon');
-  if (candidates.length > 1 && rng() < 0.35) return candidates[1];
+  if (candidates.length > 1) return candidates[Math.floor(rng() * candidates.length)];
   return candidates[0];
 }
 
@@ -44,13 +62,40 @@ let nextId = 1;
 function makeEnemy(kind, x, y, chunkIndex, placement) {
   const base = { id: nextId++, kind, x, y, vx: 0, vy: 0, dead: false, chunkIndex, placement, hitFlash: 0 };
   if (kind === 'urchin') {
-    return { ...base, radius: URCHIN_RADIUS, contactDamage: true };
+    return { ...base, radius: URCHIN_RADIUS, contactDamage: true, dashKillable: false };
   }
   if (kind === 'piranha') {
-    return { ...base, radius: PIRANHA_RADIUS, contactDamage: true, dir: Math.random() < 0.5 ? -1 : 1, chasing: false };
+    return {
+      ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: true,
+      dir: Math.random() < 0.5 ? -1 : 1, chasing: false,
+    };
   }
   if (kind === 'cannon') {
-    return { ...base, radius: CANNON_RADIUS, contactDamage: false, cooldown: CANNON_FIRE_PERIOD * Math.random() };
+    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: false, cooldown: CANNON_FIRE_PERIOD * Math.random() };
+  }
+  if (kind === 'mine') {
+    return {
+      ...base, radius: MINE_RADIUS, contactDamage: false, dashKillable: false,
+      state: 'idle', armTimer: 0, baseY: y, spawnTime: null,
+    };
+  }
+  if (kind === 'crab') {
+    const fast = Math.random() < 0.4;
+    return {
+      ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true,
+      dir: Math.random() < 0.5 ? -1 : 1, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW,
+      variant: fast ? 'fast' : 'slow',
+    };
+  }
+  if (kind === 'horns') {
+    return { ...base, radius: HORNS_RADIUS, contactDamage: true, dashKillable: false, immune: true };
+  }
+  if (kind === 'manta') {
+    return {
+      ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: true,
+      dir: Math.random() < 0.5 ? -1 : 1, baseX: x, baseY: y, spawnTime: null,
+      dropCooldown: MANTA_DROP_PERIOD,
+    };
   }
   return base;
 }
@@ -124,6 +169,79 @@ export function createEnemies() {
     }
   }
 
+  function updateCrab(e, dt, world) {
+    const groundDy = e.placement === 'ceiling' ? -1 : 1;
+    const step = e.dir * e.speed * dt;
+    e.x += step;
+    const aheadX = e.x + e.dir * (e.radius + 0.15);
+    if (world.isSolid(aheadX, e.y)) {
+      // Wall ahead: undo the step and turn around.
+      e.x -= step;
+      e.dir *= -1;
+    } else if (!world.isSolid(aheadX, e.y + groundDy)) {
+      // No ledge/ceiling ahead: turn around before walking off it.
+      e.dir *= -1;
+    }
+    e.vx = e.dir * e.speed;
+  }
+
+  function updateManta(e, dt, time, octo) {
+    if (e.spawnTime === null) e.spawnTime = time; // start the sine at 0 offset, not a random phase
+    e.x += e.dir * MANTA_SPEED * dt;
+    // Wide back-and-forth patrol around its spawn point (the "wide sine"
+    // glide), so it stays somewhere a diving octopus will pass, rather than
+    // drifting off in one direction forever.
+    if (Math.abs(e.x - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
+    e.y = e.baseY + Math.sin((time - e.spawnTime) * MANTA_SINE_FREQ) * MANTA_SINE_AMPLITUDE;
+    e.vx = e.dir * MANTA_SPEED;
+    const d = dist(e.x, e.y, octo.x, octo.y);
+    if (d < MANTA_RANGE) {
+      e.dropCooldown -= dt;
+      if (e.dropCooldown <= 0) {
+        e.dropCooldown = MANTA_DROP_PERIOD;
+        const dx = octo.x - e.x, dy = octo.y - e.y;
+        const len = Math.hypot(dx, dy) || 1;
+        shots.push({
+          x: e.x, y: e.y, vx: (dx / len) * MANTA_BALL_SPEED, vy: (dy / len) * MANTA_BALL_SPEED,
+          radius: MANTA_BALL_RADIUS, dead: false,
+        });
+        events.push({ type: 'shotFired', kind: 'manta' });
+      }
+    }
+  }
+
+  function armMine(e) {
+    if (e.dead || e.state !== 'idle') return;
+    e.state = 'armed';
+    e.armTimer = MINE_ARM_TIME;
+  }
+
+  /** Mine explosion: same shape as a bomb (breaks soft rock in a radius,
+   * hurts the octopus if still inside, kills non-immune enemies in range),
+   * plus chaining: any other idle mine caught in the blast arms too, so two
+   * mines next to each other both eventually go off. */
+  function explodeMine(e, world, octo) {
+    e.state = 'exploded';
+    e.dead = true;
+    events.push({ type: 'mineExploded', x: e.x, y: e.y });
+    const minTx = Math.floor(e.x - MINE_BLAST_RADIUS), maxTx = Math.floor(e.x + MINE_BLAST_RADIUS);
+    const minTy = Math.floor(e.y - MINE_BLAST_RADIUS), maxTy = Math.floor(e.y + MINE_BLAST_RADIUS);
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      for (let tx = minTx; tx <= maxTx; tx++) {
+        if (dist(tx + 0.5, ty + 0.5, e.x, e.y) <= MINE_BLAST_RADIUS) world.breakTile(tx, ty);
+      }
+    }
+    if (!octo.dead && dist(octo.x, octo.y, e.x, e.y) <= MINE_BLAST_RADIUS + octo.radius) {
+      hurtOctopus(octo, e.x, e.y);
+    }
+    for (const other of allEnemies()) {
+      if (other.dead || other === e || other.immune) continue;
+      if (dist(other.x, other.y, e.x, e.y) > MINE_BLAST_RADIUS) continue;
+      if (other.kind === 'mine') armMine(other);
+      else killEnemy(other, 'mine');
+    }
+  }
+
   function updateShots(dt, octo, world, hurtFn) {
     for (const s of shots) {
       if (s.dead) continue;
@@ -183,10 +301,24 @@ export function createEnemies() {
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
         if (e.kind === 'piranha') updatePiranha(e, dt, octo, world);
         else if (e.kind === 'cannon') updateCannon(e, dt, octo, world);
+        else if (e.kind === 'crab') updateCrab(e, dt, world);
+        else if (e.kind === 'manta') updateManta(e, dt, time, octo);
+
+        if (e.kind === 'mine') {
+          if (e.spawnTime === null) e.spawnTime = time; // start the bob at 0 offset
+          e.y = e.baseY + Math.sin((time - e.spawnTime) * MINE_BOB_SPEED) * MINE_BOB_AMPLITUDE;
+          const touching = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius;
+          if (touching && e.state === 'idle') armMine(e);
+          if (e.state === 'armed') {
+            e.armTimer -= dt;
+            if (e.armTimer <= 0) explodeMine(e, world, octo);
+          }
+          continue;
+        }
 
         if (!e.contactDamage) continue;
         if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius) {
-          if (e.kind === 'piranha' && octoSpeed >= DASH_KILL_SPEED) {
+          if (e.dashKillable && octoSpeed >= DASH_KILL_SPEED) {
             killEnemy(e, 'dash');
           } else {
             hurtOctopus(octo, e.x, e.y);
@@ -203,13 +335,18 @@ export function createEnemies() {
       updateBeholder(dt, octo, time, hurtOctopus);
     },
 
-    /** Kill every enemy (not the Beholder, which is immune) within `radius`
-     * of (x,y) - used by bomb.js. Returns the count killed. */
+    /** Kill every enemy (not the Beholder or an immune trap) within `radius`
+     * of (x,y) - used by bomb.js. A mine in range arms instead of dying
+     * outright, so its own blast (with chaining) fires a beat later.
+     * Returns the count killed. */
     killInRadius(x, y, radius) {
       let n = 0;
       for (const e of allEnemies()) {
         if (e.dead) continue;
-        if (dist(e.x, e.y, x, y) <= radius) { killEnemy(e, 'bomb'); n++; }
+        if (dist(e.x, e.y, x, y) > radius) continue;
+        if (e.kind === 'mine') { armMine(e); continue; }
+        if (e.immune) continue;
+        killEnemy(e, 'bomb'); n++;
       }
       for (const [ci, list] of byChunk) {
         const filtered = list.filter((e) => !e.dead);
@@ -220,12 +357,12 @@ export function createEnemies() {
 
     /** Test/debug hook (`__octo.spawn`): force-spawn one enemy at (x,y), not
      * tied to any chunk (never despawns from chunk eviction). */
-    spawnAt(kind, x, y) {
+    spawnAt(kind, x, y, placement) {
       if (kind === 'beholder') {
         beholder = { id: nextId++, kind: 'beholder', x, y, vx: 0, vy: 0, radius: BEHOLDER_RADIUS, dead: false, spawnedAt: 0 };
         return beholder;
       }
-      const e = makeEnemy(kind, x, y, -1, 'open');
+      const e = makeEnemy(kind, x, y, -1, placement || 'open');
       const list = byChunk.get(-1) || [];
       list.push(e);
       byChunk.set(-1, list);
