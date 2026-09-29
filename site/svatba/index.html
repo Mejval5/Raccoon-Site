@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="/svatba/dary.css">
   <script src="/svatba/svatba-i18n.js" defer></script>
   <script src="/svatba/svatba.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js" defer></script>
   <script src="/svatba/dary.js" defer></script>
   <script src="/js/site.js" defer></script>
   <noscript><style>#locked{display:grid !important}</style></noscript>
@@ -400,6 +401,25 @@
 
       <div id="dary-panel" class="dary-panel">
         <p class="dary-panel-empty" data-i18n="dary.none">Zatím jen sen. Posuňte meruňku doprava.</p>
+      </div>
+
+      <div id="dary-qr" class="dary-qr" hidden>
+        <h3 class="dary-qr-title" data-i18n="dary.contribute.title">Jak přispět</h3>
+        <div class="dary-qr-body">
+          <div class="dary-qr-code">
+            <canvas id="dary-qr-canvas" width="168" height="168" role="img"
+                    data-i18n-attr="aria-label:dary.contribute.qrAlt"
+                    aria-label="QR kód pro platbu darem"></canvas>
+          </div>
+          <div class="dary-qr-info">
+            <p class="dary-qr-account">
+              <span class="dary-qr-account-label" data-i18n="dary.contribute.account">Číslo účtu</span>
+              <span id="dary-qr-account-value" class="dary-qr-account-value"></span>
+              <button type="button" id="dary-qr-copy" class="dary-qr-copy" data-i18n="dary.contribute.copy">Kopírovat</button>
+            </p>
+            <p class="dary-qr-envelope" data-i18n="dary.contribute.envelope">Obálky s darem jsou vítány i přímo na svatbě.</p>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -8,6 +8,7 @@ const { deriveKey } = require("altcha-lib/algorithms/pbkdf2");
 
 const {
   ALLOWED_ORIGINS,
+  NOTIFY_EMAILS,
   verifyToken,
   isHoneypot,
   validateRsvp,
@@ -17,9 +18,25 @@ const {
 
 const { decodeAltchaPayload, captchaReplayId } = require("./lib/captcha");
 const { shouldRetry, rsvpDataFromDoc, toDate, pendingMails } = require("./lib/mail-retry");
+const {
+  DARY_FROM_DATE,
+  todayPragueDate,
+  fioPeriodsUrl,
+  isFioTokenConfigured,
+  parseFioTransactions,
+  incomingCzkCredits,
+  buildTxDoc,
+  computeState,
+  validateCash,
+  parseCookie,
+  timingSafeEqualString,
+  normalizeDaryPath,
+} = require("./lib/dary");
 
 const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
 const ALTCHA_HMAC_KEY = defineSecret("ALTCHA_HMAC_KEY");
+const FIO_TOKEN = defineSecret("FIO_TOKEN");
+const DARY_ADMIN_KEY = defineSecret("DARY_ADMIN_KEY");
 
 const SMTP_USER = "necesal.daniel@gmail.com";
 const FROM = "Tereza & Daniel <necesal.daniel@gmail.com>";
@@ -323,6 +340,381 @@ exports.rsvpMailRetry = onSchedule(
       update.mailAttempts = FieldValue.increment(1);
       await docSnap.ref.update(update);
       console.log(`rsvpMailRetry: ${docSnap.id} ${error === null ? "sent" : "failed: " + error}`);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Wedding gift total ("dary"): darySync pulls incoming CZK credits from the
+// Fio banka API into Firestore every 10 minutes; the `dary` HTTP function
+// serves the shared live total to the invitation page and a small admin API
+// (cash envelopes, bank payment list, manual sync) to Daniel's admin page.
+// ---------------------------------------------------------------------------
+
+const DARY_STATE_REF = () => getDb().collection("svatba-dary").doc("state");
+const FIO_ALERT_SUBJECT = "Svatba – Fio token nefunguje";
+const FIO_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+// Recomputes svatba-dary/state's totals from the current tx + cash
+// collections and merges them (plus any extra fields, e.g. tokenOk/
+// lastError/lastSyncAt) into the state doc. Returns the totals that were
+// written so callers can hand them straight back in an HTTP response.
+async function recomputeDaryState(database, extra) {
+  const [bankSnap, cashSnap] = await Promise.all([
+    database.collection("svatba-dary-tx").get(),
+    database.collection("svatba-dary-cash").get(),
+  ]);
+  const totals = computeState(
+    bankSnap.docs.map((d) => d.data()),
+    cashSnap.docs.map((d) => d.data())
+  );
+  await DARY_STATE_REF().set(
+    { ...totals, updatedAt: FieldValue.serverTimestamp(), ...(extra || {}) },
+    { merge: true }
+  );
+  return totals;
+}
+
+// Emails Daniel that the Fio token looks broken, at most once per 24h
+// (tracked by state.lastAlertAt), reusing the same sendEmail()/transport as
+// the RSVP flow.
+async function maybeAlertFioTokenBroken(message) {
+  const stateRef = DARY_STATE_REF();
+  const snap = await stateRef.get();
+  const lastAlertAt = snap.exists ? snap.data().lastAlertAt : null;
+  const lastAlertMs =
+    lastAlertAt && typeof lastAlertAt.toMillis === "function"
+      ? lastAlertAt.toMillis()
+      : 0;
+  if (Date.now() - lastAlertMs < FIO_ALERT_COOLDOWN_MS) return;
+
+  try {
+    await sendEmail({
+      to: NOTIFY_EMAILS.slice(),
+      message: {
+        subject: FIO_ALERT_SUBJECT,
+        text: [
+          message,
+          "",
+          "Fio token je platný nejvýše 180 dní a pravděpodobně vypršel nebo byl odvolán.",
+          "Obnovte ho v internetovém bankovnictví (Nastavení -> API) a nastavte nový:",
+          "",
+          "  firebase functions:secrets:set FIO_TOKEN",
+          "",
+          "a poté znovu nasaďte funkce (firebase deploy --only functions).",
+        ].join("\n"),
+      },
+    });
+  } catch (err) {
+    console.error("dary token alert email error", err);
+  }
+  await stateRef.set({ lastAlertAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Fetches the Fio "periods" JSON for [DARY_FROM_DATE, today], upserts every
+// incoming CZK credit into svatba-dary-tx, and recomputes svatba-dary/state.
+// Shared between the scheduled darySync trigger and the admin "sync now"
+// button, so both paths behave identically (including the 409/401/403/500
+// handling below).
+async function runDarySync() {
+  const database = getDb();
+  const token = FIO_TOKEN.value();
+
+  if (!isFioTokenConfigured(token)) {
+    await DARY_STATE_REF().set(
+      {
+        tokenOk: false,
+        lastError: "not-configured",
+        lastSyncAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  const toDate = todayPragueDate();
+  const url = fioPeriodsUrl(token, DARY_FROM_DATE, toDate);
+
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    console.error("darySync fetch error", err);
+    await DARY_STATE_REF().set(
+      {
+        tokenOk: false,
+        lastError: String((err && err.message) || err),
+        lastSyncAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  if (response.status === 409) {
+    // Fio allows only 1 request per 30s per token; just skip this run.
+    console.warn("darySync: 409 from Fio (rate limit), skipping this run");
+    return;
+  }
+
+  if (
+    response.status === 401 ||
+    response.status === 403 ||
+    response.status === 500
+  ) {
+    await DARY_STATE_REF().set(
+      {
+        tokenOk: false,
+        lastError: `http-${response.status}`,
+        lastSyncAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    await maybeAlertFioTokenBroken(
+      `Fio banka vrátila HTTP ${response.status} při stahování pohybů na svatební účet.`
+    );
+    return;
+  }
+
+  if (!response.ok) {
+    await DARY_STATE_REF().set(
+      {
+        tokenOk: false,
+        lastError: `http-${response.status}`,
+        lastSyncAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (err) {
+    await DARY_STATE_REF().set(
+      {
+        tokenOk: false,
+        lastError: "invalid-json",
+        lastSyncAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  const credits = incomingCzkCredits(parseFioTransactions(body));
+  if (credits.length > 0) {
+    // Only stamp createdAt the first time a movement id is seen (the
+    // periods query is idempotent and will keep re-returning old
+    // movements), so look up which ids already exist first.
+    const existingIds = new Set(
+      (await database.collection("svatba-dary-tx").select().get()).docs.map(
+        (d) => d.id
+      )
+    );
+    const batch = database.batch();
+    for (const credit of credits) {
+      if (credit.id === null || credit.id === undefined) continue;
+      const id = String(credit.id);
+      const ref = database.collection("svatba-dary-tx").doc(id);
+      const doc = buildTxDoc(credit);
+      if (existingIds.has(id)) {
+        batch.set(ref, doc, { merge: true });
+      } else {
+        batch.set(ref, { ...doc, createdAt: FieldValue.serverTimestamp() });
+      }
+    }
+    await batch.commit();
+  }
+
+  await recomputeDaryState(database, {
+    tokenOk: true,
+    lastError: FieldValue.delete(),
+    lastSyncAt: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.darySync = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    timeZone: "Europe/Prague",
+    region: "europe-west1",
+    memory: "256MiB",
+    secrets: [FIO_TOKEN, GMAIL_APP_PASSWORD],
+  },
+  async () => {
+    await runDarySync();
+  }
+);
+
+function toIsoOrNull(value) {
+  if (value && typeof value.toDate === "function") {
+    return value.toDate().toISOString();
+  }
+  return null;
+}
+
+function serializeDaryState(data) {
+  const d = data || {};
+  return {
+    bankTotal: typeof d.bankTotal === "number" ? d.bankTotal : 0,
+    bankCount: typeof d.bankCount === "number" ? d.bankCount : 0,
+    cashTotal: typeof d.cashTotal === "number" ? d.cashTotal : 0,
+    cashCount: typeof d.cashCount === "number" ? d.cashCount : 0,
+    total: typeof d.total === "number" ? d.total : 0,
+    updatedAt: toIsoOrNull(d.updatedAt),
+    lastSyncAt: toIsoOrNull(d.lastSyncAt),
+    tokenOk: Boolean(d.tokenOk),
+    lastError: d.lastError || null,
+    lastAlertAt: toIsoOrNull(d.lastAlertAt),
+  };
+}
+
+function serializeDaryTx(id, data) {
+  return {
+    id,
+    amount: data.amount,
+    date: data.date,
+    counterName: data.counterName || "",
+    counterAccount: data.counterAccount || "",
+    message: data.message || "",
+    vs: data.vs || "",
+    createdAt: toIsoOrNull(data.createdAt),
+  };
+}
+
+function serializeDaryCash(id, data) {
+  return {
+    id,
+    amount: data.amount,
+    note: data.note || "",
+    createdAt: toIsoOrNull(data.createdAt),
+  };
+}
+
+// GET /api/dary                       -> { ok, total, updatedAt } (invite cookie required)
+// GET /api/dary/admin                 -> { ok, state, tx, cash }  (X-Admin-Key required)
+// POST /api/dary/admin/cash           -> add a cash envelope, recompute, return state
+// DELETE /api/dary/admin/cash/{id}    -> delete a cash envelope, recompute, return state
+// POST /api/dary/admin/sync           -> run the Fio sync now, return state
+//
+// Reachable both through the Firebase Hosting rewrites (/api/dary, /api/dary/**)
+// and directly at its own Cloud Functions URL (the admin page does this from
+// localhost, see DARY-CONTRACT.md) - normalizeDaryPath() makes both work.
+exports.dary = onRequest(
+  {
+    region: "europe-west1",
+    cors: ALLOWED_ORIGINS,
+    maxInstances: 5,
+    memory: "256MiB",
+    secrets: [DARY_ADMIN_KEY, FIO_TOKEN, GMAIL_APP_PASSWORD],
+  },
+  async (req, res) => {
+    try {
+      if (req.method === "OPTIONS") {
+        res.status(204).end();
+        return;
+      }
+
+      const path = normalizeDaryPath(req.path);
+      const database = getDb();
+
+      if (path === "/") {
+        if (req.method !== "GET") {
+          res.set("Allow", "GET, OPTIONS");
+          res.status(405).json({ ok: false, error: "method" });
+          return;
+        }
+        const cookieValue = parseCookie(req.get("cookie"), "svatba");
+        if (!verifyToken(cookieValue)) {
+          res.status(403).json({ ok: false, error: "forbidden" });
+          return;
+        }
+        const snap = await DARY_STATE_REF().get();
+        const data = snap.exists ? snap.data() : {};
+        res.set("Cache-Control", "private, max-age=30");
+        res.status(200).json({
+          ok: true,
+          total: typeof data.total === "number" ? data.total : 0,
+          updatedAt: toIsoOrNull(data.updatedAt),
+        });
+        return;
+      }
+
+      // Every remaining route is an admin route: require X-Admin-Key.
+      const adminKey = req.get("x-admin-key") || "";
+      if (!timingSafeEqualString(adminKey, DARY_ADMIN_KEY.value())) {
+        res.status(403).json({ ok: false, error: "forbidden" });
+        return;
+      }
+
+      if (path === "/admin" && req.method === "GET") {
+        const [stateSnap, txSnap, cashSnap] = await Promise.all([
+          DARY_STATE_REF().get(),
+          database.collection("svatba-dary-tx").orderBy("createdAt", "desc").get(),
+          database.collection("svatba-dary-cash").orderBy("createdAt", "desc").get(),
+        ]);
+        res.status(200).json({
+          ok: true,
+          state: serializeDaryState(stateSnap.exists ? stateSnap.data() : {}),
+          tx: txSnap.docs.map((d) => serializeDaryTx(d.id, d.data())),
+          cash: cashSnap.docs.map((d) => serializeDaryCash(d.id, d.data())),
+        });
+        return;
+      }
+
+      if (path === "/admin/cash" && req.method === "POST") {
+        let body = req.body;
+        if (typeof body === "string") {
+          try {
+            body = JSON.parse(body);
+          } catch (e) {
+            res.status(400).json({ ok: false, error: "invalid" });
+            return;
+          }
+        }
+        const validated = validateCash(body);
+        if (!validated.ok) {
+          res.status(400).json({ ok: false, error: "invalid" });
+          return;
+        }
+        await database.collection("svatba-dary-cash").add({
+          amount: validated.data.amount,
+          note: validated.data.note,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        const state = await recomputeDaryState(database);
+        res.status(200).json({ ok: true, state: serializeDaryState(state) });
+        return;
+      }
+
+      if (path.startsWith("/admin/cash/") && req.method === "DELETE") {
+        const id = path.slice("/admin/cash/".length);
+        if (!id) {
+          res.status(400).json({ ok: false, error: "invalid" });
+          return;
+        }
+        await database.collection("svatba-dary-cash").doc(id).delete();
+        const state = await recomputeDaryState(database);
+        res.status(200).json({ ok: true, state: serializeDaryState(state) });
+        return;
+      }
+
+      if (path === "/admin/sync" && req.method === "POST") {
+        await runDarySync();
+        const snap = await DARY_STATE_REF().get();
+        res.status(200).json({
+          ok: true,
+          state: serializeDaryState(snap.exists ? snap.data() : {}),
+        });
+        return;
+      }
+
+      res.status(404).json({ ok: false, error: "not-found" });
+    } catch (err) {
+      console.error("dary handler error", err);
+      res.status(500).json({ ok: false, error: "server" });
     }
   }
 );

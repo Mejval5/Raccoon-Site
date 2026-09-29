@@ -40,12 +40,27 @@
   // function. Everything else in this file only ever calls loadTotal() and
   // setRealTotal() — nothing else needs to know where the number comes from.
   var DEMO_TOTAL = 0;
+  // On localhost there is no hosting rewrite for /api/dary, so stay on
+  // DEMO_TOTAL there (driven only by the test hooks below). Everywhere else,
+  // ask the backend; on any failure (not deployed yet, offline, a 403, ...)
+  // resolve to null so the caller can silently keep the last known total —
+  // this never throws and never logs.
   function loadTotal() {
-    // TODO: replace with something like
-    //   return fetch('/svatba/api/dary-total').then(function (r) { return r.json(); }).then(function (d) { return d.total; });
-    // once the scheduled function that reads the bank API is in place.
-    return Promise.resolve(DEMO_TOTAL);
+    var host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return Promise.resolve(DEMO_TOTAL);
+    }
+    return fetch('/api/dary', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return d && typeof d.total === 'number' ? d.total : null; })
+      .catch(function () { return null; });
   }
+
+  // ---- Gift QR / bank details ------------------------------------------------
+  // Filled in once the dedicated account exists; the whole QR block in the
+  // markup (see #dary-qr) stays hidden while GIFT_IBAN is empty.
+  var GIFT_IBAN = '';
+  var GIFT_ACCOUNT_LABEL = '';
 
   // ---- Milestone data ---------------------------------------------------------
   // Amounts in CZK. Evenly spaced along the track: milestone i sits at
@@ -254,6 +269,10 @@
   var litState = [];
   var dragging = false;
   var snapbackRaf = null;
+  var realAnimRaf = null;  // rAF handle for the live-increase pin/fill animation
+  var hasLoadedTotal = false;
+  var pollTimer = null;
+  var toastEl, toastTimer = null;
 
   // ---- i18n helpers ---------------------------------------------------------
   function currentLang() {
@@ -377,6 +396,30 @@
     pinEl.className = 'dary-real-pin';
     pinEl.setAttribute('aria-hidden', 'true');
     track.appendChild(pinEl);
+  }
+
+  // The "Právě přibyl dar!" toast, anchored to the big amount. A single
+  // shared element (like the tooltip), shown whenever the real total jumps
+  // up while the page is open.
+  function createToast() {
+    toastEl = document.createElement('div');
+    toastEl.className = 'dary-toast';
+    toastEl.setAttribute('role', 'status');
+    toastEl.setAttribute('aria-live', 'polite');
+    toastEl.hidden = true;
+    amountValueEl.parentElement.appendChild(toastEl); // .dary-amount (position:relative)
+  }
+  function showGiftToast() {
+    if (!toastEl) return;
+    toastEl.textContent = t('dary.live.toast');
+    toastEl.hidden = false;
+    void toastEl.offsetWidth; // restart the fade cleanly if a gift arrives again quickly
+    toastEl.classList.add('is-visible');
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      toastEl.classList.remove('is-visible');
+      toastTimer = window.setTimeout(function () { toastEl.hidden = true; }, 300);
+    }, 3000);
   }
 
   function createTooltip() {
@@ -604,6 +647,178 @@
       displayPct = realPct;
       render({ silent: true });
     }
+  }
+
+  // ---- Live updates: the real total increasing while the page is open --------
+  // Used by both the 60s poll and the localhost test hook, so both paths
+  // behave identically: the pin (and, unless a guest is mid-preview, the
+  // fill/handle too) glides forward over REAL_INCREASE_MS so any newly
+  // passed milestones play their normal light-up effect, plus the toast.
+  var REAL_INCREASE_MS = 1200;
+  function cancelRealAnim() {
+    if (realAnimRaf) {
+      cancelAnimationFrame(realAnimRaf);
+      realAnimRaf = null;
+    }
+  }
+  function animateRealIncrease(newAmount) {
+    cancelRealAnim();
+    var newPct = amountToPct(newAmount);
+    if (prefersReducedMotion()) {
+      realAmount = newAmount;
+      realPct = newPct;
+      positionPin();
+      if (!isPreviewing) {
+        displayPct = newPct;
+        render();
+      }
+      showGiftToast();
+      return;
+    }
+    var startAmount = realAmount;
+    var startPct = realPct;
+    var startTime = null;
+    function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
+    function step(ts) {
+      if (startTime === null) startTime = ts;
+      var progress = Math.min(1, (ts - startTime) / REAL_INCREASE_MS);
+      var eased = easeOutCubic(progress);
+      realAmount = startAmount + (newAmount - startAmount) * eased;
+      realPct = startPct + (newPct - startPct) * eased;
+      positionPin();
+      if (!isPreviewing) {
+        displayPct = realPct;
+        render();
+      }
+      if (progress < 1) {
+        realAnimRaf = requestAnimationFrame(step);
+      } else {
+        realAmount = newAmount;
+        realPct = newPct;
+        positionPin();
+        if (!isPreviewing) {
+          displayPct = newPct;
+          render();
+        }
+        realAnimRaf = null;
+      }
+    }
+    realAnimRaf = requestAnimationFrame(step);
+    showGiftToast();
+  }
+  // Single seam for both the poller and the test hook: the very first value
+  // ever received just jumps (setRealTotal), an increase after that animates,
+  // anything else (equal, or a downward admin correction) jumps quietly.
+  function applyRealTotalUpdate(amount) {
+    var newAmount = Math.max(0, Math.min(MAX_AMOUNT, Number(amount) || 0));
+    if (!hasLoadedTotal) {
+      setRealTotal(newAmount);
+      hasLoadedTotal = true;
+      return;
+    }
+    if (newAmount > realAmount + 0.5) {
+      animateRealIncrease(newAmount);
+    } else if (Math.abs(newAmount - realAmount) > 0.5) {
+      cancelRealAnim();
+      setRealTotal(newAmount);
+    }
+  }
+
+  // ---- Polling for a live-updating total --------------------------------------
+  var POLL_MS = 60000;
+  function clearPollTimer() {
+    if (pollTimer) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+  function pollOnce() {
+    loadTotal().then(function (amount) {
+      if (amount != null) applyRealTotalUpdate(amount);
+    });
+  }
+  function scheduleNextPoll() {
+    clearPollTimer();
+    pollTimer = window.setTimeout(function () {
+      pollOnce();
+      scheduleNextPoll();
+    }, POLL_MS);
+  }
+  // Paused while the tab is hidden, resumed (on its normal cadence, not
+  // immediately) when it becomes visible again.
+  function startPolling() {
+    if (!document.hidden) scheduleNextPoll();
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        clearPollTimer();
+      } else if (!pollTimer) {
+        scheduleNextPoll();
+      }
+    });
+  }
+
+  // ---- Gift QR / bank details --------------------------------------------------
+  function spdString() {
+    return 'SPD*1.0*ACC:' + GIFT_IBAN + '*CC:CZK*MSG:SVATBA TEREZA A DANIEL';
+  }
+  function copyAccountNumber(btn) {
+    var text = GIFT_ACCOUNT_LABEL;
+    var mark = function () {
+      btn.textContent = t('dary.contribute.copied');
+      btn.classList.add('is-copied');
+      window.setTimeout(function () {
+        btn.textContent = t('dary.contribute.copy');
+        btn.classList.remove('is-copied');
+      }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(mark, mark);
+      return;
+    }
+    // Fallback for browsers/contexts without the async clipboard API.
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { /* clipboard just won't fill in; the number is still on screen */ }
+    mark();
+  }
+  // Hidden by default (see markup); only shown once both GIFT_IBAN and
+  // GIFT_ACCOUNT_LABEL are filled in. Text/aria-label come from data-i18n /
+  // data-i18n-attr on the static markup itself, so language changes need no
+  // extra handling here.
+  function initQrBlock() {
+    var qrRoot = document.getElementById('dary-qr');
+    if (!qrRoot) return;
+    if (!GIFT_IBAN || !GIFT_ACCOUNT_LABEL) {
+      qrRoot.hidden = true;
+      return;
+    }
+    qrRoot.hidden = false;
+    var accountEl = document.getElementById('dary-qr-account-value');
+    if (accountEl) accountEl.textContent = GIFT_ACCOUNT_LABEL;
+    var canvas = document.getElementById('dary-qr-canvas');
+    if (canvas) {
+      if (window.QRCode && window.QRCode.toCanvas) {
+        window.QRCode.toCanvas(canvas, spdString(), {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 168,
+          color: { dark: '#2b2230', light: '#f6efe4' }
+        }, function (err) {
+          if (err) qrRoot.hidden = true; // don't show a blank canvas
+        });
+      } else {
+        qrRoot.hidden = true; // QR library failed to load
+      }
+    }
+    var copyBtn = document.getElementById('dary-qr-copy');
+    if (copyBtn) copyBtn.addEventListener('click', function () { copyAccountNumber(copyBtn); });
   }
 
   // ---- Preview mode: drag away from the real total, then glide back ----------
@@ -923,14 +1138,22 @@
     var host = window.location.hostname;
     if (host !== 'localhost' && host !== '127.0.0.1') return;
     // Sets the REAL (shared) total — what loadTotal() will eventually return.
+    // Routed through applyRealTotalUpdate() so it exercises the exact same
+    // animate-on-increase + toast path as a real 60s poll would.
     window.__daryMeterSetTotal = function (amount) {
-      setRealTotal(amount);
+      applyRealTotalUpdate(amount);
     };
     // Sets the PREVIEW position directly, without scheduling the snap-back —
     // handy for screenshots of a specific preview state.
     window.__daryMeterSet = function (amount) {
       isPreviewing = true;
       setDisplayPct(amountToPct(Number(amount) || 0));
+    };
+    // Debug-only: the exact SPD string the QR block currently encodes (or
+    // null while GIFT_IBAN is empty), so a test can compare it directly
+    // instead of only decoding the rendered QR image.
+    window.__daryMeterSpdString = function () {
+      return GIFT_IBAN ? spdString() : null;
     };
   }
 
@@ -939,7 +1162,9 @@
     createPreviewTag();
     createPin();
     createTooltip();
+    createToast();
     renderNodes();
+    initQrBlock();
 
     chipEl && (chipEl.hidden = MODE !== 'preview');
     handle.setAttribute('aria-valuemax', String(MAX_AMOUNT));
@@ -958,7 +1183,9 @@
 
     setDisplayPct(0, { silent: true });
     loadTotal().then(function (amount) {
-      setRealTotal(amount);
+      setRealTotal(amount || 0);
+      hasLoadedTotal = true;
+      startPolling();
     });
   }
 

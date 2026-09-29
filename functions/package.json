@@ -6,7 +6,7 @@
   },
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/rsvp.test.js test/mail-retry.test.js"
+    "test": "node --test test/rsvp.test.js test/mail-retry.test.js test/dary.test.js"
   },
   "dependencies": {
     "altcha-lib": "^2.5.0",

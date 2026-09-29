@@ -186,6 +186,14 @@ window.SVATBA_I18N = {
     "dary.m20.title": "Chata u Brna. Celá.",
     "dary.m20.text": "I se sekačkou a všemi čtyřmi kočkami. Na dům to chce ještě pár milionů.",
 
+    "dary.contribute.title": "Jak přispět",
+    "dary.contribute.account": "Číslo účtu",
+    "dary.contribute.copy": "Kopírovat",
+    "dary.contribute.copied": "Zkopírováno!",
+    "dary.contribute.envelope": "Obálky s darem jsou vítány i přímo na svatbě.",
+    "dary.contribute.qrAlt": "QR kód pro platbu darem",
+    "dary.live.toast": "Právě přibyl dar!",
+
     
 
     "footer.text": "Těšíme se na vás!",
@@ -355,6 +363,14 @@ window.SVATBA_I18N = {
     "dary.m20.title": "The cabin near Brno. All of it.",
     "dary.m20.text": "Lawnmower and all four cats included. A real house will take a few more million.",
 
+    "dary.contribute.title": "How to contribute",
+    "dary.contribute.account": "Account number",
+    "dary.contribute.copy": "Copy",
+    "dary.contribute.copied": "Copied!",
+    "dary.contribute.envelope": "Envelopes are welcome at the wedding too.",
+    "dary.contribute.qrAlt": "QR code for a gift payment",
+    "dary.live.toast": "A gift just arrived!",
+
     
 
     "footer.text": "We can't wait to see you!",
@@ -523,6 +539,14 @@ window.SVATBA_I18N = {
     "dary.m19.text": "Pour que la résine quitte enfin la maison.",
     "dary.m20.title": "Le chalet près de Brno. En entier.",
     "dary.m20.text": "Tondeuse et quatre chats compris. Pour une vraie maison, il faudra encore quelques millions.",
+
+    "dary.contribute.title": "Comment participer",
+    "dary.contribute.account": "Numéro de compte",
+    "dary.contribute.copy": "Copier",
+    "dary.contribute.copied": "Copié !",
+    "dary.contribute.envelope": "Les enveloppes sont aussi les bienvenues le jour du mariage.",
+    "dary.contribute.qrAlt": "QR code pour un don",
+    "dary.live.toast": "Un cadeau vient d'arriver !",
 
     
 
