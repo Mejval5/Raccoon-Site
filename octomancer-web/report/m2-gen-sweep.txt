@@ -1,0 +1,3 @@
+chunks tested 4000 fails 0 maxMs 2.059 avgMs 0.0933
+shells seen 693 sealed-by-soft-rock 693
+determinism (same seed -> identical bytes): true

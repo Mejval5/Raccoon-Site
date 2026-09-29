@@ -1,0 +1,81 @@
+M2 Infinite world - metrics (OVERNIGHT.md M2, self-check)
+Dev: Otter (this session). Verified via `__octo` test hooks in the Chromium
+pane at 1440x900 and 375x812 (mobile preset), served from
+`python -m http.server 8091 --directory site` (the shared 8080 instance on
+this machine 404s under /octomancer/play/, same finding logged in the M1
+NIGHT-LOG entry; left it alone, used 8091 for all verification, stopped it
+when done).
+
+## M2-1 Seeded chunk generator (gen.js)
+- Full self-check sweep: 200 seeds x 20 chunks = 4000 chunks.
+  - Top<->bottom connectivity (BFS, 4-connected, via `isTopToBottomConnected`):
+    4000/4000 PASS, 0 failures.
+  - Per-chunk generation time: max 2.059ms, avg 0.0933ms (budget: <= 5ms/chunk).
+  - Determinism: same seed regenerated from scratch produced byte-identical
+    chunk tiles for 5 chunks (Buffer.compare === 0).
+  - Shells: 693 shells generated across the sweep, all 693 sitting on a tile
+    the generator itself sealed to soft rock (type 2) - "every shell sits in
+    a pocket sealed by soft rock" holds for every instance seen.
+  - Raw sweep output: `m2-gen-sweep.txt` in this folder.
+- In-page test harness (`play/tests/`, smaller 40x12 sweep + shape/edge
+  checks) also green: see `PASS 20/20` in the M1 section above and the
+  `gen:` rows added for M2 (connectivity, timing, shells, determinism, chunk
+  shape, exitCol bounds) - all PASS in the browser run.
+
+## M2-2 Chunk streaming (world.js)
+- 10-minute soak (`__octo.autoDive(true)` + `__octo.step(100)` x300 = 600s
+  simulated, the sanctioned test-hook path for this check): 0 console
+  errors, resident chunk count stayed in [3,4] throughout (budget: <= 4),
+  reached depth 2525 units by the end of the 10 minutes.
+  - First attempt at `autoDive` (aim at a fixed centre column) got the
+    octopus permanently stuck the first time the generated path bent behind
+    an overhang - found during this soak, fixed by replacing it with a small
+    bounded 4-connected BFS pathfinder (`planDiveBFS` in `main.js`) that
+    re-plans every 0.3s toward "8 rows deeper"; re-ran the soak clean
+    afterwards (numbers above are the fixed version).
+  - A real memory leak was also found and fixed during this soak's render
+    path: `render.js`'s per-chunk wall-bake canvas cache never dropped
+    entries for chunks the world had evicted. Fixed by pruning `wallCache`
+    against the resident chunk list every `render()` call. The headless
+    soak above exercises `world.update()`/streaming only (no `render()`
+    calls, per the `__octo.step()` contract), so it does not itself measure
+    this leak; the fix was verified by code inspection and by confirming
+    `wallCache.size` tracks resident chunk count during manual play, not
+    by a second full 10-minute real-time render soak (this session's
+    browser pane does not keep driving `requestAnimationFrame` once
+    headless-idle for tens of seconds at a time - see "Known limitation"
+    below).
+- Frame budget: M1's baseline (single whole-cave bake) measured
+  0.10-0.30ms median/p95 at both viewports (see m1-metrics.txt); M2's
+  per-chunk bake is the same one-`drawImage`-per-chunk cost (<=4 resident
+  chunks) plus pickups/decor draws (~10-40 cheap circle/arc calls at any
+  given time), so it stays far under the 4ms/8ms budget. Directly sampled
+  at depth ~494 (seed 5): screenshots at both viewports render cleanly with
+  0 console errors; a live median/p95 sample via `loop.metrics()` could not
+  be captured for this specific depth in this session (see "Known
+  limitation").
+
+## Known limitation (logged, not a game bug)
+This session's Chromium pane does not keep `requestAnimationFrame` ticking
+during an idle multi-second `wait`, even after fronting the tab - `__octo`
+step-driven soaks (the mandated test-hook path) are unaffected and were
+used for every timing/connectivity/determinism number above, but a couple
+of "live" `frameMsMedian` samples at specific depths could not be taken.
+Screenshots (`m2-play-desktop.jpg`, `m2-play-phone.jpg`) confirm normal,
+error-free rendering at both viewports; M1's directly-measured frame times
+(0.1-0.3ms, budget 4/8ms) are the best evidence available that M2's small
+added draw cost keeps the game well inside budget.
+
+## Track B (octopus bake)
+Skipped this session (time budget): the placeholder code-drawn octopus
+(`octopus-draw.js`, unchanged since M1) ships instead. Never gated M2's
+exit criteria per OVERNIGHT.md §3 ("side tracks... never gate their
+milestone"). Logged as a skip in NIGHT-LOG.md for the next session to pick
+up (the bake tool, `web/tools/bake_creature.py`, does not exist yet).
+
+## Determinism screenshot pair
+Not captured as a separate side-by-side image this session (time); the
+generator sweep above (byte-identical regeneration, 5/5 chunks, 3
+independent seeds spot-checked by hand via the tile-map dump in this
+session's transcript) is the numeric equivalent for M2-4's "seed
+determinism" check. Logged as a polish item for M2-4/Owl's later pass.

@@ -1,0 +1,101 @@
+// Pickups: pearls, plankton swarms and rare shells, spawned from each
+// chunk's generator output (gen.js `spawns`), collected on overlap with the
+// octopus. Score points themselves are wired up properly in M4; this module
+// just tracks collection so the counts exist to score from.
+// OVERNIGHT.md §2 "World" spawns / M2-3.
+//
+// All pickup positions are stored in world space (chunk-local spawn.y plus
+// that chunk's fixed yOffset), baked in once per chunk the first time it is
+// seen, since a chunk's world position never changes after generation.
+
+const COLLECT_RADIUS = 0.55; // world units, added to the octopus's own radius
+const PLANKTON_PULL_RADIUS = 1.0; // "pulled in within 1 unit" (OVERNIGHT.md M2-3)
+const PLANKTON_PULL_SPEED = 3.0; // u/s, drift-toward speed once inside the pull radius
+
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+
+/** Lazily expands a chunk's raw spawn list (from gen.js) into live, world-
+ * space pickup instances the first time that chunk is seen. */
+function buildChunkPickups(chunk, yOffset, seedSalt) {
+  const items = [];
+  let m = seedSalt;
+  const rnd = () => { m = (m * 9301 + 49297) % 233280; return m / 233280; };
+  for (const s of chunk.spawns) {
+    const wy = s.y + yOffset;
+    if (s.type === 'pearl') {
+      items.push({ type: 'pearl', x: s.x, y: wy, hidden: !!s.hidden, collected: false });
+    } else if (s.type === 'shell') {
+      items.push({ type: 'shell', x: s.x, y: wy, collected: false });
+    } else if (s.type === 'plankton-swarm') {
+      for (let i = 0; i < s.count; i++) {
+        const a = rnd() * Math.PI * 2;
+        const r = rnd() * 1.6;
+        const bx = s.x + Math.cos(a) * r, by = wy + Math.sin(a) * r;
+        items.push({ type: 'plankton', x: bx, y: by, baseX: bx, baseY: by, phase: a, collected: false });
+      }
+    }
+  }
+  return items;
+}
+
+export function createPickups() {
+  /** @type {Map<number, any[]>} */
+  const byChunk = new Map();
+  const totals = { pearls: 0, plankton: 0, shells: 0 };
+
+  function ensureChunk(ci, chunk, yOffset) {
+    if (byChunk.has(ci)) return byChunk.get(ci);
+    const items = buildChunkPickups(chunk, yOffset, ci * 7919 + 13);
+    byChunk.set(ci, items);
+    return items;
+  }
+
+  return {
+    totals,
+    /** One fixed step: pull nearby plankton toward the octopus, resolve
+     * collection, and drop pickup lists for chunks the world has evicted. */
+    update(dt, time, octo, resident) {
+      const liveChunks = new Set(resident.map((r) => r.index));
+      for (const ci of [...byChunk.keys()]) {
+        if (!liveChunks.has(ci)) byChunk.delete(ci);
+      }
+      for (const { index, yOffset, chunk } of resident) {
+        const items = ensureChunk(index, chunk, yOffset);
+        for (const it of items) {
+          if (it.collected) continue;
+          if (it.type === 'plankton') {
+            const d = dist(octo.x, octo.y, it.x, it.y);
+            if (d < PLANKTON_PULL_RADIUS && d > 1e-4) {
+              const t = Math.min(1, (PLANKTON_PULL_SPEED * dt) / d);
+              it.x += (octo.x - it.x) * t;
+              it.y += (octo.y - it.y) * t;
+            } else {
+              it.x = it.baseX + Math.sin(time * 1.3 + it.phase) * 0.12;
+              it.y = it.baseY + Math.cos(time * 1.1 + it.phase) * 0.12;
+            }
+          }
+          const d = dist(octo.x, octo.y, it.x, it.y);
+          if (d < COLLECT_RADIUS + octo.radius) {
+            it.collected = true;
+            if (it.type === 'pearl') totals.pearls++;
+            else if (it.type === 'shell') totals.shells++;
+            else if (it.type === 'plankton') totals.plankton++;
+          }
+        }
+      }
+    },
+    /** Visible, uncollected pickups in world space, for render.js. */
+    visible(resident) {
+      const out = [];
+      for (const { index, yOffset } of resident) {
+        const items = byChunk.get(index);
+        if (!items) continue;
+        for (const it of items) {
+          if (it.collected) continue;
+          out.push(it);
+        }
+      }
+      return out;
+    },
+  };
+}

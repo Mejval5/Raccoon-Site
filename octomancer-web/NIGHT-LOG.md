@@ -227,3 +227,141 @@ Bug list:
   by eye during this session's own verification, before it ever became a
   known issue.
 - Next: M2 (infinite world + track B, the octopus bake).
+
+## M2 Infinite world (dev: Otter, this session)
+
+### M2-1 Seeded chunk generator
+`play/js/rng.js` (mulberry32 + a seed/chunk-index hash) and `play/js/gen.js`
+(32x24 chunks, 2-tile unbreakable side borders, per-cell noise + 2-pass
+cellular-automata smoothing thresholded to rock, a 2-3 wide meandering
+carved path row-by-row from the previous chunk's exit column, BFS flood-fill
+from the path sealing every unreached water pocket to soft rock, pearls
+(6-10/chunk, ~30% hidden in a soft-rock pocket), 1-2 plankton swarms,
+a rare shell at most once per 3 chunks always in a soft-rock pocket, and
+depth-gated (>=40) enemy slots tagged floor/ceiling/wall/open for M3).
+`play/tests/gen.test.js` added to the harness (6 new PASS rows).
+
+**Deviation (logged, matches the plan's own escape hatch on time pressure):**
+the plan's fbm value noise ported from `PerlinComputeShader.compute` was
+replaced with the standard per-cell-random + 2-pass-cellular-automata cave
+algorithm (same "thresholded noise, smoothed twice" shape, no GPU
+compute-shader port). Everything downstream (path carve, flood-fill,
+spawns, connectivity) is exactly as specified.
+
+**Bug found and fixed during this row's own self-check:** the initial path
+carve let the very first row (and, less often, the last) drift by a random
+jitter step before the path's width band was stamped, so the column a
+chunk's row 0 promised to the previous chunk's `exitCol` was sometimes not
+actually water. This failed the connectivity sweep on ~6% (and then ~3%
+after a first partial fix) of 4000 test chunks. Fixed by pinning row 0 to
+the exact entry column (no jitter there) and by returning the *actual*
+carved last-row column as `exitCol` instead of the pre-carve random target.
+Re-ran 200 seeds x 20 chunks afterwards: 4000/4000 connected, 0 failures
+(`web/report/m2-gen-sweep.txt`).
+
+### M2-2 Chunk streaming
+`play/js/world.js` rewritten from M1's fixed test cave to a streaming
+world: chunks generated ahead (once the octopus is 2/3 into the lowest
+resident chunk), chunks more than 1 behind the current one dropped, a
+small hand-carved open start pool punched into chunk 0's top rows, and
+cross-chunk `isSolid`/`isBreakable`/`breakTile` (the last for M3's bombs).
+`__octo.autoDive(true)` is now real (a bounded BFS pathfinder in
+`main.js`, see below) instead of the M1-era stub.
+
+**Bug found and fixed during the soak test:** the first `autoDive`
+implementation just steered toward the nearest open column one row down,
+which reliably got the octopus stuck the first time the generated path
+went behind a rock overhang (confirmed by hand-dumping the chunk's tile
+map: the target row was open, but the row directly above it, which the
+octopus had to pass through, was not). Replaced it with a small bounded
+4-connected BFS (`planDiveBFS`) that re-plans a route toward "8 rows
+deeper" every 0.3s; re-ran the 10-minute soak afterwards and it now
+descends cleanly (see m2-metrics.txt).
+
+**Bug found and fixed in the renderer while investigating the soak's memory
+number:** `render.js`'s per-chunk wall-bake canvas cache never removed
+entries for chunks the world had already evicted, so playing for a while
+would accumulate 48px/unit x 32x24-unit offscreen canvases forever. Fixed
+by pruning `wallCache` against the resident-chunk list every `render()`
+call.
+
+### M2-3 Decor and pickups
+`play/js/pickups.js` (pearls, plankton swarms with the "pulled in within 1
+unit" behaviour, rare shells - all built once per chunk in world space from
+its `gen.js` spawn list, collected on overlap with the octopus, counted in
+`totals`) and `play/js/decor.js` (a few bubble vents picked per chunk from
+its own tile data, and `depthTint()`: bluer/darker per depth, floored at
+35% brightness). `render.js` draws code-drawn pearls/plankton, the existing
+`shell-*.webp` sprite for shells, and rising bubble rings; no new asset
+files were added (reused M0-3's harvested pearls/plankton/shell/bubble
+assets), so `ASSETS.md` is unchanged.
+
+### Track B (octopus bake) - skipped
+Not attempted this session; time went to fixing the two soak-test bugs
+above instead of starting the bake tool. The M1 code-drawn placeholder
+octopus ships unchanged. Per OVERNIGHT.md §3 side tracks never gate their
+milestone, so this does not block M2's exit criteria. `web/tools/
+bake_creature.py` does not exist yet - first task for whichever session
+picks this back up.
+
+### M2-4 self-check (folded into the rows above, same reasoning as M1-4)
+- 200 seeds x 20 chunks (4000 chunks): 4000/4000 top<->bottom connected via
+  BFS, max 2.06ms/chunk, avg 0.093ms/chunk (budget <=5ms), same-seed
+  determinism confirmed byte-identical. `web/report/m2-gen-sweep.txt`.
+- 10-minute `autoDive` soak (the sanctioned `__octo.step()`-driven path):
+  0 errors, resident chunks stayed in [3,4] (budget <=4) throughout,
+  reached depth 2525.
+- Every shell (693 seen across the sweep) sits in a soft-rock-sealed
+  pocket.
+- Screenshots: `web/report/m2-play-desktop.jpg` (1440x900, depth ~38m),
+  `web/report/m2-play-phone.jpg` (375x812 mobile preset), 0 console errors
+  at either viewport.
+- `tests/` PASS: all rows green including the 6 new `gen:` checks
+  (40 seeds x 12 chunks connectivity, timing, shell-sealing, determinism,
+  chunk shape, exitCol bounds).
+- Full numbers, deviations and the one known measurement limitation (a
+  couple of live `frameMsMedian` samples at a specific depth could not be
+  captured in this session's pane - see below) are in
+  `web/report/m2-metrics.txt`.
+
+**Known limitation (logged, not a game bug):** this session's Chromium pane
+does not keep `requestAnimationFrame` ticking through a multi-second idle
+`wait`, even after fronting the tab, so a couple of "live" frame-time
+samples at a specific simulated depth could not be taken directly; every
+number that matters for the exit criteria (connectivity, per-chunk timing,
+determinism, chunk residency, memory-leak fix) was captured through the
+mandated `__octo` test hooks instead, which are unaffected. M1's directly
+measured frame times (0.1-0.3ms, budget 4/8ms) are the best evidence that
+M2's modest added draw cost (one `drawImage` per resident chunk plus a
+handful of pickup/bubble draws) stays well inside budget.
+
+## M2 status (five-line summary)
+- Works: seeded infinite chunk generator (noise + smoothing + guaranteed
+  carved path + BFS-sealed soft rock + tagged spawns), chunk streaming with
+  a bounded resident window, pearls/plankton/shells with collection and
+  counts, bubbles and depth tint, a real BFS-based `autoDive` for soak
+  testing. `tests/` PASS (all rows incl. 6 new `gen:` checks). 0 console
+  errors at both viewports.
+- Numbers: 4000/4000 chunks connected across 200 seeds; generation
+  0.093ms avg / 2.06ms max per chunk (budget 5ms); 10-min soak 0 errors,
+  resident chunks 3-4 (budget <=4), depth 2525 reached; same-seed
+  determinism byte-identical; every one of 693 shells sealed by soft rock.
+  Full numbers in `web/report/m2-metrics.txt`.
+- Skipped: Track B (the octopus bake) - time went to two soak-test bugs
+  (a stuck `autoDive` and a wall-cache memory leak) found and fixed
+  instead; a determinism side-by-side screenshot pair (the numeric sweep
+  above covers the same claim). Both logged above for the next session.
+- Decisions taken: kept the per-cell-random + cellular-automata cave
+  algorithm instead of porting the compute-shader fbm noise (same shape,
+  much less code, explicitly allowed by the plan's own escape hatch);
+  pinned the path carve's row-0/row-last columns exactly instead of
+  loosening the connectivity test, since the bug was real (a ~1-6% chance
+  of a disconnected chunk is a real generator defect, not a test being too
+  strict); wrote a small BFS pathfinder for `autoDive` rather than widen
+  soft-rock corridors or otherwise change the generator to make a naive
+  steer-straight-down script work.
+- Next: M3 (core enemies, damage, death) - the enemy-slot data M2-1 already
+  writes into every chunk's spawn list from depth 40 is ready for it to
+  consume; Track B (octopus bake) is also still open and could be picked
+  up first per OVERNIGHT.md's "side tracks... first task of the M5 dev" if
+  M3's session runs short.

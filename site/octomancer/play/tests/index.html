@@ -71,6 +71,10 @@ import { createInput } from '../js/input.js';
 import { runSwimTests } from './swim.test.js';
 runSwimTests(assert, approx);
 
+// --- M2 world generator tests (gen.js) ---
+import { runGenTests } from './gen.test.js';
+runGenTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
