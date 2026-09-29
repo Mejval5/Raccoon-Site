@@ -626,8 +626,10 @@ exports.dary = onRequest(
           res.status(405).json({ ok: false, error: "method" });
           return;
         }
-        const cookieValue = parseCookie(req.get("cookie"), "svatba");
-        if (!verifyToken(cookieValue)) {
+        // Firebase Hosting strips every cookie except "__session" before a request reaches a function,
+        // so the page sends the invite token in X-Svatba-Token. The cookie is still accepted for direct calls.
+        const inviteToken = req.get("x-svatba-token") || parseCookie(req.get("cookie"), "svatba");
+        if (!verifyToken(inviteToken)) {
           res.status(403).json({ ok: false, error: "forbidden" });
           return;
         }

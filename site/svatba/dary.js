@@ -50,7 +50,10 @@
     if (host === 'localhost' || host === '127.0.0.1') {
       return Promise.resolve(DEMO_TOTAL);
     }
-    return fetch('/api/dary', { credentials: 'same-origin' })
+    // Firebase Hosting drops our cookie on the way to the function, so send the invite token explicitly.
+    var m = document.cookie.match(/(?:^|;\s*)svatba=([^;]*)/);
+    var inviteToken = m ? decodeURIComponent(m[1]) : '';
+    return fetch('/api/dary', { credentials: 'same-origin', headers: { 'X-Svatba-Token': inviteToken } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { return d && typeof d.total === 'number' ? d.total : null; })
       .catch(function () { return null; });
