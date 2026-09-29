@@ -384,8 +384,21 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
       const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
       const openAbove = chunk.tiles[(ty - 1) * chunkW + tx] === 0;
       const openBelow = chunk.tiles[(ty + 1) * chunkW + tx] === 0;
-      if (openAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
-      else if (openBelow && h % 7 === 0) out.push({ tx, ty, onCeiling: true, hash: h });
+      // Round-17 fix (Daniel's screenshot review: "a vine placed in a
+      // 1-tile-high notch grows from the notch floor all the way up to the
+      // notch ceiling, top leaves pressed against the rim -- looks cramped
+      // and wedged in"). The sprite is drawn at a fixed height regardless of
+      // how much open space is actually above/below the anchor, so a floor
+      // anchor whose ceiling is only 1 tile up (or a ceiling anchor whose
+      // floor is only 1 tile down) has nowhere for the plant to taper before
+      // hitting rock. Require a second open tile beyond the immediate one in
+      // the growth direction (out-of-bounds treated as open -- open water
+      // continuing past this chunk's edge is never the notch this guards
+      // against) so a plant only ever anchors where it actually has room.
+      const clearAbove = ty - 2 < 0 || chunk.tiles[(ty - 2) * chunkW + tx] === 0;
+      const clearBelow = ty + 2 >= chunkH || chunk.tiles[(ty + 2) * chunkW + tx] === 0;
+      if (openAbove && clearAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
+      else if (openBelow && clearBelow && h % 7 === 0) out.push({ tx, ty, onCeiling: true, hash: h });
     }
   }
   return out;

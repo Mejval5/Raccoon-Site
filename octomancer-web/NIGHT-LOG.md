@@ -2506,3 +2506,46 @@ across scripted autodives on seeds 1, 7 (desktop 1440x900) and 42 (phone
 Screenshots: `octomancer-web/night/fix-r16-dive-{s1-desk,s7-desk}-{spawn,
 0..3}.png`, `fix-r16-phone-s42-{spawn,0..3}.png`, zoomed crops
 `fix-r16-zoom-{octo,wall-enemy,phone-enemy}.png`.
+
+## Round 17: soft-rock smudge, vine wedged in notch
+
+Two visual fixes from Daniel's screenshot review round 17.
+
+1. **Soft (breakable) rock smudge.** Every earlier attempt at a soft-rock
+   visual cue (round 2's flat tinted rect, round 8's grain, round 15's
+   feathered radial mask) still read wrong once actually exposed on a
+   surface: round 15's feathering fixed the hard-square-edge complaint but
+   introduced a new one -- a single, blurry brown/orange circular smudge
+   about a tile across, floating inside the dark rock just below the green
+   rim, nothing like the promo video's plain grey boulder look, and close to
+   Daniel's separate "tile drawn as a circle" complaint. Rather than tune
+   the tint's shape a fourth time, dropped it entirely (`render.js`): soft
+   rock now bakes through the exact same fill/rim/grain pass as normal rock,
+   with no distinguishing tint at all -- consistent with round 16's pearl
+   removal (don't keep reworking art that was never Milan's). Breakable
+   tiles are still tracked and still break on hit; only the visual cue is
+   gone. Removed `coralNoiseCanvas`/`coralNoisePattern`, `softMaskCanvas`,
+   `softTileScratch`/`softTileScratchCtx` and `paintSoftTile` along with the
+   per-tile tint loop in `bakeChunkWalls` -- nothing else referenced them.
+
+2. **Vine wedged into a 1-tile notch.** `decor.js`'s `findPlantAnchors`
+   placed a floor/ceiling foliage anchor whenever the single adjacent tile
+   was open, with no check on how much open space actually continued beyond
+   it -- so a floor anchor in a notch only 1 tile tall (solid again right
+   above) grew a vine sprite at its fixed height straight into the ceiling,
+   leaves pressed against the rim. Added a second-tile clearance check
+   (`clearAbove`/`clearBelow`, out-of-bounds treated as open since that's
+   just the cave continuing past this chunk, never the notch case) so a
+   plant only anchors where there's real room to taper into; `decor.test.js`
+   still passes unchanged (average anchor count/floor-vs-ceiling
+   split/cluster sizes all stayed within their existing asserted ranges).
+
+Verification: `tests/` 1694/1694 headless (own threaded `http.server` with
+no-cache headers on a free port, stopped after). 0 console errors across
+scripted autodives on seeds 1, 7 (desktop 1440x900) and 42 (phone 375x812),
+plus a targeted teleport to seed 77's soft-rock area (the exact spot called
+out in the review) confirming it now bakes as plain rock.
+
+Screenshots: `octomancer-web/night/fix-r17-dive-{s1-desk,s7-desk,
+s42-phone}-{spawn,0..3}.png`, `fix-r17-zoom-softrock-s77.png`,
+`fix-r17-zoom-{octopus-enemies,vines}.png`.
