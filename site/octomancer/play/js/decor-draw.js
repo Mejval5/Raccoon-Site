@@ -38,6 +38,36 @@ const IMAGES = {
 
 function ready(img) { return img.complete && img.naturalWidth > 0; }
 
+// Round-3 fix (Daniel's screenshot review: "rune glyphs are drawn inside a
+// visible pale-blue rectangle, and float in open water beside the walls
+// instead of sitting on the rock face"). The old tint drew straight onto the
+// main canvas with `globalCompositeOperation = 'source-atop'` -- but
+// `source-atop` only keeps the *new* paint where the canvas ALREADY has
+// opaque pixels, and by the time this ran the whole scene behind it (rock,
+// water, whatever else already drew) was opaque, not just the rune sprite,
+// so the fill landed as a solid pale-blue rectangle over everything under
+// it. Tinting on a small offscreen canvas -- draw the glyph alone, then
+// `source-atop` fill just that canvas -- keeps the transparency mask scoped
+// to the sprite's own alpha, so only the glyph's own pixels tint. Built once
+// per rune kind and cached (never per frame, never per instance).
+const tintedRuneCache = {};
+function getTintedRune(kind) {
+  const cached = tintedRuneCache[kind];
+  if (cached) return cached;
+  const img = IMAGES[kind];
+  if (!ready(img)) return null;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const cctx = c.getContext('2d');
+  cctx.drawImage(img, 0, 0);
+  cctx.globalCompositeOperation = 'source-atop';
+  cctx.fillStyle = 'rgba(150,205,255,0.75)';
+  cctx.fillRect(0, 0, c.width, c.height);
+  tintedRuneCache[kind] = c;
+  return c;
+}
+
 /** Draws one critter with its idle motion baked into the transform, so the
  * caller never needs per-frame state -- everything is a function of `time`
  * and the critter's own fixed `phase`. Motion is skipped (static pose) under
@@ -105,12 +135,9 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // blobs read far more saturated than the video's pale sage/beige plants;
   // mute it at draw time (no new art) rather than editing the source webp.
   if (c.kind === 'bushmini') ctx.filter = 'grayscale(0.6) sepia(0.45) saturate(1.4) brightness(1.15)';
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
-  if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = 'rgba(150,205,255,0.75)';
-    ctx.fillRect(-w / 2, -h / 2, w, h);
-  }
+  const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
+  const drawImg = isRune ? (getTintedRune(c.kind) || img) : img;
+  ctx.drawImage(drawImg, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
 

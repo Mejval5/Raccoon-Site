@@ -7,7 +7,44 @@
 // nominal height so render.js's camera-bounds call site did not need to
 // change shape.
 
-import { createGenerator, CHUNK_W, CHUNK_H, shaveNubsAndSmallIslands } from './gen.js';
+import { createGenerator, CHUNK_W, CHUNK_H, BORDER, shaveNubsAndSmallIslands } from './gen.js';
+
+// Round-3 fix (Daniel's screenshot review: "single-tile nubs ... the same
+// pair of stubs appears at the same x positions in seed 42 at depth 46 and
+// seed 19 at depth 74" -- both chunk-boundary depths, 24 apart, i.e. exactly
+// CHUNK_H). `shaveNubsAndSmallIslands` (gen.js) deliberately skips a chunk's
+// own top and bottom row (`for y=1; y<CHUNK_H-1`) because the neighbouring
+// chunk it would need to check isn't generated yet when a chunk generates.
+// By the time a chunk's DOWNSTREAM neighbour exists (this module generates
+// chunks strictly top-to-bottom, `ensureNext`), both rows either side of the
+// seam are known, so re-run the same "3+ open sides -> water" shave across
+// just that seam, treating the two chunks' abutting rows as one connected
+// strip. Only ever turns solid to water (like `shaveNubsAndSmallIslands`
+// itself), so it can't disconnect anything already carved -- no reachability
+// re-check needed. */
+function seamOpen(top, bottom, x, y) {
+  if (x < BORDER || x >= CHUNK_W - BORDER) return false; // the level's real side border, not noise
+  if (y < 0) return false; // unknown row above `top`: treat as solid/safe
+  if (y < CHUNK_H) return top.tiles[y * CHUNK_W + x] === 0;
+  if (y === CHUNK_H) return bottom.tiles[x] === 0; // bottom's own row 0
+  return false; // unknown row below `bottom`'s row 0: treat as solid/safe
+}
+function countOpenSeam(top, bottom, x, y) {
+  return (seamOpen(top, bottom, x, y - 1) ? 1 : 0) + (seamOpen(top, bottom, x, y + 1) ? 1 : 0)
+    + (seamOpen(top, bottom, x - 1, y) ? 1 : 0) + (seamOpen(top, bottom, x + 1, y) ? 1 : 0);
+}
+function shaveChunkSeam(top, bottom) {
+  for (let pass = 0; pass < 2; pass++) {
+    const topY = CHUNK_H - 1;
+    for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
+      const i = topY * CHUNK_W + x;
+      if (top.tiles[i] !== 0 && countOpenSeam(top, bottom, x, topY) >= 3) top.tiles[i] = 0;
+    }
+    for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
+      if (bottom.tiles[x] !== 0 && countOpenSeam(top, bottom, x, CHUNK_H) >= 3) bottom.tiles[x] = 0;
+    }
+  }
+}
 
 export const WORLD_W = CHUNK_W;
 // There is no real bottom; a very large nominal height keeps camera.js's
@@ -41,7 +78,11 @@ export function createWorld(seed) {
     // that old "assume solid" fallback for its own bottom row, so re-dirty
     // it now that its true neighbour is known.
     const prev = chunks.get(i - 1);
-    if (prev) prev.dirty = true;
+    if (prev) {
+      prev.dirty = true;
+      shaveChunkSeam(prev, c); // round-3 fix: shave chunk-boundary nubs now both sides of the seam are known
+      c.dirty = true;
+    }
     return c;
   }
 

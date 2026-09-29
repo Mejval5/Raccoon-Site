@@ -26,7 +26,13 @@ const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 // like a bullet hole -- a grey spiky ring with a dark centre, not a readable
 // cave feature at this art scale) is removed from spawn entirely, below.
 export const CRITTER_KINDS_WALL = ['snail', 'eye', 'eyeblue', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
-export const CRITTER_KINDS_OPEN = ['fish', 'jelly'];
+// Round-3 fix (Daniel's screenshot review: "the faint open-water 'jelly'
+// critter reads as a UI glyph, a flat teal dot above two dashes, a bit like
+// a person icon -- nothing like it appears in the promo video"). The
+// `critter-jelly.webp` export looks like a cropped/low-alpha fragment of the
+// jellyfish art rather than a readable creature at this scale; dropped from
+// spawn rather than re-exporting art out of scope for a visual-fixes pass.
+export const CRITTER_KINDS_OPEN = ['fish'];
 
 /** Cheap 32-bit integer hash of two ints (no external state, no RNG stream
  * to keep in sync) -- used only to pick which cells get a critter and which
@@ -104,8 +110,16 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // tile off the visible rim even unjittered, because the rim art
         // itself is inset from the tile edge -- a deeper anchor for those
         // brings them flush against the rim instead of hovering just past it.
+        //
+        // Round-3 fix (Daniel's screenshot review): eyes/runes still read as
+        // floating in open water next to the rock, not marks ON it -- 0.5
+        // tile in still leaves most of a 0.36-0.4-unit sprite sitting past
+        // the rim in open water. Deepened further (0.65) so the anchor -- and
+        // now the rune's own tint (decor-draw.js's `getTintedRune`) -- lands
+        // on the rock face itself, matching the promo video's runes/crosses
+        // painted onto the rock.
         const isRimKind = kind === 'eye' || kind === 'eyeblue' || kind.startsWith('rune');
-        const INTO_WALL = (isRimKind || wallSide) ? 0.5 : 0.3;
+        const INTO_WALL = isRimKind ? 0.65 : (wallSide ? 0.5 : 0.3);
         let ax = x + 0.5, ay = y + yOffset + 0.5;
         let wallDir = 0;
         if (floorCap) ay += INTO_WALL;
@@ -114,8 +128,24 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
           wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;
           ax += wallDir * INTO_WALL;
         }
-        const jitter = (((h >>> 5) % 21) - 10) / 10 * 0.3; // ~RandomOffsetRangeX/Y
-        if (floorCap || ceilingCap) ax += jitter; else ay += jitter;
+        // Round-3 fix (Daniel's screenshot review: "some wall eye critters
+        // float in open water up to about 1 tile from any rock" -- a side
+        // eye sitting entirely in the water, just touching the rim, and one
+        // above a step corner). The along-wall jitter can carry the anchor
+        // past the end of a short wall face onto a cell that is not actually
+        // solid there; clamp it to 0 whenever the jittered position would no
+        // longer border its solid anchor neighbour, so decor never drifts
+        // off the wall it was placed on.
+        let jitter = (((h >>> 5) % 21) - 10) / 10 * 0.3; // ~RandomOffsetRangeX/Y
+        if (floorCap || ceilingCap) {
+          const jx = Math.min(chunkW - 1, Math.max(0, Math.round(x + jitter)));
+          if (chunk.tiles[anchorSolidY * chunkW + jx] === 0) jitter = 0;
+          ax += jitter;
+        } else {
+          const jyLocal = Math.min(chunkH - 1, Math.max(0, Math.round(y + jitter)));
+          if (chunk.tiles[jyLocal * chunkW + anchorSolidX] === 0) jitter = 0;
+          ay += jitter;
+        }
         out.push({
           kind, x: ax, y: ay,
           onFloor: floorCap, onCeiling: !floorCap && ceilingCap, wallDir,

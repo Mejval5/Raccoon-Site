@@ -68,7 +68,15 @@ import { prefersReducedMotion } from './config.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
-const BAKE_PX_PER_UNIT = 48; // resolution chunk wall bakes are rendered at
+// Round-3 fix (Daniel's screenshot review: "on desktop retina the rim is
+// visibly stair-stepped and soft, because walls are baked at 48px/tile and
+// upscaled to about 74 device px/tile"). Baking at a fixed 48px/tile was
+// already coarser than a typical desktop's own device pixels even at 1x
+// zoom, and DPR 2 (`devicePixelRatio`) doubles that again. Scale the bake
+// resolution by the page's own DPR (capped so a stray DPR 3-4 display, or a
+// very zoomed-in view, doesn't blow up chunk canvas memory -- each one is
+// already `32 x 24` tiles).
+const BAKE_PX_PER_UNIT = Math.min(96, Math.round(48 * (typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1)));
 
 // The cave silhouette fades out by this world depth, below which the deep
 // gradient (plus the existing depth tint / caustics / vignette) carries the
@@ -104,6 +112,18 @@ export function createRenderer(ctx, world) {
   // for free, with zero added per-chunk or per-frame cost.
   const WALL_FILL_COLOR = [34, 56, 112];
   const WALL_FILL_THRESHOLD = 24; // tile art's fill is pure (0,0,0); the rim art is nowhere near this dark
+  // Round-3 fix (Daniel's screenshot review: "the rim is thicker and a
+  // different, bluer green [(11,85,78)] at concave/convex corners than along
+  // straight edges [(2,88,62)] -- every step corner shows a dark blob"). The
+  // source tile images (tile-2/2A edge, tile-3 corner, tile-5 corridor) each
+  // carry their own rim colour baked in, close but not identical; recolour
+  // that too (same technique this function already uses for the black fill)
+  // so every tile's rim comes out the one canonical `RIM_TARGET` colour, the
+  // same one `RIM_COLOR`/`drawNubTile`'s procedural rim below already use --
+  // no more per-corner colour seam. Any opaque pixel that isn't the near-
+  // black fill is rim art at this style's two-tone tile art (fill + rim), so
+  // no separate greenish-hue detection is needed.
+  const RIM_TARGET = [25, 109, 94]; // sampled from the promo-video reference frames
   function recolorWallTile(img) {
     const c = document.createElement('canvas');
     c.width = img.naturalWidth;
@@ -116,6 +136,8 @@ export function createRenderer(ctx, world) {
       if (d[i + 3] === 0) continue;
       if (d[i] < WALL_FILL_THRESHOLD && d[i + 1] < WALL_FILL_THRESHOLD && d[i + 2] < WALL_FILL_THRESHOLD) {
         d[i] = WALL_FILL_COLOR[0]; d[i + 1] = WALL_FILL_COLOR[1]; d[i + 2] = WALL_FILL_COLOR[2];
+      } else {
+        d[i] = RIM_TARGET[0]; d[i + 1] = RIM_TARGET[1]; d[i + 2] = RIM_TARGET[2];
       }
     }
     cctx.putImageData(id, 0, 0);
@@ -163,8 +185,33 @@ export function createRenderer(ctx, world) {
   let tilesReady = false;
   let pending = Object.keys(wallTileSources).length;
   function onTileReady() { if (--pending === 0) tilesReady = true; }
+  // Round-3 fix (Daniel's screenshot review: "when one asset request fails
+  // (net::ERR_CONNECTION_REFUSED), the game silently renders with no walls
+  // at all... nothing indicates an error"). `tilesReady` used to gate ALL
+  // wall baking on EVERY tile image loading -- one failed request meant
+  // `pending` never reached 0, so `getBakedWalls` returned null forever and
+  // the whole level's geometry (and its rim art, the player's only visual
+  // read on where rock is) vanished with no signal at all. Now: (1) retry a
+  // failed tile image a couple of times (a transient network blip, like
+  // Daniel's first run, often clears on its own); (2) if it still fails,
+  // give up on that ONE tile key (not the whole bake) and let `tilesReady`
+  // still flip true once every other tile has resolved; `bakeChunkWalls`
+  // below falls back to a flat rock fill + rim stroke for any tile whose art
+  // never arrived, so the level is always at least readable as rock.
   for (const [key, img] of Object.entries(wallTileSources)) {
+    const src = img.src;
+    let tries = 0;
+    const retry = () => {
+      tries++;
+      img.src = tries === 1 ? src : `${src}${src.includes('?') ? '&' : '?'}retry=${tries}`;
+    };
     img.addEventListener('load', () => { wallArt[key] = recolorWallTile(img); onTileReady(); }, { once: true });
+    img.addEventListener('error', () => {
+      // eslint-disable-next-line no-console
+      console.warn(`[render] wall tile "${key}" failed to load (attempt ${tries})`);
+      if (tries < 3) setTimeout(retry, 250 * tries);
+      else onTileReady(); // give up on this tile only; bakeChunkWalls falls back to a flat fill
+    });
   }
 
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
@@ -259,9 +306,12 @@ export function createRenderer(ctx, world) {
   // the tileset's own rim colour, then a smaller destination-out wedge to
   // cut the actual water notch. k = 0..3 for TL/TR/BR/BL, matching the
   // quarter-turn convention above.
-  // Sampled from the rim art in the promo-video reference frames (~rgb(8,104,88));
-  // close to the old value, nudged to match exactly.
-  const RIM_COLOR = 'rgba(9,100,84,0.95)';
+  // Round-3 fix (Daniel's screenshot review: rim reads darker than the video
+  // -- measured (4,83,64) vs. the video's (25,109,94)). Brightened to match;
+  // shares its RGB with `RIM_TARGET` above so the procedural rim (concave
+  // corners, `drawNubTile`, the fallback tile below) and the recoloured
+  // sprite rim are the exact same colour everywhere.
+  const RIM_COLOR = `rgba(${RIM_TARGET.join(',')},0.95)`;
   function carveConcaveCorner(bctx, cx, cy, k, r) {
     const a0 = k * (Math.PI / 2), a1 = a0 + Math.PI / 2;
     bctx.save();
@@ -437,13 +487,22 @@ export function createRenderer(ctx, world) {
         const { key, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
         if (key === 'nub') {
           drawNubTile(bctx, px, py, s, turns);
-        } else {
-          const img = wallArt[key];
+        } else if (wallArt[key]) {
           bctx.save();
           bctx.translate(px + s / 2, py + s / 2);
           bctx.rotate(turns * (Math.PI / 2));
-          bctx.drawImage(img, -s / 2, -s / 2, s, s);
+          bctx.drawImage(wallArt[key], -s / 2, -s / 2, s, s);
           bctx.restore();
+        } else {
+          // Round-3 fix: this tile's art image never loaded (see the
+          // wallTileSources retry/give-up block above) -- draw a flat rock
+          // fill with a rim stroke instead of leaving this tile as invisible
+          // open water, so level geometry is never silently missing.
+          bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+          bctx.fillRect(px, py, s, s);
+          bctx.strokeStyle = RIM_COLOR;
+          bctx.lineWidth = s * 0.08;
+          bctx.strokeRect(px + bctx.lineWidth / 2, py + bctx.lineWidth / 2, s - bctx.lineWidth, s - bctx.lineWidth);
         }
 
         // Round-2 fix (Daniel's screenshot review: soft rock buried inside
@@ -528,11 +587,17 @@ export function createRenderer(ctx, world) {
   // the existing depth falloff shape (still goes dark at extreme depth, for
   // gameplay readability) but recalibrated both endpoints to start from that
   // bright cyan instead of the old near-black base.
+  // Round-3 fix (Daniel's screenshot review: "the water is noticeably darker
+  // and more muted than the video: median (99,197,213) at spawn, against the
+  // video's flat bright cyan (132,253,251)"). Both gradient stops nudged
+  // brighter so the shallow-water median lands on the video's measured
+  // colour instead of undershooting it; the depth-darkening falloff itself
+  // (still goes dark at extreme depth, for gameplay readability) is unchanged.
   function drawBackground(canvasW, canvasH, time, depth) {
     const t = Math.min(1, depth / 400);
     const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
-    grad.addColorStop(0, `rgb(${lerp(120, 20, t)},${lerp(235, 46, t)},${lerp(248, 76, t)})`);
-    grad.addColorStop(1, `rgb(${lerp(95, 10, t)},${lerp(205, 26, t)},${lerp(228, 46, t)})`);
+    grad.addColorStop(0, `rgb(${lerp(140, 20, t)},${lerp(252, 46, t)},${lerp(252, 76, t)})`);
+    grad.addColorStop(1, `rgb(${lerp(118, 10, t)},${lerp(230, 26, t)},${lerp(238, 46, t)})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
     drawCaveArt(canvasW, canvasH, depth);
@@ -822,7 +887,6 @@ export function createRenderer(ctx, world) {
       ctx.translate(shakePx.x, shakePx.y);
       const reduced = prefersReducedMotion();
       drawBackground(canvasW, canvasH, time, depth);
-      drawOuterRock(canvasW, canvasH);
       drawCaustics(canvasW, canvasH, time, reduced);
       // Layering pass: plants/decor draw BEFORE the walls now (was after), so
       // the wall bake -- opaque rock art -- composites on top and occludes
@@ -834,6 +898,16 @@ export function createRenderer(ctx, world) {
       // round.
       drawPlants(canvasW, canvasH, resident);
       drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time); // Otter's alive pass
+      // Round-3 fix (Daniel's screenshot review: "each light shaft ends in a
+      // hard straight vertical edge at the level boundary" -- `drawOuterRock`
+      // used to draw right after the background, BEFORE `drawCaustics`, so
+      // the light-shaft streaks painted over the outer rock (outside the
+      // 32-tile level) but the walls -- drawn later, opaque -- occluded them
+      // from ever showing on the level's own rock. Moved into this same
+      // "rock" compositing step, after caustics and right alongside
+      // `drawWalls`, so outer rock occludes the shafts exactly the same way
+      // the level's own walls already do -- no shaft shows on rock anywhere.
+      drawOuterRock(canvasW, canvasH);
       drawWalls(canvasW, canvasH, resident);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);

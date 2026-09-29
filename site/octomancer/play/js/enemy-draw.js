@@ -29,6 +29,30 @@ const mantaBallImg = loadImage(ASSET('enemy-manta-ball.webp'));
 
 function ready(img) { return img.complete && img.naturalWidth > 0; }
 
+// Round-3 fix (Daniel's screenshot review: crabs float about half a tile
+// above the floor they walk on, and the ceiling "horns" spike floats below
+// the ceiling with a gap of water above it). Root cause: `gen.js` spawns
+// every enemy slot at its open cell's centre (`y+0.5`), and both draw calls
+// below drew their sprite centred exactly there, with no regard for
+// `e.placement`. That centres a floor-walking crab about half its own
+// height above the actual floor surface, and the rim art itself is inset a
+// little further still from the tile edge on top of that (the same inset
+// `decor.js`'s wall critters already correct for). Rather than move the
+// enemy's simulation `x`/`y` (which also drives collision -- out of scope
+// for a visual-only pass), nudge the *draw* position toward the anchor
+// surface: floor placements draw further down (toward positive y, since the
+// solid floor tile is at y+1), ceiling placements further up, by enough to
+// close the half-sprite gap plus the rim's own inset. Mirrors `PLANT_INTO_WALL`
+// (render.js) and `INTO_WALL` (decor.js), the same "anchor slightly into the
+// solid neighbour" idea already used for plants and wall critters.
+const GROUND_RIM_INSET = 0.15; // matches decor.js's wall-rim inset note
+function surfaceDrawOffset(placement, worldSize) {
+  const push = 0.5 - worldSize / 2 + GROUND_RIM_INSET;
+  if (placement === 'floor') return push;
+  if (placement === 'ceiling') return -push;
+  return 0;
+}
+
 /** Draw one image centered at world (x,y), sized to `worldSize` units tall
  * (width follows the image's own aspect ratio), tinted red briefly on hit. */
 function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, worldSize, angle, hitFlash) {
@@ -82,10 +106,12 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       const img = e.variant === 'fast' ? crabFastImg : crabSlowImg;
       // Face the walk direction; flip vertically when it's hanging from a
       // ceiling so it always reads feet-toward-the-surface.
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, e.x, e.y, 0.7, e.dir < 0, e.placement === 'ceiling', e.hitFlash);
+      const dy = surfaceDrawOffset(e.placement, 0.7);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, e.x, e.y + dy, 0.7, e.dir < 0, e.placement === 'ceiling', e.hitFlash);
     } else if (e.kind === 'horns') {
       const flip = e.placement === 'ceiling';
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, e.x, e.y, 0.9, false, flip, e.hitFlash);
+      const dy = surfaceDrawOffset(e.placement, 0.9);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, e.x, e.y + dy, 0.9, false, flip, e.hitFlash);
     } else if (e.kind === 'manta') {
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, e.x, e.y, 0.9, e.dir < 0, false, e.hitFlash);
     }

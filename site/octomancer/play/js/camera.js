@@ -2,7 +2,7 @@
 // following the octopus's interpolated (render-alpha) position.
 // Ports octomancer-unity/Assets/Scripts/Camera/CameraPos.cs:108-147
 // (GetCamSizeDefault + BoundCam) to a 2D canvas pxPerUnit + clamp.
-import { CAMERA_MIN_WIDTH, CAMERA_MIN_HEIGHT } from './config.js';
+import { CAMERA_MIN_WIDTH, CAMERA_MIN_HEIGHT, CAMERA_MAX_WIDTH } from './config.js';
 
 export function createCamera() {
   return { x: 0, y: 0, pxPerUnit: 32 };
@@ -14,7 +14,13 @@ export function createCamera() {
 export function computePxPerUnit(canvasW, canvasH) {
   const scaleForWidth = canvasW / CAMERA_MIN_WIDTH;
   const scaleForHeight = canvasH / CAMERA_MIN_HEIGHT;
-  return Math.min(scaleForWidth, scaleForHeight);
+  const base = Math.min(scaleForWidth, scaleForHeight);
+  // Round-3 fix (Daniel's screenshot review, framing too small/empty on
+  // desktop -- see CAMERA_MAX_WIDTH's comment in config.js): never let more
+  // than CAMERA_MAX_WIDTH world units show across, even when the min-height
+  // requirement above would otherwise leave the width unconstrained.
+  const capScale = canvasW / CAMERA_MAX_WIDTH;
+  return Math.max(base, capScale);
 }
 
 /** CameraPos.BoundCam(): clamp the camera center so the viewport stays

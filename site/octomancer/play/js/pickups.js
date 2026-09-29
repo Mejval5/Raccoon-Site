@@ -25,7 +25,15 @@ function buildChunkPickups(chunk, yOffset, seedSalt) {
     if (s.type === 'pearl') {
       items.push({ type: 'pearl', x: s.x, y: wy, hidden: !!s.hidden, collected: false });
     } else if (s.type === 'shell') {
-      items.push({ type: 'shell', x: s.x, y: wy, collected: false });
+      // Round-3 fix (Daniel's screenshot review: "a shell is drawn inside
+      // plain, uniform solid rock, with nothing marking that rock as
+      // breakable" -- shells always spawn in a sealed soft-rock pocket
+      // (gen.js), but this used to draw them unconditionally, on top of the
+      // still-solid tile, with no `hidden` flag the way pearls already get).
+      // `hidden` starts true and is recomputed live in `update()` below from
+      // the chunk's own tile data, same idea as a hidden pearl -- so a shell
+      // only becomes visible once its pocket is actually bombed open.
+      items.push({ type: 'shell', x: s.x, y: wy, hidden: true, collected: false });
     } else if (s.type === 'plankton-swarm') {
       for (let i = 0; i < s.count; i++) {
         const a = rnd() * Math.PI * 2;
@@ -68,6 +76,15 @@ export function createPickups() {
         const items = ensureChunk(index, chunk, yOffset);
         for (const it of items) {
           if (it.collected) continue;
+          if (it.type === 'shell') {
+            // Live re-check (not baked in at spawn like a hidden pearl):
+            // a shell's own tile starts as soft rock (gen.test.js asserts
+            // this) and only turns to water once bombed, so `hidden` can
+            // simply track the tile's current value each step.
+            const lx = Math.floor(it.x), ly = Math.floor(it.y - yOffset);
+            const inChunk = lx >= 0 && lx < chunk.width && ly >= 0 && ly < chunk.height;
+            it.hidden = inChunk ? chunk.tiles[ly * chunk.width + lx] === 2 : it.hidden;
+          }
           if (it.type === 'plankton') {
             const d = dist(octo.x, octo.y, it.x, it.y);
             if (d < PLANKTON_PULL_RADIUS && d > 1e-4) {

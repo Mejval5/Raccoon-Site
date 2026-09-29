@@ -1283,3 +1283,112 @@ console errors at 1440x900 and 375x812, fresh spawn and mid-dive (multiple
 seeds, multiple chunk boundaries crossed). Screenshots:
 `octomancer-web/night/fix-r2-{desktop,phone,deep-desktop,deep-phone}.png`,
 zoomed crops `fix-r2-zoom-{octopus,walls}.png`.
+
+## Visual fixes round 3 (this session, per Daniel's screenshot review)
+
+Thirteen items, root-caused rather than patched at the symptom:
+
+1. **Blink/hurt eyes render as huge black-and-white bars.** Two causes in
+   `octopus-draw.js`'s `drawBaked()`. (a) `eyeWorldH`/`eyeWorldW` derived
+   BOTH dimensions from the open eye's rest HEIGHT, then stretched that
+   height by the current state's own aspect ratio to get the width -- so
+   `closed` (53x18, aspect ~2.9) drew nearly 3x as wide as the open eye's own
+   width. Now the WIDTH is derived from the open eye (constant across every
+   state, like a real eyelid over a fixed socket) and each state's own
+   height comes from its own aspect ratio -- `closed` is now the open eye's
+   width and only 18/53 as tall: a thin horizontal slit. (b) every clip's
+   eye anchor carries a near-constant ~2.05rad (~117deg) rotation, baked
+   into the anchor data itself (not real per-frame eye movement) -- invisible
+   on the round `open` sprite but turning the thin `closed`/`angry` sprites
+   almost vertical. Cached the idle-frame-0 angle per side once when the
+   bake loads and rotate by the angle RELATIVE to that rest pose instead of
+   the raw anchor angle, cancelling the constant offset.
+2. **Crabs float about half a tile above the floor.** `gen.js` spawns every
+   enemy slot at its open cell's centre; `enemy-draw.js` drew crabs centred
+   exactly there with no regard for `e.placement`, and the rim art's own
+   inset from the tile edge (repeated theme through rounds 1-2) added
+   further gap. Nudged the DRAW position (not the simulation x/y -- out of
+   scope for a visual pass) toward the anchor surface by `0.5 - worldSize/2
+   + a small rim inset`, mirroring `PLANT_INTO_WALL`/decor.js's `INTO_WALL`.
+3. **Ceiling "horns" spike floats below the ceiling.** Same root cause and
+   same fix shape as #2, mirrored for the ceiling direction.
+4. **Rune glyphs draw inside a visible pale-blue rectangle, floating in open
+   water.** The old tint drew `globalCompositeOperation: 'source-atop'` plus
+   a `fillRect` straight onto the MAIN canvas, where `source-atop` keeps new
+   paint wherever the canvas is ALREADY opaque -- by the time this ran, that
+   was the whole scene behind it, not just the glyph, so the fill landed as
+   a solid rectangle over everything under it. Now tints on a small cached
+   offscreen canvas (draw glyph, `source-atop` fill just that canvas, cache
+   per rune kind) so only the glyph's own alpha gets tinted. Also deepened
+   the rune/eye wall anchor (`decor.js`'s `INTO_WALL`, rim kinds) from 0.5 to
+   0.65 so more of the glyph sits over the rock's own (rim-inset) opaque
+   pixels, reading as a mark on the rock rather than floating past it.
+5. **Single-tile nubs still look like mushroom stubs at the same x
+   positions across seeds, 24 (=CHUNK_H) apart.** `shaveNubsAndSmallIslands`
+   (gen.js) deliberately skips a chunk's own top/bottom row, since the
+   neighbouring chunk it would need to check doesn't exist yet when a chunk
+   generates. `world.js` generates chunks strictly top-to-bottom, so by the
+   time a chunk's downstream neighbour exists, both rows either side of the
+   seam ARE known; added `shaveChunkSeam` there, re-running the same "3+
+   open sides -> water" rule across just that seam once both chunks exist.
+   Only ever turns solid to water (same as the function it mirrors), so it
+   can't disconnect anything already carved.
+6. **A shell renders inside plain, uniform rock, nothing marks it as
+   breakable.** Shells always spawn in a sealed soft-rock pocket but drew
+   unconditionally, with no `hidden` flag the way pearls already get.
+   `pickups.js` now starts a shell `hidden: true` and recomputes it live
+   from the chunk's own tile data each step -- visible only once its pocket
+   is actually bombed open, same idea as a hidden pearl.
+7. **Wall eye critters float up to ~1 tile from any rock.** The along-wall
+   jitter could carry the anchor past the end of a short wall face onto a
+   cell that wasn't actually solid there. Clamped: jitter is discarded (0)
+   whenever the jittered position would no longer border its solid anchor
+   neighbour. Also see #4's anchor-depth fix, which applies to eyes too.
+8. **Concave/convex corners show a darker, bluer-green rim blob; walls read
+   soft/stair-stepped at DPR 2.** The source tile images (edge/corner/
+   corridor art) each carry a slightly different rim colour baked in;
+   `recolorWallTile` now remaps every non-fill opaque pixel (not just the
+   near-black fill) to one canonical rim colour, so every tile's rim is
+   pixel-identical. Also: `BAKE_PX_PER_UNIT` was a fixed 48; now scales with
+   `devicePixelRatio` (capped at 96) so retina displays get a sharper bake
+   instead of a 48px/tile canvas stretched ~1.5-3x.
+9. **Light shafts show a hard vertical edge at the level boundary.**
+   `drawOuterRock` drew right after the background, BEFORE `drawCaustics`,
+   so shafts painted over the outer rock but the level's own walls (drawn
+   later, opaque) occluded them from ever showing on the level's own rock.
+   Moved `drawOuterRock` into the same compositing step as `drawWalls`,
+   after `drawCaustics` -- outer rock now occludes shafts exactly like the
+   level's own walls already did.
+10. **The open-water "jelly" critter reads as a UI glyph, not a creature.**
+    `critter-jelly.webp` looks like a cropped/low-alpha fragment of the
+    jellyfish art at this scale; dropped `'jelly'` from `CRITTER_KINDS_OPEN`
+    rather than re-exporting art out of scope for a visual-fixes pass.
+11. **Framing/colours don't match the video; everything reads tiny.**
+    `CAMERA_MIN_WIDTH`/`CAMERA_MIN_HEIGHT` only ever guaranteed a FLOOR on
+    visible extent; on a wide/short viewport the height requirement
+    dominated and width ballooned to ~39 tiles. Added `CAMERA_MAX_WIDTH`
+    (20) and `computePxPerUnit` now also enforces `canvasW / CAMERA_MAX_WIDTH`
+    as a floor on zoom, so a wide desktop viewport shows more height instead
+    of an ever-wider slice. Water gradient and the rim colour both
+    brightened to the video's measured values (water ~(132,253,251) at
+    spawn, rim ~(25,109,94)).
+12. **A failed asset request silently renders the level with no walls at
+    all, no error shown.** `tilesReady` gated ALL wall baking on EVERY tile
+    image loading; one failed request meant `pending` never reached 0 and
+    `getBakedWalls` returned null forever. Now: a failed tile image retries
+    (up to 2 more times, cache-busted); if it still fails, only that ONE
+    tile key gives up (not the whole bake), and `bakeChunkWalls` falls back
+    to a flat rock fill + rim stroke for any tile whose art never arrived --
+    level geometry is never silently missing.
+13. **Status of Daniel's original 7 items + round 2's 12:** all confirmed
+    still holding except items 4/6/7 from round 2 (nubs, rim/corner
+    colour, the horns "tentacle"), which are exactly items 5/8/3 above.
+
+Verification: `tests/` 65/65 (own threading `http.server` with no-cache
+headers on a free port, stopped after); puppeteer-core headless Chrome: 0
+console errors, 0 failed requests at 1440x900 (1x and 2x DPR) and 375x812
+(2x DPR), fresh spawn, mid-dive across several seeds, and two 20s `autoDive`
+soaks (one per size). Screenshots:
+`octomancer-web/night/fix-r3-{desktop,phone,desktop-dive,phone-dive}.png`,
+zoomed crops `fix-r3-zoom-{octo-open,octo-blink,octo-hurt,wall-critter,
+enemies,walls-corners}.png`.

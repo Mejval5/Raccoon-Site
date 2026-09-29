@@ -53,7 +53,22 @@ if (!FORCE_CODE) {
       img.src = 'assets/octopus.webp';
     }),
   ]).then(([data, img]) => {
-    bake = { data, img };
+    // Round-3 fix (Daniel's screenshot review, seed 42 depth 15 x2 + seed 11
+    // 1x: "the eyes turn into two huge black-and-white bars whenever it
+    // blinks, and in the hurt/angry state too"). Root cause 1b: every clip's
+    // eye anchor carries a near-constant ~2.05rad (~117deg) rotation that is
+    // invisible on the round `open` sprite but turns the thin `closed`/
+    // `angry` sprites almost vertical. That offset is baked into the anchor
+    // data itself (it does not represent real per-frame eye movement, which
+    // is much smaller), so cache the rest-pose (idle frame 0) angle per side
+    // once here and subtract it at draw time instead of rotating by the raw
+    // anchor angle -- see the per-side loop below.
+    const idle0 = data.eyeAnchors.idle && data.eyeAnchors.idle[0];
+    const eyeBaseAngle = {
+      left: idle0 && idle0.left ? idle0.left.angle : 0,
+      right: idle0 && idle0.right ? idle0.right.angle : 0,
+    };
+    bake = { data, img, eyeBaseAngle };
   }).catch((err) => {
     bakeFailed = true;
     // eslint-disable-next-line no-console
@@ -139,13 +154,37 @@ function drawBaked(ctx, o, bakeData) {
     // (too-large) scale while the body shrank around it -- two oversized
     // white eyeballs covering most of the now-smaller head. Multiplying by
     // the same OCTO_VISUAL_SCALE keeps eyes and body in the same ratio.
-    const eyeWorldH = restSize.meshH * data.meshUnitsToWorld * a.scale * OCTO_VISUAL_SCALE;
-    const eyeWorldW = eyeWorldH * (rect.w / rect.h);
+    //
+    // Round-3 fix, cause 1a (Daniel's screenshot review: blink/hurt eyes
+    // render as two huge black-and-white bars, seed 42 depth 15 x2 + seed 11
+    // 1x). This used to derive both eyeWorldH AND eyeWorldW from the OPEN
+    // eye's rest *height*, then stretched that height by the *current*
+    // state's own aspect ratio (`rect.w/rect.h`) to get the width -- so a
+    // sprite far wider than tall (`closed`, 53x18, ratio ~2.9) or noticeably
+    // taller (`angry`, 53x33, ratio ~1.6) than the open eye (60x60, ratio 1)
+    // drew far too wide relative to the open eye's own width. Deriving the
+    // WIDTH from the open eye instead (which stays constant across every
+    // state, matching how a real eyelid closes over a fixed eye socket) and
+    // computing each state's own height from ITS OWN aspect ratio gives a
+    // closed eye that is the same width as the open one and only 18/53 as
+    // tall -- a thin horizontal slit, not a bar.
+    const openRect = data.eyeSprites.open[side] || rect;
+    const openWorldH = restSize.meshH * data.meshUnitsToWorld * a.scale * OCTO_VISUAL_SCALE;
+    const openWorldW = openWorldH * (openRect.w / openRect.h);
+    const eyeWorldW = openWorldW;
+    const eyeWorldH = eyeWorldW * (rect.h / rect.w);
     const ex = (a.x - cell / 2) * toWorld;
     const ey = (a.y - cell / 2) * toWorld;
+    // Round-3 fix, cause 1b: see the `eyeBaseAngle` comment where the bake
+    // loads. Rotating by the raw anchor angle (~2.05rad/~117deg, present in
+    // every clip) is invisible on the round `open` sprite but turns a thin
+    // slit sprite (`closed`/`angry`) almost vertical; rotating by the angle
+    // *relative to* the idle rest pose cancels that constant baked-in offset
+    // while still tracking whatever small genuine eye movement the clip has.
+    const baseAngle = (bakeData.eyeBaseAngle && bakeData.eyeBaseAngle[side]) || 0;
     ctx.save();
     ctx.translate(ex, ey);
-    ctx.rotate(a.angle);
+    ctx.rotate(a.angle - baseAngle);
     ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
     ctx.restore();
   }

@@ -41,6 +41,17 @@ export const TILE_SIZE = 1;
 // octomancer-unity/Assets/Scripts/Camera/CameraPos.cs:137-148.
 export const CAMERA_MIN_WIDTH = 18;
 export const CAMERA_MIN_HEIGHT = 24;
+// Round-3 fix (Daniel's screenshot review: "on desktop the camera shows
+// about 39 tiles across, so the octopus is about 2% of screen width,
+// against about 6% in the promo frames -- everything reads tiny and
+// empty"). `CAMERA_MIN_WIDTH`/`CAMERA_MIN_HEIGHT` only ever guarantee a
+// FLOOR on visible extent (CameraPos.GetCamSizeDefault's own "never less,
+// extra shown on the other axis for off-ratio screens" behaviour) -- on a
+// wide/short desktop viewport the height requirement dominates and the
+// width shown balloons far past 18. Cap the width actually shown instead,
+// so a wide viewport shows more of the level's HEIGHT rather than an
+// ever-wider slice of it, matching the video's tighter framing.
+export const CAMERA_MAX_WIDTH = 20;
 
 // Sub-step when |v|*dt > r/2 (OVERNIGHT.md §2 "Physics").
 export const SUBSTEP_RADIUS_FACTOR = 0.5;
