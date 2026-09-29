@@ -854,7 +854,7 @@ export function createRenderer(ctx, world) {
           // `findClusterMates` (shared with decor.test.js) so this loop only
           // turns each validated slot into a draw call.
           for (const { dx, hash: h2 } of findClusterMates(chunk, chunkW, chunkH, tx, ty, false, h)) {
-            const useBush = h2 % 4 === 0 && clusterBush.complete && clusterBush.naturalWidth;
+            const useBush = false; // r15 review: decor-bush2 clashes with the pale vines; vine-only clusters
             const mateSway = reduced ? 0 : Math.sin(time * SWAY_SPEED * 1.3 + (h2 % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
             drawOnePlant(tx + dx + 0.5, cy + 0.05, mateSway, false, h2, useBush ? 0.9 : 0.7, useBush ? clusterBush : undefined);
           }
