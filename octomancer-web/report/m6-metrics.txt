@@ -1,0 +1,35 @@
+M6 The 2021 creatures -- metrics (OVERNIGHT.md §3 M6 exit criteria)
+
+Tests: tests/index.html -> PASS 57/57 (46 pre-M6 + 11 new M6 checks: mine
+touch-arms/explodes/chains, crab ledge-turn/dash-kill, horns
+contact/dash-immune/bomb-immune, manta drop-timing/dash-kill).
+
+Per-creature scripted check (via __octo.spawn), all green:
+  - Spiked mine: touch arms it (0.5s flash) then it explodes like a bomb,
+    breaks soft rock in r2, and chains into a second mine in its blast --
+    enemies.test.js "mine: ..." (4 checks).
+  - Crabs (CrabFlatten slow 1.2u/s, CrabFlatten2 fast 2u/s): never walk off
+    a ledge in 60s (turns at the edge), dash-speed contact kills them.
+  - Spike horns (NPC6): static, contact damage 1, immune to both a
+    dash-speed hit and a bomb blast.
+  - Manta (NPC10 + NPC10Ball): drops an aimed ball within 3.1s of the
+    octopus entering its 8u range, dash-speed contact kills it.
+
+Readable at 375x812: octomancer-web/night/m6-creatures-phone.png (all four
+new creatures visible together near the octopus); desktop pair at
+octomancer-web/night/m6-creatures-desktop.png. 0 console errors at either
+viewport (puppeteer-core headless Chrome, octo-tools/m6_shot.js).
+
+Budgets with 30 enemies resident (mix of all 7 kinds, 375x812, 300 steps =
+6s simulated): frame median 0.30ms, p95 0.50ms -- well inside the 4ms
+median / 8ms p95 budget. enemyCount held at 30 (pool, no leak).
+
+Assets: play/assets/enemy-{mine,crab-slow,crab-fast,manta,manta-ball,horns}.webp,
+~32KB total added (web/tools/export_m6_assets.py, cropped from the 1000^2
+NPC.old canvases to content + a few px padding). play/assets/ total ~429KB,
+inside the 900KB M0-3 budget. Rows added to web/ASSETS.md.
+
+Stretch (M6-5, tentacle/dropper): skipped -- see NIGHT-LOG.md. M6-1..M6-4
+are the whole non-stretch row set in OVERNIGHT.md's M6 table and are all
+green, so a partial M6 still ships per §5 ("Side tracks and M6 rows are
+exempt: they close individually").

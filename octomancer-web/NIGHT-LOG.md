@@ -686,3 +686,75 @@ already navigates to `/` (pre-existing, unrelated to Start Game).
 **Status:** M5 exit criteria met (button enabled and reachable at both
 sizes, zoom-then-navigate works, Exit round-trips) and evidenced above.
 Next: M6 (the 2021 creatures) or M7 (juice and polish) per OVERNIGHT.md §3.
+
+## M6 The 2021 creatures (single M6 dev)
+
+**Built** (OVERNIGHT.md §4 M6, DECISIONS §2, each its own commit): four
+entries added to `enemies.js`'s per-kind behaviour table (M3-1's "one small
+behaviour object per kind so M6 only adds entries" held -- no changes to
+`gen.js`'s enemy-slot placement/tagging were needed).
+- **M6-1 Spiked mine** (`NPC8`, open placement): bobs +-0.3u; touching it,
+  dashing into it, or being caught in a bomb blast arms it (a new
+  `armMine`/`e.state` on the enemy object, not an instant kill), 0.5s flash,
+  then `explodeMine` -- same shape as `bomb.js`'s own explosion (breaks
+  soft rock in r2, hurts the octopus if still inside), plus chaining: any
+  other idle mine caught in that blast arms too, so two mines a bomb reaches
+  both eventually go off. `bomb.js` itself was not touched -- `killInRadius`
+  in `enemies.js` now arms a mine instead of killing it outright.
+- **M6-3 Crabs** (`CrabFlatten` 1.2u/s, `CrabFlatten2` 2u/s "fast" variant,
+  floor/ceiling): walks, turns at a wall or before walking off the ledge/
+  ceiling it is on (checks solid-ahead and solid-below/above-ahead); dies to
+  a dash-speed contact or a bomb, like piranha.
+- **M6-3 Horns** (`NPC6`, floor/ceiling): static spike trap, contact damage
+  1, immune -- a new `e.immune` flag `killInRadius` now also respects, so a
+  bomb next to it does nothing.
+- **M6-4 Manta** (`NPC10` + `NPC10Ball`, open): wide back-and-forth patrol
+  (+-5u around its spawn x) with a vertical sine sway, drops an aimed ball
+  (reuses the existing `shots` pool/`updateShots`, so it dies on rock and
+  hurts the octopus exactly like a cannon shot) every 3s while the octopus
+  is within 8u; dies to a dash-speed contact or a bomb.
+  Generalised: enemies now carry a per-kind `dashKillable` flag instead of
+  the old `e.kind === 'piranha'` special case, so crab/manta/piranha share
+  one dash-kill path and urchin/horns/mine/cannon correctly don't.
+- **M6-2 Art**: `web/tools/export_m6_assets.py` crops each 1000^2
+  `OldAssets/.../NPC.old/` canvas to its alpha bounding box (+6px padding)
+  and exports at display height into `play/assets/` -- `enemy-mine.webp`,
+  `enemy-crab-slow.webp`, `enemy-crab-fast.webp`, `enemy-manta.webp`,
+  `enemy-manta-ball.webp`, `enemy-horns.webp` (~32KB total). `enemy-draw.js`
+  gained a `drawFlippableSprite` helper (mirrors for walk direction and for
+  a ceiling-mounted crab/horns) alongside the existing `drawSprite`.
+  `web/ASSETS.md` has a row per file, source path, owner (Milan Švancara).
+
+**Verified:** `tests/index.html` -> PASS 57/57 (11 new checks added to
+`enemies.test.js`, covering every M6 acceptance row: mine touch-arms/
+explodes-after-0.5s/clears-rock/chains; crab never-off-a-ledge-in-60s/
+dash-kill; horns contact-damage/dash-immune/bomb-immune; manta
+drop-within-3.1s-of-range/dash-kill). Real port (own `http.server` on 8099
+-- 8080/8091/8095 all had stale listeners from earlier sessions), puppeteer-
+core headless Chrome from the `octo-tools` scratch dir
+(`m6_shot.js`): 0 console errors at 1440x900 and 375x812 with all four
+creatures spawned near the octopus and visibly readable
+(`m6-creatures-{desktop,phone}.png`); with 30 enemies resident (all 7 kinds
+mixed, 375x812, 6s simulated) frame median 0.30ms / p95 0.50ms, well inside
+the 4ms/8ms budget, `enemyCount` steady at 30 (no leak). Numbers in
+`web/report/m6-metrics.txt`, screenshots under `octomancer-web/night/`.
+
+**Deviation caught by testing, fixed:** the first cut gave each mine/manta a
+random sine phase at spawn (`Math.random() * Math.PI * 2`), so a freshly
+spawned mine or manta could already be up to 1.5u away from its nominal
+spawn point at t=0 purely by chance -- this made the manta drop-timing test
+flaky (sometimes out of the octopus's contact/range at the instant checked).
+Fixed by starting the bob/sine at a lazily-recorded `spawnTime` instead (0
+offset at spawn, drifting only afterwards); re-ran the suite fresh several
+times with no flakes.
+
+**Skipped:** M6-5 (stretch: tentacle/dropper) -- not attempted; M6-1..M6-4
+are the milestone's full non-stretch row set and are all green, and
+OVERNIGHT.md §5 exempts M6 rows from all-or-nothing milestone gating
+("Side tracks and M6 rows are exempt: they close individually"), so this is
+a deliberate stop, not a blocked row.
+
+**Status:** M6 exit criteria met for all four shipped creatures (M6-1,
+M6-3 x2, M6-4) -- scripted checks pass, readable at 375x812, budgets hold
+with 30 enemies resident. Next: M6-5 stretch (tentacle/dropper) if time
+remains, else M7 (juice and polish) per OVERNIGHT.md §3.
