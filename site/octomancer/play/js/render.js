@@ -594,48 +594,11 @@ export function createRenderer(ctx, world) {
   function drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     const t = Math.min(1, depth / 500);
-    const silAlpha = Math.max(0.05, 0.22 - t * 0.14); // fades out with depth
     const moteAlpha = Math.max(0.04, 0.18 - t * 0.1);
     ctx.save();
-    // Round-13 fix (Daniel's screenshot review round 12, item 1: "plants
-    // float in open water again" -- a return of Daniel's original item 7).
-    // This used to place each silhouette at a fully arbitrary world position
-    // (rng() * chunkW/chunkH) with no check for ground anywhere near it, so
-    // most of them landed in open water with a stem that ends in nothing.
-    // Root each one on the SAME real floor-tile anchors `findPlantAnchors`
-    // already finds for the foreground plants (decor.js, shared with its
-    // round-12 density test) -- solid ground with open water directly
-    // above -- instead of an arbitrary point, so a silhouette is only ever
-    // drawn bottom-anchored on an actual cave floor. Anchors are filtered to
-    // floor-only (not ceiling-hanging): a distant, out-of-focus background
-    // shape reads fine growing up from a floor, but a second, larger
-    // hanging layer on top of the foreground's own ceiling vines doubles up
-    // visually. A separate hash keeps which anchors get picked independent
-    // of the foreground's own `h % 3` gate, so the two layers don't always
-    // pick the exact same cells.
-    for (const { index, yOffset, chunk } of resident) {
-      const anchors = findPlantAnchors(chunk, chunkW, chunkH, index).filter((a) => !a.onCeiling);
-      if (!anchors.length) continue;
-      const rng = ambientRng(index * 7919 + 11);
-      const count = Math.min(anchors.length, 3 + Math.floor(rng() * 2)); // 3-4 distant silhouettes per chunk
-      for (let i = 0; i < count; i++) {
-        const a = anchors[Math.floor(rng() * anchors.length)];
-        const idx = Math.floor(rng() * 2);
-        const img = getAmbientSilhouette(idx);
-        const src = plants[idx];
-        if (!img || !src.naturalWidth) continue;
-        const wx = a.tx + 0.5, wy = a.ty + yOffset + PLANT_INTO_WALL;
-        // Distance-scaled but capped close to the foreground plants' own
-        // 1.4x (drawOnePlant) so the "farther away" layer doesn't outsize
-        // and out-weigh what's actually in front of it (round-12 item 2).
-        const scale = 1.3 + rng() * 0.7;
-        const p = parallaxScreen(canvasW, canvasH, wx, wy);
-        const h = camera.pxPerUnit * scale;
-        const w = h * (src.naturalWidth / src.naturalHeight);
-        ctx.globalAlpha = silAlpha;
-        ctx.drawImage(img, p.x - w / 2, p.y - h, w, h);
-      }
-    }
+    // Distant plant silhouettes removed (round-13 review): drawn through the
+    // 0.5 parallax they only sat on their floor tile at screen centre and
+    // floated as pale detached leaves everywhere else. Only the motes remain.
     // A few slow drifting motes per resident chunk, own slower parallax
     // still (closer than the silhouettes, farther than the foreground).
     for (const { index, yOffset } of resident) {
