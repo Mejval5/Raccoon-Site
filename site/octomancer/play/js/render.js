@@ -1,9 +1,23 @@
-// Rendering: camera, per-chunk baked walls (dirty-flag cache), background
-// (BGFar + a code vignette + a drifting code value-noise layer), plants
-// anchored to wall tops, pickups (pearls/plankton/shells), bubbles, the
-// depth tint, and the octopus behind the drawOctopus() interface.
+// Rendering: camera, per-chunk baked walls (dirty-flag cache) built from
+// Milan's marching-squares-style wall tileset, background (a deep-water
+// gradient plus a single non-repeating cave silhouette anchored near the
+// surface, matching the title screen), plants anchored to floor surfaces,
+// pickups (pearls/plankton/shells), bubbles, the depth tint, and the octopus
+// behind the drawOctopus() interface.
 // OVERNIGHT.md §2 "Rendering" (M1-2) and §2 "World" / M2-2/M2-3 (chunked
 // render cache, decor, pickups, depth tint).
+//
+// Visual pass (this session, per Daniel's screenshot review): the wall bake
+// had picked the wrong two tiles from Milan's set -- `tile-0` (a lone
+// green-rimmed circle, meant for an isolated 1-tile island) as the universal
+// fill, and `tile-1` (fully solid, meant for a tile with no exposed edges at
+// all) rotated onto every exposed side. That is exactly backwards, and is
+// why walls rendered as a dense grid of dark circles instead of Milan's
+// actual rounded-cave art. Fixed by picking the tile that matches each
+// tile's real exposed-edge shape (see `pickWallArt` below) and procedurally
+// rounding the remaining concave (inner) corners the tileset itself doesn't
+// have a piece for. The background swap and plant floor-anchoring are
+// separate fixes logged inline below.
 
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
@@ -13,10 +27,14 @@ import { prefersReducedMotion } from './config.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
-// BGFar.png is a tall 1200x3000 strip; this is how many world units of
-// depth one copy of it should visually span (tuned by eye, not a source fact).
-const BG_WORLD_HEIGHT = 40;
 const BAKE_PX_PER_UNIT = 48; // resolution chunk wall bakes are rendered at
+
+// The cave silhouette fades out by this world depth, below which the deep
+// gradient (plus the existing depth tint / caustics / vignette) carries the
+// mood on its own -- comfortably inside a typical run, so it's drawn once in
+// world space (never tiled) and simply never comes back once passed.
+const CAVE_ART_FADE_START = 30;
+const CAVE_ART_FADE_END = 130;
 
 function loadImage(src) {
   const img = new Image();
@@ -25,20 +43,59 @@ function loadImage(src) {
 }
 
 export function createRenderer(ctx, world) {
-  const tileEdge = loadImage(ASSET('tiles/tile-1.webp'));
-  const tileFill = loadImage(ASSET('tiles/tile-0.webp'));
-  const bgFar = loadImage(ASSET('bg-far.webp'));
+  // Wall tileset (Milan's marching-squares-style set, `play/assets/tiles/`):
+  //   tile-1  = fully solid (0 exposed edges)
+  //   tile-2 / tile-2A = one exposed edge (two art variants, alternated per
+  //     tile for texture variety); default orientation is edge-on-top
+  //   tile-3  = two adjacent exposed edges (a convex corner); default TL
+  //   tile-5  = two opposite exposed edges (a corridor); default top+bottom
+  //   tile-0  = isolated / near-isolated (3-4 exposed edges) fallback
+  const tileFull = loadImage(ASSET('tiles/tile-1.webp'));
+  const tileEdgeA = loadImage(ASSET('tiles/tile-2.webp'));
+  const tileEdgeB = loadImage(ASSET('tiles/tile-2A.webp'));
+  const tileCorner = loadImage(ASSET('tiles/tile-3.webp'));
+  const tileCorridor = loadImage(ASSET('tiles/tile-5.webp'));
+  const tileIsland = loadImage(ASSET('tiles/tile-0.webp'));
+  const caveArt = loadImage(ASSET('bg-cave.webp'));
+  // Feathered once the source image loads: the raw art is a bright cave
+  // mouth on a big flat near-black rectangle, and even under a 'screen'
+  // blend that flat area is dark-teal (not literal black), so drawing it
+  // straight left a visible rectangular seam at its edge (Daniel's
+  // screenshot review). Baking a vertical fade into an offscreen copy once,
+  // instead of redoing the gradient every frame, keeps this cheap.
+  let caveArtFeathered = null;
+  caveArt.addEventListener('load', () => {
+    const fc = document.createElement('canvas');
+    fc.width = caveArt.naturalWidth;
+    fc.height = caveArt.naturalHeight;
+    const fctx = fc.getContext('2d');
+    fctx.drawImage(caveArt, 0, 0);
+    fctx.globalCompositeOperation = 'destination-in';
+    // A radial fade (rather than a vertical one) so every edge -- top,
+    // bottom, left and right -- softens the same way; a straight edge in
+    // any one direction is exactly the seam this is fixing. Centred and
+    // sized so alpha is already 0 well inside the canvas rectangle.
+    const cx = fc.width / 2, cy = fc.height / 2;
+    const inner = Math.min(fc.width, fc.height) * 0.22;
+    const outer = Math.max(fc.width, fc.height) * 0.52;
+    const fade = fctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    fade.addColorStop(0, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    fctx.fillStyle = fade;
+    fctx.fillRect(0, 0, fc.width, fc.height);
+    caveArtFeathered = fc;
+  }, { once: true });
   const plants = [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))];
   const shellImgs = {
     blue: loadImage(ASSET('shell-blue.webp')),
     green: loadImage(ASSET('shell-green.webp')),
     red: loadImage(ASSET('shell-red.webp')),
   };
+  const wallTiles = [tileFull, tileEdgeA, tileEdgeB, tileCorner, tileCorridor, tileIsland];
   let tilesReady = false;
-  let pending = 2;
+  let pending = wallTiles.length;
   function onTileReady() { if (--pending === 0) tilesReady = true; }
-  tileEdge.addEventListener('load', onTileReady, { once: true });
-  tileFill.addEventListener('load', onTileReady, { once: true });
+  for (const img of wallTiles) img.addEventListener('load', onTileReady, { once: true });
 
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
@@ -54,6 +111,52 @@ export function createRenderer(ctx, world) {
     return v === 1 || v === 2;
   }
 
+  // Pick which tileset art (and rotation, in quarter turns clockwise) draws
+  // a solid tile given which of its 4 orthogonal neighbours are open water.
+  // The art's default orientation is edge(s)-on-top(-left); rotating by the
+  // returned quarter-turn count moves that edge to match.
+  function pickWallArt(openN, openE, openS, openW, altParity) {
+    const count = (openN ? 1 : 0) + (openE ? 1 : 0) + (openS ? 1 : 0) + (openW ? 1 : 0);
+    if (count === 0) return { img: tileFull, turns: 0 };
+    if (count >= 3) return { img: tileIsland, turns: 0 }; // rare thin spur, closest available shape
+    if (count === 1) {
+      const turns = openN ? 0 : openE ? 1 : openS ? 2 : 3;
+      return { img: altParity ? tileEdgeB : tileEdgeA, turns };
+    }
+    // count === 2
+    if (openN && openS) return { img: tileCorridor, turns: 0 };
+    if (openE && openW) return { img: tileCorridor, turns: 1 };
+    const turns = (openN && openW) ? 0 : (openN && openE) ? 1 : (openE && openS) ? 2 : 3; // 3 = S+W
+    return { img: tileCorner, turns };
+  }
+
+  // Concave (inward) corners -- where both edges touching that corner are
+  // solid but the diagonal neighbour beyond it is open -- have no single
+  // tileset piece for every count, so round them procedurally: a wedge of
+  // the tileset's own rim colour, then a smaller destination-out wedge to
+  // cut the actual water notch. k = 0..3 for TL/TR/BR/BL, matching the
+  // quarter-turn convention above.
+  const RIM_COLOR = 'rgba(15,90,66,0.95)';
+  function carveConcaveCorner(bctx, cx, cy, k, r) {
+    const a0 = k * (Math.PI / 2), a1 = a0 + Math.PI / 2;
+    bctx.save();
+    bctx.beginPath();
+    bctx.moveTo(cx, cy);
+    bctx.arc(cx, cy, r, a0, a1);
+    bctx.closePath();
+    bctx.fillStyle = RIM_COLOR;
+    bctx.fill();
+    bctx.restore();
+    bctx.save();
+    bctx.globalCompositeOperation = 'destination-out';
+    bctx.beginPath();
+    bctx.moveTo(cx, cy);
+    bctx.arc(cx, cy, r * 0.6, a0, a1);
+    bctx.closePath();
+    bctx.fill();
+    bctx.restore();
+  }
+
   function bakeChunkWalls(entry) {
     const { chunk } = entry;
     let canvas = wallCache.get(entry.index)?.canvas;
@@ -65,39 +168,47 @@ export function createRenderer(ctx, world) {
     const bctx = canvas.getContext('2d');
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Treat an out-of-chunk neighbour as solid (border columns are solid in
+    // every chunk; the row above/below is handled per-chunk, so a chunk
+    // boundary seam at worst shows a harmless extra edge/corner).
+    const solidAt = (tx, ty) => {
+      const local = isSolidLocal(chunk, tx, ty);
+      return local === null ? true : local;
+    };
     for (let ty = 0; ty < chunkH; ty++) {
       for (let tx = 0; tx < chunkW; tx++) {
         const v = chunk.tiles[ty * chunkW + tx];
         if (v === 0) continue;
         const px = tx * s, py = ty * s;
-        bctx.drawImage(tileFill, px, py, s, s);
+        const openN = !solidAt(tx, ty - 1);
+        const openE = !solidAt(tx + 1, ty);
+        const openS = !solidAt(tx, ty + 1);
+        const openW = !solidAt(tx - 1, ty);
+        const { img, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
+
+        bctx.save();
+        bctx.translate(px + s / 2, py + s / 2);
+        bctx.rotate(turns * (Math.PI / 2));
+        bctx.drawImage(img, -s / 2, -s / 2, s, s);
+        bctx.restore();
+
         if (v === 2) {
-          // Soft (breakable) rock: same fill, tinted so it reads as diggable.
+          // Soft (breakable) rock: same shape, a warm coral tint so it reads
+          // as diggable and distinct from unbreakable (green-rimmed) walls.
           bctx.save();
           bctx.globalCompositeOperation = 'source-atop';
-          bctx.fillStyle = 'rgba(120,200,190,0.22)';
+          bctx.fillStyle = 'rgba(210,130,80,0.30)';
           bctx.fillRect(px, py, s, s);
           bctx.restore();
         }
-        const sides = [
-          { dx: 0, dy: -1, rot: 0 },
-          { dx: 1, dy: 0, rot: Math.PI / 2 },
-          { dx: 0, dy: 1, rot: Math.PI },
-          { dx: -1, dy: 0, rot: -Math.PI / 2 },
-        ];
-        for (const side of sides) {
-          const local = isSolidLocal(chunk, tx + side.dx, ty + side.dy);
-          // Treat an out-of-chunk neighbour as solid (border columns are
-          // solid in every chunk; the row above/below is handled per-chunk,
-          // so a chunk boundary seam at worst shows a harmless extra edge).
-          const solidNeighbour = local === null ? true : local;
-          if (solidNeighbour) continue;
-          bctx.save();
-          bctx.translate(px + s / 2, py + s / 2);
-          bctx.rotate(side.rot);
-          bctx.drawImage(tileEdge, -s / 2, -s / 2, s, s);
-          bctx.restore();
-        }
+
+        // Round any concave corner the picked art doesn't already show an
+        // open edge at (an open edge there is already handled by the art).
+        const r = s * 0.32;
+        if (!openN && !openW && !solidAt(tx - 1, ty - 1)) carveConcaveCorner(bctx, px, py, 0, r);
+        if (!openN && !openE && !solidAt(tx + 1, ty - 1)) carveConcaveCorner(bctx, px + s, py, 1, r);
+        if (!openS && !openE && !solidAt(tx + 1, ty + 1)) carveConcaveCorner(bctx, px + s, py + s, 2, r);
+        if (!openS && !openW && !solidAt(tx - 1, ty + 1)) carveConcaveCorner(bctx, px, py + s, 3, r);
       }
     }
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
@@ -129,26 +240,23 @@ export function createRenderer(ctx, world) {
     noiseCtx.putImageData(img, 0, 0);
   })();
 
-  function drawBackground(canvasW, canvasH, time) {
-    ctx.fillStyle = '#08141f';
+  function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+
+  // Deep-water gradient: darkens and desaturates with world depth so the
+  // background stays calm and low-contrast at any point in a run, screen-top
+  // to screen-bottom for an immediate sense of depth even before the depth
+  // tint (decor.js) kicks in. Replaces the old bg-far.webp tiling strip,
+  // which was too bright/saturated and showed a visible seam every 40 units.
+  function drawBackground(canvasW, canvasH, time, depth) {
+    const t = Math.min(1, depth / 400);
+    const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
+    grad.addColorStop(0, `rgb(${lerp(10, 4, t)},${lerp(34, 12, t)},${lerp(46, 16, t)})`);
+    grad.addColorStop(1, `rgb(${lerp(4, 2, t)},${lerp(13, 5, t)},${lerp(18, 7, t)})`);
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
-    if (bgFar.complete && bgFar.naturalWidth) {
-      const scale = (BG_WORLD_HEIGHT * camera.pxPerUnit) / bgFar.naturalHeight;
-      const iw = bgFar.naturalWidth * scale, ih = bgFar.naturalHeight * scale;
-      const parallax = 0.3;
-      const drift = time * 2;
-      const offsetX = camera.x * parallax * camera.pxPerUnit + drift;
-      const offsetY = camera.y * parallax * camera.pxPerUnit;
-      const startX = -(((offsetX % iw) + iw) % iw) - iw;
-      const startY = -(((offsetY % ih) + ih) % ih) - ih;
-      for (let y = startY; y < canvasH + ih; y += ih) {
-        for (let x = startX; x < canvasW + iw; x += iw) {
-          ctx.drawImage(bgFar, x, y, iw, ih);
-        }
-      }
-    }
+    drawCaveArt(canvasW, canvasH, depth);
     ctx.save();
-    ctx.globalAlpha = 0.10;
+    ctx.globalAlpha = 0.06;
     ctx.globalCompositeOperation = 'overlay';
     const nSize = 256;
     const nx = (time * 6) % nSize;
@@ -158,6 +266,33 @@ export function createRenderer(ctx, world) {
         ctx.drawImage(noiseCanvas, x, y, nSize, nSize);
       }
     }
+    ctx.restore();
+  }
+
+  // Milan's cave-mouth art (same file as the title screen, so Start Game's
+  // zoom lands on a matching look): drawn ONCE in world space near the start
+  // pool, slow parallax, never tiled -- it simply scrolls out of view and
+  // fades by CAVE_ART_FADE_END, rather than repeating down the whole run.
+  const CAVE_ART_ASPECT = 2560 / 1440;
+  const CAVE_ART_ANCHOR_Y = 14; // world y of the art's vertical centre
+  function drawCaveArt(canvasW, canvasH, depth) {
+    if (!caveArtFeathered || depth >= CAVE_ART_FADE_END) return;
+    const alpha = depth <= CAVE_ART_FADE_START
+      ? 1
+      : 1 - (depth - CAVE_ART_FADE_START) / (CAVE_ART_FADE_END - CAVE_ART_FADE_START);
+    const parallax = 0.35;
+    const worldW = Math.max(34, (canvasW / camera.pxPerUnit) * 1.3);
+    const worldH = worldW / CAVE_ART_ASPECT;
+    const cx = canvasW / 2 + (chunkW / 2 - camera.x) * camera.pxPerUnit;
+    const cy = canvasH / 2 + (CAVE_ART_ANCHOR_Y - camera.y * parallax) * camera.pxPerUnit;
+    const w = worldW * camera.pxPerUnit, h = worldH * camera.pxPerUnit;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.55;
+    // 'screen' so the art's own near-black canvas (outside its cave-mouth
+    // silhouette) contributes nothing -- only its lighter tones lift the
+    // gradient -- instead of painting a visible rectangular seam over it.
+    ctx.globalCompositeOperation = 'screen';
+    ctx.drawImage(caveArtFeathered, cx - w / 2, cy - h / 2, w, h);
     ctx.restore();
   }
 
@@ -236,9 +371,9 @@ export function createRenderer(ctx, world) {
         for (let tx = 1; tx < chunkW - 1; tx++) {
           const v = chunk.tiles[ty * chunkW + tx];
           if (v === 0) continue;
-          if (chunk.tiles[(ty - 1) * chunkW + tx] === 0) continue; // needs solid above (grows down from ceiling-less... actually needs open above it, i.e. this tile is a "floor" cap)
+          if (chunk.tiles[(ty - 1) * chunkW + tx] === 0) continue; // this is a "floor cap": solid here, open water directly above -- the only surface plants grow from
           seedI++;
-          if (seedI % 5 !== 0) continue;
+          if (seedI % 9 !== 0) continue; // sparse: Daniel's screenshot showed these carpeting every wall top
           const img = plants[seedI % 2];
           if (!img.complete || !img.naturalWidth) continue;
           const s = worldToScreen(camera, canvasW, canvasH, tx + 0.5, ty + yOffset);
@@ -343,7 +478,7 @@ export function createRenderer(ctx, world) {
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
       const reduced = prefersReducedMotion();
-      drawBackground(canvasW, canvasH, time);
+      drawBackground(canvasW, canvasH, time, depth);
       drawCaustics(canvasW, canvasH, time, reduced);
       drawWalls(canvasW, canvasH, resident);
       drawPlants(canvasW, canvasH, resident);

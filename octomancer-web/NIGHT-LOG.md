@@ -825,3 +825,82 @@ art files (M7 is entirely code-drawn juice + audio synthesis), so
 prefers-reduced-motion; budgets still hold; transfer stays under 1.5MB).
 Next: M6-5 stretch (tentacle/dropper, if a future session has time) or the
 morning report assembly (OVERNIGHT.md §6), whichever the orchestrator picks.
+
+## Visual pass (post-launch, Daniel's screenshot review)
+
+Daniel looked at the live build and flagged: walls rendering as flat black
+squares, soft rock as a dense grid of dark green-rimmed circles, the
+background too bright with a visible seam and "weird circles", plants
+sitting on the dots, the octopus glitched (a circle with a half-circle
+shape on top), and a bfcache bug where Back from `play/` shows the title
+screen still mid-zoom.
+
+**Wall/soft-rock root cause:** `render.js`'s wall bake had the tileset
+backwards. Milan's `play/assets/tiles/` is a real marching-squares-style
+set (`tile-1` = fully solid/no exposed edge, `tile-2`/`tile-2A` = one edge,
+`tile-3` = a convex corner, `tile-5` = a corridor, `tile-0` = an isolated
+1-tile island), but the bake used `tile-0` (the isolated-island circle) as
+the universal fill and `tile-1` (the no-edge piece) rotated onto every
+exposed side -- exactly backwards, hence the dot grid. Fixed with
+`pickWallArt()`, which matches each tile's real open-neighbour shape to the
+right piece and rotation, plus a small procedural quarter-circle carve for
+concave (inner) corners the tileset has no single piece for at every count.
+Soft (breakable) rock reuses the same shape logic with a warm coral tint
+instead of the unbreakable green rim. `gen.js` also now merges sealed
+pockets into 4-connected components and demotes anything under 4 tiles back
+to solid rock, so soft rock reads as a few coral clusters instead of many
+single-tile dots (shells/hidden pearls still only spawn in a pocket that
+stays soft, so `gen.test.js`'s invariant holds).
+
+**Background:** `bg-far.webp` (BGFar.png tiled every 40 units) is gone --
+too bright/saturated, a stippled circle-pattern texture, and a seam at
+every tile boundary. Replaced with a screen-space depth gradient (always
+present, darkens with world depth) plus Milan's own cave-mouth art
+(`cave-bg.webp`, the same file the title screen uses, copied to
+`play/assets/bg-cave.webp`) drawn once in world space near the surface with
+slow parallax and a radial alpha feather (so its own dark canvas doesn't
+show a seam), fading out entirely by depth 130. It never tiles -- it just
+scrolls out of view -- so Start Game's zoom now lands on matching art too.
+
+**Plants:** the floor-anchor math was already correct (anchored to the
+exact water/rock surface line); only the density was too high. Sparsified
+from 1-in-5 to 1-in-9 candidate floor cells.
+
+**Octopus bake bug:** the "half-circle on top" glitch was real, not a
+loading race. `bake_creature.py`'s `find_eye_variant_rects()` scans fixed
+row bands in the atlas for the left/right eye pair, splitting at the widest
+column gap into exactly two groups. The `open` (not blinking, not angry)
+band also grazes the top of the head silhouette at low x, so that band
+actually has three blobs (head dome, eye, eye); splitting at the widest gap
+put the head-dome fragment in the "left eye" slot and both real eyes
+together in "right", which is why the open-eye state rendered a big
+misrotated body-coloured wedge standing in for the left eye. Fixed by
+keeping the two *rightmost* column runs regardless of how many runs a band
+has (the atlas is body-at-low-x, eyes-at-higher-x by construction), then
+re-ran the bake tool against the same source pack/atlas and replaced
+`play/assets/octopus.{webp,json}` in place (verified: `open` eye rects are
+now 60x60 each, not 172x63; composited a still frame and confirmed a normal
+two-eyed face in all three clips).
+
+**Title screen bfcache bug:** `site/octomancer/index.html`'s Start Game
+handler set `is-starting` classes and a `navigating` latch but never reset
+them, so a bfcache restore (Back button from `play/`) showed the scene
+still mid-zoom with the button permanently disabled. Added a `pageshow`
+listener that unconditionally resets both.
+
+**Verified:** `tests/` -> PASS 57/57 (`gen.test.js`'s connectivity, timing
+and shell-in-soft-rock checks all still hold with the pocket-merge change).
+Own `http.server` (Cache-Control: no-store, to dodge a browser disk-cache
+gotcha this session hit mid-verification), puppeteer-core headless Chrome
+from `%TEMP%\octo-tools`: 0 console errors at 1440x900 and 375x812; frame
+median 0.30ms at 375x812 (budget 4ms). Before/after screenshots (before =
+`git archive HEAD` snapshot served separately, so the comparison is exact)
+saved to `web/night/visual-pass-{before,after}-{desktop,phone}.png`.
+
+**Known minor leftover:** a fully-buried soft-rock tile (no exposed edge on
+any side) renders as a flat tinted square with no rounding, same as a
+fully-buried solid-rock tile does -- consistent, but visible as a small
+hard-edged brown patch on the rare frame where a chunk's soft-rock cluster
+interior peeks past its own outer (rounded) shell. Not worth a special tile
+combo for how rarely it's actually visible; flagging in case a future pass
+wants to special-case it.

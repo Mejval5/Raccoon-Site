@@ -257,16 +257,28 @@ def find_eye_variant_rects(atlas_rgba):
         cols = [c for c in range(len(colmax)) if colmax[c] > 10]
         if not cols:
             return None
-        # split at the widest gap
-        best_gap = 0
-        split_at = None
-        for i in range(1, len(cols)):
-            gap = cols[i] - cols[i - 1]
-            if gap > best_gap:
-                best_gap = gap
-                split_at = i
-        left_cols = cols[:split_at]
-        right_cols = cols[split_at:]
+        # Group into contiguous column runs (gap > 3px starts a new run).
+        # The 'open' band's y-range also grazes the top of the head dome's
+        # silhouette at low x (bug found tonight: a DPR2 screenshot showed a
+        # big pink wedge standing in for the left eye), so a band can contain
+        # more than the expected 2 blobs. The atlas is laid out body-at-low-x,
+        # eyes-at-higher-x (this file's own docstring), so whatever the count,
+        # the two RIGHTMOST runs are always the eye pair; drop any extra runs
+        # to their left as the intruding body silhouette.
+        runs = []
+        cur = [cols[0]]
+        for c in cols[1:]:
+            if c - cur[-1] <= 3:
+                cur.append(c)
+            else:
+                runs.append(cur)
+                cur = [c]
+        runs.append(cur)
+        if len(runs) > 2:
+            runs = runs[-2:]
+        elif len(runs) < 2:
+            return None
+        left_cols, right_cols = runs[0], runs[1]
         def tight(cols_sub):
             x0, x1 = min(cols_sub), max(cols_sub)
             sub2 = alpha[y0:y1 + 1, x0:x1 + 1]

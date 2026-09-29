@@ -153,7 +153,7 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   const midRow = Math.floor(CHUNK_H / 2);
   const pathSeedCol = clampInt(entryCol, BORDER, CHUNK_W - BORDER - 1);
   const reached = floodFillReachable(smoothed, pathSeedCol, 0);
-  const softPockets = []; // [[x,y], ...] cells turned into soft rock this pass
+  let softPockets = []; // [[x,y], ...] cells turned into soft rock this pass
   for (let y = 0; y < CHUNK_H; y++) {
     for (let x = BORDER; x < CHUNK_W - BORDER; x++) {
       const i = idx(x, y);
@@ -162,6 +162,47 @@ export function generateChunk(seed, chunkIndex, entryCol) {
         softPockets.push([x, y]);
       }
     }
+  }
+
+  // Visual pass (this session): the noise+smoothing above seals off many
+  // single- and double-tile pockets, which used to render as a dense grid of
+  // small breakable-rock dots (Daniel's screenshot review). Merge sealed
+  // cells into 4-connected components and demote anything smaller than
+  // MIN_SOFT_POCKET back to unbreakable rock, so what's left reads as a few
+  // larger coral-like clusters instead. Runs before spawn selection below, so
+  // shells/hidden pearls only ever land in a pocket that stays soft rock
+  // (gen.test.js asserts that).
+  const MIN_SOFT_POCKET = 4;
+  if (softPockets.length) {
+    const sealed = new Uint8Array(smoothed.length);
+    for (const [x, y] of softPockets) sealed[idx(x, y)] = 1;
+    const visited = new Uint8Array(smoothed.length);
+    const kept = [];
+    for (const [sx, sy] of softPockets) {
+      const si = idx(sx, sy);
+      if (visited[si]) continue;
+      visited[si] = 1;
+      const comp = [[sx, sy]];
+      const stack = [[sx, sy]];
+      while (stack.length) {
+        const [x, y] = stack.pop();
+        const neigh = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+        for (const [nx, ny] of neigh) {
+          if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H) continue;
+          const ni = idx(nx, ny);
+          if (visited[ni] || !sealed[ni]) continue;
+          visited[ni] = 1;
+          comp.push([nx, ny]);
+          stack.push([nx, ny]);
+        }
+      }
+      if (comp.length < MIN_SOFT_POCKET) {
+        for (const [x, y] of comp) smoothed[idx(x, y)] = 1; // too small to read as a cluster: solid rock instead
+      } else {
+        for (const cell of comp) kept.push(cell);
+      }
+    }
+    softPockets = kept;
   }
 
   // --- Spawns ---

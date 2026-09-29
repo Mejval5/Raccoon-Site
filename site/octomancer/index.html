@@ -248,6 +248,18 @@
           window.location.href = '/octomancer/play/';
         }, reduceMotion ? 300 : 1200);
       });
+
+      // Bug fix: the Back button from play/ can restore this page from the
+      // browser's back/forward cache (bfcache) exactly as it was left mid-zoom
+      // -- 'is-starting' still applied, the button still disabled by
+      // `navigating`. `pageshow` fires on every load, including a bfcache
+      // restore (event.persisted is true only for the restore case, but we
+      // reset unconditionally so a normal load is also defensively clean).
+      window.addEventListener('pageshow', function () {
+        navigating = false;
+        sceneWrap.classList.remove('is-starting');
+        if (menuWrap) menuWrap.classList.remove('is-starting');
+      });
     })();
 
     // The cave scene: five pre-combined depth groups of Milan's art drawn into one canvas.

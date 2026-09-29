@@ -21,7 +21,7 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 | `assets/tiles/tile-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4.png` | Milan Švancara |
 | `assets/tiles/tile-5.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\5.png` | Milan Švancara |
 | `assets/tiles/tile-6.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\6.png` | Milan Švancara |
-| `assets/bg-far.webp` | `octomancer-unity\Assets\Sprites\Background\BGFar.png` | Milan Švancara |
+| `assets/bg-cave.webp` | `site/img/octomancer/cave-bg.webp` (already shipped on the title screen; itself sourced from `octomancer-unity\Assets\Sprites\Background\` per `octomancer-web/harvest/MANIFEST.md`, bucket A). Visual pass (this session): replaces `bg-far.webp` (removed), which was BGFar.png tiled every 40 world units — too bright/saturated and showed a stippled circle-pattern texture plus a visible seam at the tile boundary. Drawn once in world space near the surface instead of tiled, so Start Game's zoom also lands on the same art. | Milan Švancara |
 | `assets/plant1.webp` | `octomancer-unity\Assets\Sprites\Background\Plant1.png` | Milan Švancara |
 | `assets/plant2.webp` | `octomancer-unity\Assets\Sprites\Background\Plant2.png` | Milan Švancara |
 | `assets/bubble-bubble3.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\Bubble3.png` | Milan Švancara |
