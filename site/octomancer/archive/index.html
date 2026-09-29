@@ -224,6 +224,36 @@
     .octo-now-game p { margin: 0 0 16px; font-size: 1rem; line-height: 1.65; }
     .octo-now-game p:last-of-type { margin-bottom: 20px; }
 
+    /* ---------- Video stills gallery ---------- */
+
+    .octo-gallery { margin: 0 0 48px; }
+    .octo-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin: 0 0 18px;
+      padding: 0;
+      list-style: none;
+    }
+    .octo-gallery-grid figure { margin: 0; }
+    .octo-gallery-grid img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+    .octo-gallery-grid figcaption {
+      margin-top: 8px;
+      font-family: 'Quicksand', sans-serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--octo-fog);
+      opacity: 0.75;
+      text-align: center;
+    }
+
     .octo-btn {
       display: inline-block;
       font-family: 'Quicksand', sans-serif;
@@ -357,6 +387,48 @@
           </a>
         </div>
       </div>
+
+      <section class="octo-gallery">
+        <ul class="octo-gallery-grid">
+          <li>
+            <figure>
+              <img src="/img/octomancer/video/octo-video-hero.webp" width="640" height="480"
+                   alt="The octopus looting treasure chests guarded by enemies in the cave"
+                   loading="lazy">
+              <figcaption>Looting the cave</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/img/octomancer/video/octo-video-hub.webp" width="480" height="360"
+                   alt="The octopus near the hub's Welcome Home sign, with a Slapper enemy nearby"
+                   loading="lazy">
+              <figcaption>Back at the hub</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/img/octomancer/video/octo-video-cave-urchin.webp" width="480" height="360"
+                   alt="The octopus dodging a spiky urchin enemy and a falling rock in the procedural cave"
+                   loading="lazy">
+              <figcaption>Dodging an urchin</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/img/octomancer/video/octo-video-fish-swarm.webp" width="480" height="360"
+                   alt="The octopus swarmed by the Beholder's fish minions in the cave"
+                   loading="lazy">
+              <figcaption>The Beholder's fish</figcaption>
+            </figure>
+          </li>
+        </ul>
+        <p>
+          <a class="octo-btn" href="https://www.youtube.com/watch?v=GxDkWSxHw9A" target="_blank" rel="noopener">
+            Watch the video
+          </a>
+        </p>
+      </section>
 
       <h2 class="octo-label">Us</h2>
       <div class="octo-team">
