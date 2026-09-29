@@ -173,6 +173,29 @@
     @media (prefers-reduced-motion: reduce) {
       .octo-wip-label { transition: none; }
     }
+
+    /* Start Game: zoom the cave scene toward its centre light, then navigate into the game. */
+    .octo-scene-wrap.is-starting .octo-canvas {
+      transition: transform 1.2s ease-in, filter 1.2s ease-in;
+      transform: scale(2.6);
+      filter: brightness(1.7);
+    }
+    .octo-menu-wrap.is-starting {
+      transition: opacity 0.5s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .octo-scene-wrap.is-starting .octo-canvas {
+        transition: opacity 0.3s ease;
+        transform: none;
+        filter: none;
+        opacity: 0;
+      }
+      .octo-menu-wrap.is-starting {
+        transition: opacity 0.3s ease;
+      }
+    }
   </style>
 </head>
 <body>
@@ -188,9 +211,8 @@
   <div class="octo-menu-wrap">
     <p class="octo-title">Octomancer</p>
     <nav class="octo-menu" aria-label="Octomancer menu">
-      <button type="button" class="octo-menu-item is-disabled" id="octoStartGame" aria-disabled="true">
+      <button type="button" class="octo-menu-item" id="octoStartGame">
         Start Game
-        <span class="octo-wip-label" role="status">Work in progress</span>
       </button>
       <a class="octo-menu-item" href="/octomancer/archive/">Information</a>
       <a class="octo-menu-item" href="/">Exit</a>
@@ -207,18 +229,24 @@
       });
     })();
 
-    // Start Game is disabled (no browser build yet). Hover/focus already reveals its "Work in
-    // progress" label via CSS; touch devices have no hover, so a tap reveals it briefly instead.
+    // Start Game: zoom the cave scene toward its centre light (a plain fade under reduced
+    // motion), then navigate into the game. Works for both a click and a keyboard Enter/Space
+    // activation, since a <button> fires 'click' either way.
     (function () {
       var startBtn = document.getElementById('octoStartGame');
       if (!startBtn) return;
-      var hideTimer = null;
+      var sceneWrap = document.getElementById('octoSceneWrap');
+      var menuWrap = document.querySelector('.octo-menu-wrap');
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var navigating = false;
       startBtn.addEventListener('click', function () {
-        startBtn.classList.add('is-tapped');
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(function () {
-          startBtn.classList.remove('is-tapped');
-        }, 1600);
+        if (navigating) return;
+        navigating = true;
+        sceneWrap.classList.add('is-starting');
+        if (menuWrap) menuWrap.classList.add('is-starting');
+        setTimeout(function () {
+          window.location.href = '/octomancer/play/';
+        }, reduceMotion ? 300 : 1200);
       });
     })();
 

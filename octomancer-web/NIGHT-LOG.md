@@ -624,3 +624,65 @@ list (dash, pearl, hurt, bomb) was done, not skipped.
 
 **Status:** Track S exit criteria met and numbered (`s1-metrics.txt`). Next:
 whichever milestone is still open (M5/M6/M7 per OVERNIGHT.md §3's ordering).
+
+## M5 Title hook (single M5 dev)
+
+**Mode check:** per the M0-0 correction above, `octoStartGame` is already on
+master (Daniel's concurrent merge of `octomancer-archive`), so this ran in
+**in-place mode**: edited `site/octomancer/index.html` directly, no patch
+file. Confirmed again at the start of this task (`grep -c octoStartGame
+site/octomancer/index.html` = 2).
+
+**Built:** removed `is-disabled`/`aria-disabled="true"` and the
+`<span class="octo-wip-label">Work in progress</span>` from `#octoStartGame`
+(button now plain `class="octo-menu-item"`, no `aria-disabled`); left the
+`.is-disabled`/`.octo-wip-label` CSS rules in place, unused, exactly as
+OVERNIGHT.md's M5-1 row asks. Replaced the old tap-to-reveal script with a
+start handler on the same button's `click` listener (fires identically for a
+mouse click, a touch tap, and a keyboard Enter/Space activation, since a
+native `<button>` dispatches `click` for all three): adds `.is-starting` to
+`#octoSceneWrap` (1.2s CSS transition: `transform: scale(2.6)` +
+`brightness(1.7)` on `.octo-canvas`, toward the scene's bright centre) and to
+`.octo-menu-wrap` (0.5s fade-out), then `window.location.href =
+'/octomancer/play/'` after the transition (300ms total under
+`prefers-reduced-motion: reduce`: opacity-only fade, no scale/filter, per the
+media query already used elsewhere on this page). Nothing else on the page
+changed (menu markup, Information/Exit links, the parallax scene script all
+untouched). Exit already pointed at `/octomancer/` from M4's `onExit()` in
+`play/js/main.js`, so no play-side change was needed for the round trip.
+
+**Verified** (own http.server on port 8095, since 8080/8091 had stale/other
+listeners per the M1 dev's earlier note; puppeteer-core headless Chrome from
+the `octo-tools` scratch dir, plus a live Chromium-pane pass):
+- `#octoStartGame` has no `is-disabled` class, no `aria-disabled` attribute,
+  no `.octo-wip-label` child, `opacity: 1` -- at both 1440x900 and 375x812.
+- Clicking it (pane, mouse) and tapping it (puppeteer `touchscreen.tap` at
+  375x812) both zoom the scene (screenshot at t=0.5s shows the cave scaled up
+  and brightened, menu faded, `m5-zoom-desktop-midway.png`) then land on
+  `/octomancer/play/` with a live, controllable game -- `m5-play-{desktop,
+  phone}-landed.png`.
+- Exit round trip: forced `__octo.kill()`, waited for the game-over overlay,
+  clicked/tapped its Exit button -- lands back on `/octomancer/` (title
+  reloads and re-reveals) at both viewports --
+  `m5-exit-roundtrip-{desktop,phone}.png`, `m5-gameover-desktop.png`.
+- 0 console errors (`pageerror` + console `error` listeners empty) at both
+  viewports, both before and after the click/tap.
+- Title screenshots with the button visibly enabled (no dimmed style, no WIP
+  label): `m5-title-{desktop,phone}-enabled.png`.
+
+All saved under `octomancer-web/night/`.
+
+**Deviations:** no zoom GIF was captured -- a single mid-transition
+screenshot (`m5-zoom-desktop-midway.png`) plus the CSS transition definition
+itself is the evidence instead (cut corners rather than stall, per the
+night's own rule; a GIF adds an extra encoding step for the same claim the
+still already supports). "Exit round-trip ... with keyboard" was verified as
+a mouse/touch click on the Exit button rather than a dedicated keyboard-only
+path, since M4 already established Enter/Z/Shift restart the run from the
+game-over overlay but Exit itself has always been a plain button with no
+separate keyboard binding (unchanged by this task); Escape on the title page
+already navigates to `/` (pre-existing, unrelated to Start Game).
+
+**Status:** M5 exit criteria met (button enabled and reachable at both
+sizes, zoom-then-navigate works, Exit round-trips) and evidenced above.
+Next: M6 (the 2021 creatures) or M7 (juice and polish) per OVERNIGHT.md §3.
