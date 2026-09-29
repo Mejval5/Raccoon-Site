@@ -274,10 +274,11 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   // `shaveNubsAndSmallIslands` again itself once it has.
   shaveNubsAndSmallIslands(smoothed);
 
-  // Flood-fill from the carved path; anything not reached is sealed off and
-  // becomes soft (breakable) rock rather than an unreachable pocket.
   const midRow = Math.floor(CHUNK_H / 2);
   const pathSeedCol = clampInt(entryCol, BORDER, CHUNK_W - BORDER - 1);
+
+  // Flood-fill from the carved path; anything not reached is sealed off and
+  // becomes soft (breakable) rock rather than an unreachable pocket.
   const reached = floodFillReachable(smoothed, pathSeedCol, 0);
   let softPockets = []; // [[x,y], ...] cells turned into soft rock this pass
   for (let y = 0; y < CHUNK_H; y++) {
@@ -339,10 +340,72 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   // nub next to it that the earlier pass never saw, and `render.js`'s
   // procedural nub cap (`drawNubTile`) can't match the sprite tileset's
   // rim shape/weight, so it always reads as a seam. Re-running the shave
-  // here, as the last tile-shape edit before the reachable-cells list is
-  // built (below), removes any nub this step just created -- same
-  // solid-to-open-only, connectivity-safe guarantee documented above.
+  // here, as the last *solid-to-open* tile-shape edit before the
+  // reachable-cells list is built (below), removes any nub this step just
+  // created -- same solid-to-open-only, connectivity-safe guarantee
+  // documented above. (`addBorderRimBumps` below is the one open-to-solid
+  // edit that still runs after this, deliberately -- see its own comment.)
   shaveNubsAndSmallIslands(smoothed);
+
+  // Visual pass, round 15 (Daniel's screenshot review, item 2, low priority):
+  // the two BORDER columns are always solid, and the noise+smooth pass
+  // earlier is biased to keep the next column or two solid too -- `smooth()`
+  // treats out-of-bounds as rock, and column BORDER always has the
+  // always-solid columns 0..BORDER-1 as several of its 8 neighbours, so it
+  // (and often BORDER+1) survives smoothing as rock far more reliably than
+  // any other interior column does. Once the carved path hugs that side for
+  // a run of rows, the *actual* open-water edge -- often sitting a column
+  // or two in from BORDER itself, not at BORDER -- reads as one perfectly
+  // straight rim the full height of the screen (verified against a real
+  // seed: column BORDER stayed solid for 48 rows straight in one test
+  // chunk, so bumping BORDER itself would have been a no-op). Every other
+  // wall in the cave steps in and out (per the promo video), so a
+  // dead-straight run reads as generator-shaped rather than natural.
+  //
+  // Fix: seeded and sparse (~every 3-6 rows per side), find the actual open
+  // edge near the border (scan up to 3 columns in from BORDER for the
+  // first water cell) and push it solid by one tile -- a real "bump the
+  // border column out" rather than a fixed-column tint. Each candidate is
+  // verified against `pathStillConnected` before it's kept, so it can never
+  // wall off the path this chunk's `entryCol` must connect through. Uses
+  // its own RNG stream (not `rng` above, already spent on noise/path this
+  // chunk) so it can't perturb the byte-for-byte determinism other tests
+  // pin against. Deliberately run *after* both `shaveNubsAndSmallIslands`
+  // calls above (each solid-to-open-only) -- a single-tile bump reads as a
+  // "3+ open sides" nub to that pass and would get shaved straight back to
+  // water if it ran first (this was tried and verified to no-op the fix).
+  // Being last, it also has to build its own reachability check rather
+  // than reuse `reached` (computed before it runs, from `pathSeedCol`):
+  //
+  // `pathStillConnected` checks the *specific* route this chunk's
+  // connectivity actually depends on -- from `pathSeedCol` at row 0 to
+  // anywhere on row `CHUNK_H-1`. A generic "is anything on row 0 connected
+  // to anything on the bottom row" check (`isTopToBottomConnected`) isn't
+  // tight enough here -- it can stay true via some unrelated pocket while
+  // the bump seals off the real entryCol-rooted route.
+  function pathStillConnected(tiles) {
+    const r = floodFillReachable(tiles, pathSeedCol, 0);
+    for (let x = 0; x < CHUNK_W; x++) if (r[idx(x, CHUNK_H - 1)]) return true;
+    return false;
+  }
+  (function addBorderRimBumps() {
+    const BUMP_SEARCH = 3; // how far in from BORDER to look for the actual open edge
+    const brng = mulberry32(hashSeed(hashSeed(seed, chunkIndex), 0xb012d));
+    for (const side of [0, 1]) { // 0 = left border, 1 = right border
+      let y = 1 + Math.floor(brng() * 4);
+      while (y < CHUNK_H - 1) {
+        for (let d = 0; d < BUMP_SEARCH; d++) {
+          const bx = side === 0 ? BORDER + d : CHUNK_W - 1 - BORDER - d;
+          const i = idx(bx, y);
+          if (smoothed[i] !== 0) continue; // already solid here -- keep scanning inward
+          smoothed[i] = 1;
+          if (!pathStillConnected(smoothed)) smoothed[i] = 0; // would've sealed the path -- revert
+          break; // only ever bump the first (outermost) open cell found
+        }
+        y += 3 + Math.floor(brng() * 4); // next candidate 3-6 rows later
+      }
+    }
+  })();
 
   // --- Spawns ---
   const spawns = [];

@@ -331,6 +331,38 @@ export function createRenderer(ctx, world) {
   const rockNoisePattern = patternCtx.createPattern(rockNoiseCanvas, 'repeat');
   const coralNoisePattern = patternCtx.createPattern(coralNoiseCanvas, 'repeat');
 
+  // Round-15 fix (Daniel's screenshot review, item 1: a surface soft-rock
+  // tile with only one open face rendered as a flat, hard-edged, muddy
+  // square about one tile in size, sitting under the rounded rim and
+  // ignoring its shape -- nothing like that exists in the promo video.
+  // Round-2 only stopped tinting *fully buried* soft tiles (see `solidAt`
+  // below); an exposed one still got a flat-opacity `fillRect` the exact
+  // size of the tile, which shows as a hard square wherever the tile's real
+  // silhouette (the traced, rounded wall outline) isn't itself a square --
+  // i.e. almost always. Fix: feather the tint+grain with a radial alpha
+  // mask (built once, tile-sized) instead of a flat rect, so it fades to
+  // nothing before it ever reaches the tile's own edges -- alpha is already
+  // 0 by radius 0.5*s (the edge midpoints) and well before the 0.707*s
+  // corners, so no straight or square edge can show against the
+  // surrounding rock, without drawing any new art.
+  const softMaskCanvas = document.createElement('canvas');
+  softMaskCanvas.width = softMaskCanvas.height = BAKE_PX_PER_UNIT;
+  (function buildSoftMask() {
+    const mctx = softMaskCanvas.getContext('2d');
+    const s = BAKE_PX_PER_UNIT;
+    const grad = mctx.createRadialGradient(s / 2, s / 2, s * 0.22, s / 2, s / 2, s * 0.5);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    mctx.fillStyle = grad;
+    mctx.fillRect(0, 0, s, s);
+  })();
+  // Scratch canvas the soft-tile tint+grain is composited into (tile-sized,
+  // reused for every soft tile) before being masked and stamped onto the
+  // chunk bake -- see the loop in `bakeChunkWalls` below.
+  const softTileScratch = document.createElement('canvas');
+  softTileScratch.width = softTileScratch.height = BAKE_PX_PER_UNIT;
+  const softTileScratchCtx = softTileScratch.getContext('2d');
+
   // Paints a seamless noise pattern onto already-opaque wall pixels only
   // (`source-atop`), offset so it tiles across chunk boundaries in world
   // space -- see the NOISE_FIELD_TILES comment above.
@@ -341,6 +373,45 @@ export function createRenderer(ctx, world) {
     bctx.translate(0, -offPx);
     bctx.fillStyle = pattern;
     bctx.fillRect(rectX, rectY + offPx, rectW, rectH);
+    bctx.restore();
+  }
+
+  // Composites one soft (breakable) rock tile's warm coral tint + grain,
+  // feathered by `softMaskCanvas` so it fades to nothing before the tile's
+  // own edges (round-15 fix -- see the comment above `softMaskCanvas`).
+  // Built in a tile-sized scratch canvas first (so the mask only ever
+  // affects this one tile's tint, never neighbouring rock), then stamped
+  // onto the chunk bake with `source-atop` so it still only lands on
+  // already-opaque wall pixels.
+  function paintSoftTile(bctx, entry, px, py) {
+    const s = BAKE_PX_PER_UNIT;
+    softTileScratchCtx.clearRect(0, 0, s, s);
+    // Warm coral tint (flat base colour so it reads as diggable/distinct
+    // even before the grain pass below) so it stays distinct from
+    // unbreakable (green-rimmed) walls.
+    softTileScratchCtx.fillStyle = 'rgba(210,130,80,0.30)';
+    softTileScratchCtx.fillRect(0, 0, s, s);
+    // Coral-tinted grain on top, offset the same way `paintNoise` offsets
+    // the rock grain so the two fields still line up pixel-for-pixel at
+    // this tile's position (world-space y offset, wrapped to the pattern's
+    // own tile size).
+    softTileScratchCtx.save();
+    softTileScratchCtx.globalCompositeOperation = 'source-atop';
+    const offPx = ((entry.yOffset * BAKE_PX_PER_UNIT) % coralNoiseCanvas.height + coralNoiseCanvas.height) % coralNoiseCanvas.height;
+    softTileScratchCtx.translate(-px, -(py + offPx));
+    softTileScratchCtx.fillStyle = coralNoisePattern;
+    softTileScratchCtx.fillRect(px, py + offPx, s, s);
+    softTileScratchCtx.restore();
+    // Feather: keep only the centre, fading to fully transparent by the
+    // tile's own edge midpoints (well before its corners) -- see
+    // `softMaskCanvas`.
+    softTileScratchCtx.save();
+    softTileScratchCtx.globalCompositeOperation = 'destination-in';
+    softTileScratchCtx.drawImage(softMaskCanvas, 0, 0);
+    softTileScratchCtx.restore();
+    bctx.save();
+    bctx.globalCompositeOperation = 'source-atop';
+    bctx.drawImage(softTileScratch, px, py);
     bctx.restore();
   }
 
@@ -389,8 +460,8 @@ export function createRenderer(ctx, world) {
     bctx.stroke();
     bctx.restore();
 
-    // Soft (breakable) rock tint + texture, per tile, unchanged from before:
-    // the traced outline only replaces the fill/rim, not this per-tile pass.
+    // Soft (breakable) rock tint + texture, per tile: the traced outline
+    // only replaces the fill/rim, not this per-tile pass.
     const solidAt = (tx, ty) => {
       if (tx < 0 || tx >= chunkW) return true;
       if (ty < 0 || ty >= chunkH) {
@@ -400,12 +471,11 @@ export function createRenderer(ctx, world) {
       const v = chunk.tiles[ty * chunkW + tx];
       return v === 1 || v === 2;
     };
-    const softTiles = []; // v===2 (breakable) tile rects, textured after the main noise pass
+    const softTiles = []; // v===2 (breakable) tile rects, tinted after the main noise pass
     for (let ty = 0; ty < chunkH; ty++) {
       for (let tx = 0; tx < chunkW; tx++) {
         const v = chunk.tiles[ty * chunkW + tx];
         if (v !== 2) continue;
-        const px = tx * s, py = ty * s;
         // Round-2 fix (Daniel's screenshot review: soft rock buried inside
         // solid rock rendered as a flat blocky patch with hard square edges
         // and no rim -- looked like a missing texture, no counterpart in the
@@ -415,26 +485,19 @@ export function createRenderer(ctx, world) {
         // to normal rock instead.
         const exposed = !solidAt(tx, ty - 1) || !solidAt(tx + 1, ty) || !solidAt(tx, ty + 1) || !solidAt(tx - 1, ty);
         if (!exposed) continue;
-        // Soft (breakable) rock: same shape, a warm coral tint (flat base
-        // colour so it reads as diggable/distinct even before its own
-        // noise pass below) so it stays distinct from unbreakable
-        // (green-rimmed) walls.
-        bctx.save();
-        bctx.globalCompositeOperation = 'source-atop';
-        bctx.fillStyle = 'rgba(210,130,80,0.30)';
-        bctx.fillRect(px, py, s, s);
-        bctx.restore();
-        softTiles.push({ px, py });
+        softTiles.push({ px: tx * s, py: ty * s });
       }
     }
     // Surface texture pass, baked once here (never per-frame): the seamless
-    // fBm field masked onto every opaque wall pixel via source-atop, then
-    // the same field again -- coral-tinted -- over just the soft-rock tiles
-    // so their grain matches the field exactly, tile for tile, with the
-    // surrounding rock.
+    // fBm field masked onto every opaque wall pixel via source-atop.
     paintNoise(bctx, entry, rockNoisePattern, rockNoiseCanvas, 0, 0, canvas.width, canvas.height);
+    // Then the soft-rock tint + grain -- see `paintSoftTile` above for the
+    // round-15 feathering fix (warm coral tint + the same fBm field through
+    // a coral-tinted lookup, so its grain matches the surrounding rock's
+    // exactly, but faded to nothing well inside the tile so no straight or
+    // square edge shows).
     for (const { px, py } of softTiles) {
-      paintNoise(bctx, entry, coralNoisePattern, coralNoiseCanvas, px, py, s, s);
+      paintSoftTile(bctx, entry, px, py);
     }
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
   }

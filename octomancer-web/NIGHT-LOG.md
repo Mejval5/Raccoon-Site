@@ -2367,3 +2367,99 @@ s42-desk,s7-phone}-{spawn,0..3}.png`, zoomed crops `fix-r14-zoom-{cluster,
 urchin-noplant,octopus,phone-urchin}.png` (urchin/horns crops re-confirm no
 plant sprouts from a static emplacement; cluster crop shows a mixed plant/
 bush floor clump plus ceiling vines, all rim-anchored).
+
+## Visual fixes round 15 (soft-rock hard-edged patch, border-column straight rim)
+
+No image generation used this round (openai-image-gen was available but
+neither fix needed new art, per the brief -- both are code-only). Milan's
+style question doesn't apply: no new assets shipped.
+
+1. **Root cause of the round-2 "flat blocky patch" leftover (render.js,
+   `bakeChunkWalls`).** Round 2 stopped tinting a *fully buried* soft-rock
+   (v===2) tile, but an *exposed* one (still the common case -- that's the
+   whole point of a breakable tile) kept a flat `rgba(210,130,80,0.30)`
+   `fillRect` the exact size of the tile, `source-atop`'d onto the already
+   solid-filled/rimmed chunk canvas. Since the chunk's fill+rim is one traced
+   outline per connected region (not per-tile art), a flat square tint reads
+   as a hard, straight-edged patch wherever the tile's real silhouette isn't
+   itself square -- which is almost always, since walls are rounded/stepped.
+   Confirmed against Daniel's crop (`review-r14-zoom-s77-brownsquare.png`,
+   flat coral square under the rounded green rim) and, separately, that
+   exposed soft tiles are genuinely rare: a scan of chunks 0-9 across 16
+   seeds found zero *same-chunk* exposed soft tiles at all (soft pockets are
+   sealed off from the *own* chunk's flood-fill by construction) -- the
+   real-world cases are pockets that sit on a chunk's own top/bottom row and
+   are only exposed via the *next* chunk over (cross-chunk, which the
+   flood-fill can't see but render.js's `solidAt` correctly checks via
+   `world.tileAt`). Found several such cases (seeds 17/24/25/26) confirming
+   the mechanism.
+
+   Fix: feather the tint+grain with a radial alpha mask (new `softMaskCanvas`,
+   built once, tile-sized: full alpha out to 0.22*tile-size, zero alpha by
+   0.5*tile-size -- i.e. the tile's own edge midpoints, well before its
+   0.707*tile-size corners) instead of a flat `fillRect`. New `paintSoftTile`
+   composites the coral tint + the same coral-tinted fBm grain (pattern-offset
+   -aligned with the rock grain pass, same as before) into a small reusable
+   scratch canvas, masks it with `destination-in`, then stamps it onto the
+   chunk bake with `source-atop` (still only ever lands on already-opaque
+   wall pixels). No new art; same coral palette as before, just no longer a
+   hard square.
+
+2. **Root cause of the round-14-review "ruler-straight border rim" (gen.js,
+   `generateChunk`), low priority per the brief.** The two `BORDER` columns
+   are always solid, but the noise+smooth pass is *also* biased to keep the
+   next column or two solid: `smooth()`'s 3x3-majority CA counts
+   out-of-bounds as rock, and column `BORDER` always has the always-solid
+   columns `0..BORDER-1` as several of its 8 neighbours -- so it (and often
+   `BORDER+1`) survives both smoothing passes as rock far more reliably than
+   any other interior column. Verified against a real seed: column `BORDER`
+   stayed solid for 48 rows straight in one test chunk (seed 5, chunks 4-5) --
+   so a naive fix that bumps column `BORDER` itself would have been a no-op
+   (confirmed by trying it first: 0 visible change). The actual open-water
+   edge that reads as dead-straight in the review screenshots sits a column
+   or two further in.
+
+   Fix: `addBorderRimBumps`, seeded (own `mulberry32` stream, not `rng` --
+   doesn't perturb the byte-for-byte determinism `gen.test.js` pins) and
+   sparse (~every 3-6 rows per side). For each candidate row, scans up to 3
+   columns in from `BORDER` for the actual first open (water) cell and pushes
+   it solid by one tile -- a real "bump the border out," not a fixed-column
+   edit. Each candidate is verified against a new `pathStillConnected` check
+   (floods from this chunk's own `pathSeedCol` at row 0, confirms row
+   `CHUNK_H-1` is still reachable) before being kept, reverted otherwise, so
+   it can never wall off the path `entryCol` must connect through. Two
+   connectivity subtleties surfaced and were fixed during verification, not
+   left as caveats:
+   - First attempt checked the generic `isTopToBottomConnected` (any row-0
+     water to any row-(H-1) water) instead of the specific `pathSeedCol`
+     route. That's too loose: it broke `gen.test.js`'s connectivity assertion
+     10/480 chunks (40 seeds x 12 chunks) in initial testing, because it let
+     a bump seal off the *real* entryCol-rooted route while an unrelated
+     pocket kept the generic check true -- the very next pass (soft-pocket
+     flood-fill, seeded from `pathSeedCol` specifically) then wrongly
+     converted the now-unreachable "real" path to soft rock. Swapped to the
+     tighter `pathStillConnected`; 0 failures across 200 seeds x 20 chunks
+     after.
+   - First placement ran the bump between the two existing
+     `shaveNubsAndSmallIslands` calls. That pass shaves any solid tile with
+     3+ open orthogonal sides straight back to water -- exactly what a fresh
+     single-tile bump looks like -- so it silently no-op'd every bump
+     (confirmed: tiles round-tripped back to open water by the time
+     `generateChunk` returned). Moved `addBorderRimBumps` to run after
+     *both* shave calls, as the one deliberate open-to-solid edit that
+     survives to the final grid.
+
+Verification: `tests/` 1827/1827 (own threaded `http.server` with no-cache
+headers on a free port, stopped after -- switched to the threaded variant
+mid-session after the plain single-threaded one intermittently refused
+connections under puppeteer's parallel `modulepreload` requests); a
+standalone 200-seed x 20-chunk connectivity sweep (`isTopToBottomConnected`)
+outside the smaller in-page 40x12 `gen.test.js` sweep, 0 failures; 0 console
+errors headless at 1440x900 and 375x812 across scripted autodives on seeds 1,
+5, 7, 17 and 77 (77 chosen to revisit the round-14 soft-rock crop's seed).
+Screenshots: `octomancer-web/night/fix-r15-dive-{s1-desk,s5-desk,s17-desk,
+s77-desk,s7-phone}-{spawn,0..7}.png`, zoomed crops `fix-r15-zoom-{wall-step,
+wall-step2,octopus,enemy-urchin,enemy-cannon}.png` (`wall-step`/`wall-step2`
+show the border rim now stepping in a real run instead of one straight
+line -- see seed 5's chunk 3-4 border, e.g. `fix-r15-dive-s5-desk-3.png`
+around world y~90-116m).
