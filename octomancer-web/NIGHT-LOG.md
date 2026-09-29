@@ -904,3 +904,194 @@ hard-edged brown patch on the rare frame where a chunk's soft-rock cluster
 interior peeks past its own outer (rounded) shell. Not worth a special tile
 combo for how rarely it's actually visible; flagging in case a future pass
 wants to special-case it.
+
+## Otter: alive pass -- more wall critters + denser static/moving enemy mix
+
+Daniel played the build: "there was a lot more critters on the walls and we
+had enemies, some static and some moving." This pass raises enemy density
+and adds a non-hostile wall-critter layer. Files touched: `gen.js` (enemy
+slot count), `decor.js` (new `findWallCritters`/`visibleCritters`),
+`decor-draw.js` (new file, critter art + idle motion), `octomancer-web/
+tools/export_alive_assets.py` (12 new sprites into `play/assets/`, rows
+added to `ASSETS.md`), plus one small render hook (below). `render.js`
+(Magpie's wall-texture pass) and `archive/` (another dev) were not touched
+beyond that hook.
+
+### 1. Original numbers (octomancer-unity, read-only)
+
+Level generation is grid-based: `ProceduralMapBuilder.cs:420-483` builds a
+3x3-room grid, each room 10x16 tiles, giving one **30x48-tile** map per
+generated level (`FinalMapTexture = new Texture2D(30, 48)`, line 229) --
+there is no true "infinite chunk", so "per chunk" in the original means
+"per generated level" here.
+
+Both decoration and enemies spawn through the same pattern/threshold
+system:
+- `PatternGenerator.cs` (foreground foliage + the `EnemyGenerator`
+  subclass): for each `FoliagePattern` (a small stencil texture, matched
+  against the level's block/air bitmap at up to 4 flip orientations --
+  `GenerateByPattern`/`CheckMapPosAtCoords`, lines 75-112 and 217-240), it
+  collects every matching tile position, shuffles them (`SM.ShuffleList`),
+  then for each `FoliageItem` walks the shuffled list and spawns while a
+  Perlin-noise sample at that tile exceeds `foliage.SpawnChance` **and**
+  `_spawnedItems[foliage] < foliage.MaxSpawned * CustomDensityOverride`
+  (`FoliageSpawningCycle`, lines 123-142).
+- `BackgroundGenerator.cs` (ambient eyes/holes/runes/rocks): no stencil, no
+  shuffle -- every tile in the whole spawn area is Perlin-sampled, sorted
+  **strongest-Perlin-first**, then filled greedily up to
+  `MaxSpawned * CustomDensityOverride` (`GetValidLocationsSorted`/
+  `FoliageSpawningCycle`, lines 73-107). Default `CustomDensityOverride =
+  16f` (line 16) -- far denser than the foreground's dynamic multiplier.
+- `EnemyGenerator.cs` (enemies only): same spawn cycle as `PatternGenerator`,
+  plus a hard reject if the candidate tile is within `SafeDistanceStart` (7
+  tiles, `EnemyPlanterTiles` scene value) of the start portal or
+  `SafeDistanceExit` (4 tiles) of the exit (lines 28-53) -- this is the
+  original source of "nothing hostile in the start area", which `gen.js`'s
+  own `ENEMY_MIN_DEPTH = 40` already covers for the web port.
+- Density scaling: `PatternGenerator.CalculateDensityOverride()` (lines
+  52-57) sets `CustomDensityOverride = ((mapWidth/10) + (mapHeight/16)) / 2`
+  -- exactly 3.0 for the full 30x48 map -- but only when `DynamicDensity` is
+  on. In `MainGame.unity`: the **Foliage** planter has it **on** (so
+  foreground `MaxSpawned` caps are effectively x3 per level); the **Enemy**
+  planter has it **off** with `CustomDensityOverride: 1` (so enemy
+  `MaxSpawned` values are literal per-level caps, not map-size-scaled). No
+  depth/level-number-based density or difficulty scaling exists anywhere in
+  `GameLoop/`, `DataScripts/` or `Map/` -- density is constant per level in
+  the source.
+
+**Foreground wall critters/props** (`ScriptableObjects/FGFoliageTiles/`,
+5 patterns, ~1-6 items each): `SpawnChance`/`MaxSpawned` (raw / x3
+effective) per item --
+FoliageCritter1/2/4/6/7 + FoliageGreenranha: 0.65 / 5 (15);
+FoliagePlant1: 0.8 / 3 (9); FoliagePlant2: 0.7 / 3 (9);
+FoliagePlant12/13/26: 0.7 / 5 (15); FoliagePlant24/5/8/9: 0.4 / 5 (15);
+FoliagePlant7: 0.7 / 5 (15); FoliagePlant25: 0.9 / 15 (45). So a packed
+level's foreground layer alone can carry on the order of **150-250 wall
+critters/plants** (7 items x ~15-45 each) before the shuffle+threshold gate
+thins that down in practice. `FoliageCritter1.asset`: `PositionOffset:
+{x:0, y:1.5}`, `RandomOffsetRangeX/Y: {-1,1}` -- offset and jittered well
+off the matched tile centre. `FoliagePlant1.asset`: `PositionOffset:
+{x:0, y:-0.58}` -- almost a full tile *down*, into the matched solid tile,
+because `Plant1Wobble.prefab`'s `SpriteRenderer.m_SortingOrder = -15`: the
+plant draws *behind* the terrain and its `PositionOffset` deliberately buries
+its base under the rock sprite so only the top pokes out. This is the
+"plants/decor draw behind walls, anchored slightly inside the wall" rule
+Daniel asked me to match.
+
+**Background ambient** (`ScriptableObjects/BGFoliage/`, density 16,
+`BackgroundGenerator`): Eye/Eye1 0.8/10, FoliageHole01/02 0.8/10,
+FoliagePlant20 0.5/10, FoliageRock23(+Solo) 0.5/15, Rune1-6 0.5/10 -- this
+is the densest single layer in the original, sorted by Perlin strength
+rather than shuffled, so it fills the "best" spots first.
+
+**Enemies** (`ScriptableObjects/ProceduralSpawnRules/LevelAll/Enemies/`,
+one spawn table, no per-depth variants), 7 kinds, `SpawnChance`/`MaxSpawned`:
+Urchin 0.6/10 (static, spins in place -- `Urchin.cs:10`), Cannon 0.9/5
+(static -- `CanonBehaviour.cs`), CannonAngle 0.9/5 (static), SpikeTrap
+0.6/10 (static), ElectroRock 0.6/4 (static), Slapper 0.9/5 (static, fixed
+melee), Piranha 0.6/10 (**moving** -- the only one with `MoveSideways.cs`,
+a physics patrol with wall raycasts and direction-flip on contact,
+`_moveForce=2500 _maxMoveSpeed=4`). So the original's mix is **6 static
+kinds vs. 1 moving kind**, each capped 4-10/level -- a packed level could
+carry on the order of **45-50 static hazards plus up to 10 roaming
+piranhas**. `CritterHealth.cs:12-17` confirms decorative critters are
+immune to `DamageTypes.Enemy` -- they are never combatants, matching the
+"non-hostile" wall layer this pass adds.
+
+### 2. What this pass ported vs. deviated on (both logged, per instruction)
+
+**Ported (behaviour matched):**
+- Eligibility by tile adjacency, i.e. the same idea as the stencil match:
+  a critter/prop needs a solid neighbour (floor cap / ceiling cap / side
+  wall) to "grow from" or embed into; open water away from any wall only
+  gets the free-floating fish/jelly (`decor.js findWallCritters`).
+- Anchor placement partly *inside* the matched solid tile with a small
+  random jitter along the wall face -- directly ported from
+  `FoliagePlant1.asset`'s `PositionOffset`/`RandomOffsetRangeX/Y` shape (a
+  fixed offset into the wall + up to ~0.3 tile of jitter), now that Magpie's
+  render-order pass this session draws walls over this decor layer, the
+  same "draws behind, base tucked under the rock" composite the original
+  used its `SpriteRenderer.m_SortingOrder = -15` for.
+- Non-hostile: critters carry no `radius`/`contactDamage`, so (like
+  `CritterHealth.cs`'s enemy-damage immunity) they can never block the
+  generator's guaranteed path or hurt the octopus -- covered by
+  `tests/decor.test.js`.
+- Two-tier density (a denser "background ambient" bucket vs. a sparser
+  "foreground critter" bucket) -- our wall bucket (snail/eye/hole/rune/bush,
+  ~1-in-11 eligible cells) plus the rarer open-water bucket (fish/jelly,
+  ~1-in-23) mirrors the original's foreground-vs-BGFoliage density split,
+  though not its exact 16x multiplier.
+
+**Deviated (logged, not a line-for-line port):**
+- No Perlin noise / stencil-texture matching: `gen.js` already deviates from
+  porting the original's Perlin cave generator (logged earlier in this
+  file), so decor.js's eligibility test uses the same tile-adjacency +
+  cheap integer-hash approach the existing `findVents`/`drawPlants` code
+  already established, instead of reading actual pattern bitmaps.
+- No per-level `MaxSpawned`/density-multiplier budget: this is a streaming
+  per-chunk generator (`world.js`), not a fixed 30x48 level, so there is no
+  single "level total" to cap against; density is expressed as a per-chunk
+  sampling rate (~1-in-11 / ~1-in-23 candidate cells) tuned to read similarly
+  busy, not as a literal port of `MaxSpawned * CustomDensityOverride`.
+- No true stencil-shape variety (the original's 5 patterns each match a
+  distinct silhouette, e.g. "corner", "long floor run"): our version only
+  distinguishes floor/ceiling/side-wall/open-water, a coarser 4-way split.
+- Enemies: `gen.js`'s slot count (5-8 near the surface, up to 8-11 by depth
+  450+, scaling +1 per 150 depth units, capped at +3) is a density target
+  "toward" the original's per-level caps, not those caps themselves -- see
+  `gen.js`'s own comment for the reasoning. The Unity source has **no**
+  depth-based scaling at all (checked `GameLoop/`, `DataScripts/`, `Map/`);
+  the web port's mild depth ramp is an intentional deviation to keep the
+  descent feeling like it escalates, per Daniel's "scaling a bit with
+  depth" ask.
+- New assets exported this session (`octomancer-web/tools/
+  export_alive_assets.py`, rows in `ASSETS.md`): `critter-fish/-jelly/
+  -snail.webp` (Critter1Fish/Critter4JellyFish/Critter5Snail), `decor-eye/
+  -eyeblue/-hole1/-hole2.webp` (Background Eye/EyeBlue/Hole01/Hole02),
+  `decor-rune1/-rune3/-rune5.webp` (kept bucket-D Runes 1/3/5, a 3-of-6
+  sample for variety without shipping all six), `decor-bush2/
+  -bushmini.webp` (kept bucket-D 2021 bushes). All allowlisted in
+  ART-SORT.md bucket A or kept bucket D. Total new payload ~22 KB (play/
+  assets/ now 481 KB, cap 900 KB).
+
+### 3. Tiny render hook (Magpie is on render.js for wall textures)
+
+`decor-draw.js` is a new file (same shape as `enemy-draw.js`'s
+`drawEnemies`/`drawBombs`/`drawParticles`) exporting one function,
+`drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters,
+time)`. `render.js` needed a 3-line hook to actually call it (an import, a
+`critters = []` render-option default, and one `drawCritters(...)` call)
+-- there is no other place with the canvas context + camera transform to
+draw from. `main.js` gained one line (`critters: decor.visibleCritters
+(resident)`) to feed it. Magpie's own layering pass (commit `9242f99c`,
+concurrent with this one) moved `drawPlants`/`drawCritters` to run *before*
+`drawWalls` (was after) so the wall bake composites over both -- exactly
+the "anchor slightly into the solid neighbour" placement `decor.js`'s
+`INTO_WALL` was already built for (see §2 above), so no changes were needed
+on this side once Magpie's reorder landed. Verified against the fully
+committed state (`git status` clean for `render.js`, page load + `tests/`
+re-run after Magpie's commit): 0 console/network errors, `tests/` 65/65.
+
+### 4. Verification
+
+`tests/` -> PASS 65/65 (57 prior + this session's 3 `gen.test.js` density
+assertions + 5 new `decor.test.js` wall-critter checks: density, same-chunk
+determinism, no collision/damage fields, despawn-with-chunk). Own
+threading `http.server` (Cache-Control: no-store; switched from
+`SimpleHTTPRequestHandler`'s single-threaded default mid-session after it
+intermittently refused a connection under Chrome's page-load burst --
+confirmed transient, a different file failed each retry, not a real
+missing asset) on a free port (56282), stopped after. puppeteer-core
+headless Chrome from `%TEMP%\octo-tools`: 0 console errors and 0 failed
+requests at both 1440x900 and 375x812 against the committed master state;
+frame median 0.6-0.8ms at 375x812 with the denser world (budget 4ms).
+10-minute `__octo.autoDive(true)` soak at 375x812: no console errors, no
+hang, frame time stayed flat across both 1-minute checkpoints taken;
+`residentChunks` held steady at 3 (no chunk-eviction leak). The octopus
+died to the denser enemies partway in (`hearts:0`, `dead:true`,
+`gameOverShown:true` from `__octo.state()`, around depth 53) and the run
+correctly stayed in that game-over state rather than erroring or hanging --
+expected behaviour (this pass makes the descent harder by design), not a
+soak failure. Screenshots: `octomancer-web/night/alive-pass-{desktop,
+phone}.png` (12s of `autoDive`, taken against the final committed render
+order).

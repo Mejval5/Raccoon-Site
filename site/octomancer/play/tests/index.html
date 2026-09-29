@@ -83,6 +83,10 @@ runEnemyTests(assert, approx);
 import { runScoreTests } from './score.test.js';
 runScoreTests(assert, approx);
 
+// --- Alive-pass wall critter tests (decor.js) ---
+import { runDecorTests } from './decor.test.js';
+runDecorTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

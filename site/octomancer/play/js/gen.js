@@ -244,9 +244,20 @@ export function generateChunk(seed, chunkIndex, entryCol) {
 
   // Enemy slots tagged by placement, from depth 40 onward (depth in world
   // units = chunkIndex * CHUNK_H + local y).
+  //
+  // Density (visual pass, this session, NIGHT-LOG.md "alive pass" entry):
+  // the Unity level generator (`EnemyPlanterTiles`, DynamicDensity off) caps
+  // each enemy type at MaxSpawned 4-10 per full 3-room (30x48-tile) level --
+  // up to 10 Urchin, 10 SpikeTrap, 10 Piranha, 5 each of Cannon/CannonAngle/
+  // Slapper, 4 ElectroRock -- so a packed level carries on the order of
+  // 45-50 static hazards plus up to 10 roaming piranhas. Our chunk (32x24 =
+  // 768 tiles) is roughly half that level's area; raising the per-chunk slot
+  // count from the old 2-4 to 5-8 (a little more with depth) tracks that
+  // density without hard-copying Unity's exact per-type caps.
   const depthStart = chunkIndex * CHUNK_H;
   if (depthStart + CHUNK_H >= 40) {
-    const slotCount = 2 + Math.floor(rng() * 3); // 2-4 per chunk
+    const depthBonus = Math.min(3, Math.floor(depthStart / 150)); // +1 every 150 units, capped at +3
+    const slotCount = 5 + depthBonus + Math.floor(rng() * 4); // 5-8 near the surface, up to 8-11 deep
     for (let i = 0; i < slotCount; i++) {
       const cell = pick(openCells);
       if (!cell) continue;

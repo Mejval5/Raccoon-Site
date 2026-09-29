@@ -294,6 +294,7 @@ function render(alpha, frameMs) {
     resident,
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),
+    critters: decor.visibleCritters(resident),
     depth,
     enemies: enemies.all(),
     shots: enemies.shots(),
