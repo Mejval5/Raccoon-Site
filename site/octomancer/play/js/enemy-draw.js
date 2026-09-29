@@ -93,12 +93,29 @@ function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, wor
   ctx.restore();
 }
 
-export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time) {
+// Round-6 task 3 (NIGHT-LOG.md): "interpolate render positions between fixed
+// 50 Hz steps (octopus, enemies, camera) using the loop's alpha ... no
+// snapping." Enemies only ever moved at their raw simulation position before
+// this (the octopus already interpolated, render.js's `drawOcto`), so a
+// fast mover like a chasing piranha or the Beholder visibly stair-stepped
+// once per fixed step. `ix`/`iy` below blend each enemy's last-step and
+// current position the same way `drawOcto` already does; a stationary
+// emplacement (urchin/cannon/horns/mine, `moving` false and `prevX===x`) is
+// unaffected since the interpolation is a no-op when the position didn't
+// change.
+function interpPos(e, alpha) {
+  const px = e.prevX === undefined ? e.x : e.prevX;
+  const py = e.prevY === undefined ? e.y : e.prevY;
+  return { x: px + (e.x - px) * alpha, y: py + (e.y - py) * alpha };
+}
+
+export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha = 1) {
   for (const e of enemies) {
     if (e.dead) continue;
+    const { x: ex, y: ey } = interpPos(e, alpha);
     if (e.kind === 'urchin') {
       const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, e.x + dx, e.y + dy, 0.9, 0, e.hitFlash);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, ex + dx, ey + dy, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'piranha') {
       // Round-1 fix (Daniel's screenshot review: "some enemies render upside
       // down"): this used to rotate the full sprite by atan2(vy,vx), as if
@@ -113,32 +130,32 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       // is 2.04x1.28 at 0.9 scale, ~1.8 tiles long -- 0.7 world units tall
       // (~1.2 tiles) undersold that).
       const vx = e.vx || (e.dir || 0);
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, e.x, e.y, 1.15, vx > 0, false, e.hitFlash);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, ex, ey, 1.15, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
       const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, e.x + dx, e.y + dy, 0.9, 0, e.hitFlash);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, ex + dx, ey + dy, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'beholder') {
       const frame = beholderFrames[Math.floor(time * 8) % beholderFrames.length];
       const pulse = 1 + Math.sin(time * 6) * 0.04;
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, frame, e.x, e.y, 1.6 * pulse, 0, 0);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, frame, ex, ey, 1.6 * pulse, 0, 0);
       // Dread: a soft light cone toward the octopus grows as it nears (M7
       // will tune this further; a first cut lands here since the Beholder is
       // brand-new this milestone).
     } else if (e.kind === 'mine') {
       const flash = e.state === 'armed' ? 1 : e.hitFlash;
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, mineImg, e.x, e.y, 0.8, 0, flash);
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, mineImg, ex, ey, 0.8, 0, flash);
     } else if (e.kind === 'crab') {
       const img = e.variant === 'fast' ? crabFastImg : crabSlowImg;
       // Face the walk direction; flip vertically when it's hanging from a
       // ceiling so it always reads feet-toward-the-surface.
       const dy = surfaceDrawOffset(e.placement, 0.7);
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, e.x, e.y + dy, 0.7, e.dir < 0, e.placement === 'ceiling', e.hitFlash);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, ex, ey + dy, 0.7, e.dir < 0, e.placement === 'ceiling', e.hitFlash);
     } else if (e.kind === 'horns') {
       const flip = e.placement === 'ceiling';
       const dy = surfaceDrawOffset(e.placement, 0.9);
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, e.x, e.y + dy, 0.9, false, flip, e.hitFlash);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, ex, ey + dy, 0.9, false, flip, e.hitFlash);
     } else if (e.kind === 'manta') {
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, e.x, e.y, 0.9, e.dir < 0, false, e.hitFlash);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, ex, ey, 0.9, e.dir < 0, false, e.hitFlash);
     }
   }
   for (const s of shots) {

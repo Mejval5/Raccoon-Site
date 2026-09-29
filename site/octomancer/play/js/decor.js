@@ -9,8 +9,10 @@
 // non-hostile items per pattern at 9-45 instances each across a full 3-room
 // level, plus a denser background ambient layer (eyes/runes, density
 // 16, cap 10-15 each) -- see NIGHT-LOG.md for the exact numbers. This adds a
-// matching non-hostile layer here: snails, a reef fish, a jellyfish,
-// background eyes, runes and a couple of the kept 2021 bushes,
+// matching non-hostile layer here: a reef fish, runes and a couple of the
+// kept 2021 bushes (snail, jellyfish and the background eyes were all tried
+// and dropped again across rounds 1-6 -- none of them read as a wall
+// creature at this art scale; see CRITTER_KINDS_WALL/_OPEN's own comments),
 // picked and placed purely from each chunk's own tile data + a small
 // integer hash (same "no extra RNG stream" style as `findVents` below and
 // `drawPlants` in render.js), so they stay in sync across re-renders without
@@ -33,7 +35,17 @@ const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 // creature at this scale on ANY surface, not just the ceiling. Removed from
 // spawn entirely, same treatment round-1 already gave the "hole" critter and
 // round-3 gave the open-water "jelly".
-export const CRITTER_KINDS_WALL = ['eye', 'eyeblue', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
+// Round-6 fix (Daniel's own screenshot review round 5: "remove the wall eye
+// critter completely -- decor-eye/decor-eyeblue"). Same call the round-1
+// "hole" critter and round-3/4's "jelly"/"snail" got: `Eye`/`EyeBlue`
+// (Assets/Sprites/Background) are Milan's background-layer decoration, not a
+// critter meant to be scattered across walls at this density/scale --
+// ART-SORT.md now marks the wall-critter USE of them "not original" (the
+// source images themselves are still Milan's art, just never spawned as a
+// creature here). Dropped from spawn entirely; decor-draw.js's `eye`/
+// `eyeblue` image loads and draw branch are removed too, so there's no dead
+// reference left pointing at them.
+export const CRITTER_KINDS_WALL = ['rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
 // Round-3 fix (Daniel's screenshot review: "the faint open-water 'jelly'
 // critter reads as a UI glyph, a flat teal dot above two dashes, a bit like
 // a person icon -- nothing like it appears in the promo video"). The
@@ -67,6 +79,26 @@ function isThinWallCell(chunk, chunkW, chunkH, x, y) {
   return open >= 3;
 }
 
+/** Round-6 fix (reviewer leftover, NIGHT-LOG.md task 6: "keep decor away
+ * from enemy slots"). gen.js's enemy-slot spawns (`chunk.spawns`, tagged
+ * `type: 'enemy-slot'`) and this file's own wall-critter search used to pick
+ * cells completely independently, so a decor critter could land on (or right
+ * beside) the exact cell an enemy is anchored to -- the sprite pair could
+ * overlap depending on their placements, and an enemy the player is dashing
+ * around/dodging reads more confusingly with a static critter camped on the
+ * same wall pixel. Builds the set of tile cells (local `x,y`) any enemy slot
+ * already claims, so `findWallCritters` can skip them. */
+function enemySlotCellSet(chunk) {
+  const set = new Set();
+  if (!chunk.spawns) return set;
+  for (const s of chunk.spawns) {
+    if (s.type !== 'enemy-slot') continue;
+    // s.x/s.y are local tile coords + 0.5 (gen.js); floor gets the tile back.
+    set.add(`${Math.floor(s.x)},${Math.floor(s.y)}`);
+  }
+  return set;
+}
+
 /** Finds candidate cells for non-hostile wall decor: floor caps, ceiling
  * caps and side-wall faces get the wall-mounted kinds (snail/eye/rune/
  * bush); open water away from any wall occasionally gets a drifting fish or
@@ -74,10 +106,12 @@ function isThinWallCell(chunk, chunkW, chunkH, x, y) {
  * this reads as inhabited walls, not a solid carpet of sprites. */
 function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
   const out = [];
+  const enemyCells = enemySlotCellSet(chunk);
   for (let y = 1; y < chunkH - 1; y++) {
     for (let x = 1; x < chunkW - 1; x++) {
       const i = y * chunkW + x;
       if (chunk.tiles[i] !== 0) continue; // must itself be open water
+      if (enemyCells.has(`${x},${y}`)) continue; // an enemy already anchors here
       const floorCap = chunk.tiles[(y + 1) * chunkW + x] !== 0;
       const ceilingCap = chunk.tiles[(y - 1) * chunkW + x] !== 0;
       const wallSide = chunk.tiles[y * chunkW + (x - 1)] !== 0 || chunk.tiles[y * chunkW + (x + 1)] !== 0;
@@ -154,9 +188,10 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // now the rune's own tint (decor-draw.js's `getTintedRune`) -- lands
         // on the rock face itself, matching the promo video's runes/crosses
         // painted onto the rock.
-        const isEye = kind === 'eye' || kind === 'eyeblue';
+        // Round-6: was `isEye || isRune` -- 'eye'/'eyeblue' no longer spawn
+        // (removed above), so this simplifies to just the rune check.
         const isRune = kind.startsWith('rune');
-        const isRimKind = isEye || isRune;
+        const isRimKind = isRune;
         const isBush = kind === 'bush2' || kind === 'bushmini';
         let wallDir = 0;
         if (wallSide) wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;

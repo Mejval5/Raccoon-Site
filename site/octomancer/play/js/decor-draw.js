@@ -27,8 +27,6 @@ const IMAGES = {
   fish: loadImage(ASSET('critter-fish.webp')),
   jelly: loadImage(ASSET('critter-jelly.webp')),
   snail: loadImage(ASSET('critter-snail.webp')),
-  eye: loadImage(ASSET('decor-eye.webp')),
-  eyeblue: loadImage(ASSET('decor-eyeblue.webp')),
   rune1: loadImage(ASSET('decor-rune1.webp')),
   rune3: loadImage(ASSET('decor-rune3.webp')),
   rune5: loadImage(ASSET('decor-rune5.webp')),
@@ -96,28 +94,6 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // A slow, barely-visible crawl back and forth along its own wall cell.
     dx = c.onFloor || c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
     dy = !c.onFloor && !c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
-  } else if (c.kind === 'eye' || c.kind === 'eyeblue') {
-    worldSize = 0.4;
-    // A rare blink: mostly open, briefly squashed flat.
-    const cycle = (t * 0.18 + c.phase) % (Math.PI * 2);
-    const blink = Math.sin(cycle * 6);
-    // Round-5 fix (Daniel's screenshot review round 4, issue 6: "the closed
-    // state is just a thin black horizontal dash [that] reads as a stray
-    // line floating a few px off the rock" on side walls and under ceiling
-    // corners). Two causes: 0.12 squashed the whole round eye sprite down to
-    // a near-invisible hairline instead of a lid closing over it (bumped to
-    // 0.25 -- still a clear blink, but keeps enough of the sprite's own
-    // lash/lid rim visible to read as an eyelid, not a line); and the
-    // squash always ran along the image's own Y axis regardless of mount
-    // surface, so on a side wall (blink axis should run along the wall,
-    // i.e. world-horizontal) it drew a vertical-looking dash sitting off to
-    // the side of the rim instead of a lid flush against it. Rotating a
-    // side-wall eye a quarter turn before the squash (same wall-normal idea
-    // `onCeiling`'s flip already applies) lines the lid closure up with the
-    // wall surface, same as the open circular sprite already reads fine
-    // either way.
-    scaleY = blink > 0.985 ? 0.25 : 1;
-    if (c.wallDir) rot = Math.PI / 2;
   } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
     worldSize = 0.36;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;
@@ -152,7 +128,16 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // mute it at draw time (no new art) rather than editing the source webp.
   // Round-4 fix (Daniel's screenshot review round 3): `bush2` reads just as
   // over-saturated and was never muted the same way -- same filter.
-  if (c.kind === 'bushmini' || c.kind === 'bush2') ctx.filter = 'grayscale(0.6) sepia(0.45) saturate(1.4) brightness(1.15)';
+  // Round-6 fix (Daniel's screenshot review round 5, "muddy yellow jelly
+  // critter": `critter-jelly.webp` was never actually spawned -- see
+  // decor.js's CRITTER_KINDS_OPEN -- so the "jelly" being flagged was this
+  // filter: `sepia()` specifically rotates hue toward yellow-brown, and
+  // stacked with grayscale+saturate it pushed the bush's green well past
+  // "muted sage" into a muddy yellow-olive blob (worse still hanging off a
+  // ceiling with a drooping leaf, which reads exactly like a dripping
+  // jellyfish). Desaturating without the sepia hue-shift keeps it a pale,
+  // muted GREEN -- what round-2/4 actually asked for -- instead of yellow.
+  if (c.kind === 'bushmini' || c.kind === 'bush2') ctx.filter = 'grayscale(0.35) saturate(0.8) brightness(1.05)';
   const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
   const drawImg = isRune ? (getTintedRune(c.kind) || img) : img;
   ctx.drawImage(drawImg, -w / 2, -h / 2, w, h);

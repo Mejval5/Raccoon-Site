@@ -1583,3 +1583,110 @@ needed more than a screenshot to diagnose. Screenshots:
 `octomancer-web/night/fix-r5-{desk-s13,desk-s21,desk-s42,desk-s7,phone-s3,
 phone-s99}-*.png`, zoomed crops `fix-r5-zoom-{nub-wall,runes,urchin-horns,
 wall-eyes,octopus-eyes}.png`.
+
+## Visual fixes round 6 (Daniel's new list + round-5 reviewer leftovers, this session)
+
+1. **Wall eye critter removed entirely.** `decor.js`'s `CRITTER_KINDS_WALL`
+   dropped `eye`/`eyeblue`; `decor-draw.js`'s image loads and draw branch for
+   them are deleted too (no dead reference left). `ASSETS.md` notes the two
+   source webps as unused; `ART-SORT.md` gets a new "Never" row marking the
+   wall-critter USE of `Background/Eye.png`/`EyeBlue.png` "not original" --
+   the images themselves stay bucket A (Milan's background-layer art), only
+   this port's own invention of scattering them as a wall creature is
+   rejected. Searched the rest of the decor/render code for anything else
+   that reads as a ghost/translucent stray sprite: found nothing else
+   currently spawned that fits: `critter-jelly.webp`/`critter-snail.webp`
+   are loaded in `decor-draw.js` but were already excluded from both
+   `CRITTER_KINDS_WALL` and `_OPEN` back in rounds 1/3/4 (dead code, never
+   drawn); the only other ghost-like report (the cave-mouth silhouettes) is
+   its own item below.
+2. **Concave-corner stuck bug: root-caused and fixed in `physics.js`.**
+   `resolveCircleVsGrid` used to resolve each overlapping tile
+   independently -- at a concave corner two near-perpendicular contacts each
+   zero a different velocity component in turn, wedging the octopus with
+   ~0 velocity every step (only a dash's much bigger impulse punched
+   through). Rewritten to gather every contact's normal+penetration this
+   call, combine them into one penetration-weighted normal, push out along
+   THAT combined normal once, and cancel velocity only along it -- the
+   tangential (diagonal-out-of-the-corner) component is always preserved.
+   A few passes converge multi-tile corners cleanly. New `tests/corner.
+   test.js`: five different concave-corner shapes (right-angle, narrow
+   notch, 3-wall pocket, peninsula-tip nub, zig-zag bend), octopus spawned
+   wedged into each, ordinary swim thrust only (no dash) -- all escape
+   >=1.5 tiles within 4s; plus a regression check that a single flat wall
+   still only cancels the into-wall component. 77/77 total.
+3. **Jitter: enemies and the camera now interpolate/smooth like the
+   octopus already did.** The octopus was already rendered at its
+   `prevX/prevY -> x/y` alpha-blended position (render.js's `drawOcto`);
+   enemies were not -- `enemy-draw.js`'s `drawEnemies` now takes `alpha`
+   and blends every enemy's last-step/current position the same way
+   (`interpPos`), with `enemies.js` snapshotting `prevX/prevY` each fixed
+   step. The camera (`camera.js`'s `updateCamera`) used to snap straight to
+   its clamped target every frame AND was fed the octopus's raw (not
+   interpolated) position; it now follows the interpolated position and
+   exponentially damps toward its clamped target over real frame time
+   (`CAMERA_FOLLOW_RATE`) instead of snapping. `SquidMovementScript.cs`
+   (thrust ramp) was already ported faithfully (accel-cap curve, confirmed
+   by re-reading the original) -- no change needed there; the jitter was a
+   rendering-side gap, not a physics one.
+4. **Wall outline (marching-squares rewrite): deferred.** Daniel's list
+   asks for the tile-piece rim system to be replaced with one continuous
+   traced-and-smoothed outline per chunk (marching squares + Chaikin/
+   Catmull-Rom + a separate soft-rock look). This touches ~500 lines of
+   render.js's wall baker (`pickWallArt`/`drawNubTile`/`carveConcaveCorner`/
+   `bakeChunkWalls`) and is a genuine rewrite, not a bounded fix -- out of
+   scope for this pass alongside everything else below; left untouched
+   (still the round-5 nub-tile system) rather than risk a rushed, partially
+   broken rewrite. Flagged for its own dedicated session.
+5. **Enemy wall collision, separation, and A* chasers.** `piranha`, `crab`,
+   `manta` and the Beholder now run through `physics.js`'s
+   `resolveCircleVsGrid` (same collider the octopus uses) after their own
+   movement, via a new `collideWithWalls` helper in `enemies.js` -- they can
+   no longer overlap rock. A new `separateEnemies` pairwise pass keeps
+   moving enemies >=0.55 tiles apart. New `pathfind.js`: a bounded, budgeted
+   A* (per-call node cap, a window around start/goal, no corner-cutting)
+   plus line-of-sight-based path smoothing and a shared per-fixed-step node
+   budget across every caller. Read `MoveSideways.cs` and the Beholder
+   scripts first, per the task: patrol enemies (crab's own turn-at-a-wall
+   walk, piranha's non-chasing patrol) are untouched, since the original's
+   patrol was never anything but a fixed back-and-forth; the Beholder's
+   `EyeChaser.cs` was a pure straight-line homing chase that "ignored
+   rock" by design -- now that it collides with the grid (this task), a
+   straight line alone could dead-end it against a wall, so both the
+   Beholder and a piranha that has spotted the player (`chaseWithPath`) now
+   steer along an A* path when there's no direct line-of-sight to the
+   player, recomputed a few times a second and falling back to the cheap
+   direct line whenever one is clear -- same always-closing speed ramp as
+   before, only the steering direction changed.
+6. **Reviewer leftovers.** Floor `crab` now requires `flatRun` (same convex-
+   corner check `horns` already had since round 4) so it can't spawn hanging
+   its far side off a corner. `decor.js`'s wall-critter search now skips any
+   cell an `enemy-slot` already claims (`enemySlotCellSet`), so decor and
+   enemies never double up on the same wall cell. The cave-mouth background
+   art (`bg-cave.webp`, a treasure chest + tentacle silhouette) now bakes
+   with a 10px blur (softens the source art's hard/crisp edges before the
+   existing radial feather) and fades out by world depth 15 (was depth
+   130 -- it used to stay fully visible past where enemies even start
+   spawning). The "muddy yellow jelly critter" Daniel's review round-5
+   screenshot flagged (`review-r5-zoom-s42-yellowblob.png`) was root-caused:
+   `critter-jelly.webp` is never actually spawned (dropped from
+   `CRITTER_KINDS_OPEN` back in round 3) -- the yellow blob was
+   `decor-bush2`/`bushmini` (a green plant) run through a `sepia()`+
+   grayscale+saturate filter meant to mute its colour, which instead pushed
+   it hue-shifted into muddy yellow-olive (worse hanging off a ceiling with
+   a drooping leaf, reading exactly like a dripping jelly). Filter changed
+   to plain desaturation (no sepia hue-shift) -- the bush now reads as a
+   muted pale green, no new art needed.
+
+Everything previously fixed (seams, piranha orientation, octopus scale/eyes,
+nub-tile rims, gift meter, etc.) reconfirmed still holding across this
+round's screenshots.
+
+Verification: `tests/` 77/77 (12 new corner-escape tests; own threading
+`http.server` with no-cache headers on a free port, stopped after);
+puppeteer-core headless Chrome: 0 console errors (aside from the
+pre-existing, unrelated `favicon.ico` 404 every round has had) across a
+soak run driving input for 15s with a force-spawned Beholder, plus fresh
+spawn/mid-dive frames over several seeds at 1440x900 and 375x812 (2x).
+Screenshots: `octomancer-web/night/fix-r6-{desktop-s7,desktop-s42,phone-s7,
+phone-s42}.png`, zoomed crops `fix-r6-zoom-{enemies,octopus,walls}.png`.

@@ -82,8 +82,19 @@ const BAKE_PX_PER_UNIT = Math.min(96, Math.round(48 * (typeof window !== 'undefi
 // gradient (plus the existing depth tint / caustics / vignette) carries the
 // mood on its own -- comfortably inside a typical run, so it's drawn once in
 // world space (never tiled) and simply never comes back once passed.
-const CAVE_ART_FADE_START = 30;
-const CAVE_ART_FADE_END = 130;
+// Round-6 fix (reviewer leftover, NIGHT-LOG.md task 6: "the cave-mouth
+// background art shows hard-edged ghost silhouettes (chest, tentacle) in
+// open water: blur it and fade it out by ~15m"). FADE_START/END (30/130)
+// used to keep the art fully solid all the way to depth 30 -- well past
+// where the octopus has already swum out into open water and enemies start
+// spawning (ENEMY_MIN_DEPTH=40) -- so its foreground silhouettes (a
+// treasure chest, a stray tentacle, both drawn crisp/opaque in the source
+// art) kept reading as solid shapes sitting IN the water long after the
+// player had swum well past the cave mouth itself, rather than as distant
+// background. Fading out by depth 15 keeps the mouth readable right at
+// spawn but has it gone within a few seconds of diving.
+const CAVE_ART_FADE_START = 2;
+const CAVE_ART_FADE_END = 15;
 
 function loadImage(src) {
   const img = new Image();
@@ -159,7 +170,19 @@ export function createRenderer(ctx, world) {
     fc.width = caveArt.naturalWidth;
     fc.height = caveArt.naturalHeight;
     const fctx = fc.getContext('2d');
+    // Round-6 fix (reviewer leftover, task 6): "shows hard-edged ghost
+    // silhouettes (chest, tentacle) in open water: blur it". The source art
+    // draws its foreground shapes (a treasure chest, a stray tentacle) with
+    // crisp, fully-opaque edges -- fine as a hero background image, but once
+    // composited over open water at low alpha near the end of its fade those
+    // same crisp edges read as flat, hard-edged silhouettes floating in the
+    // water rather than distant, out-of-focus background. A blur pass at
+    // bake time (native resolution, before the radial feather below, so the
+    // feather's own edge stays soft too) reads as "distant/out of focus"
+    // instead.
+    fctx.filter = 'blur(10px)';
     fctx.drawImage(caveArt, 0, 0);
+    fctx.filter = 'none';
     fctx.globalCompositeOperation = 'destination-in';
     // A radial fade (rather than a vertical one) so every edge -- top,
     // bottom, left and right -- softens the same way; a straight edge in
@@ -934,7 +957,7 @@ export function createRenderer(ctx, world) {
 
   return {
     camera,
-    render(canvasW, canvasH, octo, alpha, time, {
+    render(canvasW, canvasH, octo, alpha, time, frameDt, {
       resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
@@ -942,7 +965,17 @@ export function createRenderer(ctx, world) {
       // of the run (~10 min soak test caught this: heap kept climbing).
       const liveIdx = new Set(resident.map((r) => r.index));
       for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) wallCache.delete(ci);
-      updateCamera(camera, canvasW, canvasH, octo.x, octo.y, world.width, world.height);
+      // Round-6 task 3: follow the octopus's INTERPOLATED (render-alpha)
+      // position, not its raw fixed-step one -- camera.js's own doc comment
+      // already said it should ("following the octopus's interpolated
+      // (render-alpha) position"), but this call passed the raw `octo.x/y`,
+      // so the camera itself re-snapped to a new target every fixed step
+      // even though everything it looks at (the octopus sprite) was already
+      // smoothly interpolating -- a visible camera jitter independent of the
+      // octopus's own.
+      const followX = octo.prevX + (octo.x - octo.prevX) * alpha;
+      const followY = octo.prevY + (octo.y - octo.prevY) * alpha;
+      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt);
       const shakePx = shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
@@ -979,7 +1012,7 @@ export function createRenderer(ctx, world) {
       drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);
-      drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time);
+      drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
       drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
       if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       drawOcto(octo, alpha, canvasW, canvasH, time);

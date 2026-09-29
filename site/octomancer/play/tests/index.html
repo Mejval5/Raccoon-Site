@@ -87,6 +87,10 @@ runScoreTests(assert, approx);
 import { runDecorTests } from './decor.test.js';
 runDecorTests(assert, approx);
 
+// --- Round-6 task 2: concave-corner collision escape tests (physics.js) ---
+import { runCornerTests } from './corner.test.js';
+runCornerTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

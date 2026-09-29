@@ -290,7 +290,7 @@ function render(alpha, frameMs) {
   const w = canvas.width, h = canvas.height;
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
-  renderer.render(w, h, octo, alpha, sim.time, {
+  renderer.render(w, h, octo, alpha, sim.time, frameMs / 1000, {
     resident,
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),

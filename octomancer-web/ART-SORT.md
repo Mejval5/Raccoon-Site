@@ -51,6 +51,7 @@ Provenance confirmed by Daniel from the contact sheet as original game art.
 | `Sprites/Portal/**` | Nebula renders, third-party. |
 | `Traps/spikes.png` | 3D render, third-party; spikes are Milan's `NPC6` horns or code instead. |
 | Daniel's own additions (ice, electro rock + its eye, buttons, gates, pushable/debug tiles, `coin`/`Coin`/`GoldMist`, generated vignettes/UI shapes, dice) | Not Milan's art; the design intentionally drops these systems. |
+| The web port's "wall eye critter" (`assets/decor-eye.webp`/`decor-eyeblue.webp`, scattered across walls as a background critter, `play/js/decor.js`'s `CRITTER_KINDS_WALL`) | **Not original.** `Background/Eye.png`/`EyeBlue.png` are Milan's own background-LAYER art (bucket A, still kept there), but the Unity original never spawns them as a creature dotted across cave walls -- that use was this port's own invention (this session's "alive pass"), and it never read right at any tuning tried across rounds 1-5. Removed from spawn entirely in round 6 (Daniel's own screenshot review); the source images are untouched and still valid for any real background-layer use. |
 | Paid/third-party packs (`GUI PRO Kit`, `Andtech`, `Effects/**`, `Plugins/**`, Joystick Pack, the three Kenney UI files, `Fonts/Orange Juice.otf`, `Bg_template.jpg`) | Licensed to the original project, not to the web port; never even as redraw reference. |
 | Any `Sounds/` file other than the two encoded tracks (Medles in play, Flûte on game-over/pause) | Unknown or library-licensed audio; SFX are synthesised in code instead. |
 

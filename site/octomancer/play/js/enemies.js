@@ -28,8 +28,84 @@ import {
   MANTA_DROP_PERIOD, MANTA_RANGE, MANTA_BALL_SPEED, MANTA_BALL_RADIUS,
 } from './config.js';
 import { hurtOctopus, killOctopus } from './octopus.js';
+import { resolveCircleVsGrid } from './physics.js';
+import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+
+// Round-6 task 5 (NIGHT-LOG.md): "give moving enemies (piranha, crab, manta,
+// Beholder) the same wall collision as the octopus so they never overlap
+// rock". `resolveCircleVsGrid` (physics.js) is exactly the octopus's own
+// per-substep collision resolver; enemies move at low enough speed (no dash)
+// that a single resolve per fixed step (no sub-stepping) is enough to keep
+// them out of rock without tunnelling.
+function collideWithWalls(e, world) {
+  resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
+}
+
+const ENEMY_MIN_SEP = 0.55; // tiles, centre to centre -- "keep a minimum separation between enemies"
+
+/** Cheap O(n^2) pairwise separation pass (enemy counts per chunk are small,
+ * single digits) -- pushes any two moving enemies that drifted inside
+ * ENEMY_MIN_SEP apart back out along the line between them, split evenly. */
+function separateEnemies(list) {
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.dead || !a.moving) continue;
+    for (let j = i + 1; j < list.length; j++) {
+      const b = list[j];
+      if (b.dead || !b.moving) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy);
+      if (d >= ENEMY_MIN_SEP || d < 1e-6) continue;
+      const push = (ENEMY_MIN_SEP - d) / 2;
+      const nx = dx / d, ny = dy / d;
+      a.x -= nx * push; a.y -= ny * push;
+      b.x += nx * push; b.y += ny * push;
+    }
+  }
+}
+
+/** A* chase step shared by the Beholder and a spotted piranha (round-6 task
+ * 5): recomputes a smoothed path a few times a second (`REPATH_INTERVAL`,
+ * staggered per-enemy by its own id so many chasers don't all recompute on
+ * the same step), steers toward the next waypoint, and falls back to a
+ * direct line whenever that line already has clear line-of-sight (cheaper
+ * than a search, and reads identically). Keeps the original's
+ * always-closing-distance feel: `speed` is whatever the caller already
+ * computed (ramped for the Beholder, constant for a piranha), this only
+ * changes the STEERING direction, never whether the chaser is closing in.
+ */
+const REPATH_INTERVAL = 0.25; // seconds
+function chaseWithPath(e, world, targetX, targetY, speed, dt) {
+  if (e.pathTimer === undefined) { e.pathTimer = (e.id % 7) * 0.03; e.path = null; e.pathIndex = 0; }
+  const isSolid = (tx, ty) => world.isSolid(tx, ty);
+  e.pathTimer -= dt;
+  const directClear = hasLineOfSight(isSolid, e.x, e.y, targetX, targetY);
+  if (directClear) {
+    e.path = null;
+  } else if (e.pathTimer <= 0 || !e.path || e.pathIndex >= e.path.length) {
+    e.pathTimer = REPATH_INTERVAL;
+    const p = findSmoothPath(isSolid, e.x, e.y, targetX, targetY);
+    if (p && p.length) { e.path = p; e.pathIndex = 0; }
+  }
+  let aimX = targetX, aimY = targetY;
+  if (!directClear && e.path && e.path.length) {
+    // Advance past any waypoint already reached (or already behind us, if
+    // the chaser overshot it a little).
+    while (e.pathIndex < e.path.length - 1 && dist(e.x, e.y, e.path[e.pathIndex].x, e.path[e.pathIndex].y) < 0.35) {
+      e.pathIndex++;
+    }
+    const wp = e.path[Math.min(e.pathIndex, e.path.length - 1)];
+    aimX = wp.x; aimY = wp.y;
+  }
+  const dx = aimX - e.x, dy = aimY - e.y;
+  const d = Math.hypot(dx, dy) || 1;
+  e.vx = (dx / d) * speed;
+  e.vy = (dy / d) * speed;
+  e.x += e.vx * dt;
+  e.y += e.vy * dt;
+}
 
 /** Deterministic per-chunk RNG (same tiny LCG pattern as pickups.js), used
  * only to pick which enemy kind fills each generator-tagged slot so the same
@@ -54,7 +130,14 @@ function pickKind(placement, depth, rng, flatRun) {
     if (depth > 100) candidates.push('manta');
   } else {
     candidates.push('urchin');
-    if (placement === 'floor') candidates.push('crab');
+    // Round-6 fix (reviewer leftover, NIGHT-LOG.md task 6: "floor
+    // enemies/decor must not hang past convex corners -- need full flat
+    // support under the sprite"). `crab` is ~0.7 world units (over half a
+    // tile) wide and walks -- unlike `horns`, which was already flatRun-only
+    // since round-4, a crab anchored right at a convex floor corner used to
+    // spawn with its far side hanging past the rim into open water before
+    // its very first patrol step ever turned it around.
+    if (placement === 'floor' && flatRun) candidates.push('crab');
     if ((placement === 'floor' || placement === 'ceiling') && flatRun) candidates.push('horns');
   }
   if (depth > 80 && (placement === 'floor' || placement === 'wall')) candidates.push('cannon');
@@ -65,13 +148,20 @@ function pickKind(placement, depth, rng, flatRun) {
 let nextId = 1;
 
 function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
-  const base = { id: nextId++, kind, x, y, vx: 0, vy: 0, dead: false, chunkIndex, placement, wallDir, hitFlash: 0 };
+  // `moving`: round-6 task 5 -- which kinds get grid collision + the
+  // minimum-separation pass (`collideWithWalls`/`separateEnemies` below).
+  // Static emplacements (urchin/cannon/horns/mine) stay exactly as they
+  // were: anchored by decor.js/gen.js's own surface placement, no physics.
+  const base = {
+    id: nextId++, kind, x, y, prevX: x, prevY: y, vx: 0, vy: 0, dead: false,
+    chunkIndex, placement, wallDir, hitFlash: 0, moving: false,
+  };
   if (kind === 'urchin') {
     return { ...base, radius: URCHIN_RADIUS, contactDamage: true, dashKillable: false };
   }
   if (kind === 'piranha') {
     return {
-      ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: true,
+      ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
       dir: Math.random() < 0.5 ? -1 : 1, chasing: false,
     };
   }
@@ -87,7 +177,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   if (kind === 'crab') {
     const fast = Math.random() < 0.4;
     return {
-      ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true,
+      ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true, moving: true,
       dir: Math.random() < 0.5 ? -1 : 1, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW,
       variant: fast ? 'fast' : 'slow',
     };
@@ -97,7 +187,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   }
   if (kind === 'manta') {
     return {
-      ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: true,
+      ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
       dir: Math.random() < 0.5 ? -1 : 1, baseX: x, baseY: y, spawnTime: null,
       dropCooldown: MANTA_DROP_PERIOD,
     };
@@ -145,19 +235,21 @@ export function createEnemies() {
     const dToOcto = dist(e.x, e.y, octo.x, octo.y);
     e.chasing = dToOcto < PIRANHA_CHASE_RANGE;
     if (e.chasing) {
-      const dx = octo.x - e.x, dy = octo.y - e.y;
-      const d = Math.hypot(dx, dy) || 1;
-      e.vx = (dx / d) * PIRANHA_CHASE_SPEED;
-      e.vy = (dy / d) * PIRANHA_CHASE_SPEED;
+      // Round-6 task 5: "once they spot the player", chase with A* instead
+      // of a straight line, same as the Beholder -- keeps the original's
+      // always-closing chase speed, just routed around rock.
+      chaseWithPath(e, world, octo.x, octo.y, PIRANHA_CHASE_SPEED, dt);
     } else {
+      e.path = null; // drop any stale chase path once it stops chasing
       e.vx = e.dir * PIRANHA_PATROL_SPEED;
       e.vy = 0;
       // Turn around at a wall or the edge of open water ahead.
       const aheadX = e.x + e.dir * (e.radius + 0.15);
       if (world.isSolid(aheadX, e.y)) e.dir *= -1;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
     }
-    e.x += e.vx * dt;
-    e.y += e.vy * dt;
+    collideWithWalls(e, world);
   }
 
   function updateCannon(e, dt, octo, world) {
@@ -188,9 +280,14 @@ export function createEnemies() {
       e.dir *= -1;
     }
     e.vx = e.dir * e.speed;
+    // Round-6 task 5: same grid collision as every other moving enemy --
+    // mostly a no-op here (the ahead-checks above already keep a crab off
+    // rock along its own walk direction) but also catches the perpendicular
+    // axis (e.g. a bomb/mine reshaping the floor out from under it).
+    collideWithWalls(e, world);
   }
 
-  function updateManta(e, dt, time, octo) {
+  function updateManta(e, dt, time, octo, world) {
     if (e.spawnTime === null) e.spawnTime = time; // start the sine at 0 offset, not a random phase
     e.x += e.dir * MANTA_SPEED * dt;
     // Wide back-and-forth patrol around its spawn point (the "wide sine"
@@ -199,6 +296,11 @@ export function createEnemies() {
     if (Math.abs(e.x - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
     e.y = e.baseY + Math.sin((time - e.spawnTime) * MANTA_SINE_FREQ) * MANTA_SINE_AMPLITUDE;
     e.vx = e.dir * MANTA_SPEED;
+    // Round-6 task 5: the manta spawns in open water but its sine glide can
+    // carry it into a wall it patrolled toward; bounce off rock the same way
+    // the octopus does rather than overlapping it.
+    collideWithWalls(e, world);
+    if (world.isSolid(e.x + Math.sign(e.dir || 1) * (e.radius + 0.1), e.y)) e.dir *= -1;
     const d = dist(e.x, e.y, octo.x, octo.y);
     if (d < MANTA_RANGE) {
       e.dropCooldown -= dt;
@@ -261,23 +363,27 @@ export function createEnemies() {
     shots = shots.filter((s) => !s.dead);
   }
 
-  function updateBeholder(dt, octo, time, hurtFn) {
+  function updateBeholder(dt, octo, time, hurtFn, world) {
     if (!beholder && time >= BEHOLDER_SPAWN_TIME) {
       beholder = {
         id: nextId++, kind: 'beholder', x: octo.x, y: octo.y - BEHOLDER_SPAWN_HEIGHT,
-        vx: 0, vy: 0, radius: BEHOLDER_RADIUS, dead: false, spawnedAt: time,
+        prevX: octo.x, prevY: octo.y - BEHOLDER_SPAWN_HEIGHT,
+        vx: 0, vy: 0, radius: BEHOLDER_RADIUS, dead: false, spawnedAt: time, moving: true,
       };
       events.push({ type: 'beholderSpawned', x: beholder.x, y: beholder.y });
     }
     if (!beholder) return;
+    beholder.prevX = beholder.x; beholder.prevY = beholder.y;
     const aliveFor = time - beholder.spawnedAt;
     const speed = BEHOLDER_SPEED + BEHOLDER_SPEED_RAMP * (aliveFor / 10);
-    const dx = octo.x - beholder.x, dy = octo.y - beholder.y;
-    const d = Math.hypot(dx, dy) || 1;
-    beholder.vx = (dx / d) * speed;
-    beholder.vy = (dy / d) * speed;
-    beholder.x += beholder.vx * dt; // "ignores rock": no grid collision
-    beholder.y += beholder.vy * dt;
+    // Round-6 task 5: the Beholder used to "ignore rock" entirely (a
+    // straight-line homing chase, EyeChaser.cs). It now collides with the
+    // grid like every other moving enemy, so a straight line alone would let
+    // it get stuck on the far side of a wall from the octopus -- chase with
+    // the same A*-on-the-grid path the piranha uses, keeping the same
+    // always-closing speed ramp.
+    chaseWithPath(beholder, world, octo.x, octo.y, speed, dt);
+    collideWithWalls(beholder, world);
     if (!octo.dead && dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) {
       killOctopus(octo);
     }
@@ -300,6 +406,12 @@ export function createEnemies() {
         if (ci !== -1 && !liveChunks.has(ci)) byChunk.delete(ci); // despawn with the chunk
       }
 
+      // Round-6 task 3 (render interpolation) + task 5 (A* budget): snapshot
+      // last step's position before anything moves, and give every chaser
+      // this step's share of the shared pathfinding node budget.
+      resetPathBudget();
+      for (const e of allEnemies()) { e.prevX = e.x; e.prevY = e.y; }
+
       const octoSpeed = Math.hypot(octo.vx, octo.vy);
       for (const e of allEnemies()) {
         if (e.dead) continue;
@@ -307,7 +419,7 @@ export function createEnemies() {
         if (e.kind === 'piranha') updatePiranha(e, dt, octo, world);
         else if (e.kind === 'cannon') updateCannon(e, dt, octo, world);
         else if (e.kind === 'crab') updateCrab(e, dt, world);
-        else if (e.kind === 'manta') updateManta(e, dt, time, octo);
+        else if (e.kind === 'manta') updateManta(e, dt, time, octo, world);
 
         if (e.kind === 'mine') {
           if (e.spawnTime === null) e.spawnTime = time; // start the bob at 0 offset
@@ -330,6 +442,7 @@ export function createEnemies() {
           }
         }
       }
+      separateEnemies(allEnemies());
       // Prune dead enemies out of their chunk lists (dash/bomb kills).
       for (const [ci, list] of byChunk) {
         const filtered = list.filter((e) => !e.dead);
@@ -337,7 +450,7 @@ export function createEnemies() {
       }
 
       updateShots(dt, octo, world, hurtOctopus);
-      updateBeholder(dt, octo, time, hurtOctopus);
+      updateBeholder(dt, octo, time, hurtOctopus, world);
     },
 
     /** Kill every enemy (not the Beholder or an immune trap) within `radius`
@@ -364,7 +477,10 @@ export function createEnemies() {
      * tied to any chunk (never despawns from chunk eviction). */
     spawnAt(kind, x, y, placement) {
       if (kind === 'beholder') {
-        beholder = { id: nextId++, kind: 'beholder', x, y, vx: 0, vy: 0, radius: BEHOLDER_RADIUS, dead: false, spawnedAt: 0 };
+        beholder = {
+          id: nextId++, kind: 'beholder', x, y, prevX: x, prevY: y, vx: 0, vy: 0,
+          radius: BEHOLDER_RADIUS, dead: false, spawnedAt: 0, moving: true,
+        };
         return beholder;
       }
       const e = makeEnemy(kind, x, y, -1, placement || 'open');
