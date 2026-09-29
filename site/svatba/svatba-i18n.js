@@ -167,7 +167,7 @@ window.SVATBA_I18N = {
     "dary.m10.text": "Vlastní meruňky. Jako dnes, jen menší.",
     "dary.m11.title": "Svatební cesta do Japonska",
     "dary.m11.text": "Tady to začíná být vážné.",
-    "dary.m12.title": "Domeček u Brna",
+    "dary.m12.title": "Chata u Brna",
     "dary.m12.text": "Tedy… aspoň dveře.",
     "dary.m13.title": "Čtvrtá kočka",
     "dary.m13.text": "Tentokrát s rodokmenem. A omluvou sousedům.",
@@ -183,8 +183,8 @@ window.SVATBA_I18N = {
     "dary.m18.text": "Aby na kočky nepršelo.",
     "dary.m19.title": "…a garáž na dílnu",
     "dary.m19.text": "Aby pryskyřice konečně opustila dům.",
-    "dary.m20.title": "Domeček u Brna. Celý.",
-    "dary.m20.text": "I se zahradou, sekačkou a všemi čtyřmi kočkami.",
+    "dary.m20.title": "Chata u Brna. Celá.",
+    "dary.m20.text": "I se sekačkou a všemi čtyřmi kočkami. Na dům to chce ještě pár milionů.",
 
     
 
@@ -336,8 +336,8 @@ window.SVATBA_I18N = {
     "dary.m10.text": "Our own apricots. Just like today, only smaller.",
     "dary.m11.title": "Honeymoon in Japan",
     "dary.m11.text": "Okay, now this is getting serious.",
-    "dary.m12.title": "A little house near Brno",
-    "dary.m12.text": "Well… at least the front door.",
+    "dary.m12.title": "A cabin near Brno",
+    "dary.m12.text": "Well… at least the door.",
     "dary.m13.title": "A fourth cat",
     "dary.m13.text": "This one with a pedigree. And an apology to the neighbours.",
     "dary.m14.title": "A hot tub under the apricot trees",
@@ -352,8 +352,8 @@ window.SVATBA_I18N = {
     "dary.m18.text": "So it doesn't rain on the cats.",
     "dary.m19.title": "…and a garage for the workshop",
     "dary.m19.text": "So the resin can finally leave the house.",
-    "dary.m20.title": "The little house near Brno. All of it.",
-    "dary.m20.text": "Garden, lawnmower and all four cats included.",
+    "dary.m20.title": "The cabin near Brno. All of it.",
+    "dary.m20.text": "Lawnmower and all four cats included. A real house will take a few more million.",
 
     
 
@@ -505,8 +505,8 @@ window.SVATBA_I18N = {
     "dary.m10.text": "Nos propres abricots. Comme aujourd'hui, en plus petit.",
     "dary.m11.title": "Voyage de noces au Japon",
     "dary.m11.text": "Là, ça commence à devenir sérieux.",
-    "dary.m12.title": "Une petite maison près de Brno",
-    "dary.m12.text": "Enfin… au moins la porte d'entrée.",
+    "dary.m12.title": "Un chalet près de Brno",
+    "dary.m12.text": "Enfin… au moins la porte.",
     "dary.m13.title": "Un quatrième chat",
     "dary.m13.text": "Celui-ci avec pedigree. Et des excuses aux voisins.",
     "dary.m14.title": "Un jacuzzi sous les abricotiers",
@@ -521,8 +521,8 @@ window.SVATBA_I18N = {
     "dary.m18.text": "Pour qu'il ne pleuve pas sur les chats.",
     "dary.m19.title": "…et un garage pour l'atelier",
     "dary.m19.text": "Pour que la résine quitte enfin la maison.",
-    "dary.m20.title": "La petite maison près de Brno. En entier.",
-    "dary.m20.text": "Avec le jardin, la tondeuse et les quatre chats inclus.",
+    "dary.m20.title": "Le chalet près de Brno. En entier.",
+    "dary.m20.text": "Tondeuse et quatre chats compris. Pour une vraie maison, il faudra encore quelques millions.",
 
     
 
