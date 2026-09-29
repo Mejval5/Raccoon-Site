@@ -45,7 +45,16 @@ export function createUI(root, handlers) {
     muteBtn.textContent = nowMuted ? '🔇' : '🔊';
   });
 
-  root.append(bar, pauseBtn, muteBtn);
+  // Round-8 item 4 (NIGHT-LOG.md): "add [mouse control] to the on-screen
+  // help" -- a small always-present control hint, bottom-left, listing both
+  // keyboard and mouse actions (the two desktop input modes); main.js hides
+  // it via `hideControlsHelp()` on the first touch input (touch-ui.js's own
+  // on-screen stick/buttons are the touch equivalent) and shows it again if
+  // the player switches back to keyboard/mouse.
+  const controlsHelp = el('div', 'octo-controls-help',
+    'Swim: WASD/arrows or hold mouse | Dash: Z/Enter/Shift or right-click/double-click | Bomb: Space/X or middle-click/wheel');
+
+  root.append(bar, pauseBtn, muteBtn, controlsHelp);
 
   /** @type {HTMLImageElement[]} */
   const heartEls = [];
@@ -112,6 +121,8 @@ export function createUI(root, handlers) {
 
   return {
     updateHud,
+    hideControlsHelp() { controlsHelp.style.display = 'none'; },
+    showControlsHelp() { controlsHelp.style.display = ''; },
     showPause() { pause.overlayEl.style.display = 'flex'; },
     hidePause() { pause.overlayEl.style.display = 'none'; },
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none'; },

@@ -122,9 +122,70 @@ export function resolveCircleVsGrid(body, grid) {
 }
 
 /**
+ * Round-8 fix (NIGHT-LOG.md item 3: "collision must match the drawn
+ * outline... diagonal walls have wonky collision"). The tile-grid collider
+ * above (`resolveCircleVsGrid`) always resolves against the raw square tile
+ * AABBs, which is why a wall that reads as a smooth, Chaikin-rounded
+ * diagonal in `render.js` (round-7's traced outline, see outline.js) still
+ * bounced/slid the octopus off the tiles' own square corners underneath it
+ * -- collision and the drawn rim were always two different shapes. This
+ * resolves a circle against the exact same traced+smoothed outline SEGMENTS
+ * the wall art draws (world.js's `wallSegmentsNear`, built from the one
+ * shared cache in `getWallOutline` -- never re-traced separately), using
+ * the identical "gather every overlapping contact's normal, weighted by
+ * penetration, push out along the combined normal once, cancel velocity
+ * only along it" scheme `resolveCircleVsGrid` already uses -- so sliding
+ * along a smoothed diagonal rim, and escaping a smoothed concave corner,
+ * behaves exactly like the tile-grid version already did for square walls.
+ *
+ * @param {{x:number,y:number,vx:number,vy:number,radius:number}} body
+ * @param {{x1:number,y1:number,x2:number,y2:number}[]} segments
+ */
+export function resolveCircleVsSegments(body, segments) {
+  if (!segments || segments.length === 0) return;
+  const r = body.radius;
+  const MAX_PASSES = 4;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    let sumNx = 0, sumNy = 0, maxPen = 0, anyContact = false;
+    for (const seg of segments) {
+      const ex = seg.x2 - seg.x1, ey = seg.y2 - seg.y1;
+      const elen2 = ex * ex + ey * ey;
+      let t = elen2 > 1e-12 ? ((body.x - seg.x1) * ex + (body.y - seg.y1) * ey) / elen2 : 0;
+      t = clamp(t, 0, 1);
+      const cx = seg.x1 + ex * t, cy = seg.y1 + ey * t;
+      const dx = body.x - cx, dy = body.y - cy;
+      const d = len(dx, dy);
+      if (d >= r || d < 1e-6) continue; // no overlap, or degenerate (dead centre on the segment -- vanishingly rare, next pass/segment resolves it
+      const nx = dx / d, ny = dy / d, pen = r - d;
+      anyContact = true;
+      sumNx += nx * pen;
+      sumNy += ny * pen;
+      if (pen > maxPen) maxPen = pen;
+    }
+    if (!anyContact) break;
+    const nlen = len(sumNx, sumNy);
+    if (nlen < 1e-6) break;
+    const nx = sumNx / nlen, ny = sumNy / nlen;
+    body.x += nx * maxPen;
+    body.y += ny * maxPen;
+    const vn = body.vx * nx + body.vy * ny;
+    if (vn < 0) {
+      body.vx -= vn * nx;
+      body.vy -= vn * ny;
+    }
+  }
+}
+
+/**
  * Integrate a body's position by dt against the grid, sub-stepping when the
  * displacement this step would exceed half the collider radius (tunnelling
  * guard for dash speeds).
+ *
+ * Round-8: when `grid` exposes `wallSegmentsNear` (world.js does -- see
+ * item 3 above), collision runs against those traced-outline segments
+ * instead of the raw tile grid; the tile grid stays in use for the plain
+ * `{isSolid}` fixtures the tests build (corner.test.js's `gridFromRows`),
+ * so those keep exercising `resolveCircleVsGrid` unchanged.
  */
 export function integrateWithCollision(body, dt, grid) {
   const speed = len(body.vx, body.vy);
@@ -134,9 +195,11 @@ export function integrateWithCollision(body, dt, grid) {
     steps = Math.min(MAX_SUBSTEPS, Math.ceil((speed * dt) / maxStepDist));
   }
   const subDt = dt / steps;
+  const useSegments = typeof grid.wallSegmentsNear === 'function';
   for (let i = 0; i < steps; i++) {
     body.x += body.vx * subDt;
     body.y += body.vy * subDt;
-    resolveCircleVsGrid(body, grid);
+    if (useSegments) resolveCircleVsSegments(body, grid.wallSegmentsNear(body.x, body.y, body.radius));
+    else resolveCircleVsGrid(body, grid);
   }
 }

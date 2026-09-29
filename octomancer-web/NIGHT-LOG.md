@@ -1783,3 +1783,158 @@ night/fix-r7-{desk-s1-spawn,desk-s1-dive1,desk-s1-dive2,desk-s9-dive1,
 desk-s9-dive2,desk-s42-dive1,desk-s42-dive2,desk-s77-dive1,desk-s55-dive1,
 phone-s3-spawn,phone-s3-dive1,phone-s55-dive1,phone-s55-dive2}.png`, zoomed
 crops `fix-r7-zoom-{walls-s9,walls-s42,octopus,piranhas,enemies-deep}.png`.
+
+## Visual fixes round 8 (Daniel's screenshot review round 7, this session)
+
+1. **SEVERE regression from round 7: diagonal wedges / hairline slivers /
+   chunk-seam artifacts across open water, root-caused and fixed.**
+   `traceWallOutlines` (render.js) only ever emitted edges for tiles inside
+   a chunk's own local 0..chunkW-1 x 0..chunkH-1 window, while deciding each
+   edge's EXPOSURE from the real neighbouring chunk's tiles. A solid
+   region's true boundary that needed to leave that window (real solid rock
+   continuing into the next chunk, correctly un-exposed there) left the
+   edge-chain follower nowhere to go: the chain just stopped wherever it
+   happened to be, and `pathFromLoops`'s `closePath()` drew a straight line
+   from that dangling point back to the loop's start -- exactly the
+   diagonal wedges (review-r7-zoom-s13-chunk-seam-diagonal.png) and
+   hairline slivers (review-r7-zoom-s1-sliver-hairline.png) Daniel's
+   screenshots showed. New shared module `js/outline.js`
+   (`traceOutlineLoops`) fixes this at the root: it traces a PADDED window
+   (2 tiles beyond the chunk on every side, still using real world tiles)
+   and treats anything OUTSIDE that window as empty, so every tile's
+   exposure decision is a function of one well-defined, bounded domain --
+   the standard grid boundary-walk guarantee (every solid tile's exposed
+   edges chain into a closed loop) now holds unconditionally, with no
+   dependency on a neighbour chunk that might not even be resident. A loop
+   that only closes off-canvas (from the padding) still closes correctly;
+   the caller clips to its own chunk canvas/collision rect afterward. Added
+   a hard assertion (`openChains` -- a chain that never returns to its own
+   start point is dropped, never filled/stroked/collided against) and a
+   seam-scan regression test (`tests/outline.test.js`, 8 seeds x 4 chunks
+   of real generated tiles, asserting `openChains === 0` and that no
+   post-smooth segment exceeds a tile's diagonal -- this would have failed
+   reliably under the old algorithm).
+
+   Bigger structural change alongside the fix: `outline.js`'s trace +
+   Chaikin-smooth is now called ONCE per chunk, in `world.js`
+   (`getWallOutline`, cached and invalidated by a per-chunk version counter
+   bumped on `setTileAt` -- a bomb break also bumps the two neighbouring
+   chunks' versions, since their own trace reads across the seam too), and
+   BOTH `render.js`'s wall bake and physics' wall collision (item 3 below)
+   read from that one cache -- never traced or smoothed twice with
+   different parameters. `render.js` no longer has its own
+   `traceWallOutlines`/`chaikinSmoothLoop`; `chunkLoopsPx` just re-offsets/
+   scales the chunk's cached world-space tile-unit loops into that canvas's
+   own local pixel space, and `bakeChunkWalls` now clips to the canvas rect
+   before filling/stroking (the padded trace can produce points outside the
+   chunk's own bounds, by design -- clipping keeps them from ever painting).
+
+2. **Rock look: tighter smoothing, lighter slate-blue fill, more visible
+   texture, brighter mint rim.** `outline.js`'s shared Chaikin params
+   dropped from round 7's 3 passes/0.22 ratio to 2 passes/0.2 -- corners
+   stay closer to the video reference's crisp, blocky steps instead of
+   rounding as far. `WALL_FILL_COLOR` lightened from a flatter navy
+   `(34,56,112)` to a lighter slate-blue `(58,84,142)`; the rock noise
+   texture's crevice/speckle endpoints widened and its max alpha raised
+   (0.14 -> 0.22) so the grain reads as visible texture/cracks up close
+   instead of a near-flat tint; `RIM_TARGET` brightened from a darker,
+   muted teal `(25,109,94)` to mint-green `(70,205,165)`. The rim stroke
+   itself was already constant-width (`lineWidth = s * 0.1`, a fixed
+   fraction of the fixed per-chunk bake resolution) -- round 7's own review
+   screenshots of it looked inconsistent only because of item 1's wedge/
+   sliver bug distorting the traced path itself, not because the stroke
+   width varied; no separate width fix was needed once item 1 was fixed.
+
+3. **Collision now matches the drawn outline.** The octopus and every
+   moving enemy (piranha, crab, manta, Beholder) used to collide against
+   the raw square tile grid (`resolveCircleVsGrid`, physics.js) while the
+   wall art drew a Chaikin-rounded traced outline -- two different shapes,
+   which is exactly why Daniel's review called collision on a diagonal wall
+   "wonky" (bouncing/sliding off a tile's own square corner underneath a
+   visually smooth diagonal rim). New `resolveCircleVsSegments` (physics.js)
+   resolves a circle against line segments instead of tile AABBs, using the
+   identical scheme `resolveCircleVsGrid` already uses (gather every
+   overlapping contact's normal, weighted by penetration; push out along
+   the combined normal once; cancel velocity only along it -- so sliding
+   along a smoothed diagonal, and escaping a smoothed concave corner, keeps
+   working exactly like the tile-grid version already did). The segments
+   come from `world.js`'s new `wallSegmentsNear(x, y, r)`, which reads the
+   SAME per-chunk cache item 1 introduced (`getWallOutline`) -- so
+   collision and the drawn rim are always pixel-for-pixel the same shape,
+   never independently computed. `physics.js`'s `integrateWithCollision`
+   and `enemies.js`'s `collideWithWalls` both switch to the segment path
+   whenever the grid passed in exposes `wallSegmentsNear` (world.js does);
+   the plain `{isSolid}` fixtures `corner.test.js` already builds keep
+   exercising the tile-grid path unchanged, so that suite needed no edits.
+   Added segment-collision variants of the corner-escape tests plus a
+   "driven into a diagonal staircase never penetrates past the smoothed
+   rim" test to `tests/outline.test.js`.
+
+4. **Mouse control.** `input.js` now tracks the cursor (canvas buffer
+   pixels) and one-shot dash/bomb clicks; hold the left button to swim
+   toward the cursor (thrust scales with distance, same joystick-magnitude
+   idea the touch stick already uses -- `MOUSE_FULL_THRUST_DIST` = 3 world
+   units for full thrust), right-click or double-click to dash, middle-
+   click or the wheel to drop a bomb (right-click's context menu is
+   suppressed on the canvas, since it's the dash button here). Turning the
+   tracked cursor position into a world-space swim direction needs the
+   octopus's current position and the camera, neither of which input.js
+   has, so main.js's `step()` computes it each fixed step (new
+   `camera.js` export `screenToWorld`, the exact inverse of
+   `worldToScreen`) and hands it to input.js via `setMouseAim`. Same
+   abstract `{move, dash, bomb}` shape as keyboard/touch, so nothing
+   downstream (octopus.js, main.js's bomb-place call) needed to change.
+   Added to the on-screen help: a small always-present control hint
+   (`ui.js`'s new `controlsHelp` element, bottom-left) listing both
+   keyboard and mouse actions, shown by default and hidden on the first
+   touch input (`main.js` wires `input.onModeChange`), matching touch-ui's
+   own show/hide behaviour.
+
+5. **Camera: look-ahead + keep the octopus within ~30% of screen centre.**
+   `updateCamera` (camera.js) now takes the octopus's velocity and offsets
+   the follow target by it (capped at `CAMERA_LOOKAHEAD_MAX` = 3.2 world
+   units, `CAMERA_LOOKAHEAD_TIME` = 0.45s of extrapolation) before the
+   existing world-bounds clamp/exponential-smoothing runs -- the player now
+   sees more of what they're swimming into than what they're swimming away
+   from. A second clamp afterward pulls `cam.x/y` back so the octopus's OWN
+   position (not the look-ahead-shifted point) never drifts past
+   `CAMERA_OCTO_MAX_OFFSET_FRAC` (0.3) of the half-viewport from screen
+   centre on either axis, so a large look-ahead offset at dash speed can't
+   push the octopus itself toward the edge of the view. Verified with real
+   requestAnimationFrame-driven frames (not `manualStep`): a sustained push
+   downward (this level is narrow -- 32 tiles wide -- so a sideways push
+   quickly hits the world's own horizontal bound, which is a separate,
+   correct clamp, not a look-ahead bug; a vertical push has room) settled
+   into a steady ~1.8-2.0 unit camera-ahead-of-octopus offset, comfortably
+   under the 3.6-unit (30% of a ~12-unit half-viewport) cap.
+
+6. **Enemy/decor attachment re-checked after the outline fix.** Decor
+   (`decor.js`) and enemy spawn placement (`gen.js`/`enemies.js`) key off
+   the raw tile grid's own adjacency (a floor cap vs. a ceiling cap), never
+   off the drawn/collision outline geometry, so item 1's fix doesn't touch
+   them -- confirmed by this round's screenshots: spikes/horns still sit on
+   the correct (floor-facing-up vs. ceiling-facing-down) side, `tests/`'s
+   decor suite is unchanged and still 83/83 green.
+
+Everything previously fixed (piranha separation/orientation, octopus scale/
+eyes, enemy wall collision/A* chasers, bush decor, cave-mouth fade, gift
+meter, etc.) reconfirmed still holding across this round's screenshots.
+
+Verification: `tests/` 83/83 (6 new: outline-closure regression guard across
+8 seeds, segment-length bound, collision-vs-segments penetration bound, 2x
+segment-collision corner-escape; own threading `http.server` with no-cache
+headers on a free port, stopped after); puppeteer-core headless Chrome: 0
+console errors (aside from the pre-existing, unrelated `favicon.ico` 404
+every round has had) across fresh spawn/dive frames over 6 seeds (including
+seed 13, the exact seed review-r7-zoom-s13-chunk-seam-diagonal.png was taken
+from) at 1440x900 and 375x812 (2x); a mixed keyboard+mouse soak run with a
+force-spawned Beholder and two piranhas (frame median 0.5ms, p95 0.7ms --
+the new per-substep `wallSegmentsNear` query has no measurable cost); mouse
+hold-to-swim/right-click-dash/middle-click-and-wheel-bomb all verified
+against real `octo.vx`/`bombs` state changes over real rAF frames (not
+`manualStep`); camera look-ahead verified the same way. Screenshots:
+`octomancer-web/night/fix-r8-{desk-s1-spawn,desk-s1-dive1,desk-s1-dive2,
+desk-s9-dive1,desk-s9-dive2,desk-s13-dive1,desk-s13-dive2,desk-s42-dive1,
+desk-s42-dive2,desk-s77-dive1,desk-s55-dive1,phone-s3-spawn,phone-s3-dive1,
+phone-s55-dive1,phone-s55-dive2,soak-desktop,bomb-rebake}.png`, zoomed crops
+`fix-r8-zoom-s13-{full,rock-texture,rim-corner,octopus}.png`.

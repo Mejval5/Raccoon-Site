@@ -123,8 +123,14 @@ export function createRenderer(ctx, world) {
   // there is no separate piece to seam against its neighbour, and no per-
   // tile art to keep in sync, so Milan's `tiles/tile-*.webp` set is no longer
   // loaded for walls (see ASSETS.md).
-  const WALL_FILL_COLOR = [34, 56, 112]; // sampled from the promo-video reference frames
-  const RIM_TARGET = [25, 109, 94]; // sampled from the promo-video reference frames
+  // Round-8 fix (Daniel's screenshot review round 7, item 2: "rock look:
+  // fewer/tighter smoothing... slightly lighter slate-blue rock with more
+  // visible texture/cracks; constant-width mint rim"). Nudged lighter/more
+  // slate (was a flatter navy) and the rim brightened toward mint (was a
+  // darker, more muted teal) -- both still close to the promo-video-sampled
+  // values above them in history, just per this round's review.
+  const WALL_FILL_COLOR = [58, 84, 142]; // lighter slate-blue (was [34,56,112])
+  const RIM_TARGET = [70, 205, 165]; // brighter mint-green rim (was [25,109,94])
   const caveArt = loadImage(ASSET('bg-cave.webp'));
   // Feathered once the source image loads: the raw art is a bright cave
   // mouth on a big flat near-black rectangle, and even under a 'screen'
@@ -180,95 +186,28 @@ export function createRenderer(ctx, world) {
   /** @type {Map<number, {canvas:HTMLCanvasElement, bakedTiles:Uint8Array|null}>} */
   const wallCache = new Map();
 
-  function isSolidLocal(chunk, tx, ty) {
-    if (tx < 0 || tx >= chunkW || ty < 0 || ty >= chunkH) return null; // ask neighbour chunk
-    const v = chunk.tiles[ty * chunkW + tx];
-    return v === 1 || v === 2;
-  }
-
   const RIM_COLOR = `rgba(${RIM_TARGET.join(',')},0.95)`;
 
-  // Trace every solid region's outer (and any inner/hole) boundary as a set
-  // of closed polylines, using the standard grid-boundary-walk form of
-  // marching squares: for each solid tile, emit a directed unit edge for
-  // each side that borders a non-solid tile, walked clockwise around that
-  // tile's own perimeter (N: TL->TR, E: TR->BR, S: BR->BL, W: BL->TL). Two
-  // solid tiles sharing an edge never both emit it (only exposed sides do),
-  // so a 1-wide stub contributes 3 edges and simply continues the same path
-  // its neighbours' edges already trace -- there is no separate "nub piece"
-  // to seam against them. Edges are chained start-point-to-end-point into
-  // closed loops; `used` flags (rather than a start-point key) guard the rare
-  // diagonal-touch case where two different edges could share a start point.
-  function traceWallOutlines(chunk, entry, s) {
-    const solidAt = (tx, ty) => {
-      if (tx < 0 || tx >= chunkW) return true;
-      if (ty < 0 || ty >= chunkH) {
-        const v = world.tileAt(tx, entry.yOffset + ty);
-        return v === 1 || v === 2;
-      }
-      return isSolidLocal(chunk, tx, ty);
-    };
-    const key = (x, y) => `${x},${y}`;
-    const edgesByStart = new Map();
-    const addEdge = (x1, y1, x2, y2) => {
-      const k = key(x1, y1);
-      let arr = edgesByStart.get(k);
-      if (!arr) { arr = []; edgesByStart.set(k, arr); }
-      arr.push({ x: x2, y: y2, used: false });
-    };
-    for (let ty = 0; ty < chunkH; ty++) {
-      for (let tx = 0; tx < chunkW; tx++) {
-        if (!isSolidLocal(chunk, tx, ty)) continue;
-        const x0 = tx * s, y0 = ty * s, x1 = x0 + s, y1 = y0 + s;
-        if (!solidAt(tx, ty - 1)) addEdge(x0, y0, x1, y0); // North
-        if (!solidAt(tx + 1, ty)) addEdge(x1, y0, x1, y1); // East
-        if (!solidAt(tx, ty + 1)) addEdge(x1, y1, x0, y1); // South
-        if (!solidAt(tx - 1, ty)) addEdge(x0, y1, x0, y0); // West
-      }
-    }
-    const loops = [];
-    for (const [startKey, arr] of edgesByStart) {
-      for (const startEdge of arr) {
-        if (startEdge.used) continue;
-        const loop = [];
-        let [curX, curY] = startKey.split(',').map(Number);
-        let curEdge = startEdge;
-        let guard = 0;
-        while (curEdge && !curEdge.used && guard++ < 20000) {
-          curEdge.used = true;
-          loop.push({ x: curX, y: curY });
-          curX = curEdge.x; curY = curEdge.y;
-          const nextArr = edgesByStart.get(key(curX, curY));
-          curEdge = nextArr ? nextArr.find((e) => !e.used) : null;
-        }
-        if (loop.length >= 3) loops.push(loop);
-      }
-    }
-    return loops;
-  }
-
-  // Chaikin corner-cutting: replaces every vertex with two points a fraction
-  // `ratio` in from each of its neighbouring edges, a few times over. Applied
-  // uniformly to a whole traced loop it rounds every corner the same
-  // continuous way -- convex, concave, or the sharp corners of a 1-wide stub
-  // alike -- with no separate per-corner case, which is exactly what the
-  // round-6 review asked for in place of the old per-tile-piece rim system.
-  // Long straight runs of collinear points stay straight (each cut point
-  // still lies on the same line), so plain rims stay clean rather than
-  // picking up the old procedural jitter.
-  function chaikinSmoothLoop(points, iterations, ratio) {
-    let pts = points;
-    for (let it = 0; it < iterations; it++) {
-      const next = [];
-      const n = pts.length;
-      for (let i = 0; i < n; i++) {
-        const p0 = pts[i], p1 = pts[(i + 1) % n];
-        next.push({ x: p0.x + (p1.x - p0.x) * ratio, y: p0.y + (p1.y - p0.y) * ratio });
-        next.push({ x: p0.x + (p1.x - p0.x) * (1 - ratio), y: p0.y + (p1.y - p0.y) * (1 - ratio) });
-      }
-      pts = next;
-    }
-    return pts;
+  // Round-8 fix (Daniel's screenshot review round 7, item 1 -- SEVERE
+  // regression -- and item 3, "collision must match the drawn outline"):
+  // this used to trace + Chaikin-smooth the wall outline itself, right
+  // here, using only the local chunk's own tile window; that duplicate
+  // trace is exactly what produced the diagonal wedges/hairline slivers
+  // (see outline.js's module comment for the root cause) and, separately,
+  // could never match physics' own collision shape even after a fix, since
+  // they'd be two independently-computed outlines. Both bugs are fixed by
+  // tracing ONCE, in world.js (`getWallOutline`, backed by the shared
+  // outline.js module), and having both this wall bake and physics.js's
+  // collision read from that one cache. This just re-offsets/scales the
+  // chunk's cached WORLD-space tile-unit loops into this canvas's own LOCAL
+  // pixel space.
+  function chunkLoopsPx(entry, s) {
+    const outline = world.getWallOutline(entry.index);
+    if (!outline) return [];
+    return outline.loops.map((loop) => loop.map((p) => ({
+      x: p.x * s,
+      y: (p.y - entry.yOffset) * s,
+    })));
   }
 
   function pathFromLoops(bctx, loops) {
@@ -365,13 +304,16 @@ export function createRenderer(ctx, world) {
   }
 
   const noiseField = generateFbmField(NOISE_FIELD_PX, 1337);
-  // Rock: navy-on-navy variation (darker/lighter than WALL_FILL_COLOR) rather
-  // than a contrasting teal speckle, and much lower alpha -- the promo-video
-  // reference frames read as close to flat at this art style's resolution,
-  // so a loud grain fought the video look as much as the old wrong base
-  // colour did. Kept (rather than dropped) per Daniel's Unity-shader
-  // ground-truth note, just dialled down to a subtle rock-grain hint.
-  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [20, 34, 74], [58, 88, 165], 0.14);
+  // Rock: slate-blue variation (darker/lighter than WALL_FILL_COLOR) rather
+  // than a contrasting teal speckle -- the promo-video reference frames read
+  // as close to flat at this art style's resolution, so a loud grain fought
+  // the video look as much as the old wrong base colour did. Kept (rather
+  // than dropped) per Daniel's Unity-shader ground-truth note.
+  // Round-8 fix (Daniel's screenshot review round 7, item 2: "more visible
+  // texture/cracks"): widened the dark/light endpoints and raised the max
+  // alpha (0.14 -> 0.22) so the crevice/speckle contrast actually reads as
+  // rock grain/cracks up close instead of a near-flat tint.
+  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [12, 24, 58], [92, 128, 205], 0.22);
   // Soft/breakable rock: the same field, tinted through the coral palette
   // already used for its rim so the grain matches its own material.
   const coralNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [90, 46, 26], [235, 175, 120], 0.20);
@@ -406,17 +348,28 @@ export function createRenderer(ctx, world) {
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
     // Fill + rim: one traced-and-smoothed outline per connected solid
-    // region (see `traceWallOutlines`/`chaikinSmoothLoop` above), instead of
-    // per-tile art pieces each carrying their own rim stroke. Round-1 fix
-    // (Daniel's screenshot review: the horizontal seam / "wall borders look
-    // broken") still applies inside `traceWallOutlines`/the soft-tile pass
-    // below: a tile's row above/below a chunk boundary asks the real world
-    // tile (crossing into the neighbouring chunk via `world.tileAt`,
-    // world.js) instead of assuming solid, so passages that continue into
-    // the next chunk don't bake a spurious closed rim cap across them;
-    // left/right of the chunk is still always solid (the level's real outer
-    // border, not a chunk seam).
-    const loops = traceWallOutlines(chunk, entry, s).map((loop) => chaikinSmoothLoop(loop, 3, 0.22));
+    // region (world.js's `getWallOutline`, backed by outline.js -- see
+    // `chunkLoopsPx` above), instead of per-tile art pieces each carrying
+    // their own rim stroke. Round-1 fix (Daniel's screenshot review: the
+    // horizontal seam / "wall borders look broken") still applies inside
+    // `getWallOutline`/the soft-tile pass below: a tile's row above/below a
+    // chunk boundary asks the real world tile (crossing into the
+    // neighbouring chunk via `world.tileAt`) instead of assuming solid, so
+    // passages that continue into the next chunk don't bake a spurious
+    // closed rim cap across them; left/right of the chunk is still always
+    // solid (the level's real outer border, not a chunk seam).
+    //
+    // Round-8 fix (item 1, SEVERE regression): `getWallOutline`'s trace
+    // pads beyond this chunk's own tile bounds (see outline.js) so a loop
+    // that spans the seam still closes correctly -- which means its points
+    // can fall outside this canvas's own 0..width x 0..height rect. Clip to
+    // that rect before filling/stroking so the off-canvas part of a loop
+    // (there for correctness, not for this chunk to draw) never paints.
+    bctx.save();
+    bctx.beginPath();
+    bctx.rect(0, 0, canvas.width, canvas.height);
+    bctx.clip();
+    const loops = chunkLoopsPx(entry, s);
     bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     pathFromLoops(bctx, loops);
     bctx.fill('nonzero');
@@ -426,6 +379,7 @@ export function createRenderer(ctx, world) {
     bctx.lineCap = 'round';
     pathFromLoops(bctx, loops);
     bctx.stroke();
+    bctx.restore();
 
     // Soft (breakable) rock tint + texture, per tile, unchanged from before:
     // the traced outline only replaces the fill/rim, not this per-tile pass.
@@ -435,7 +389,8 @@ export function createRenderer(ctx, world) {
         const v = world.tileAt(tx, entry.yOffset + ty);
         return v === 1 || v === 2;
       }
-      return isSolidLocal(chunk, tx, ty);
+      const v = chunk.tiles[ty * chunkW + tx];
+      return v === 1 || v === 2;
     };
     const softTiles = []; // v===2 (breakable) tile rects, textured after the main noise pass
     for (let ty = 0; ty < chunkH; ty++) {
@@ -829,7 +784,7 @@ export function createRenderer(ctx, world) {
       // octopus's own.
       const followX = octo.prevX + (octo.x - octo.prevX) * alpha;
       const followY = octo.prevY + (octo.y - octo.prevY) * alpha;
-      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt);
+      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy);
       const shakePx = shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);

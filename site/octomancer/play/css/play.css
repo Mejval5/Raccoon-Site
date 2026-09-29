@@ -227,3 +227,17 @@ body {
   opacity: .6;
   margin-top: 4px;
 }
+
+/* Round-8 item 4: on-screen keyboard/mouse controls hint (ui.js), shown for
+   desktop-style input and hidden on touch (main.js, input.onModeChange). */
+.octo-controls-help {
+  position: absolute;
+  left: calc(12px + var(--safe-l));
+  bottom: calc(10px + var(--safe-b));
+  max-width: min(92vw, 560px);
+  font: 600 11px/1.4 'Quicksand', sans-serif;
+  color: #baffea;
+  opacity: .65;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+  pointer-events: none;
+}

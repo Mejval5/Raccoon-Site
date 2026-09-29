@@ -28,7 +28,7 @@ import {
   MANTA_DROP_PERIOD, MANTA_RANGE, MANTA_BALL_SPEED, MANTA_BALL_RADIUS,
 } from './config.js';
 import { hurtOctopus, killOctopus } from './octopus.js';
-import { resolveCircleVsGrid } from './physics.js';
+import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
@@ -39,8 +39,19 @@ function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 // per-substep collision resolver; enemies move at low enough speed (no dash)
 // that a single resolve per fixed step (no sub-stepping) is enough to keep
 // them out of rock without tunnelling.
+//
+// Round-8 fix (NIGHT-LOG.md item 3): same switch as the octopus's own
+// `integrateWithCollision` in physics.js -- when `world` exposes
+// `wallSegmentsNear` (it does), enemies collide against the exact same
+// traced+smoothed outline segments the wall art draws instead of the raw
+// tile grid, so a piranha or crab sliding along a diagonal rim follows the
+// same rounded shape the octopus and the drawn rock do.
 function collideWithWalls(e, world) {
-  resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
+  if (typeof world.wallSegmentsNear === 'function') {
+    resolveCircleVsSegments(e, world.wallSegmentsNear(e.x, e.y, e.radius));
+  } else {
+    resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
+  }
 }
 
 // Round-7 fix (Daniel's screenshot review round 6, item 3: "piranhas stack

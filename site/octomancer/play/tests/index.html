@@ -91,6 +91,11 @@ runDecorTests(assert, approx);
 import { runCornerTests } from './corner.test.js';
 runCornerTests(assert, approx);
 
+// --- Round-8 task 1/3: wall-outline trace closure + collision-matches-rim
+// tests (outline.js / world.js / physics.js) ---
+import { runOutlineTests } from './outline.test.js';
+runOutlineTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

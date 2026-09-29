@@ -8,6 +8,10 @@
 // change shape.
 
 import { createGenerator, CHUNK_W, CHUNK_H, BORDER, shaveNubsAndSmallIslands } from './gen.js';
+import {
+  traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
+  OUTLINE_PAD, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO,
+} from './outline.js';
 
 // Round-3 fix (Daniel's screenshot review: "single-tile nubs ... the same
 // pair of stubs appears at the same x positions in seed 42 at depth 46 and
@@ -142,6 +146,89 @@ export function createWorld(seed) {
     const ly = ty - ci * CHUNK_H;
     c.tiles[ly * CHUNK_W + tx] = v;
     c.dirty = true;
+    // A tile changing (bomb break) can move the traced outline of THIS
+    // chunk and of its neighbours above/below (their own outline trace
+    // reads this chunk's tiles too, across the padded window -- see
+    // `buildChunkOutline` below), so bump all three outline-cache entries'
+    // version rather than just this chunk's.
+    outlineVersion.set(ci, (outlineVersion.get(ci) || 0) + 1);
+    outlineVersion.set(ci - 1, (outlineVersion.get(ci - 1) || 0) + 1);
+    outlineVersion.set(ci + 1, (outlineVersion.get(ci + 1) || 0) + 1);
+  }
+
+  // --- Shared wall-outline cache (round-8 fix, NIGHT-LOG.md): the SAME
+  // traced + Chaikin-smoothed geometry backs both the wall art bake
+  // (render.js) and wall collision (physics.js via `wallSegmentsNear`
+  // below) -- built once per chunk here rather than twice with drifting
+  // parameters, so the drawn rim and the collision surface are always
+  // exactly the same shape (round-8 item 3: "collision must match the
+  // drawn outline"). Loops are kept in WORLD-space tile units (the local
+  // trace's y already offset by the chunk's own yOffset), so they can be
+  // used directly for collision; render.js re-offsets/scales them to its
+  // own chunk-local pixel canvas at bake time.
+  /** @type {Map<number, {loops: {x:number,y:number}[][], segments: {x1:number,y1:number,x2:number,y2:number}[], version: number}>} */
+  const outlineCache = new Map();
+  const outlineVersion = new Map(); // chunkIndex -> version bumped by setTileAt
+
+  function buildChunkOutline(ci) {
+    const c = chunks.get(ci);
+    if (!c) return null;
+    const yOff = ci * CHUNK_H;
+    const isSolidAt = (tx, ty) => {
+      if (tx >= 0 && tx < CHUNK_W && ty >= 0 && ty < CHUNK_H) {
+        const v = c.tiles[ty * CHUNK_W + tx];
+        return v === 1 || v === 2;
+      }
+      const v = tileAt(tx, yOff + ty);
+      return v === 1 || v === 2;
+    };
+    const { loops: rawLoops } = traceOutlineLoops(isSolidAt, CHUNK_W, CHUNK_H, OUTLINE_PAD);
+    const loops = rawLoops.map((loop) => {
+      const smoothed = chaikinSmoothLoop(loop, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO);
+      return smoothed.map((p) => ({ x: p.x, y: p.y + yOff }));
+    });
+    const segments = loopsToSegments(loops);
+    return { loops, segments };
+  }
+
+  /** Chunk-local (tile units) + world-space (y offset applied) outline for
+   * one chunk, rebuilt only when that chunk's tiles (or an immediate
+   * neighbour's, across the padded trace window) have changed since the
+   * last build. Consumed by render.js's wall bake and by
+   * `wallSegmentsNear` below. */
+  function getWallOutline(ci) {
+    const wantVersion = outlineVersion.get(ci) || 0;
+    const cached = outlineCache.get(ci);
+    if (cached && cached.version === wantVersion) return cached;
+    const built = buildChunkOutline(ci);
+    if (!built) return null;
+    const entry = { ...built, version: wantVersion };
+    outlineCache.set(ci, entry);
+    return entry;
+  }
+
+  /** Collision segments (world-space tile units) from every chunk whose
+   * y-range could plausibly touch a circle at (x,y) with radius r -- used
+   * by physics.js's `resolveCircleVsSegments` in place of the raw tile
+   * grid, so the octopus and enemies collide against the exact same
+   * smoothed rim the wall art draws (round-8 item 3). */
+  function wallSegmentsNear(x, y, r) {
+    const pad = r + 1;
+    const minCi = chunkIndexOf(y - pad);
+    const maxCi = chunkIndexOf(y + pad);
+    let out = [];
+    for (let ci = minCi; ci <= maxCi; ci++) {
+      const o = getWallOutline(ci);
+      if (!o || !o.segments.length) continue;
+      for (const s of o.segments) {
+        // Cheap bbox reject before the caller's per-segment distance check.
+        const minSx = Math.min(s.x1, s.x2), maxSx = Math.max(s.x1, s.x2);
+        const minSy = Math.min(s.y1, s.y2), maxSy = Math.max(s.y1, s.y2);
+        if (maxSx < x - pad || minSx > x + pad || maxSy < y - pad || minSy > y + pad) continue;
+        out.push(s);
+      }
+    }
+    return out;
   }
 
   return {
@@ -169,6 +256,13 @@ export function createWorld(seed) {
      * seam (round-1 fix, Daniel's screenshot review: "wall borders look
      * broken" / the horizontal seam line). */
     tileAt,
+    /** Round-8: the shared traced+smoothed wall outline for one chunk (see
+     * `getWallOutline` above) -- render.js's canvas bake and physics'
+     * collision both read from this one cache instead of tracing twice. */
+    getWallOutline,
+    /** Round-8 item 3: collision segments (world-space tile units) near a
+     * point, for circle-vs-segments wall collision (physics.js). */
+    wallSegmentsNear,
     isBreakable(tx, ty) { return tileAt(Math.floor(tx), Math.floor(ty)) === 2; },
     /** Break a soft-rock tile (bomb radius, M3) back to water. */
     breakTile(tx, ty) {

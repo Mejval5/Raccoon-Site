@@ -8,6 +8,7 @@ import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
 import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
+import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { CHUNK_H, CHUNK_W } from './gen.js';
@@ -53,8 +54,15 @@ resize();
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 
-const input = createInput();
+const input = createInput(canvas);
 const touchUI = createTouchUI(touchRoot, input);
+// Round-8 item 4: the on-screen keyboard/mouse controls hint (ui.js) only
+// makes sense on a desktop-style input; hide it on the first touch, show it
+// again if the player switches back to keyboard/mouse.
+input.onModeChange((mode) => {
+  if (mode === 'touch') ui.hideControlsHelp();
+  else ui.showControlsHelp();
+});
 
 // --- Simulation state ---
 let seed = initialSeed;
@@ -136,8 +144,22 @@ window.addEventListener('keydown', (e) => {
 
 const autoDive = { path: [], recalc: 0 };
 
+// Round-8 item 4: mouse aim. `input.mouse.x/y` are the raw tracked cursor
+// position (canvas buffer px, set by input.js's own listeners); turning
+// that into the octopus's swim direction needs the octopus's current
+// position and the camera, so it's computed here each fixed step (not in
+// input.js, which has neither) and handed back via `setMouseAim`.
+const MOUSE_FULL_THRUST_DIST = 3; // world units: cursor this far (or further) from the octopus is full thrust, closer scales down
+
 function step(dt) {
   sim.time += dt;
+  if (input.mouse.active) {
+    const worldAim = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
+    const dx = worldAim.x - octo.x, dy = worldAim.y - octo.y;
+    const dist = Math.hypot(dx, dy);
+    const thrust = Math.min(1, dist / MOUSE_FULL_THRUST_DIST);
+    input.setMouseAim(dist > 1e-4 ? (dx / dist) * thrust : 0, dist > 1e-4 ? (dy / dist) * thrust : 0);
+  }
   let snap = input.snapshot();
   if (autoDiveOn) {
     // __octo.autoDive(true): a small bounded BFS through the tile grid
@@ -348,6 +370,9 @@ window.__octo = {
       },
       depth: Math.max(0, world.depth() - world.startY),
       residentChunks: world.residentChunkCount(),
+      // Round-8 item 5: exposed for the look-ahead camera's own real-rAF-
+      // frame verification (see NIGHT-LOG.md); harmless outside tests.
+      camera: { x: renderer.camera.x, y: renderer.camera.y },
       pickups: { ...pickups.totals },
       enemyCount: enemies.count(),
       beholder: enemies.beholder() ? { x: enemies.beholder().x, y: enemies.beholder().y } : null,

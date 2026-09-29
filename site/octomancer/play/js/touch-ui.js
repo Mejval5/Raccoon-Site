@@ -126,7 +126,7 @@ export function createTouchUI(root, input) {
   root.addEventListener('pointerup', endPointer, { passive: true });
   root.addEventListener('pointercancel', endPointer, { passive: true });
 
-  input.onModeChange((mode) => { if (mode === 'keyboard') hide(); });
+  input.onModeChange((mode) => { if (mode === 'keyboard' || mode === 'mouse') hide(); });
 
   return { show, hide };
 }
