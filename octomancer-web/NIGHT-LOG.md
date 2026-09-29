@@ -2238,3 +2238,52 @@ desk-s42-dive3,phone-s7-spawn,phone-s7-dive1}.png`, zoomed crops
 `fix-r12-zoom-{urchin-plants,fish-plants,phone-walls-cannon}.png` (urchin/
 cannon crops re-confirm rim anchoring holds with the new denser foliage
 layered in).
+
+## Visual fixes round 13 (background ambient layer: floating + depth cue)
+
+Round-12's new `drawAmbientBackground` (render.js) was the source of both
+reported regressions -- fixed both at the root rather than patching the
+symptom:
+
+1. **Plants float in open water again (render.js).** `drawAmbientBackground`
+   placed each silhouette at a fully arbitrary world position (`rng() *
+   chunkW`/`chunkH`) with no check for ground anywhere nearby, so most
+   silhouettes landed in open water with a stem ending in nothing -- a
+   return of Daniel's original item 7 the foreground-plant anchor logic
+   (`findPlantAnchors`) already solved for the near layer. Now roots each
+   ambient silhouette on the SAME real floor-tile anchors `findPlantAnchors`
+   finds for the foreground plants (decor.js, shared with its round-12
+   density test), filtered to floor-only anchors (not ceiling-hanging --
+   a second, larger hanging layer stacked on the foreground's own ceiling
+   vines doubled up visually) and bottom-anchored with the same
+   `PLANT_INTO_WALL` tuck the foreground plants use, so no cut-off stem
+   base shows. A separate hash still governs which anchors get picked so
+   the two layers don't always pick the exact same cells.
+
+2. **Depth cue backwards (render.js).** The silhouette tint was near-black
+   cave rock (`rgba(2,10,16,0.88)`), which at the layer's own draw-time
+   alpha still read as a bold, saturated dark shape against the bright
+   shallow-water gradient (`drawBackground`'s own ~rgb(140,252,252) at the
+   surface) -- heavier than the pale foreground rim foliage, backwards from
+   the promo video's washed-out background weeds. Retinted toward the pale
+   water colour (`rgba(150,215,220,0.6)`) at a lower fill alpha so some of
+   the source art's own shading still shows through instead of a flat
+   silhouette, added a `destination-in` vertical fade over the sprite's
+   bottom third (belt-and-suspenders with the anchor fix -- no stem cutoff
+   even if a future anchor sits right at a rim edge), and capped the scale
+   at 1.3-2.0x (was 2.2-4.0x) so it no longer outsizes the foreground
+   plants' own 1.4x.
+
+Verification: `tests/` 354/354 unchanged (own threading `http.server`,
+switched to `ThreadingMixIn` this round after the plain single-threaded
+server was intermittently refusing a handful of the page's ~25 parallel
+module-script requests under puppeteer -- no code-under-test change, just
+a flakier test harness; no-cache headers, free port, stopped after);
+puppeteer-core headless Chrome: 0 console errors across fresh spawn frames
+at 1440x900 and 375x812 (2x, touch-emulated), and scripted autodives on
+seeds 1, 5, 7, 13 and 31 through ~50-130m of depth (13/31 are Daniel's own
+reported spots). Screenshots: `octomancer-web/night/fix-r13-dive-{s1-desk,
+s13-desk,s31-desk,s5-desk,s7-phone}-{spawn,0..4}.png`, zoomed crops
+`fix-r13-zoom-{spawn-ambient,s5-plants-walls,s31-octopus-enemy,
+phone-crab-plants}.png` (all four confirm floor-anchored, pale, low-contrast
+silhouettes with no floating stems).

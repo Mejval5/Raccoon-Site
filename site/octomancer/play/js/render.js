@@ -547,6 +547,18 @@ export function createRenderer(ctx, world) {
   // draw time and stays crisp) so the many silhouette instances below are
   // ordinary `drawImage` calls.
   const ambientSilCache = [];
+  // Round-13 fix (Daniel's screenshot review round 12, item 2: "the depth
+  // cue is backwards -- background silhouettes read darker and heavier
+  // than the pale foreground rim foliage, video shows the opposite"). This
+  // used to tint toward near-black cave rock (rgba(2,10,16,0.88)), which at
+  // the layer's own draw-time alpha (silAlpha below) still reads as a
+  // saturated dark shape against the bright shallow-water gradient
+  // (drawBackground: ~rgb(140,252,252) at the surface). Tinting toward that
+  // same pale water colour instead -- and at a lower fill alpha so some of
+  // the source art's own shading survives the tint -- keeps it low-contrast
+  // and washed-out like the pale background weeds in the promo footage
+  // (octo-video-cave-urchin.webp) rather than a bold silhouette.
+  const AMBIENT_TINT = 'rgba(150,215,220,0.6)';
   function getAmbientSilhouette(i) {
     if (ambientSilCache[i]) return ambientSilCache[i];
     const img = plants[i];
@@ -556,8 +568,19 @@ export function createRenderer(ctx, world) {
     const cctx = c.getContext('2d');
     cctx.drawImage(img, 0, 0);
     cctx.globalCompositeOperation = 'source-atop';
-    cctx.fillStyle = 'rgba(2,10,16,0.88)';
+    cctx.fillStyle = AMBIENT_TINT;
     cctx.fillRect(0, 0, c.width, c.height);
+    // Fade the tinted sprite to fully transparent over its bottom third so
+    // no cut-off stem end shows once it's anchor-tucked into a floor tile
+    // the same way the foreground plants are (see drawAmbientBackground
+    // below) -- matches PLANT_INTO_WALL's "hide the faded root under the
+    // rim" trick without needing a second baked variant per anchor depth.
+    cctx.globalCompositeOperation = 'destination-in';
+    const fade = cctx.createLinearGradient(0, c.height * 0.62, 0, c.height);
+    fade.addColorStop(0, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    cctx.fillStyle = fade;
+    cctx.fillRect(0, c.height * 0.62, c.width, c.height * 0.38);
     ambientSilCache[i] = c;
     return c;
   }
@@ -571,20 +594,41 @@ export function createRenderer(ctx, world) {
   function drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     const t = Math.min(1, depth / 500);
-    const silAlpha = Math.max(0.05, 0.22 - t * 0.14); // fades toward black with depth
+    const silAlpha = Math.max(0.05, 0.22 - t * 0.14); // fades out with depth
     const moteAlpha = Math.max(0.04, 0.18 - t * 0.1);
     ctx.save();
-    for (const { index, yOffset } of resident) {
+    // Round-13 fix (Daniel's screenshot review round 12, item 1: "plants
+    // float in open water again" -- a return of Daniel's original item 7).
+    // This used to place each silhouette at a fully arbitrary world position
+    // (rng() * chunkW/chunkH) with no check for ground anywhere near it, so
+    // most of them landed in open water with a stem that ends in nothing.
+    // Root each one on the SAME real floor-tile anchors `findPlantAnchors`
+    // already finds for the foreground plants (decor.js, shared with its
+    // round-12 density test) -- solid ground with open water directly
+    // above -- instead of an arbitrary point, so a silhouette is only ever
+    // drawn bottom-anchored on an actual cave floor. Anchors are filtered to
+    // floor-only (not ceiling-hanging): a distant, out-of-focus background
+    // shape reads fine growing up from a floor, but a second, larger
+    // hanging layer on top of the foreground's own ceiling vines doubles up
+    // visually. A separate hash keeps which anchors get picked independent
+    // of the foreground's own `h % 3` gate, so the two layers don't always
+    // pick the exact same cells.
+    for (const { index, yOffset, chunk } of resident) {
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, index).filter((a) => !a.onCeiling);
+      if (!anchors.length) continue;
       const rng = ambientRng(index * 7919 + 11);
-      const count = 3 + Math.floor(rng() * 2); // 3-4 distant silhouettes per chunk
+      const count = Math.min(anchors.length, 3 + Math.floor(rng() * 2)); // 3-4 distant silhouettes per chunk
       for (let i = 0; i < count; i++) {
+        const a = anchors[Math.floor(rng() * anchors.length)];
         const idx = Math.floor(rng() * 2);
         const img = getAmbientSilhouette(idx);
         const src = plants[idx];
         if (!img || !src.naturalWidth) continue;
-        const wx = rng() * chunkW;
-        const wy = yOffset + rng() * chunkH;
-        const scale = 2.2 + rng() * 1.8; // bigger, distance-scaled read vs. the FG plants
+        const wx = a.tx + 0.5, wy = a.ty + yOffset + PLANT_INTO_WALL;
+        // Distance-scaled but capped close to the foreground plants' own
+        // 1.4x (drawOnePlant) so the "farther away" layer doesn't outsize
+        // and out-weigh what's actually in front of it (round-12 item 2).
+        const scale = 1.3 + rng() * 0.7;
         const p = parallaxScreen(canvasW, canvasH, wx, wy);
         const h = camera.pxPerUnit * scale;
         const w = h * (src.naturalWidth / src.naturalHeight);
