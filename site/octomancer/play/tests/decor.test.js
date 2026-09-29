@@ -3,7 +3,7 @@
 // non-hostile (no collision/damage hooks -- they carry no radius or
 // contactDamage field the way enemies do, so they can never block or block
 // the generator's guaranteed path).
-import { createDecor, findPlantAnchors } from '../js/decor.js';
+import { createDecor, findPlantAnchors, findClusterMates } from '../js/decor.js';
 import { generateChunk } from '../js/gen.js';
 
 export function runDecorTests(assert, approx) {
@@ -97,6 +97,73 @@ export function runDecorTests(assert, approx) {
     const critters = decor.visibleCritters(resident);
     const clean = critters.every((c) => c.radius === undefined && c.contactDamage === undefined);
     assert(`decor: wall critters (${critters.length} checked) carry no collision/damage fields`, clean);
+  }
+
+  // --- Round-14 "fill the cave" pass: cluster-mates ("clusters of 2-4 mixed
+  // items" per the brief) -- average cluster size (anchor + mates) sits in a
+  // plausible range, and every mate offset is itself genuinely attached
+  // (solid cap, open growth side) so a cluster never sprouts a mate off the
+  // end of a floor run or across a corner into rock. ---
+  {
+    let sizes = [];
+    let checked = 0;
+    for (let seed = 1; seed <= 15; seed++) {
+      const chunk = generateChunk(seed, 0, 16);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, 0);
+      for (const { tx, ty, onCeiling, hash: h } of anchors) {
+        if (onCeiling) continue; // clusters are floor-only, per the brief
+        const mates = findClusterMates(chunk, chunkW, chunkH, tx, ty, onCeiling, h);
+        sizes.push(1 + mates.length); // the anchor itself counts as item 1
+        for (const { dx } of mates) {
+          checked++;
+          const nx = tx + dx;
+          assert(`decor: cluster-mate (seed ${seed}, ${nx},${ty}) sits on solid rock`, chunk.tiles[ty * chunkW + nx] !== 0);
+          assert(`decor: cluster-mate (seed ${seed}, ${nx},${ty}) grows into open water, not rock`, chunk.tiles[(ty - 1) * chunkW + nx] === 0);
+        }
+      }
+    }
+    const avg = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+    // A regression that drops all mates would read as ~1.0 (bare anchors, the
+    // pre-round-14 read Daniel called out); a regression that always maxes
+    // out would read as 4.0 flat with no variance -- this brackets "clusters
+    // of 2-4 mixed items" without demanding a specific distribution.
+    assert(`decor: floor cluster average size within (1, 4] (got ${avg.toFixed(2)})`, avg > 1 && avg <= 4);
+    assert(`decor: cluster-mate attachment checked across a meaningful sample (${checked})`, checked >= 20);
+    // Ceiling anchors carry no cluster-mates at all (brief: clusters are a
+    // floor-growth behaviour).
+    let ceilingHasMates = false;
+    for (let seed = 1; seed <= 10; seed++) {
+      const chunk = generateChunk(seed, 0, 16);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, 0);
+      for (const { tx, ty, onCeiling, hash: h } of anchors) {
+        if (onCeiling && findClusterMates(chunk, chunkW, chunkH, tx, ty, onCeiling, h).length > 0) ceilingHasMates = true;
+      }
+    }
+    assert('decor: ceiling foliage anchors never get cluster-mates', !ceilingHasMates);
+  }
+
+  // --- Round-14 review leftover (round 13): a foliage anchor must never land
+  // within a tile of a static enemy-slot emplacement (urchin/cannon/horns),
+  // so a plant can't visually sprout out of one. ---
+  {
+    let checked = 0;
+    // chunkIndex 0 is enemy-free (gen.js keeps depth < 40 clear) -- use a
+    // deeper chunk (index 3, depth 72) so there are actual enemy slots to
+    // check anchors against.
+    for (let seed = 1; seed <= 15; seed++) {
+      const chunk = generateChunk(seed, 3, 16);
+      const anchors = findPlantAnchors(chunk, chunkW, chunkH, 3);
+      const slots = (chunk.spawns || []).filter((s) => s.type === 'enemy-slot');
+      for (const { tx, ty } of anchors) {
+        for (const s of slots) {
+          checked++;
+          const sx = Math.floor(s.x), sy = Math.floor(s.y);
+          assert(`decor: foliage anchor (seed ${seed}, ${tx},${ty}) is not within 1 tile of enemy slot (${sx},${sy})`,
+            Math.abs(sx - tx) > 1 || Math.abs(sy - ty) > 1);
+        }
+      }
+    }
+    assert(`decor: anchor/enemy-slot separation checked across a meaningful sample (${checked})`, checked >= 20);
   }
 
   // --- Critters despawn with their chunk, same as bubbles/enemies. ---

@@ -2287,3 +2287,83 @@ s13-desk,s31-desk,s5-desk,s7-phone}-{spawn,0..4}.png`, zoomed crops
 `fix-r13-zoom-{spawn-ambient,s5-plants-walls,s31-octopus-enemy,
 phone-crab-plants}.png` (all four confirm floor-anchored, pale, low-contrast
 silhouettes with no floating stems).
+
+## Visual fixes round 14 (bolder foliage clusters, root-cause the round-13 "plant on urchin" leftover)
+
+Daniel: art quality is fine as-is; scoped this round to "fill the cave"
+density/attachment plus a performance check, not new art or new sprites
+(`octomancer-web/harvest/`, `MANIFEST.md`/`ART-SORT.md` stay the source of
+truth -- no image generation used this round, image-gen tooling wasn't even
+reachable from this session, and Daniel's own brief said the art is fine).
+
+1. **Root cause of the round-13 review leftover: "a plant must not sprout out
+   of an urchin" (decor.js).** `findPlantAnchors` picked its cells purely
+   from tile solidity, with no idea an enemy slot (urchin/cannon/horns/crab/
+   manta/mine, gen.js's `chunk.spawns` `enemy-slot` entries) had already
+   claimed a cell nearby -- `findWallCritters` already skipped an enemy
+   slot's own cell for the wall-critter layer (`enemySlotCellSet`), but the
+   foreground-plant anchors never got the same treatment. New `nearEnemySlot`
+   helper checks a full 3x3 neighbourhood (Chebyshev distance <=1, "~1 tile"
+   per the brief) around each candidate anchor against every enemy-slot cell
+   in the chunk and skips it -- cheap (single-digit slot counts per chunk)
+   and root-cause (the anchor is never generated in the first place, not
+   filtered after the fact).
+
+2. **Bolder, larger, clustered foreground foliage (render.js, decor.js).**
+   Daniel: the video stills show foliage in clumps, not lone stalks, and
+   bigger than round-12/13's 1.4x. `PLANT_BASE_SCALE` 1.4 -> 1.9 (closer to
+   the video's own scale). New `findClusterMates` (decor.js, pure function of
+   a floor anchor's tile row, exported and covered by `decor.test.js` the
+   same way `findPlantAnchors` already is) offers up to 3 more slots beside
+   an accepted floor anchor (~2/3 chance each, independently re-validated
+   against the tile grid -- solid cap, open growth side, inside chunk bounds
+   -- so a cluster only ever grows along a real flat run, never past its end
+   or across a corner into rock), giving clusters of 1-4 items. One in four
+   cluster-mates draws as `decor-bush2.webp` instead of plant1/2 (existing,
+   already-vetted floor-only art from decor.js's own wall-critter layer, per
+   round-4/5/7 notes there -- not new art) so clusters read as mixed growth,
+   not a repeated single sprite. Ceiling anchors get no cluster-mates (the
+   brief's clusters are a floor behaviour; a denser hanging layer would
+   double up on the single-strand ceiling-vine read round-12 already
+   settled on). Gentle sway added for the first time on both anchors and
+   cluster-mates (a small phase-shifted `Math.sin(time * ...)` tilt, off
+   under `prefers-reduced-motion` same as every other per-frame effect this
+   codebase already gates that way) -- round-12/13 plants never moved at all.
+
+3. **Performance: measured, not just assumed.** `window.__octo.metrics()`
+   sampled on a 12s phone-emulated (375x812, 2x, touch) autodive run at a
+   CDP-forced 4x CPU throttle (`Emulation.setCPUThrottlingRate`), same seed,
+   same script, run against a `git show HEAD:...` snapshot of the pre-round
+   `render.js`/`decor.js` (a separate temp checkout, own server/port -- the
+   real working tree was never touched by this comparison) and against this
+   round's code: median frame time 2.1-2.2ms and P95 5.5-6ms on BOTH sides of
+   the change, across two repeated runs each -- no regression, and nowhere
+   near the fixed 50Hz/20ms step budget even under 4x throttle. The extra
+   cluster-mate `drawImage` calls are cheap enough at this art's resolution
+   that they don't move the needle; no further batching/caching work was
+   needed to stay in budget this round.
+
+4. **Not done this round (scope note for the next pass):** new creatures
+   from Milan's set not yet in the game (Clamissaint/tentacle, Acidator
+   dropper) -- DECISIONS-2026-09-29.md §4 and MANIFEST.md's enemy table both
+   flag their source art as a multi-frame sprite atlas / msgpack Creature
+   pack (Clamissaint: 16 unique 1280x720 frames; Acidator: a `.bytes`
+   Creature pack + a 1024^2 atlas), the same category of asset the octopus's
+   own bake (§4 there) needed a dedicated offline Pillow pipeline for --
+   porting their Unity behaviour scripts is comparatively small next to
+   building and verifying that bake correctly for two more creatures in the
+   same pass as the density/attachment/perf work above. Left for its own
+   round rather than rushed.
+
+Verification: `tests/` 1697/1697 (own threading `http.server` with no-cache
+headers on a free port, stopped after; includes two new `decor.test.js`
+suites -- cluster-mate size/attachment across 8 seeds, and anchor/enemy-slot
+separation across a depth-40+ chunk where enemy slots actually spawn, since
+chunk index 0 is enemy-free by design); puppeteer-core headless Chrome: 0
+console errors across fresh spawn frames at 1440x900 and 375x812 (2x,
+touch-emulated), and scripted autodives on seeds 1, 42 and 7 through
+~50-90m of depth. Screenshots: `octomancer-web/night/fix-r14-dive-{s1-desk,
+s42-desk,s7-phone}-{spawn,0..3}.png`, zoomed crops `fix-r14-zoom-{cluster,
+urchin-noplant,octopus,phone-urchin}.png` (urchin/horns crops re-confirm no
+plant sprouts from a static emplacement; cluster crop shows a mixed plant/
+bush floor clump plus ceiling vines, all rim-anchored).

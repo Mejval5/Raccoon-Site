@@ -342,6 +342,28 @@ function findVents(chunk, yOffset, chunkW, chunkH) {
   return vents;
 }
 
+/** Round-14 fix (round-13 review leftover, Daniel: "a plant must not sprout
+ * out of an urchin"). `findPlantAnchors` picked its cells purely from tile
+ * data, with no idea an enemy slot (urchin/cannon/horns/crab/...) had
+ * already claimed a cell right next to it -- `findWallCritters` above
+ * already skips a slot's own cell for the wall-critter layer via
+ * `enemySlotCellSet`, but the foreground-plant anchors never got the same
+ * treatment, so a floor/ceiling anchor could land within a tile of a static
+ * emplacement and the plant would visually sprout out of it. Checks a full
+ * 3x3 neighbourhood (Chebyshev distance <=1, "~1 tile" per the brief) around
+ * the anchor's OWN tile against every enemy-slot cell in the chunk -- cheap
+ * (slot counts are single digits per chunk, gen.js's `slotCount`) and run
+ * once per anchor candidate. */
+function nearEnemySlot(chunk, tx, ty) {
+  if (!chunk.spawns) return false;
+  for (const s of chunk.spawns) {
+    if (s.type !== 'enemy-slot') continue;
+    const sx = Math.floor(s.x), sy = Math.floor(s.y);
+    if (Math.abs(sx - tx) <= 1 && Math.abs(sy - ty) <= 1) return true;
+  }
+  return false;
+}
+
 /** Round-12 "fill the cave" pass, density test support: the same anchor
  * cells + hash gate render.js's `drawPlants` uses for floor/ceiling foliage
  * (plant1/plant2.webp), factored out here as a pure function of chunk tile
@@ -350,19 +372,50 @@ function findVents(chunk, yOffset, chunkW, chunkH) {
  * only (render.js still owns the actual draw position/size/clustering) --
  * every entry is guaranteed `onFloor`/`onCeiling`-consistent with the tile
  * grid (solid at the anchor cell, open on the side the sprite grows toward),
- * i.e. never "floating" or anchored with its growth side inside rock.
+ * i.e. never "floating" or anchored with its growth side inside rock, and
+ * (round 14) never within a tile of a static enemy-slot emplacement.
  */
 export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
   const out = [];
   for (let ty = 1; ty < chunkH - 1; ty++) {
     for (let tx = 1; tx < chunkW - 1; tx++) {
       if (chunk.tiles[ty * chunkW + tx] === 0) continue; // must itself be solid
+      if (nearEnemySlot(chunk, tx, ty)) continue; // round-13 review: no plant on an urchin/cannon/horns
       const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
       const openAbove = chunk.tiles[(ty - 1) * chunkW + tx] === 0;
       const openBelow = chunk.tiles[(ty + 1) * chunkW + tx] === 0;
       if (openAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
       else if (openBelow && h % 7 === 0) out.push({ tx, ty, onCeiling: true, hash: h });
     }
+  }
+  return out;
+}
+
+/** Round-14 "fill the cave" pass: cluster-mate offsets for a floor anchor
+ * from `findPlantAnchors`, factored out as a pure function (same reasoning
+ * as `findPlantAnchors` itself) so `decor.test.js` can assert on real
+ * cluster sizes/safety without a canvas, and so render.js only has to turn
+ * validated tile offsets into a draw call. Each candidate slot is
+ * independently hash-gated (~2/3 chance) and re-checked against the tile
+ * grid -- a cap/open-side pair just like the anchor itself needs -- so a
+ * cluster only ever grows along a real flat run, never past its end or
+ * across a corner into rock. Ceiling anchors get no cluster-mates (the
+ * brief's clusters are a floor-growth behaviour; a dense hanging cluster
+ * was never asked for and doubles up on the ceiling vine's own single-strand
+ * read). Returns `{dx, hash}` offsets only; render.js maps `hash` to an art
+ * variant/size the same way it already does for the anchor sprite. */
+export function findClusterMates(chunk, chunkW, chunkH, tx, ty, onCeiling, anchorHash) {
+  if (onCeiling) return [];
+  const mateSlots = [-1, 1, -2];
+  const out = [];
+  for (let i = 0; i < mateSlots.length && out.length < 3; i++) {
+    const h2 = hash2(anchorHash + 37 + i * 53, anchorHash * 7 + i);
+    if (h2 % 3 === 0) continue; // ~2/3 chance per slot -> clusters of 2-4 incl. the anchor
+    const nx = tx + mateSlots[i];
+    if (nx < 1 || nx >= chunkW - 1) continue;
+    if (chunk.tiles[ty * chunkW + nx] === 0) continue; // no floor cap there
+    if (chunk.tiles[(ty - 1) * chunkW + nx] !== 0) continue; // that side isn't open -- would grow into rock
+    out.push({ dx: mateSlots[i], hash: h2 });
   }
   return out;
 }

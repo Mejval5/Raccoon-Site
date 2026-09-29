@@ -61,7 +61,7 @@
 
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
-import { depthTint, findPlantAnchors } from './decor.js';
+import { depthTint, findPlantAnchors, findClusterMates } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
@@ -173,6 +173,14 @@ export function createRenderer(ctx, world) {
     caveArtFeathered = fc;
   }, { once: true });
   const plants = [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))];
+  // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates
+  // only (never the primary anchor sprite, so `findPlantAnchors`'s own
+  // solid/open checks -- which only know about the plant1/2 silhouette's
+  // footprint -- still hold for the anchor itself). Reuses decor.js's
+  // existing `bush2` art (already vetted floor-only, round-4/5/7 notes in
+  // decor.js), not new art, so a floor cluster can mix a bush in alongside
+  // the vine/frond plants per the brief ("clusters of 2-4 mixed items").
+  const clusterBush = loadImage(ASSET('decor-bush2.webp'));
   const shellImgs = {
     blue: loadImage(ASSET('shell-blue.webp')),
     green: loadImage(ASSET('shell-green.webp')),
@@ -730,19 +738,28 @@ export function createRenderer(ctx, world) {
   //
   // The anchor cells + density gate themselves live in decor.js's
   // `findPlantAnchors` (pure function of chunk tile data, no canvas), shared
-  // with `decor.test.js`'s round-12 density test -- this file only turns
-  // those anchors into an actual draw position/size/cluster-mate.
-  function plantHash(a, b) {
-    let h = (Math.imul(a, 2654435761) + Math.imul(b, 40503)) | 0;
-    h = Math.imul(h ^ (h >>> 15), 2246822519);
-    return (h ^ (h >>> 13)) >>> 0;
-  }
+  // with `decor.test.js`'s round-12 density test; round-14's cluster-mate
+  // offsets live in decor.js's `findClusterMates` for the same reason -- this
+  // file only turns those into an actual draw position/size/tilt.
 
-  function drawOnePlant(cx, cy, tiltRad, mirrorY, seed, sizeMul = 1) {
-    const img = plants[seed % 2];
+  // Round-14 "fill the cave" pass: the cave still read bare next to the
+  // promo video stills at round-13's 1.4x scale/single-sprite anchors --
+  // bumped toward the video's own foliage scale and given every accepted
+  // anchor a real chance (not a rare 1-in-15) at 1-3 cluster-mates so floor
+  // growth reads as clumps of mixed items, not lone stalks. Every
+  // cluster-mate is still placed from the SAME anchor's hash (no extra RNG
+  // stream) and re-validated against the tile grid before it draws, so
+  // density never regresses `findPlantAnchors`'s own floating/into-rock
+  // guarantees for the anchor itself -- only the decorative mates can be
+  // skipped, never the anchor.
+  const PLANT_BASE_SCALE = 1.9; // was 1.4 (round-12/13): closer to the video stills' bolder growth
+  const SWAY_AMPLITUDE = 0.035; // radians, gentle -- not a wave effect
+  const SWAY_SPEED = 0.7; // rad/s equivalent, per-plant phase-shifted below
+
+  function drawOnePlant(cx, cy, tiltRad, mirrorY, seed, sizeMul = 1, img = plants[seed % 2]) {
     if (!img.complete || !img.naturalWidth) return;
     const s = worldToScreen(camera, canvasW_, canvasH_, cx, cy);
-    const h = camera.pxPerUnit * 1.4 * sizeMul;
+    const h = camera.pxPerUnit * PLANT_BASE_SCALE * sizeMul;
     const w = h * (img.naturalWidth / img.naturalHeight);
     ctx.save();
     ctx.translate(s.x, s.y);
@@ -758,19 +775,25 @@ export function createRenderer(ctx, world) {
   // own canvasW/canvasH parameters threaded through every call site.
   let canvasW_ = 0, canvasH_ = 0;
 
-  function drawPlants(canvasW, canvasH, resident) {
+  function drawPlants(canvasW, canvasH, resident, time = 0, reduced = false) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     canvasW_ = canvasW; canvasH_ = canvasH;
     for (const { index, yOffset, chunk } of resident) {
       const anchors = findPlantAnchors(chunk, chunkW, chunkH, index);
       for (const { tx, ty, onCeiling, hash: h } of anchors) {
+        const sway = reduced ? 0 : Math.sin(time * SWAY_SPEED + (h % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
         if (!onCeiling) {
           // Floor cap: solid here, open water directly above -- grows up.
           const cx = tx + 0.5, cy = ty + yOffset + PLANT_INTO_WALL;
-          drawOnePlant(cx, cy, 0, false, h);
-          if (h % 15 === 0) { // occasional small cluster-mate beside it
-            const h2 = plantHash(h, 91);
-            drawOnePlant(cx + (h2 % 2 === 0 ? 0.45 : -0.45), cy + 0.05, (h2 % 7 - 3) * 0.03, false, h2, 0.65);
+          drawOnePlant(cx, cy, sway, false, h);
+          // Round-14: 1-3 cluster-mates (mixed plant1/plant2/bush2) beside
+          // most floor anchors -- offsets/safety come from decor.js's
+          // `findClusterMates` (shared with decor.test.js) so this loop only
+          // turns each validated slot into a draw call.
+          for (const { dx, hash: h2 } of findClusterMates(chunk, chunkW, chunkH, tx, ty, false, h)) {
+            const useBush = h2 % 4 === 0 && clusterBush.complete && clusterBush.naturalWidth;
+            const mateSway = reduced ? 0 : Math.sin(time * SWAY_SPEED * 1.3 + (h2 % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
+            drawOnePlant(tx + dx + 0.5, cy + 0.05, mateSway, false, h2, useBush ? 0.9 : 0.7, useBush ? clusterBush : undefined);
           }
         } else {
           // Ceiling cap: solid here, open water directly below -- hangs
@@ -778,7 +801,7 @@ export function createRenderer(ctx, world) {
           // decor.js's own round-5 note already found this exact art (a
           // tall vine/frond growing from one narrow root) doesn't read
           // right rotated onto a side-wall face -- not repeating that here.
-          drawOnePlant(tx + 0.5, ty + yOffset + 1 - PLANT_INTO_WALL, 0, true, h);
+          drawOnePlant(tx + 0.5, ty + yOffset + 1 - PLANT_INTO_WALL, sway, true, h);
         }
       }
     }
@@ -946,7 +969,7 @@ export function createRenderer(ctx, world) {
       // layer, the tilemap on "Map", which renders after "Default" -- i.e.
       // walls were always meant to composite over decor, not the other way
       // round.
-      drawPlants(canvasW, canvasH, resident);
+      drawPlants(canvasW, canvasH, resident, time, reduced);
       // Otter's alive pass; runes are excluded here and drawn again AFTER
       // drawWalls below (Round-4 fix: runes need to land on top of the rock
       // face like a painted mark, not be buried under the opaque wall bake).
