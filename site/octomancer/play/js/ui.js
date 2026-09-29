@@ -53,6 +53,18 @@ export function createUI(root, handlers) {
   // the player switches back to keyboard/mouse.
   const controlsHelp = el('div', 'octo-controls-help',
     'Swim: WASD/arrows or hold mouse | Dash: Z/Enter/Shift or right-click/double-click | Bomb: Space/X or middle-click/wheel');
+  // Round-9 fix (Daniel's screenshot review round 8, issue 3: a phone visitor
+  // saw mouse/keyboard instructions at first load -- this used to always
+  // start visible and only hide on the first touch input, via main.js's
+  // `input.onModeChange`, so anyone opening the game on a touch device saw
+  // it until their first tap. Start hidden for any coarse-pointer/touch
+  // device (matching the check `main.js` already uses for its own DPR cap),
+  // so it never flashes on phone at all; `onModeChange` can still show it
+  // again if that device later gets a mouse/keyboard input (e.g. a
+  // touch-and-mouse hybrid laptop).
+  if (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) {
+    controlsHelp.style.display = 'none';
+  }
 
   root.append(bar, pauseBtn, muteBtn, controlsHelp);
 

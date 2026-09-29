@@ -52,8 +52,21 @@ function ready(img) { return img.complete && img.naturalWidth > 0; }
 // the crab's OWN visible feet -- not just its canvas bottom edge -- reach the
 // rim.
 const GROUND_RIM_INSET = 0.26;
-function surfaceDrawOffset(placement, worldSize) {
-  const push = 0.5 - worldSize / 2 + GROUND_RIM_INSET;
+// Round-9 fix (Daniel's screenshot review round 8, issue 2: "floor crabs are
+// sunk about 0.25-0.3 tile into the rock ... eyes/mouth below the rim line,
+// feet hidden") and issue 4 ("horns base ring set a little below the rim,
+// into the rock"). Round-8's segment-vs-outline collision (world.js's
+// `wallSegmentsNear`) now rests emplacements on the SAME smoothed/traced rim
+// the wall art draws, which already sits higher than the raw-tile floor the
+// shared GROUND_RIM_INSET was tuned against -- the crab's draw push
+// (0.5 - 0.35 + 0.26 = 0.41 for its 0.7 worldSize) now overshoots well past
+// that rim into the rock. Per-kind overrides (rather than lowering the
+// shared constant) so urchin/cannon, which weren't reported as regressed,
+// keep the round-4/5 tuning that's still correct for them.
+const CRAB_RIM_INSET = 0.02; // push = 0.5-0.35+0.02 = 0.17 (was 0.41)
+const HORNS_RIM_INSET = 0.18; // push = 0.5-0.45+0.18 = 0.23 (was 0.31)
+function surfaceDrawOffset(placement, worldSize, inset = GROUND_RIM_INSET) {
+  const push = 0.5 - worldSize / 2 + inset;
   if (placement === 'floor') return push;
   if (placement === 'ceiling') return -push;
   return 0;
@@ -148,11 +161,11 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       const img = e.variant === 'fast' ? crabFastImg : crabSlowImg;
       // Face the walk direction; flip vertically when it's hanging from a
       // ceiling so it always reads feet-toward-the-surface.
-      const dy = surfaceDrawOffset(e.placement, 0.7);
+      const dy = surfaceDrawOffset(e.placement, 0.7, CRAB_RIM_INSET);
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, ex, ey + dy, 0.7, e.dir < 0, e.placement === 'ceiling', e.hitFlash);
     } else if (e.kind === 'horns') {
       const flip = e.placement === 'ceiling';
-      const dy = surfaceDrawOffset(e.placement, 0.9);
+      const dy = surfaceDrawOffset(e.placement, 0.9, HORNS_RIM_INSET);
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, ex, ey + dy, 0.9, false, flip, e.hitFlash);
     } else if (e.kind === 'manta') {
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, ex, ey, 0.9, e.dir < 0, false, e.hitFlash);

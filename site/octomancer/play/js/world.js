@@ -70,6 +70,29 @@ export function createWorld(seed) {
   let highestGenerated = -1; // largest chunkIndex generated so far
   let deepestY = 0; // deepest octopus y reached, for the score/HUD depth stat
 
+  // --- Shared wall-outline cache (round-8 fix, NIGHT-LOG.md): the SAME
+  // traced + Chaikin-smoothed geometry backs both the wall art bake
+  // (render.js) and wall collision (physics.js via `wallSegmentsNear`
+  // below) -- built once per chunk here rather than twice with drifting
+  // parameters, so the drawn rim and the collision surface are always
+  // exactly the same shape (round-8 item 3: "collision must match the
+  // drawn outline"). Loops are kept in WORLD-space tile units (the local
+  // trace's y already offset by the chunk's own yOffset), so they can be
+  // used directly for collision; render.js re-offsets/scales them to its
+  // own chunk-local pixel canvas at bake time.
+  //
+  // Round-9 fix (severe regression, NIGHT-LOG.md: horizontal phantom caps
+  // at every chunk seam from chunk 2 onward, octopus stuck on them).
+  // Declared here, above the first `ensureNext()` calls below, rather than
+  // after `buildChunkOutline`/`getWallOutline` further down -- `ensureNext`
+  // now bumps `outlineVersion` itself (see below), and if these were still
+  // declared later in the function body, those earlier `ensureNext()` calls
+  // (chunk 0/1/2 preload, just below) would hit the `const` in its
+  // temporal-dead-zone and throw.
+  /** @type {Map<number, {loops: {x:number,y:number}[][], segments: {x1:number,y1:number,x2:number,y2:number}[], version: number}>} */
+  const outlineCache = new Map();
+  const outlineVersion = new Map(); // chunkIndex -> version bumped by setTileAt/ensureNext
+
   function ensureNext() {
     const i = highestGenerated + 1;
     const c = gen.next(i);
@@ -86,6 +109,19 @@ export function createWorld(seed) {
       prev.dirty = true;
       shaveChunkSeam(prev, c); // round-3 fix: shave chunk-boundary nubs now both sides of the seam are known
       c.dirty = true;
+      // Round-9 fix: `getWallOutline(i-1)` may already have been traced (and
+      // cached) BEFORE chunk `i` existed -- `isSolidAt`/`tileAt` treat a
+      // missing chunk as solid (line ~136 below), so that stale trace closes
+      // off chunk i-1's bottom row with a phantom rim cap across every
+      // passage, and `shaveChunkSeam` above can also have just changed
+      // tiles on both sides of the seam. Bump both neighbours' outline
+      // versions so `getWallOutline` retraces them against the now-real
+      // (and possibly shaved) neighbour instead of serving the stale/closed
+      // cache entry -- this is what both the render bake and
+      // `wallSegmentsNear` collision read, so a stale entry here is exactly
+      // the "phantom cap is also in the collision outline" bug.
+      outlineVersion.set(i - 1, (outlineVersion.get(i - 1) || 0) + 1);
+      outlineVersion.set(i, (outlineVersion.get(i) || 0) + 1);
     }
     return c;
   }
@@ -155,20 +191,6 @@ export function createWorld(seed) {
     outlineVersion.set(ci - 1, (outlineVersion.get(ci - 1) || 0) + 1);
     outlineVersion.set(ci + 1, (outlineVersion.get(ci + 1) || 0) + 1);
   }
-
-  // --- Shared wall-outline cache (round-8 fix, NIGHT-LOG.md): the SAME
-  // traced + Chaikin-smoothed geometry backs both the wall art bake
-  // (render.js) and wall collision (physics.js via `wallSegmentsNear`
-  // below) -- built once per chunk here rather than twice with drifting
-  // parameters, so the drawn rim and the collision surface are always
-  // exactly the same shape (round-8 item 3: "collision must match the
-  // drawn outline"). Loops are kept in WORLD-space tile units (the local
-  // trace's y already offset by the chunk's own yOffset), so they can be
-  // used directly for collision; render.js re-offsets/scales them to its
-  // own chunk-local pixel canvas at bake time.
-  /** @type {Map<number, {loops: {x:number,y:number}[][], segments: {x1:number,y1:number,x2:number,y2:number}[], version: number}>} */
-  const outlineCache = new Map();
-  const outlineVersion = new Map(); // chunkIndex -> version bumped by setTileAt
 
   function buildChunkOutline(ci) {
     const c = chunks.get(ci);

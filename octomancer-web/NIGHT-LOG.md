@@ -1938,3 +1938,84 @@ desk-s9-dive1,desk-s9-dive2,desk-s13-dive1,desk-s13-dive2,desk-s42-dive1,
 desk-s42-dive2,desk-s77-dive1,desk-s55-dive1,phone-s3-spawn,phone-s3-dive1,
 phone-s55-dive1,phone-s55-dive2,soak-desktop,bomb-rebake}.png`, zoomed crops
 `fix-r8-zoom-s13-{full,rock-texture,rim-corner,octopus}.png`.
+
+## Visual fixes round 9 (Daniel's screenshot review round 8)
+
+1. **SEVERE regression, chunk-seam phantom collision cap (world.js).** Root
+   cause exactly as diagnosed in the round-8 review: `getWallOutline(ci)`
+   (world.js) caches a chunk's traced+smoothed outline keyed on
+   `outlineVersion`, but only `setTileAt` bumped that version -- generating
+   chunk `i` (`ensureNext`) never invalidated chunk `i-1`'s already-cached
+   outline, even though `shaveChunkSeam(prev, c)` (in the same call) can
+   change tiles on both sides of the seam, and even when it doesn't, an
+   outline traced for chunk `i-1` before chunk `i` existed was traced
+   against `tileAt`'s "missing chunk = solid" fallback, baking a closed
+   floor across every passage at the seam. That stale/closed outline is what
+   both the render bake AND `wallSegmentsNear` (physics collision) read, so
+   the octopus visibly hit an invisible ceiling at every chunk boundary from
+   chunk 2 onward (world y = 72, 96, ...) and could get fully boxed in (the
+   s5 autodive pinned at 63.5m for 7 straight 200-step frames).
+   Fix: `ensureNext` now bumps `outlineVersion` for both `i-1` and `i`
+   whenever it generates a chunk with a real predecessor, right after
+   `shaveChunkSeam` -- so `getWallOutline` always retraces a chunk's bottom
+   row (and its neighbour's top row) against the real, now-generated
+   neighbour before it's ever used for render or collision. Also moved the
+   `outlineCache`/`outlineVersion` declarations to the top of `createWorld`
+   (above the chunk 0/1/2 preload `ensureNext()` calls a few lines down),
+   since `ensureNext` bumping them itself meant those early calls would
+   otherwise hit the `const` while still in its temporal-dead-zone.
+   New regression test `tests/world.test.js` drives `createWorld` through
+   `update()` exactly like the real game (not a hand-built chunk array),
+   diving tile-by-tile across seeds 1/5/13/42 through 5 chunks, and at every
+   seam crossed asserts no horizontal outline segment lies over a column
+   that's open on both sides (the direct phantom-cap shape), plus a direct
+   `wallSegmentsNear` check that the seam's own open centre column never
+   reports a blocking segment. Verified live too: a scripted autodive on
+   seed 5 (the exact seed that pinned at 63.5m) now sails from depth 13.7m
+   to 207.5m across 10 frames without a single stall, all seams visibly
+   clean in the screenshots.
+
+2. **Floor crabs sunk into the rock.** `enemy-draw.js`'s shared
+   `GROUND_RIM_INSET` (0.26) was tuned back in round 4 against the raw tile
+   grid; round 8 moved collision (and the drawn rim itself) onto the traced
+   +smoothed outline, which already sits closer to the tile edge, so the
+   crab's draw push (`0.5 - 0.35 + 0.26 = 0.41` for its 0.7 `worldSize`)
+   now overshot well past the rim and into the rock -- eyes/mouth below the
+   green rim line, feet hidden. Rather than lower the shared constant (which
+   would also move urchin/cannon, not reported as regressed), added a
+   `CRAB_RIM_INSET = 0.02` override (push -> 0.17) used only for the crab's
+   `surfaceDrawOffset` call. Verified with a zoomed crop of a natural-height
+   floor crab and horns spawned directly on a real, scanned floor rim (not
+   floating in open water): feet/claws now sit right at the green rim line,
+   eyes and mouth clearly above it.
+
+3. **Phone control-help text shown at first load.** `ui.js`'s
+   `controlsHelp` element used to always start visible and rely on
+   `main.js`'s `input.onModeChange` to hide it on the first touch input, so
+   a phone visitor saw the keyboard/mouse hint until their first tap.
+   `ui.js` now checks `matchMedia('(pointer: coarse)').matches ||
+   navigator.maxTouchPoints > 0` at creation time and starts the element
+   hidden on any touch-capable device -- `onModeChange` is untouched and can
+   still show it again for a hybrid touch+mouse device. Verified: a
+   touch-emulated 375x812 page (`hasTouch`/`isMobile` set in Puppeteer, so
+   `pointer: coarse` genuinely matches) has `display: none` on
+   `.octo-controls-help` at the very first screenshot, before any input.
+
+4. **Horns base ring set into the rock (minor/cosmetic).** Same shared-inset
+   root cause as item 2, at a smaller scale (`0.5 - 0.45 + 0.26 = 0.31`
+   push for its 0.9 `worldSize`). Added `HORNS_RIM_INSET = 0.18` (push ->
+   0.23), used only for the horns' `surfaceDrawOffset` call. Verified in the
+   same zoomed screenshot as item 2 -- the base ring now sits on the rim
+   line instead of below it, both on a floor and hanging from a ceiling.
+
+Verification: `tests/` 91/91 (8 new in `world.test.js`: chunk-seam
+outline-cache invalidation regression guard across 4 seeds x several seams
+each, plus a direct `wallSegmentsNear` open-column check; own threading
+`http.server` with no-cache headers on a free port, stopped after);
+puppeteer-core headless Chrome: 0 console errors (aside from the
+pre-existing, unrelated `favicon.ico` 404) across fresh spawn frames at
+1440x900 and 375x812 (2x, touch-emulated), and scripted autodives on seeds 5
+and 42 through several chunk seams with no stalls. Screenshots:
+`octomancer-web/night/fix-r9-{desk-spawn,phone-spawn,dive-s5-deep-0..9,
+dive-s42-0..5}.png`, zoomed crops `fix-r9-zoom-{floor-wide,ceiling-wide,
+crab-horns-floor,crab-horns-ceiling}.png`.

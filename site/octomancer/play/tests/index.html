@@ -96,6 +96,11 @@ runCornerTests(assert, approx);
 import { runOutlineTests } from './outline.test.js';
 runOutlineTests(assert, approx);
 
+// --- Round-9 task 1: chunk-seam outline-cache invalidation regression
+// guard (world.js's ensureNext/getWallOutline) ---
+import { runWorldTests } from './world.test.js';
+runWorldTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
