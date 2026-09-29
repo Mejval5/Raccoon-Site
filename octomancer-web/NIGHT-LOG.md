@@ -2019,3 +2019,74 @@ and 42 through several chunk seams with no stalls. Screenshots:
 `octomancer-web/night/fix-r9-{desk-spawn,phone-spawn,dive-s5-deep-0..9,
 dive-s42-0..5}.png`, zoomed crops `fix-r9-zoom-{floor-wide,ceiling-wide,
 crab-horns-floor,crab-horns-ceiling}.png`.
+
+## Visual fixes round 10 (Daniel's screenshot review round 9 leftovers)
+
+This round scoped to section A of the round-10 brief (the concrete round-9
+review leftovers). Section B ("fill the cave" -- new foliage/background
+layer/creature ports from the Unity source, plus a density test) was NOT
+attempted this round: it is a much larger scope (porting several Unity
+spawners and creature scripts) than fits safely alongside a leftover-bugfix
+pass without risking a regression in the just-stabilised outline/collision
+code from rounds 8-9. Left for a dedicated round.
+
+1. **Wall-placed cannons drawn unrotated (enemy-draw.js).** The cannon's
+   `drawSprite` call passed `angle=0` unconditionally; a `wall` placement
+   already pushed the draw position sideways (`surfaceDrawOffsetXY`) but
+   never rotated the sprite itself, so a wall cannon read as if mounted on a
+   floor, sideways to its own wall. Now rotates by `-wallDir * PI/2` for a
+   `wall` placement (canvas `rotate()` is clockwise in this y-down space, so
+   swinging the base-down sprite by -90deg points its base toward +x,
+   +90deg toward -x -- matching gen.js's wallDir convention, +1 = solid to
+   the right).
+
+2. **Urchins sunk into rock (enemy-draw.js).** Same round-8 root cause as
+   round-9's crab/horns fixes: collision moved onto the smoothed/traced rim
+   (higher than the raw tile grid `GROUND_RIM_INSET` was tuned against), but
+   the urchin's own round-5 tuning was never revisited. Added
+   `URCHIN_RIM_INSET = 0.1` (push 0.31 -> 0.15) -- smaller than crab/horns'
+   fix, by design: the urchin's spikes are meant to overlap the rim (only
+   the sphere itself needs to sit flush), unlike a crab/horns' visible feet.
+
+3. **Vent bubbles rising through solid rock (decor.js).** A bubble used to
+   rise a fixed distance (`BUBBLE_RISE_SPEED * BUBBLE_LIFETIME`) regardless
+   of what's above the vent. `findVents` now scans upward from each vent's
+   row (within the same chunk -- a bubble's ~4.9-unit max rise is well under
+   one chunk's 24-unit height) and records the first solid tile's bottom
+   edge as `riseCapY`; `visibleBubbles` clamps the computed rise to it.
+
+4. **Rune decals crossing the rim (decor.js).** The old `runeDeepOk` check
+   only looked one tile further in the anchor direction, which still let a
+   rune land near an outer corner or thin peninsula where the traced/
+   smoothed rim cuts back in behind that flat check. Runes now require their
+   anchor tile to be "fully interior" (all 8 neighbours solid) before
+   spawning at all; the placement is skipped entirely otherwise (like the
+   existing thin-wall-cell/corner skips), rather than falling back to a
+   shallower inset that can still cross a smoothed corner.
+
+5. **Piranhas overlapping the rock (enemies.js).** `collideWithWalls`
+   resolved against `e.radius` (the small physics circle, `PIRANHA_RADIUS`=
+   0.4, used for octopus-contact damage) instead of the much bigger drawn
+   sprite (~1.8 tiles long, already reflected in the enemy-vs-enemy
+   `ENEMY_SEP_HALF_EXTENT`). Wall collision now temporarily swaps in
+   `max(e.radius, ENEMY_SEP_HALF_EXTENT[e.kind])` for the resolve call (then
+   restores `e.radius`), so the same visual half-extent used for
+   piranha-vs-piranha separation now also keeps a piranha's visible body out
+   of rock.
+
+Also added a `wallDir` 5th argument to the `__octo.spawn` test/debug hook
+(main.js/enemies.js's `spawnAt`) so a forced wall-cannon/wall-urchin can be
+placed with an explicit side for verification -- used for the cannon
+rotation screenshot below (spawned in open water without a matching wall
+tile, so only the rotation/mirroring itself is verified there, not rim
+alignment).
+
+Verification: `tests/` 91/91 unchanged (own threading `http.server` with
+no-cache headers on a free port, stopped after); puppeteer-core headless
+Chrome: 0 console errors (aside from the pre-existing, unrelated
+`favicon.ico` 404) across autodive runs on seeds 5/7 and a touch-emulated
+375x812 run on seed 3, through several hundred metres of depth and 20+
+enemies on screen at once. Screenshots: `octomancer-web/night/fix-r10-
+{desk-1440x900,phone-375x812,dive-s5-mid,dive-s5-deep,dive-s7-mid}.png`,
+zoomed crops `fix-r10-zoom-{emplacements,cannons}.png` (forced-spawn
+showcase of both cannon wallDir orientations, mirrored as expected).

@@ -46,12 +46,33 @@ function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 // traced+smoothed outline segments the wall art draws instead of the raw
 // tile grid, so a piranha or crab sliding along a diagonal rim follows the
 // same rounded shape the octopus and the drawn rock do.
+// Round-10 fix (review round 9 leftover, issue A5: "piranhas overlap the
+// rock: the wall-separation radius should cover the drawn sprite"). Wall
+// collision below used to resolve against `e.radius` -- the small physics
+// circle (`PIRANHA_RADIUS`=0.4) used for octopus-contact damage -- while the
+// piranha's own drawn sprite reads about 1.8 tiles long (enemy-draw.js's
+// round-2 note on the Unity collider it was matched to, also why the
+// enemy-vs-enemy separation pass above already gives it a much bigger
+// `ENEMY_SEP_HALF_EXTENT`). A piranha could swim its visible body a third of
+// a tile into a wall before the small physics circle ever touched it. Wall
+// collision now resolves against the larger of the two -- the same visual
+// half-extent the separation pass uses where one is defined for this kind,
+// otherwise falls back to the physics radius unchanged.
+function wallCollisionRadius(e) { return Math.max(e.radius, ENEMY_SEP_HALF_EXTENT[e.kind] ?? 0); }
 function collideWithWalls(e, world) {
+  // Swap in the (possibly larger) wall-collision radius just for the
+  // resolve call, then restore `e.radius` -- the resolvers mutate `e.x`/
+  // `e.y` in place, so `e` itself (not a copy) must be passed through, but
+  // `e.radius` elsewhere (octopus-contact damage, enemy separation) must
+  // keep meaning the small physics circle.
+  const origRadius = e.radius;
+  e.radius = wallCollisionRadius(e);
   if (typeof world.wallSegmentsNear === 'function') {
     resolveCircleVsSegments(e, world.wallSegmentsNear(e.x, e.y, e.radius));
   } else {
     resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
   }
+  e.radius = origRadius;
 }
 
 // Round-7 fix (Daniel's screenshot review round 6, item 3: "piranhas stack
@@ -506,7 +527,7 @@ export function createEnemies() {
 
     /** Test/debug hook (`__octo.spawn`): force-spawn one enemy at (x,y), not
      * tied to any chunk (never despawns from chunk eviction). */
-    spawnAt(kind, x, y, placement) {
+    spawnAt(kind, x, y, placement, wallDir = 0) {
       if (kind === 'beholder') {
         beholder = {
           id: nextId++, kind: 'beholder', x, y, prevX: x, prevY: y, vx: 0, vy: 0,
@@ -514,7 +535,7 @@ export function createEnemies() {
         };
         return beholder;
       }
-      const e = makeEnemy(kind, x, y, -1, placement || 'open');
+      const e = makeEnemy(kind, x, y, -1, placement || 'open', wallDir);
       const list = byChunk.get(-1) || [];
       list.push(e);
       byChunk.set(-1, list);

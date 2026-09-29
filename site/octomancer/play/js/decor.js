@@ -232,6 +232,31 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
             runeDeepOk = farX >= 0 && farX < chunkW && chunk.tiles[y * chunkW + farX] !== 0;
           }
         }
+        // Round-10 fix (review round 9 leftover, issue A4: "rune decals cross
+        // the rim"). `runeDeepOk` above only checked one further tile in the
+        // anchor direction, which still lets a rune land right next to an
+        // outer corner or a thin peninsula (solid one way, open a diagonal
+        // step away) where the traced/smoothed rim (world.js's
+        // `getWallOutline`) cuts back in behind the flat "2 deep" check --
+        // the tint (decor-draw.js's `getTintedRune`) then paints past that
+        // cut and visibly crosses the drawn rock edge. Require the anchor
+        // tile itself to be "fully interior" (all 8 neighbours solid, so the
+        // rim can't possibly cut back anywhere near it) before a rune is
+        // allowed to spawn at all; skip the placement entirely otherwise
+        // (like the thin-wall-cell / corner skips above) rather than fall
+        // back to a shallower inset that can still cross a smoothed corner.
+        if (isRune) {
+          let interior = true;
+          for (let dy = -1; dy <= 1 && interior; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = anchorSolidX + dx, ny = anchorSolidY + dy;
+              if (nx < 0 || nx >= chunkW || ny < 0 || ny >= chunkH || chunk.tiles[ny * chunkW + nx] === 0) {
+                interior = false; break;
+              }
+            }
+          }
+          if (!interior) continue;
+        }
         const RUNE_INTO_WALL = 1.15;
         const INTO_WALL = isRune ? (runeDeepOk ? RUNE_INTO_WALL : 0.65)
           : isRimKind ? 0.65 : isBush && !wallSide ? 0.6 : (wallSide ? 0.5 : 0.3);
@@ -289,7 +314,21 @@ function findVents(chunk, yOffset, chunkW, chunkH) {
       const i = y * chunkW + x;
       const below = (y + 1) * chunkW + x;
       if (chunk.tiles[i] === 0 && chunk.tiles[below] !== 0 && (x + y) % 7 === 0) {
-        vents.push({ x: x + 0.5, y: y + yOffset + 0.9 });
+        // Round-10 fix (review round 9 leftover, issue A3: "vent bubbles
+        // rise through solid rock"). A bubble used to rise a fixed distance
+        // (BUBBLE_RISE_SPEED * BUBBLE_LIFETIME) regardless of what's above
+        // the vent, so any vent with a low ceiling (a short open pocket, a
+        // thin ledge above it) sent its bubbles straight through the rock.
+        // Scan upward from the vent's own row, within this same chunk's
+        // tile grid (a bubble's ~4.9-unit max rise is well under one
+        // chunk's 24-unit height, so a same-chunk scan is enough), and cap
+        // the rise at the first solid tile's bottom edge.
+        let ceilingRow = 0;
+        for (let ry = y; ry >= 0; ry--) {
+          if (chunk.tiles[ry * chunkW + x] !== 0) { ceilingRow = ry + 1; break; }
+        }
+        const riseCapY = ceilingRow + yOffset;
+        vents.push({ x: x + 0.5, y: y + yOffset + 0.9, riseCapY });
       }
     }
   }
@@ -332,7 +371,8 @@ export function createDecor(chunkW, chunkH) {
           const b = entry.bubbles[i];
           const vent = entry.vents[i];
           const progress = b.t / BUBBLE_LIFETIME;
-          out.push({ x: vent.x + Math.sin(b.t * 2 + i) * 0.15, y: vent.y - progress * BUBBLE_RISE_SPEED * BUBBLE_LIFETIME, alpha: 1 - progress * 0.6 });
+          const riseY = Math.max(vent.y - progress * BUBBLE_RISE_SPEED * BUBBLE_LIFETIME, vent.riseCapY);
+          out.push({ x: vent.x + Math.sin(b.t * 2 + i) * 0.15, y: riseY, alpha: 1 - progress * 0.6 });
         }
       }
       return out;

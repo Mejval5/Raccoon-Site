@@ -407,8 +407,8 @@ window.__octo = {
       dprForcedDown,
     };
   },
-  spawn(kind, x, y, placement) {
-    const e = enemies.spawnAt(kind, x, y, placement);
+  spawn(kind, x, y, placement, wallDir) {
+    const e = enemies.spawnAt(kind, x, y, placement, wallDir);
     return { kind, x, y, spawned: true, id: e.id };
   },
   placeBomb(x, y) {

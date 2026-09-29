@@ -65,6 +65,18 @@ const GROUND_RIM_INSET = 0.26;
 // keep the round-4/5 tuning that's still correct for them.
 const CRAB_RIM_INSET = 0.02; // push = 0.5-0.35+0.02 = 0.17 (was 0.41)
 const HORNS_RIM_INSET = 0.18; // push = 0.5-0.45+0.18 = 0.23 (was 0.31)
+// Round-10 fix (review round 9 leftover, issue A2: "urchins sink into rock
+// ... push them out along the surface normal so the sphere edge lands on the
+// rim and only the spikes cross it"). Same round-8 root cause as the crab/
+// horns fixes above (collision moved onto the smoothed/traced rim, which
+// sits higher than the raw tile grid GROUND_RIM_INSET was tuned against),
+// but the urchin's own round-5 tuning was never revisited. The urchin's
+// drawn body is a central sphere with spikes radiating well past its own
+// canvas edge, so (unlike crab/horns, which want their visible feet flush
+// with the rim) the urchin wants a SMALLER push than GROUND_RIM_INSET: just
+// enough that the sphere itself sits at the rim, letting the spikes overlap
+// the solid tile the way they visibly do in the promo stills.
+const URCHIN_RIM_INSET = 0.1; // push = 0.5-0.45+0.1 = 0.15 (was 0.31)
 function surfaceDrawOffset(placement, worldSize, inset = GROUND_RIM_INSET) {
   const push = 0.5 - worldSize / 2 + inset;
   if (placement === 'floor') return push;
@@ -80,10 +92,10 @@ function surfaceDrawOffset(placement, worldSize, inset = GROUND_RIM_INSET) {
 // adds the horizontal case `surfaceDrawOffset` never had, for a `wall`
 // placement, using the spawn's own `wallDir` (gen.js: +1 = solid tile is to
 // the right, -1 = to the left) to push toward whichever side is solid.
-function surfaceDrawOffsetXY(placement, wallDir, worldSize) {
-  const dy = surfaceDrawOffset(placement, worldSize);
+function surfaceDrawOffsetXY(placement, wallDir, worldSize, inset = GROUND_RIM_INSET) {
+  const dy = surfaceDrawOffset(placement, worldSize, inset);
   if (placement === 'wall' && wallDir) {
-    const push = 0.5 - worldSize / 2 + GROUND_RIM_INSET;
+    const push = 0.5 - worldSize / 2 + inset;
     return { dx: push * wallDir, dy: 0 };
   }
   return { dx: 0, dy };
@@ -127,7 +139,7 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
     if (e.dead) continue;
     const { x: ex, y: ey } = interpPos(e, alpha);
     if (e.kind === 'urchin') {
-      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
+      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9, URCHIN_RIM_INSET);
       drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, urchinImg, ex + dx, ey + dy, 0.9, 0, e.hitFlash);
     } else if (e.kind === 'piranha') {
       // Round-1 fix (Daniel's screenshot review: "some enemies render upside
@@ -146,7 +158,19 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, ex, ey, 1.15, vx > 0, false, e.hitFlash);
     } else if (e.kind === 'cannon') {
       const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9);
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, ex + dx, ey + dy, 0.9, 0, e.hitFlash);
+      // Round-10 fix (review round 9 leftover, issue A1: "wall-placed
+      // cannons: rotate the sprite by wallDir so the base sits on the wall
+      // rim, body in open water"). The sprite art is drawn base-down for a
+      // floor placement (angle 0: the base sits at ex,ey+dy, barrel pointing
+      // up into open water). A wall placement instead needs the base against
+      // whichever side is solid (gen.js's wallDir: +1 = solid to the right,
+      // -1 = solid to the left) and the barrel pointing into open water on
+      // the opposite side. Canvas rotate() is clockwise in this y-down
+      // space, so rotating the base-down sprite by -90deg swings its base
+      // from pointing +y to pointing +x (right); +90deg swings it to -x
+      // (left) -- i.e. angle = -wallDir * PI/2.
+      const angle = e.placement === 'wall' && e.wallDir ? -e.wallDir * Math.PI / 2 : 0;
+      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, ex + dx, ey + dy, 0.9, angle, e.hitFlash);
     } else if (e.kind === 'beholder') {
       const frame = beholderFrames[Math.floor(time * 8) % beholderFrames.length];
       const pulse = 1 + Math.sin(time * 6) * 0.04;
