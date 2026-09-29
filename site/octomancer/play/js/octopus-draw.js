@@ -171,7 +171,12 @@ function drawBaked(ctx, o, bakeData) {
     const openRect = data.eyeSprites.open[side] || rect;
     const openWorldH = restSize.meshH * data.meshUnitsToWorld * a.scale * OCTO_VISUAL_SCALE;
     const openWorldW = openWorldH * (openRect.w / openRect.h);
-    const eyeWorldW = openWorldW;
+    // Round-4 fix (Daniel's screenshot review round 3: "closed-eye slits read
+    // as one bar" -- deriving the WIDTH from the open eye fixed the
+    // over-wide bar shape (round-3 note above), but a full-width slit at the
+    // open eye's own width still reads as a single flat bar rather than a
+    // narrowed, closing eyelid. Narrow just the CLOSED state's width too.
+    const eyeWorldW = eyeState === 'closed' ? openWorldW * 0.8 : openWorldW;
     const eyeWorldH = eyeWorldW * (rect.h / rect.w);
     const ex = (a.x - cell / 2) * toWorld;
     const ey = (a.y - cell / 2) * toWorld;

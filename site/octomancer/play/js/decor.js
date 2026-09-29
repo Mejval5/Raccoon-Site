@@ -25,7 +25,15 @@ const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 // Round-1 fix (Daniel's screenshot review): the wall "hole" critter (looks
 // like a bullet hole -- a grey spiky ring with a dark centre, not a readable
 // cave feature at this art scale) is removed from spawn entirely, below.
-export const CRITTER_KINDS_WALL = ['snail', 'eye', 'eyeblue', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
+// Round-4 fix (Daniel's screenshot review round 3: "ceiling snails float and
+// read as an 'i' glyph, remove snail from ceiling placements or from wall
+// critters entirely"). Checking a floor placement too (same `critter-snail.
+// webp` art, this session's own screenshots) found the exact same read there
+// -- a tiny blue circle-over-a-dash hovering above the rim, not a readable
+// creature at this scale on ANY surface, not just the ceiling. Removed from
+// spawn entirely, same treatment round-1 already gave the "hole" critter and
+// round-3 gave the open-water "jelly".
+export const CRITTER_KINDS_WALL = ['eye', 'eyeblue', 'rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
 // Round-3 fix (Daniel's screenshot review: "the faint open-water 'jelly'
 // critter reads as a UI glyph, a flat teal dot above two dashes, a bit like
 // a person icon -- nothing like it appears in the promo video"). The
@@ -95,6 +103,18 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         const anchorSolidX = floorCap || ceilingCap ? x : (chunk.tiles[y * chunkW + (x + 1)] !== 0 ? x + 1 : x - 1);
         const anchorSolidY = floorCap ? y + 1 : ceilingCap ? y - 1 : y;
         if (isThinWallCell(chunk, chunkW, chunkH, anchorSolidX, anchorSolidY)) continue;
+        // Round-4 fix (Daniel's screenshot review round 3: "bush2 and
+        // bushmini float above floors/below ceilings and past corners").
+        // `isThinWallCell` only catches a near-isolated nub (3+ open sides);
+        // a plain corner/end-of-run anchor (2 open sides, one of them
+        // perpendicular to the placement) still reads as "not a flat run" for
+        // a bush -- its rim curves away right where the bush would sit,
+        // leaving a gap. Skip bush placements there (other kinds keep
+        // anchoring fine at a corner, e.g. eyes/runes).
+        if ((kind === 'bush2' || kind === 'bushmini') && (floorCap || ceilingCap)) {
+          const cornerOpen = (nx) => nx < 0 || nx >= chunkW || chunk.tiles[anchorSolidY * chunkW + nx] === 0;
+          if (cornerOpen(anchorSolidX - 1) || cornerOpen(anchorSolidX + 1)) continue;
+        }
         // Anchor slightly into the solid neighbour tile, not the open
         // cell's centre: ported from the original's `PositionOffset`
         // (`FoliagePlant1.asset` PositionOffset.y=-0.58, almost a full tile
@@ -119,7 +139,12 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // on the rock face itself, matching the promo video's runes/crosses
         // painted onto the rock.
         const isRimKind = kind === 'eye' || kind === 'eyeblue' || kind.startsWith('rune');
-        const INTO_WALL = isRimKind ? 0.65 : (wallSide ? 0.5 : 0.3);
+        const isBush = kind === 'bush2' || kind === 'bushmini';
+        // Round-4 fix (Daniel's screenshot review round 3: "bush2 and
+        // bushmini float above floors/below ceilings" -- 0.3 tile in left
+        // most of a 0.55-world-unit-tall bush sprite sitting past the rim).
+        // Deepened to the same range eyes/runes already got in round 3.
+        const INTO_WALL = isRimKind ? 0.65 : isBush && !wallSide ? 0.6 : (wallSide ? 0.5 : 0.3);
         let ax = x + 0.5, ay = y + yOffset + 0.5;
         let wallDir = 0;
         if (floorCap) ay += INTO_WALL;

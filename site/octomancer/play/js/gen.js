@@ -171,6 +171,36 @@ function isThinSurface(tiles, x, y) {
   return n >= 3;
 }
 
+/** Round-4 fix (Daniel's screenshot review round 3: "ceiling horns at convex
+ * ceiling corners hang in open water below the rim"). A floor/ceiling anchor
+ * tile is a convex corner (the solid mass turns a corner right there, so the
+ * flat surface a `horns` spike assumes doesn't actually run under/over it)
+ * whenever its own left or right neighbour, at the SAME row as the anchor,
+ * is open water -- a straight run keeps solid rock on both sides of the
+ * anchor at that row. Out-of-chunk (x-1/x+1) counts as a corner too (unknown
+ * neighbour, safer to skip than to risk one). */
+function isCornerAnchor(tiles, ax, ay) {
+  if (ax - 1 < 0 || ax + 1 >= CHUNK_W) return true;
+  return tiles[idx(ax - 1, ay)] === 0 || tiles[idx(ax + 1, ay)] === 0;
+}
+
+/** Round-4 fix (Daniel's screenshot review round 3: "piranhas can spawn
+ * stacked and draw over walls"). True if every tile in the (2r+1)x(2r+1)
+ * block centred on (x,y) is open water -- enough clearance for an open-water
+ * enemy's sprite half-extents (piranha/mine/manta, worldSize up to ~1.15, so
+ * r=1 covers a full tile of headroom on every side) to never overlap solid
+ * rock. Out-of-chunk counts as not-clear (unknown neighbour). */
+function hasOpenClearance(tiles, x, y, r) {
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H) return false;
+      if (tiles[idx(nx, ny)] !== 0) return false;
+    }
+  }
+  return true;
+}
+
 /** BFS flood-fill of water tiles reachable from (startX, startY). Returns a
  * Uint8Array mask, 1 = reachable. 4-connected (matches the "≥2 tiles wide"
  * passage requirement: a 1-wide diagonal squeeze does not count as open). */
@@ -354,15 +384,25 @@ export function generateChunk(seed, chunkIndex, entryCol) {
   if (depthStart + CHUNK_H >= 40) {
     const depthBonus = Math.min(3, Math.floor(depthStart / 150)); // +1 every 150 units, capped at +3
     const slotCount = 5 + depthBonus + Math.floor(rng() * 4); // 5-8 near the surface, up to 8-11 deep
+    // Round-4 fix (Daniel's screenshot review round 3: "piranhas can spawn
+    // stacked and draw over walls"). `pick(openCells)` used to be able to
+    // return (near-)the same cell for two different slots in the same
+    // chunk, and never checked that an open-water placement actually had
+    // room for its own sprite -- track every slot already placed and refuse
+    // a new one too close to it (min separation), and refuse an 'open'
+    // placement with no clearance around it (see `hasOpenClearance` above).
+    const MIN_ENEMY_SEP = 1.6; // tiles, centre to centre
+    const placedSlots = [];
     for (let i = 0; i < slotCount; i++) {
       const cell = pick(openCells);
       if (!cell) continue;
       const [x, y] = cell;
+      if (depthStart + y < 40) continue; // keep the first 40 units enemy-free
+      if (placedSlots.some((p) => Math.hypot(x - p.x, y - p.y) < MIN_ENEMY_SEP)) continue;
       let placement = 'open';
       if (smoothed[idx(x, y + 1)] !== 0) placement = 'floor';
       else if (smoothed[idx(x, y - 1)] !== 0) placement = 'ceiling';
       else if (smoothed[idx(x - 1, y)] !== 0 || smoothed[idx(x + 1, y)] !== 0) placement = 'wall';
-      if (depthStart + y < 40) continue; // keep the first 40 units enemy-free
       // Round-2 fix (Daniel's screenshot review: "enemies attach to nothing,
       // or to the lone circles" -- a crab floating in open water, a horns
       // spike hanging off a single lone-circle tile, wall eyes mounted mid-
@@ -372,12 +412,21 @@ export function generateChunk(seed, chunkIndex, entryCol) {
       // 3+ of its own 4 sides, not "a surface at least 2 tiles wide"); fall
       // back to an open-water placement (piranha/mine/manta) instead of
       // dropping the slot outright, so per-chunk enemy density is unaffected.
+      //
+      // Round-4 addition: also tag whether the anchor is a "flat run" (not
+      // a convex corner, `isCornerAnchor` above) -- `horns` gets restricted
+      // to flat runs only in enemies.js, since a spike anchored right at a
+      // corner reads as hanging in open water below the actual rim there.
+      let flatRun = true;
       if (placement !== 'open') {
         const [ax, ay] = placement === 'floor' ? [x, y + 1] : placement === 'ceiling' ? [x, y - 1]
           : (smoothed[idx(x + 1, y)] !== 0 ? [x + 1, y] : [x - 1, y]);
         if (isThinSurface(smoothed, ax, ay)) placement = 'open';
+        else flatRun = !isCornerAnchor(smoothed, ax, ay);
       }
-      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5 });
+      if (placement === 'open' && !hasOpenClearance(smoothed, x, y, 1)) continue;
+      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun });
+      placedSlots.push({ x, y });
     }
   }
 

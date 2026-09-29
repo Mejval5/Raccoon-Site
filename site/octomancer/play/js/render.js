@@ -268,34 +268,51 @@ export function createRenderer(ctx, world) {
   // the canonical orientation (closed side at the top) to the true closed
   // direction, same convention `bakeChunkWalls` already uses for rotating
   // the sprite-based tiles.
+  // Round-4 fix (Daniel's screenshot review round 3: "one-tile-wide peninsula
+  // ends/stubs draw as a flat, rimless half-square plus half a rimmed
+  // semicircle"). The old shape only rounded the two BOTTOM corners of the
+  // tile (`arcTo(...,r)` with r < hw), leaving the straight left/right edges
+  // unrounded above that -- and the rim stroke started/ended 0.1*hw short of
+  // the flat (closed) edge's own corners, so it never quite reached the
+  // corners where a neighbouring corridor tile's own rim continues. That
+  // combination reads as exactly the bug: a rounded bit at the bottom, a
+  // flat unrimmed edge above it. Redrawn as a TRUE semicircular cap (radius
+  // = hw, centred on the open edge) on a flat-topped rectangle -- the cap
+  // continues smoothly from both straight side edges instead of just
+  // rounding their corners -- with the rim stroke running the full open
+  // path corner-to-corner (both long straight sides plus the cap), so it
+  // meets the flat (closed, unrimmed) edge exactly at its own two corners
+  // and lines up with whatever rim a neighbouring corridor/edge tile draws
+  // there.
   function drawNubTile(bctx, px, py, s, turns) {
     const hw = s / 2;
-    const r = hw * 0.92;
     bctx.save();
     bctx.beginPath();
     bctx.rect(px, py, s, s);
     bctx.clip();
     bctx.translate(px + hw, py + hw);
     bctx.rotate(turns * (Math.PI / 2));
+    // Fill: flat top edge (flush against the real solid neighbour) down to
+    // a full semicircular cap at the bottom (the three open sides).
     bctx.beginPath();
     bctx.moveTo(-hw, -hw);
     bctx.lineTo(hw, -hw);
-    bctx.arcTo(hw, hw, -hw, hw, r);
-    bctx.arcTo(-hw, hw, -hw, -hw, r);
+    bctx.lineTo(hw, 0);
+    bctx.arc(0, 0, hw, 0, Math.PI, false);
+    bctx.lineTo(-hw, -hw);
     bctx.closePath();
     bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     bctx.fill();
-    // Rim along the open (rounded) edge only -- the flat top edge is flush
-    // against real rock, an interior boundary that should stay unrimmed,
-    // same rule `carveConcaveCorner`'s callers already follow.
+    // Rim along the whole open boundary -- both straight side edges AND the
+    // semicircular cap -- as one continuous stroke from corner to corner.
     bctx.beginPath();
-    bctx.moveTo(hw, -hw * 0.1);
-    bctx.lineTo(hw, hw - r);
-    bctx.arcTo(hw, hw, -hw, hw, r);
-    bctx.arcTo(-hw, hw, -hw, -hw, r);
-    bctx.lineTo(-hw, -hw * 0.1);
+    bctx.moveTo(hw, -hw);
+    bctx.lineTo(hw, 0);
+    bctx.arc(0, 0, hw, 0, Math.PI, false);
+    bctx.lineTo(-hw, -hw);
     bctx.strokeStyle = RIM_COLOR;
     bctx.lineWidth = s * 0.1;
+    bctx.lineJoin = 'round';
     bctx.stroke();
     bctx.restore();
   }
@@ -897,7 +914,10 @@ export function createRenderer(ctx, world) {
       // walls were always meant to composite over decor, not the other way
       // round.
       drawPlants(canvasW, canvasH, resident);
-      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time); // Otter's alive pass
+      // Otter's alive pass; runes are excluded here and drawn again AFTER
+      // drawWalls below (Round-4 fix: runes need to land on top of the rock
+      // face like a painted mark, not be buried under the opaque wall bake).
+      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, false);
       // Round-3 fix (Daniel's screenshot review: "each light shaft ends in a
       // hard straight vertical edge at the level boundary" -- `drawOuterRock`
       // used to draw right after the background, BEFORE `drawCaustics`, so
@@ -909,6 +929,10 @@ export function createRenderer(ctx, world) {
       // the level's own walls already do -- no shaft shows on rock anywhere.
       drawOuterRock(canvasW, canvasH);
       drawWalls(canvasW, canvasH, resident);
+      // Round-4 fix: runes drawn on top of the just-baked wall art, so they
+      // read as a mark painted onto the rock face instead of a sprite the
+      // rock bake occludes.
+      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);
       drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time);

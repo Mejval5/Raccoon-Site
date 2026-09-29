@@ -1392,3 +1392,101 @@ soaks (one per size). Screenshots:
 `octomancer-web/night/fix-r3-{desktop,phone,desktop-dive,phone-dive}.png`,
 zoomed crops `fix-r3-zoom-{octo-open,octo-blink,octo-hurt,wall-critter,
 enemies,walls-corners}.png`.
+
+## Visual fixes round 4 (Opus review of round 3, this session)
+
+Ten remaining issues from a screenshot review of round 3's output
+(`octomancer-web/night/review-r3-*.png`), each with its own root cause:
+
+1. **A 1-tile-wide peninsula tip draws as a flat, rimless half-square plus
+   half a rimmed semicircle.** `render.js`'s `drawNubTile` (the count===3
+   "3 open sides" procedural cap) only rounded the two BOTTOM corners of the
+   tile rect (`arcTo(...,r)` with `r < hw`) -- the straight left/right edges
+   above that stayed flat -- and its rim stroke started/ended `0.1*hw` short
+   of the flat (closed) edge's own corners, never quite reaching the corner
+   where a neighbouring corridor tile's own rim continues. Redrawn as a TRUE
+   semicircular cap (radius = hw, centred on the open edge) on a flat-topped
+   rectangle, with the rim stroke running corner-to-corner along the full
+   open boundary (both straight sides plus the cap) in one continuous path.
+2. **Ceiling horns hang in open water below the rim at convex ceiling
+   corners.** `gen.js` tagged every non-thin floor/ceiling anchor as fair
+   game for `horns`, including a corner cell where the rock face actually
+   turns a corner right there -- the flat "spike hanging from a flat
+   ceiling" art assumes a straight run. Added `isCornerAnchor` (true when the
+   anchor tile's own left or right neighbour, same row, is open water) and a
+   `flatRun` flag on the enemy-slot spawn; `enemies.js`'s `pickKind` only
+   offers `horns` when `flatRun` is true (`urchin`/`cannon` are unaffected --
+   their art doesn't assume a flat run the same way).
+3. **Ceiling crabs render upside down and float; the original never had
+   them.** `enemies.js`'s `pickKind` offered `crab` on both `floor` and
+   `ceiling` placements. Restricted to `floor` only, matching the Unity
+   original (`CrabFlatten`/`CrabFlatten2` only ever walk a floor).
+4. **bush2/bushmini float above floors/below ceilings and past corners.**
+   `decor.js`'s `INTO_WALL` for these was the generic 0.3 (barely into the
+   wall), and only the thin-nub check (`isThinWallCell`, 3+ open sides)
+   guarded placement -- a plain corner (2 open sides) still let a bush
+   anchor right where the rim curves away. Deepened `INTO_WALL` to 0.6 for
+   bush floor/ceiling anchors (matching the 0.65 eyes/runes already got in
+   round 3) and added a corner check that skips bush placement there.
+   `decor-draw.js` was also muting only `bushmini`'s saturation, never
+   `bush2` -- same filter now applies to both.
+5. **Ceiling snails float and read as a UI glyph (a circle over a dash, like
+   an "i").** Checking a FLOOR snail too (this round's own screenshots) found
+   the exact same read there -- not a ceiling-only problem, the
+   `critter-snail.webp` art just doesn't hold up at this scale on any
+   surface. Removed from `CRITTER_KINDS_WALL` entirely, same treatment
+   round-1 gave the "hole" critter and round-3 gave the open-water "jelly".
+6. **Runes float in open water beside the rock instead of reading as a mark
+   painted on it.** Their anchor (`decor.js`, 0.65 into the solid tile) was
+   already deep enough, but the whole wall-critter layer drew BEFORE the
+   wall bake (render.js's layering pass, round 1) -- the opaque rock then
+   painted right over the anchored rune, leaving only whatever sliver of the
+   glyph poked out past the tile edge into open water visible. `decor-draw.js`'s
+   `drawCritters` now takes a `runesOnly` flag; render.js calls it twice --
+   once before `drawWalls` for everything else (unchanged), once after for
+   runes only -- so they land on top of the rock face as a painted mark, like
+   `octo-video-cave-urchin.webp`.
+7. **Phone framing shows ~18 tiles across at 375x812, too zoomed out.**
+   `CAMERA_MIN_WIDTH` (18, a landscape-tuned floor) was forcing the WIDTH
+   constraint to dominate on a narrow portrait viewport, since
+   `computePxPerUnit` picks `min(scaleForWidth, scaleForHeight)` and
+   375/18 < 812/24. Added `CAMERA_MIN_WIDTH_PORTRAIT` (11) and switched to it
+   whenever `canvasH > canvasW`; the existing `CAMERA_MIN_HEIGHT` (24) then
+   gets to bind on its own (812/24=33.8px/tile -> 375/33.8=11.1 tiles across),
+   landing on the target range without needing a new height rule. Verified
+   directly (`camera.computePxPerUnit`): 375x812@2x now shows 11.08 tiles,
+   390x844@3x shows 11.09; desktop 1440x900/1920x1080 unchanged at 20 (the
+   round-3 `CAMERA_MAX_WIDTH` cap).
+8. **Piranhas can spawn stacked and draw over walls.** `gen.js`'s enemy-slot
+   loop picked each slot's cell independently (`pick(openCells)`), with no
+   check that two slots didn't land on/near the same cell, and no check that
+   an `open`-placement slot (piranha/mine/manta) actually had clearance for
+   its own sprite. Added a per-chunk minimum-separation check (1.6 tiles,
+   centre to centre) against every slot already placed this chunk, and
+   `hasOpenClearance` (a 3x3-tile all-open check around the candidate cell)
+   that rejects an `open` placement without room for the sprite's own
+   half-extents.
+9. **Floor crabs hover 5-10px above the rim.** `GROUND_RIM_INSET` (0.15,
+   round 3) undershot the true gap. Bumped to 0.26; confirmed by spawning a
+   crab in the wild (seed 63) and zooming in -- its body now sits directly on
+   the rim with no visible gap.
+10. **Closed-eye slits still read as one merged bar.** Round 3 fixed the
+    slit's WIDTH-vs-height derivation (deriving width from the constant-width
+    open eye instead of stretching it by the closed sprite's own aspect), but
+    a full-open-eye-width slit still reads as one flat bar rather than a
+    narrowing eyelid. `octopus-draw.js` now narrows just the `closed` state's
+    width to 0.8x (height follows proportionally from the sprite's own
+    aspect ratio, so it stays a thin slit, just visibly narrower).
+
+Everything previously fixed (seams, piranha orientation, octopus scale/eyes,
+no circle tiles, no hole critter) reconfirmed still holding across this
+round's screenshots.
+
+Verification: `tests/` 65/65 (own threading `http.server` with no-cache
+headers on a free port, stopped after); puppeteer-core headless Chrome: 0
+console errors, 0 failed requests across ~30 fresh spawn/mid-dive frames over
+20+ seeds, plus two 20s `autoDive` soaks (desktop 1440x900 1x, phone 375x812
+2x). Screenshots: `octomancer-web/night/fix-r4-{desktop-s42,phone-s7,
+soak-desktop,soak-phone}.png`, zoomed crops `fix-r4-zoom-{wall-stub,
+enemy-crab,enemy-horns-ceiling,enemies-general,octopus-blink,
+octopus-open}.png`.

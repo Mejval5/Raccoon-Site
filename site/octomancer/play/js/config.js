@@ -52,6 +52,17 @@ export const CAMERA_MIN_HEIGHT = 24;
 // so a wide viewport shows more of the level's HEIGHT rather than an
 // ever-wider slice of it, matching the video's tighter framing.
 export const CAMERA_MAX_WIDTH = 20;
+// Round-4 fix (Daniel's screenshot review round 3: "phone framing is too
+// zoomed out -- about 18 tiles across at 375x812, the octopus reads tiny").
+// `CAMERA_MIN_WIDTH` (18) is a landscape-tuned floor; on a narrow PORTRAIT
+// viewport (canvasH > canvasW, i.e. every phone in its normal orientation)
+// the height requirement (`CAMERA_MIN_HEIGHT`=24) already yields plenty of
+// zoom on its own -- using the much smaller `CAMERA_MIN_WIDTH_PORTRAIT`
+// instead of 18 for the width floor lets that height constraint actually
+// bind (its own `Math.min` already picks whichever constraint is tighter),
+// landing close to the target ~10-11 tiles across instead of stretching wide
+// to satisfy an 18-tile width floor no phone screen needs.
+export const CAMERA_MIN_WIDTH_PORTRAIT = 11;
 
 // Sub-step when |v|*dt > r/2 (OVERNIGHT.md §2 "Physics").
 export const SUBSTEP_RADIUS_FACTOR = 0.5;

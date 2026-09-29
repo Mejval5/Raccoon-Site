@@ -134,7 +134,9 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // Round-2 fix (Daniel's screenshot review): the bright lime `bushmini`
   // blobs read far more saturated than the video's pale sage/beige plants;
   // mute it at draw time (no new art) rather than editing the source webp.
-  if (c.kind === 'bushmini') ctx.filter = 'grayscale(0.6) sepia(0.45) saturate(1.4) brightness(1.15)';
+  // Round-4 fix (Daniel's screenshot review round 3): `bush2` reads just as
+  // over-saturated and was never muted the same way -- same filter.
+  if (c.kind === 'bushmini' || c.kind === 'bush2') ctx.filter = 'grayscale(0.6) sepia(0.45) saturate(1.4) brightness(1.15)';
   const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
   const drawImg = isRune ? (getTintedRune(c.kind) || img) : img;
   ctx.drawImage(drawImg, -w / 2, -h / 2, w, h);
@@ -143,8 +145,23 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
 
 /** Draws every visible non-hostile wall critter/decor instance. Called from
  * render.js's per-frame draw list, between the walls/plants layer and the
- * enemies layer, same as `drawBubbles`. */
-export function drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time) {
+ * enemies layer, same as `drawBubbles`.
+ *
+ * Round-4 fix (Daniel's screenshot review round 3: "runes float in open
+ * water beside the rock" -- their deep INTO_WALL anchor (decor.js) puts them
+ * inside the solid tile, but this whole layer used to draw BEFORE the wall
+ * bake, so the opaque rock painted right over them, leaving only whatever
+ * sliver of the glyph poked out past the tile edge into open water visible --
+ * exactly a "floating beside the rock" read. Runes now draw in a separate
+ * pass, AFTER the wall bake (render.js calls this twice), landing on TOP of
+ * the rock face as a painted mark, like octo-video-cave-urchin.webp. Every
+ * other kind keeps drawing before the walls (tucked under the rim), so
+ * `runesOnly` filters which pass a given call handles. */
+export function drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, runesOnly = false) {
   const reduced = prefersReducedMotion();
-  for (const c of critters) drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced);
+  for (const c of critters) {
+    const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
+    if (isRune !== runesOnly) continue;
+    drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced);
+  }
 }

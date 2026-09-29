@@ -2,7 +2,7 @@
 // following the octopus's interpolated (render-alpha) position.
 // Ports octomancer-unity/Assets/Scripts/Camera/CameraPos.cs:108-147
 // (GetCamSizeDefault + BoundCam) to a 2D canvas pxPerUnit + clamp.
-import { CAMERA_MIN_WIDTH, CAMERA_MIN_HEIGHT, CAMERA_MAX_WIDTH } from './config.js';
+import { CAMERA_MIN_WIDTH, CAMERA_MIN_WIDTH_PORTRAIT, CAMERA_MIN_HEIGHT, CAMERA_MAX_WIDTH } from './config.js';
 
 export function createCamera() {
   return { x: 0, y: 0, pxPerUnit: 32 };
@@ -12,7 +12,11 @@ export function createCamera() {
  * minimum width and minimum height are visible (never less, extra shown on
  * the other axis for off-ratio screens). */
 export function computePxPerUnit(canvasW, canvasH) {
-  const scaleForWidth = canvasW / CAMERA_MIN_WIDTH;
+  // Round-4 fix: a portrait viewport (phones, in their normal orientation)
+  // uses a much narrower width floor (see CAMERA_MIN_WIDTH_PORTRAIT's
+  // comment in config.js) so the height floor actually gets to bind.
+  const minWidth = canvasH > canvasW ? CAMERA_MIN_WIDTH_PORTRAIT : CAMERA_MIN_WIDTH;
+  const scaleForWidth = canvasW / minWidth;
   const scaleForHeight = canvasH / CAMERA_MIN_HEIGHT;
   const base = Math.min(scaleForWidth, scaleForHeight);
   // Round-3 fix (Daniel's screenshot review, framing too small/empty on

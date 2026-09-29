@@ -45,7 +45,13 @@ function ready(img) { return img.complete && img.naturalWidth > 0; }
 // close the half-sprite gap plus the rim's own inset. Mirrors `PLANT_INTO_WALL`
 // (render.js) and `INTO_WALL` (decor.js), the same "anchor slightly into the
 // solid neighbour" idea already used for plants and wall critters.
-const GROUND_RIM_INSET = 0.15; // matches decor.js's wall-rim inset note
+// Round-4 fix (Daniel's screenshot review round 3: "floor crabs hover 5-10px
+// above the rim"). 0.15 undershot the gap: the crab sprites' own transparent
+// bottom padding (their canvas is several px taller than the drawn body) eats
+// into the push before any of it reaches the visible rim surface. Bumped so
+// the crab's OWN visible feet -- not just its canvas bottom edge -- reach the
+// rim.
+const GROUND_RIM_INSET = 0.26;
 function surfaceDrawOffset(placement, worldSize) {
   const push = 0.5 - worldSize / 2 + GROUND_RIM_INSET;
   if (placement === 'floor') return push;

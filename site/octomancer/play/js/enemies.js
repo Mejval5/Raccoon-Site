@@ -39,7 +39,14 @@ function makeRng(seedSalt) {
   return () => { m = (m * 1664525 + 1013904223) >>> 0; return m / 4294967296; };
 }
 
-function pickKind(placement, depth, rng) {
+// Round-4 fix (Daniel's screenshot review round 3: "ceiling crabs render
+// upside down and float -- the original never had ceiling crabs"). Crabs are
+// floor-only now, matching the Unity original (`CrabFlatten`/`CrabFlatten2`
+// walk the floor, never the ceiling); `horns` stays available on both floor
+// and ceiling, but only on a "flat run" anchor (gen.js's `flatRun`, set
+// false at convex ceiling/floor corners) -- Daniel's review: "horns at
+// convex ceiling corners hang in open water below the rim".
+function pickKind(placement, depth, rng, flatRun) {
   const candidates = [];
   if (placement === 'open') {
     candidates.push('piranha');
@@ -47,10 +54,8 @@ function pickKind(placement, depth, rng) {
     if (depth > 100) candidates.push('manta');
   } else {
     candidates.push('urchin');
-    if (placement === 'floor' || placement === 'ceiling') {
-      candidates.push('crab');
-      candidates.push('horns');
-    }
+    if (placement === 'floor') candidates.push('crab');
+    if ((placement === 'floor' || placement === 'ceiling') && flatRun) candidates.push('horns');
   }
   if (depth > 80 && (placement === 'floor' || placement === 'wall')) candidates.push('cannon');
   if (candidates.length > 1) return candidates[Math.floor(rng() * candidates.length)];
@@ -118,7 +123,7 @@ export function createEnemies() {
       if (s.type !== 'enemy-slot') continue;
       const wy = s.y + yOffset;
       if (wy < ENEMY_MIN_DEPTH) continue;
-      const kind = pickKind(s.placement, wy, rng);
+      const kind = pickKind(s.placement, wy, rng, s.flatRun !== false);
       list.push(makeEnemy(kind, s.x, wy, index, s.placement));
     }
     if (list.length) byChunk.set(index, list);
