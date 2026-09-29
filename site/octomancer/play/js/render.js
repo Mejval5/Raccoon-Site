@@ -18,6 +18,27 @@
 // rounding the remaining concave (inner) corners the tileset itself doesn't
 // have a piece for. The background swap and plant floor-anchoring are
 // separate fixes logged inline below.
+//
+// Texture pass (this session, per Daniel): the walls read as flat single-tone
+// shapes -- no rock surface detail. In the Unity original this came from
+// `Assets/Shaders/My shaders/Map/SquidTilemap.shader`'s `SamplePerlinTexture`,
+// which tiles a set of fBm-noise textures (baked by
+// `Assets/Scripts/Shaders/CreatePerlinTexture.cs` /
+// `PerlinComputeShader.compute`'s `fbm()`: value noise, several octaves,
+// lacunarity/gain falloff, `pow(v*0.5+0.5, power)` for contrast) across the
+// sprite UV and blends them onto the tile colour with an Overlay-style blend
+// (`OverlayC`) tinted by `_PerlinTex_Color`; `OverlayProcessor` composites a
+// second Perlin pass as a soft mask for other surfaces. Replicated here with
+// `generateFbmField` (same value-noise-with-smoothstep-interpolation shape,
+// baked once into a seamless tileable field -- lattice frequencies wrap
+// modulo themselves so the texture tiles exactly) and two palette lookups
+// (`buildNoiseTexture`) painted onto each chunk's wall canvas with
+// `source-atop` so it only lands on already-opaque rock pixels, once at bake
+// time (no per-frame shader cost, and no animated blend weights -- the
+// original's `_SinTime`/`_CosTime` shimmer is dropped as unnecessary per-frame
+// cost for a static rock surface). Soft/breakable rock reuses the identical
+// field through a coral-tinted lookup so both textures line up pixel-for-
+// pixel with the rock's own grain.
 
 import { updateCamera, worldToScreen } from './camera.js';
 import { drawOctopus } from './octopus-draw.js';
@@ -157,6 +178,116 @@ export function createRenderer(ctx, world) {
     bctx.restore();
   }
 
+  // --- Wall surface texture: seamless fBm noise, baked once (Daniel's
+  // "Perlin noise with masking" note on the Unity original -- see the
+  // module-header comment above for the shader/compute-shader it mirrors).
+  //
+  // Value noise on an integer lattice, smoothstep-interpolated, several
+  // octaves combined with lacunarity/gain falloff -- the same shape as the
+  // original's `fbm()`. Seamless tiling comes for free: every lattice index
+  // is taken modulo that octave's own frequency, so the noise at the far
+  // edge of the field is hashed identically to the noise at x=0, and the
+  // field is generated at a pixel size that is an exact divisor of both the
+  // chunk width (32 tiles) and height (24 tiles) -- 8 tiles -- so tiling it
+  // across a chunk canvas, and across chunk boundaries stacked in world
+  // space, lines up exactly with no seam and no per-chunk offset needed.
+  const NOISE_FIELD_TILES = 8; // world tiles per noise repeat (divides 32x24)
+  const NOISE_FIELD_PX = NOISE_FIELD_TILES * BAKE_PX_PER_UNIT;
+  const NOISE_BASE_FREQ = 6; // lattice cells across one repeat, octave 0
+  const NOISE_OCTAVES = 4;
+  const NOISE_LACUNARITY = 2;
+  const NOISE_GAIN = 0.5;
+  const NOISE_POWER = 1.3; // contrast, matches the original's `_power` remap
+
+  function hash01(ix, iy, freq, seed) {
+    const xi = ((ix % freq) + freq) % freq;
+    const yi = ((iy % freq) + freq) % freq;
+    let h = (xi * 374761393 + yi * 668265263 + seed * 2654435761) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h = h ^ (h >>> 16);
+    return ((h >>> 0) / 4294967295) * 2 - 1; // [-1, 1]
+  }
+  function smooth(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerpN(a, b, t) { return a + (b - a) * t; }
+  // fBm field, generated once into a plain array: value in [-1, 1] per texel
+  // of a NOISE_FIELD_PX x NOISE_FIELD_PX square, x/y in [0,1) across it.
+  function generateFbmField(size, seed) {
+    const field = new Float32Array(size * size);
+    for (let py = 0; py < size; py++) {
+      const y = py / size;
+      for (let px = 0; px < size; px++) {
+        const x = px / size;
+        let freq = NOISE_BASE_FREQ, amp = 1, sum = 0, norm = 0;
+        for (let o = 0; o < NOISE_OCTAVES; o++) {
+          const f = Math.round(freq);
+          sum += amp * latticeNoise2(x, y, f, seed + o * 17);
+          norm += amp;
+          freq *= NOISE_LACUNARITY;
+          amp *= NOISE_GAIN;
+        }
+        field[py * size + px] = norm > 0 ? sum / norm : 0;
+      }
+    }
+    return field;
+  }
+  function latticeNoise2(x, y, freq, seed) {
+    const gx = x * freq, gy = y * freq;
+    const ix = Math.floor(gx), iy = Math.floor(gy);
+    const fx = gx - ix, fy = gy - iy;
+    const v00 = hash01(ix, iy, freq, seed), v10 = hash01(ix + 1, iy, freq, seed);
+    const v01 = hash01(ix, iy + 1, freq, seed), v11 = hash01(ix + 1, iy + 1, freq, seed);
+    const tx = smooth(fx), ty = smooth(fy);
+    const a = lerpN(v00, v10, tx), b = lerpN(v01, v11, tx);
+    return lerpN(a, b, ty);
+  }
+
+  // Paints the fBm field into an RGBA canvas: `crevice` (low noise) to
+  // `speckle` (high noise), the "masking" step from the original --
+  // `pow(v*0.5+0.5, power)` for contrast, then alpha weighted toward the
+  // extremes so mid-grey noise stays subtle and crevices/speckle read.
+  function buildNoiseTexture(field, size, crevice, speckle, maxAlpha) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const nctx = canvas.getContext('2d');
+    const img = nctx.createImageData(size, size);
+    for (let i = 0, p = 0; i < field.length; i++, p += 4) {
+      const v = field[i];
+      const t = Math.pow(Math.min(1, Math.max(0, v * 0.5 + 0.5)), NOISE_POWER);
+      img.data[p] = lerp(crevice[0], speckle[0], t);
+      img.data[p + 1] = lerp(crevice[1], speckle[1], t);
+      img.data[p + 2] = lerp(crevice[2], speckle[2], t);
+      img.data[p + 3] = Math.round(maxAlpha * (0.35 + 0.65 * Math.abs(v)) * 255);
+    }
+    nctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+
+  const noiseField = generateFbmField(NOISE_FIELD_PX, 1337);
+  // Rock: a quiet dark-teal crevice to pale sea-green speckle, so it reads as
+  // grain on Milan's existing rim colour rather than a new material.
+  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [6, 26, 20], [150, 190, 165], 0.42);
+  // Soft/breakable rock: the same field, tinted through the coral palette
+  // already used for its rim so the grain matches its own material.
+  const coralNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [90, 46, 26], [235, 175, 120], 0.46);
+  // CanvasPattern only needs *a* 2D context to be created from, not the one
+  // it will later be drawn into -- build both patterns once, up front.
+  const patternCtx = document.createElement('canvas').getContext('2d');
+  const rockNoisePattern = patternCtx.createPattern(rockNoiseCanvas, 'repeat');
+  const coralNoisePattern = patternCtx.createPattern(coralNoiseCanvas, 'repeat');
+
+  // Paints a seamless noise pattern onto already-opaque wall pixels only
+  // (`source-atop`), offset so it tiles across chunk boundaries in world
+  // space -- see the NOISE_FIELD_TILES comment above.
+  function paintNoise(bctx, entry, pattern, canvas, rectX, rectY, rectW, rectH) {
+    bctx.save();
+    bctx.globalCompositeOperation = 'source-atop';
+    const offPx = ((entry.yOffset * BAKE_PX_PER_UNIT) % canvas.height + canvas.height) % canvas.height;
+    bctx.translate(0, -offPx);
+    bctx.fillStyle = pattern;
+    bctx.fillRect(rectX, rectY + offPx, rectW, rectH);
+    bctx.restore();
+  }
+
   function bakeChunkWalls(entry) {
     const { chunk } = entry;
     let canvas = wallCache.get(entry.index)?.canvas;
@@ -175,6 +306,7 @@ export function createRenderer(ctx, world) {
       const local = isSolidLocal(chunk, tx, ty);
       return local === null ? true : local;
     };
+    const softTiles = []; // v===2 (breakable) tile rects, textured after the main noise pass
     for (let ty = 0; ty < chunkH; ty++) {
       for (let tx = 0; tx < chunkW; tx++) {
         const v = chunk.tiles[ty * chunkW + tx];
@@ -193,13 +325,16 @@ export function createRenderer(ctx, world) {
         bctx.restore();
 
         if (v === 2) {
-          // Soft (breakable) rock: same shape, a warm coral tint so it reads
-          // as diggable and distinct from unbreakable (green-rimmed) walls.
+          // Soft (breakable) rock: same shape, a warm coral tint (flat base
+          // colour so it reads as diggable/distinct even before its own
+          // noise pass below) so it stays distinct from unbreakable
+          // (green-rimmed) walls.
           bctx.save();
           bctx.globalCompositeOperation = 'source-atop';
           bctx.fillStyle = 'rgba(210,130,80,0.30)';
           bctx.fillRect(px, py, s, s);
           bctx.restore();
+          softTiles.push({ px, py });
         }
 
         // Round any concave corner the picked art doesn't already show an
@@ -210,6 +345,15 @@ export function createRenderer(ctx, world) {
         if (!openS && !openE && !solidAt(tx + 1, ty + 1)) carveConcaveCorner(bctx, px + s, py + s, 2, r);
         if (!openS && !openW && !solidAt(tx - 1, ty + 1)) carveConcaveCorner(bctx, px, py + s, 3, r);
       }
+    }
+    // Surface texture pass, baked once here (never per-frame): the seamless
+    // fBm field masked onto every opaque wall pixel via source-atop, then
+    // the same field again -- coral-tinted -- over just the soft-rock tiles
+    // so their grain matches the field exactly, tile for tile, with the
+    // surrounding rock.
+    paintNoise(bctx, entry, rockNoisePattern, rockNoiseCanvas, 0, 0, canvas.width, canvas.height);
+    for (const { px, py } of softTiles) {
+      paintNoise(bctx, entry, coralNoisePattern, coralNoiseCanvas, px, py, s, s);
     }
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
   }
