@@ -1690,3 +1690,96 @@ soak run driving input for 15s with a force-spawned Beholder, plus fresh
 spawn/mid-dive frames over several seeds at 1440x900 and 375x812 (2x).
 Screenshots: `octomancer-web/night/fix-r6-{desktop-s7,desktop-s42,phone-s7,
 phone-s42}.png`, zoomed crops `fix-r6-zoom-{enemies,octopus,walls}.png`.
+
+## Visual fixes round 7 (Daniel's screenshot review round 6, this session)
+
+1. **Wall rim system replaced: the round-6-deferred marching-squares rewrite,
+   done.** Item 1 (nub tiles read as "lollipop" blobs) and item 2 (rim breaks
+   at concave corners, narrow stems) shared one root cause: every solid tile
+   drew its own tileset piece (or, for a 1-wide stub, `drawNubTile`'s own
+   procedural cap) with its own independently-stroked rim, composited edge to
+   edge against its neighbours' own independently-stroked rims. Two rims
+   drawn by two different draw calls never quite lined up at a stub or a
+   concave corner -- a doubled rim, a notch of water, or the tile's own square
+   corner peeking through under the 2x bake. Rewritten per the round-6 log's
+   own deferred plan: `render.js`'s `traceWallOutlines` walks the tile grid
+   and emits one directed unit edge per exposed tile border (the grid-
+   boundary-walk form of marching squares -- clockwise per solid tile's own
+   perimeter, so two solid tiles sharing a border never both emit it, and the
+   aggregate edges for a region chain into correctly-wound closed loops,
+   including any interior holes, with no separate hole-handling code needed).
+   `chaikinSmoothLoop` then rounds every loop with a few passes of Chaikin
+   corner-cutting -- convex corners, concave notches and the sharp corners of
+   a 1-wide stub all get the same continuous rounding treatment, with no
+   per-corner-shape case, and long straight rims stay straight (Chaikin
+   leaves collinear points on their own line). `bakeChunkWalls` now fills and
+   strokes that one path per chunk instead of looping per tile through
+   `pickWallArt`; those functions, `drawNubTile` and `carveConcaveCorner` are
+   deleted, and Milan's `tiles/tile-*.webp` sprites are no longer loaded for
+   walls at all (marked unused in ASSETS.md) -- a 1-wide stub is now just a
+   few extra points on the same traced path as its neighbours, so there is no
+   second piece left to seam against them. Soft (breakable) rock tint/texture
+   and the outer-rock fill are unchanged (still per-tile/whole-canvas passes
+   on top of the new fill). Item 6 (small 1-3px bumps along long straight
+   rims) turned out to be the same system's edge-art jitter (`edgeA`/`edgeB`
+   alternation) -- gone along with it, since there is no per-tile edge art
+   left to alternate.
+2. **Piranhas no longer stack into a "double-decker".** `enemies.js`'s
+   `separateEnemies` used one flat 0.55-tile minimum separation for every
+   moving enemy kind, sized to their physics collision radii (used only for
+   octopus-contact damage) rather than their drawn sprites -- a piranha's art
+   reads about 1.8-2.3 tiles long (enemy-draw.js's own round-2 sizing note),
+   so two chasing piranhas could sit well inside 0.55 tiles of each other.
+   Each kind now carries its own approximate visual half-extent
+   (`ENEMY_SEP_HALF_EXTENT`: piranha 0.68, crab 0.45, manta 0.55, others keep
+   the old 0.275), and a pair's minimum separation is the sum of the two
+   half-extents (1.36 tiles for a piranha pair) instead of one constant for
+   every kind.
+3. **Ambient fish now face their direction of travel.** `decor-draw.js`'s
+   `drawOne` oscillates a fish's x position with `sin(t*0.6+phase)`, but only
+   ever drew it in its default (left-facing) orientation -- half of every
+   oscillation it was moving in +x while still pointed -x, tail-first, and
+   since every fish shares the same `sin()` shape (just phase-shifted) they
+   all read as facing the same way at a glance. The sign of `cos(t*0.6+
+   phase)` (the position's own derivative, i.e. its velocity) now mirrors the
+   sprite whenever it's positive (moving right), so each fish always points
+   the way it's actually swimming.
+4. **Bush decor: `bushmini` dropped, `bush2` fixed instead of filtered.**
+   `decor-bushmini.webp`'s own source export is a soft, edgeless glow blob --
+   not a drawing mistake in this port, there is no crisp plant outline in the
+   art to preserve -- so no draw-time change fixes it; dropped from
+   `CRITTER_KINDS_WALL` entirely (`decor.js`), same call already made for
+   other art that never read as intended (`eye`/`eyeblue`, round 6;
+   `critter-jelly`, round 3). `bush2` DOES have real leaf/frond shapes and
+   stays, but two changes: (a) `decor-draw.js` no longer runs it through the
+   `grayscale/saturate/brightness` `ctx.filter` the round-2/4/6 passes kept
+   tuning -- a `ctx.filter` graph forces an offscreen filtered rasterization
+   pass instead of a direct blit, and stacked on an already-upscaled small
+   source sprite that read as soft/blurry rather than crisp (matching
+   Daniel's "blurry, outline-less... smudge" report) more than any hue was
+   the problem; it now draws unfiltered/native, same as every other sprite in
+   the game. (b) `decor.js`'s `findWallCritters` no longer spawns `bush2` on
+   a ceiling cap -- the sprite's own silhouette (wide base, tapering fronds
+   at the top) only reads as a plant growing up; flipped upside-down under a
+   ceiling (the existing `ctx.scale(1,-1)` "hang from ceiling" transform) it
+   inverts into exactly the "splat" / "dripping smear" Daniel's review
+   described. Floor-only now.
+
+Everything previously fixed (seams, piranha orientation, octopus scale/eyes,
+enemy wall collision/A*, jitter interpolation, gift meter, etc.) reconfirmed
+still holding across this round's screenshots.
+
+Verification: `tests/` 77/77 unchanged (own threading `http.server` with
+no-cache headers on a free port, stopped after -- this round's server needed
+`ThreadingMixIn` plus killing a couple of stale prior-round server processes
+still bound to the same port, which were the actual cause of an early batch
+of `ERR_CONNECTION_REFUSED` screenshots, not a game bug); puppeteer-core
+headless Chrome: 0 console errors (aside from the pre-existing, unrelated
+`favicon.ico` 404 every round has had) across fresh spawn/mid-dive frames
+over 6 seeds at 1440x900 and 375x812 (2x), driven with the `window.__octo.
+autoDive` test hook (a bounded BFS toward deeper water) rather than raw key
+events for more reliable headless navigation. Screenshots: `octomancer-web/
+night/fix-r7-{desk-s1-spawn,desk-s1-dive1,desk-s1-dive2,desk-s9-dive1,
+desk-s9-dive2,desk-s42-dive1,desk-s42-dive2,desk-s77-dive1,desk-s55-dive1,
+phone-s3-spawn,phone-s3-dive1,phone-s55-dive1,phone-s55-dive2}.png`, zoomed
+crops `fix-r7-zoom-{walls-s9,walls-s42,octopus,piranhas,enemies-deep}.png`.

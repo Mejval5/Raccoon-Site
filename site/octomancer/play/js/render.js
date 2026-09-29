@@ -103,60 +103,28 @@ function loadImage(src) {
 }
 
 export function createRenderer(ctx, world) {
-  // Wall tileset (Milan's marching-squares-style set, `play/assets/tiles/`):
-  //   tile-1  = fully solid (0 exposed edges)
-  //   tile-2 / tile-2A = one exposed edge (two art variants, alternated per
-  //     tile for texture variety); default orientation is edge-on-top
-  //   tile-3  = two adjacent exposed edges (a convex corner); default TL
-  //   tile-5  = two opposite exposed edges (a corridor); default top+bottom
-  //   tile-0  = isolated / near-isolated (3-4 exposed edges) fallback
-  const tileFull = loadImage(ASSET('tiles/tile-1.webp'));
-  const tileEdgeA = loadImage(ASSET('tiles/tile-2.webp'));
-  const tileEdgeB = loadImage(ASSET('tiles/tile-2A.webp'));
-  const tileCorner = loadImage(ASSET('tiles/tile-3.webp'));
-  const tileCorridor = loadImage(ASSET('tiles/tile-5.webp'));
-  const tileIsland = loadImage(ASSET('tiles/tile-0.webp'));
-  // Video-match: Milan's tile art is a solid-black fill plus the teal-green
-  // rim; recolour just the black fill to the sampled navy (see module-header
-  // comment) once per source image, so the bake loop below keeps drawing
-  // these exactly like the raw Image objects but gets the right base colour
-  // for free, with zero added per-chunk or per-frame cost.
-  const WALL_FILL_COLOR = [34, 56, 112];
-  const WALL_FILL_THRESHOLD = 24; // tile art's fill is pure (0,0,0); the rim art is nowhere near this dark
-  // Round-3 fix (Daniel's screenshot review: "the rim is thicker and a
-  // different, bluer green [(11,85,78)] at concave/convex corners than along
-  // straight edges [(2,88,62)] -- every step corner shows a dark blob"). The
-  // source tile images (tile-2/2A edge, tile-3 corner, tile-5 corridor) each
-  // carry their own rim colour baked in, close but not identical; recolour
-  // that too (same technique this function already uses for the black fill)
-  // so every tile's rim comes out the one canonical `RIM_TARGET` colour, the
-  // same one `RIM_COLOR`/`drawNubTile`'s procedural rim below already use --
-  // no more per-corner colour seam. Any opaque pixel that isn't the near-
-  // black fill is rim art at this style's two-tone tile art (fill + rim), so
-  // no separate greenish-hue detection is needed.
+  // Wall rendering (round-7 rewrite -- Daniel's screenshot review round 6,
+  // item 1/2/6): walls used to be assembled from Milan's per-tile marching-
+  // squares tileset (`play/assets/tiles/tile-*.webp`, picked by
+  // `pickWallArt`) plus a procedural cap (`drawNubTile`) for 1-wide stubs and
+  // a procedural wedge (`carveConcaveCorner`) for inward corners. Each piece
+  // carried its OWN rim stroke, composited edge-to-edge against its
+  // neighbours' own rim strokes -- at a stub or a concave corner those two
+  // independently-drawn rims never quite lined up (a doubled rim, a notch of
+  // water, or the tile's own square corner peeking through), exactly the
+  // "lollipop nub" and "rim break" bugs the review kept catching across
+  // rounds 4-6. Replaced with the fix the round-6 log deferred: trace ONE
+  // continuous outline per connected solid region with a grid boundary walk
+  // (the tile-grid analogue of marching squares -- see `traceWallOutlines`),
+  // smooth it with a few Chaikin corner-cutting passes (`chaikinSmoothLoop`)
+  // so every corner, convex or concave, rounds the same continuous way a
+  // stretch of straight rim does, then fill and stroke that single path once
+  // per chunk. A 1-wide stub is just a few extra points on the same path --
+  // there is no separate piece to seam against its neighbour, and no per-
+  // tile art to keep in sync, so Milan's `tiles/tile-*.webp` set is no longer
+  // loaded for walls (see ASSETS.md).
+  const WALL_FILL_COLOR = [34, 56, 112]; // sampled from the promo-video reference frames
   const RIM_TARGET = [25, 109, 94]; // sampled from the promo-video reference frames
-  function recolorWallTile(img) {
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth;
-    c.height = img.naturalHeight;
-    const cctx = c.getContext('2d');
-    cctx.drawImage(img, 0, 0);
-    const id = cctx.getImageData(0, 0, c.width, c.height);
-    const d = id.data;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] === 0) continue;
-      if (d[i] < WALL_FILL_THRESHOLD && d[i + 1] < WALL_FILL_THRESHOLD && d[i + 2] < WALL_FILL_THRESHOLD) {
-        d[i] = WALL_FILL_COLOR[0]; d[i + 1] = WALL_FILL_COLOR[1]; d[i + 2] = WALL_FILL_COLOR[2];
-      } else {
-        d[i] = RIM_TARGET[0]; d[i + 1] = RIM_TARGET[1]; d[i + 2] = RIM_TARGET[2];
-      }
-    }
-    cctx.putImageData(id, 0, 0);
-    return c;
-  }
-  // Recoloured tile canvases, filled in as each source image loads; bakeChunkWalls
-  // draws from here (via pickWallArt's `key`) instead of the raw Image objects.
-  const wallArt = {};
   const caveArt = loadImage(ASSET('bg-cave.webp'));
   // Feathered once the source image loads: the raw art is a bright cave
   // mouth on a big flat near-black rectangle, and even under a 'screen'
@@ -204,39 +172,6 @@ export function createRenderer(ctx, world) {
     green: loadImage(ASSET('shell-green.webp')),
     red: loadImage(ASSET('shell-red.webp')),
   };
-  const wallTileSources = { full: tileFull, edgeA: tileEdgeA, edgeB: tileEdgeB, corner: tileCorner, corridor: tileCorridor, island: tileIsland };
-  let tilesReady = false;
-  let pending = Object.keys(wallTileSources).length;
-  function onTileReady() { if (--pending === 0) tilesReady = true; }
-  // Round-3 fix (Daniel's screenshot review: "when one asset request fails
-  // (net::ERR_CONNECTION_REFUSED), the game silently renders with no walls
-  // at all... nothing indicates an error"). `tilesReady` used to gate ALL
-  // wall baking on EVERY tile image loading -- one failed request meant
-  // `pending` never reached 0, so `getBakedWalls` returned null forever and
-  // the whole level's geometry (and its rim art, the player's only visual
-  // read on where rock is) vanished with no signal at all. Now: (1) retry a
-  // failed tile image a couple of times (a transient network blip, like
-  // Daniel's first run, often clears on its own); (2) if it still fails,
-  // give up on that ONE tile key (not the whole bake) and let `tilesReady`
-  // still flip true once every other tile has resolved; `bakeChunkWalls`
-  // below falls back to a flat rock fill + rim stroke for any tile whose art
-  // never arrived, so the level is always at least readable as rock.
-  for (const [key, img] of Object.entries(wallTileSources)) {
-    const src = img.src;
-    let tries = 0;
-    const retry = () => {
-      tries++;
-      img.src = tries === 1 ? src : `${src}${src.includes('?') ? '&' : '?'}retry=${tries}`;
-    };
-    img.addEventListener('load', () => { wallArt[key] = recolorWallTile(img); onTileReady(); }, { once: true });
-    img.addEventListener('error', () => {
-      // eslint-disable-next-line no-console
-      console.warn(`[render] wall tile "${key}" failed to load (attempt ${tries})`);
-      if (tries < 3) setTimeout(retry, 250 * tries);
-      else onTileReady(); // give up on this tile only; bakeChunkWalls falls back to a flat fill
-    });
-  }
-
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
 
@@ -251,159 +186,98 @@ export function createRenderer(ctx, world) {
     return v === 1 || v === 2;
   }
 
-  // Pick which tileset art (and rotation, in quarter turns clockwise) draws
-  // a solid tile given which of its 4 orthogonal neighbours are open water.
-  // The art's default orientation is edge(s)-on-top(-left); rotating by the
-  // returned quarter-turn count moves that edge to match.
-  function pickWallArt(openN, openE, openS, openW, altParity) {
-    const count = (openN ? 1 : 0) + (openE ? 1 : 0) + (openS ? 1 : 0) + (openW ? 1 : 0);
-    if (count === 0) return { key: 'full', turns: 0 };
-    if (count === 4) return { key: 'island', turns: 0 }; // true isolated tile, the only case tile-0 actually depicts
-    if (count === 3) {
-      // A 1-wide nub/peninsula tip: solid on exactly one side, still
-      // attached to real rock there. Round-2 fix (Daniel's screenshot
-      // review: "the level is still full of lone circles, and many of them
-      // look broken" -- tile-0 is a floating-island sprite with a rim baked
-      // in on all 4 sides, so using it here drew a rim across the one side
-      // that's actually flush against solid rock, leaving a gap/flat-cut
-      // seam there). No tileset art fits "3 open, 1 closed", so this is
-      // drawn procedurally by `drawNubTile` (below) as a rounded cap flush
-      // against its one solid neighbour instead. `turns` picks which side
-      // is the closed one, same rotation convention as every other case
-      // here (0=N, 1=E, 2=S, 3=W).
-      const turns = !openN ? 0 : !openE ? 1 : !openS ? 2 : 3;
-      return { key: 'nub', turns };
-    }
-    if (count === 1) {
-      const turns = openN ? 0 : openE ? 1 : openS ? 2 : 3;
-      return { key: altParity ? 'edgeB' : 'edgeA', turns };
-    }
-    // count === 2
-    if (openN && openS) return { key: 'corridor', turns: 0 };
-    if (openE && openW) return { key: 'corridor', turns: 1 };
-    const turns = (openN && openW) ? 0 : (openN && openE) ? 1 : (openE && openS) ? 2 : 3; // 3 = S+W
-    return { key: 'corner', turns };
-  }
-
-  // Round-2 fix: procedural art for a "nub" tile (pickWallArt's count===3
-  // case) -- flat full-width on the one closed side (flush against the real
-  // solid neighbour, no gap), rounded on the other three. `turns` rotates
-  // the canonical orientation (closed side at the top) to the true closed
-  // direction, same convention `bakeChunkWalls` already uses for rotating
-  // the sprite-based tiles.
-  // Round-4 fix (Daniel's screenshot review round 3: "one-tile-wide peninsula
-  // ends/stubs draw as a flat, rimless half-square plus half a rimmed
-  // semicircle"). The old shape only rounded the two BOTTOM corners of the
-  // tile (`arcTo(...,r)` with r < hw), leaving the straight left/right edges
-  // unrounded above that -- and the rim stroke started/ended 0.1*hw short of
-  // the flat (closed) edge's own corners, so it never quite reached the
-  // corners where a neighbouring corridor tile's own rim continues. That
-  // combination reads as exactly the bug: a rounded bit at the bottom, a
-  // flat unrimmed edge above it. Redrawn as a TRUE semicircular cap (radius
-  // = hw, centred on the open edge) on a flat-topped rectangle -- the cap
-  // continues smoothly from both straight side edges instead of just
-  // rounding their corners -- with the rim stroke running the full open
-  // path corner-to-corner (both long straight sides plus the cap), so it
-  // meets the flat (closed, unrimmed) edge exactly at its own two corners
-  // and lines up with whatever rim a neighbouring corridor/edge tile draws
-  // there.
-  // Round-5 fix (Daniel's screenshot review round 4, issue 1: "the cap
-  // sticks out past the stem as square shoulders, joins it along a hard
-  // straight line, and cuts off the neighbour's rim and concave-corner
-  // curves"). The round-4 shape (a full-tile-width flat top edge dropping
-  // straight down the sides to a semicircle) is exactly that: the straight
-  // sides met the semicircle's own flat diameter at a sharp corner (the
-  // "square shoulder"), and the flat top ran the tile's FULL width, wider
-  // than a sprite tile's own rim-inset rock face, so it visibly overhung the
-  // neighbour it welds onto. Two changes: inset the flush (closed) top edge
-  // by about 0.125 tile each side -- roughly the same inset the sprite
-  // tiles' own rim sits at -- so the cap no longer sticks out past the stem,
-  // and fillet (`arcTo`) the two corners where that inset edge meets the
-  // open sides instead of turning a hard corner into the semicircle, so the
-  // whole open boundary (fillet, straight run down to the arc's start,
-  // semicircle, mirrored fillet) reads as one continuous curve with no
-  // sharp transition anywhere -- no more "stepped chamfer" on either corner.
-  function drawNubTile(bctx, px, py, s, turns) {
-    const hw = s / 2;
-    // topR: how far each of the two corners nearest the flush (closed) edge
-    // is inset/filleted -- keeps the flat edge narrower than the tile (so it
-    // no longer overhangs the stem it welds onto) and rounds its corners
-    // instead of leaving them sharp. botR: the far corners' radius, set to
-    // exactly half the tile width so those two quarter-circles meet at the
-    // tile's own centreline with a zero-length straight run between them --
-    // i.e. one continuous 180-degree curve, same as an explicit semicircle,
-    // built the same well-tested way any rounded rect is (four `arcTo`
-    // calls, standard corner-by-corner order -- the earlier version here
-    // free-handed the two side fillets against a separate `arc()` call and
-    // got the winding wrong for half the rotations, so three of every four
-    // nubs rendered as almost bare fill with no rim at all).
-    const x = -hw, y = -hw, w = s, h = s;
-    const topR = s * 0.15;
-    const botR = hw;
-    function boundary() {
-      bctx.lineTo(x + w - topR, y);
-      bctx.arcTo(x + w, y, x + w, y + botR, topR);
-      bctx.arcTo(x + w, y + h, x + w - botR, y + h, botR);
-      bctx.lineTo(x + botR, y + h);
-      bctx.arcTo(x, y + h, x, y + h - botR, botR);
-      bctx.arcTo(x, y, x + topR, y, topR);
-    }
-    bctx.save();
-    bctx.beginPath();
-    bctx.rect(px, py, s, s);
-    bctx.clip();
-    bctx.translate(px + hw, py + hw);
-    bctx.rotate(turns * (Math.PI / 2));
-    // Fill: the flush top edge (flat, unrimmed -- matches the real solid
-    // neighbour it welds onto), inset by `topR` each side, plus the whole
-    // open boundary (three open sides), closed.
-    bctx.beginPath();
-    bctx.moveTo(x + topR, y);
-    boundary();
-    bctx.closePath();
-    bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
-    bctx.fill();
-    // Rim: just the open boundary, never the flush top edge.
-    bctx.beginPath();
-    bctx.moveTo(x + w - topR, y);
-    boundary();
-    bctx.strokeStyle = RIM_COLOR;
-    bctx.lineWidth = s * 0.1;
-    bctx.lineJoin = 'round';
-    bctx.stroke();
-    bctx.restore();
-  }
-
-  // Concave (inward) corners -- where both edges touching that corner are
-  // solid but the diagonal neighbour beyond it is open -- have no single
-  // tileset piece for every count, so round them procedurally: a wedge of
-  // the tileset's own rim colour, then a smaller destination-out wedge to
-  // cut the actual water notch. k = 0..3 for TL/TR/BR/BL, matching the
-  // quarter-turn convention above.
-  // Round-3 fix (Daniel's screenshot review: rim reads darker than the video
-  // -- measured (4,83,64) vs. the video's (25,109,94)). Brightened to match;
-  // shares its RGB with `RIM_TARGET` above so the procedural rim (concave
-  // corners, `drawNubTile`, the fallback tile below) and the recoloured
-  // sprite rim are the exact same colour everywhere.
   const RIM_COLOR = `rgba(${RIM_TARGET.join(',')},0.95)`;
-  function carveConcaveCorner(bctx, cx, cy, k, r) {
-    const a0 = k * (Math.PI / 2), a1 = a0 + Math.PI / 2;
-    bctx.save();
+
+  // Trace every solid region's outer (and any inner/hole) boundary as a set
+  // of closed polylines, using the standard grid-boundary-walk form of
+  // marching squares: for each solid tile, emit a directed unit edge for
+  // each side that borders a non-solid tile, walked clockwise around that
+  // tile's own perimeter (N: TL->TR, E: TR->BR, S: BR->BL, W: BL->TL). Two
+  // solid tiles sharing an edge never both emit it (only exposed sides do),
+  // so a 1-wide stub contributes 3 edges and simply continues the same path
+  // its neighbours' edges already trace -- there is no separate "nub piece"
+  // to seam against them. Edges are chained start-point-to-end-point into
+  // closed loops; `used` flags (rather than a start-point key) guard the rare
+  // diagonal-touch case where two different edges could share a start point.
+  function traceWallOutlines(chunk, entry, s) {
+    const solidAt = (tx, ty) => {
+      if (tx < 0 || tx >= chunkW) return true;
+      if (ty < 0 || ty >= chunkH) {
+        const v = world.tileAt(tx, entry.yOffset + ty);
+        return v === 1 || v === 2;
+      }
+      return isSolidLocal(chunk, tx, ty);
+    };
+    const key = (x, y) => `${x},${y}`;
+    const edgesByStart = new Map();
+    const addEdge = (x1, y1, x2, y2) => {
+      const k = key(x1, y1);
+      let arr = edgesByStart.get(k);
+      if (!arr) { arr = []; edgesByStart.set(k, arr); }
+      arr.push({ x: x2, y: y2, used: false });
+    };
+    for (let ty = 0; ty < chunkH; ty++) {
+      for (let tx = 0; tx < chunkW; tx++) {
+        if (!isSolidLocal(chunk, tx, ty)) continue;
+        const x0 = tx * s, y0 = ty * s, x1 = x0 + s, y1 = y0 + s;
+        if (!solidAt(tx, ty - 1)) addEdge(x0, y0, x1, y0); // North
+        if (!solidAt(tx + 1, ty)) addEdge(x1, y0, x1, y1); // East
+        if (!solidAt(tx, ty + 1)) addEdge(x1, y1, x0, y1); // South
+        if (!solidAt(tx - 1, ty)) addEdge(x0, y1, x0, y0); // West
+      }
+    }
+    const loops = [];
+    for (const [startKey, arr] of edgesByStart) {
+      for (const startEdge of arr) {
+        if (startEdge.used) continue;
+        const loop = [];
+        let [curX, curY] = startKey.split(',').map(Number);
+        let curEdge = startEdge;
+        let guard = 0;
+        while (curEdge && !curEdge.used && guard++ < 20000) {
+          curEdge.used = true;
+          loop.push({ x: curX, y: curY });
+          curX = curEdge.x; curY = curEdge.y;
+          const nextArr = edgesByStart.get(key(curX, curY));
+          curEdge = nextArr ? nextArr.find((e) => !e.used) : null;
+        }
+        if (loop.length >= 3) loops.push(loop);
+      }
+    }
+    return loops;
+  }
+
+  // Chaikin corner-cutting: replaces every vertex with two points a fraction
+  // `ratio` in from each of its neighbouring edges, a few times over. Applied
+  // uniformly to a whole traced loop it rounds every corner the same
+  // continuous way -- convex, concave, or the sharp corners of a 1-wide stub
+  // alike -- with no separate per-corner case, which is exactly what the
+  // round-6 review asked for in place of the old per-tile-piece rim system.
+  // Long straight runs of collinear points stay straight (each cut point
+  // still lies on the same line), so plain rims stay clean rather than
+  // picking up the old procedural jitter.
+  function chaikinSmoothLoop(points, iterations, ratio) {
+    let pts = points;
+    for (let it = 0; it < iterations; it++) {
+      const next = [];
+      const n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = pts[i], p1 = pts[(i + 1) % n];
+        next.push({ x: p0.x + (p1.x - p0.x) * ratio, y: p0.y + (p1.y - p0.y) * ratio });
+        next.push({ x: p0.x + (p1.x - p0.x) * (1 - ratio), y: p0.y + (p1.y - p0.y) * (1 - ratio) });
+      }
+      pts = next;
+    }
+    return pts;
+  }
+
+  function pathFromLoops(bctx, loops) {
     bctx.beginPath();
-    bctx.moveTo(cx, cy);
-    bctx.arc(cx, cy, r, a0, a1);
-    bctx.closePath();
-    bctx.fillStyle = RIM_COLOR;
-    bctx.fill();
-    bctx.restore();
-    bctx.save();
-    bctx.globalCompositeOperation = 'destination-out';
-    bctx.beginPath();
-    bctx.moveTo(cx, cy);
-    bctx.arc(cx, cy, r * 0.6, a0, a1);
-    bctx.closePath();
-    bctx.fill();
-    bctx.restore();
+    for (const loop of loops) {
+      bctx.moveTo(loop[0].x, loop[0].y);
+      for (let i = 1; i < loop.length; i++) bctx.lineTo(loop[i].x, loop[i].y);
+      bctx.closePath();
+    }
   }
 
   // --- Wall surface texture: seamless fBm noise, baked once (Daniel's
@@ -531,15 +405,30 @@ export function createRenderer(ctx, world) {
     const bctx = canvas.getContext('2d');
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Round-1 fix (Daniel's screenshot review: the horizontal seam / "wall
-    // borders look broken"): a tile's row above/below a chunk boundary used
-    // to just assume the neighbouring chunk was solid there, which baked a
-    // spurious closed rim cap across passages that actually continue into
-    // the next chunk -- a solid-looking line across the whole width at every
-    // chunk seam. Ask the real world tile (crossing into the neighbouring
-    // chunk via world.tileAt, world.js) for the row above/below instead;
+    // Fill + rim: one traced-and-smoothed outline per connected solid
+    // region (see `traceWallOutlines`/`chaikinSmoothLoop` above), instead of
+    // per-tile art pieces each carrying their own rim stroke. Round-1 fix
+    // (Daniel's screenshot review: the horizontal seam / "wall borders look
+    // broken") still applies inside `traceWallOutlines`/the soft-tile pass
+    // below: a tile's row above/below a chunk boundary asks the real world
+    // tile (crossing into the neighbouring chunk via `world.tileAt`,
+    // world.js) instead of assuming solid, so passages that continue into
+    // the next chunk don't bake a spurious closed rim cap across them;
     // left/right of the chunk is still always solid (the level's real outer
     // border, not a chunk seam).
+    const loops = traceWallOutlines(chunk, entry, s).map((loop) => chaikinSmoothLoop(loop, 3, 0.22));
+    bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+    pathFromLoops(bctx, loops);
+    bctx.fill('nonzero');
+    bctx.strokeStyle = RIM_COLOR;
+    bctx.lineWidth = s * 0.1;
+    bctx.lineJoin = 'round';
+    bctx.lineCap = 'round';
+    pathFromLoops(bctx, loops);
+    bctx.stroke();
+
+    // Soft (breakable) rock tint + texture, per tile, unchanged from before:
+    // the traced outline only replaces the fill/rim, not this per-tile pass.
     const solidAt = (tx, ty) => {
       if (tx < 0 || tx >= chunkW) return true;
       if (ty < 0 || ty >= chunkH) {
@@ -552,33 +441,8 @@ export function createRenderer(ctx, world) {
     for (let ty = 0; ty < chunkH; ty++) {
       for (let tx = 0; tx < chunkW; tx++) {
         const v = chunk.tiles[ty * chunkW + tx];
-        if (v === 0) continue;
+        if (v !== 2) continue;
         const px = tx * s, py = ty * s;
-        const openN = !solidAt(tx, ty - 1);
-        const openE = !solidAt(tx + 1, ty);
-        const openS = !solidAt(tx, ty + 1);
-        const openW = !solidAt(tx - 1, ty);
-        const { key, turns } = pickWallArt(openN, openE, openS, openW, (tx + ty) % 2 === 0);
-        if (key === 'nub') {
-          drawNubTile(bctx, px, py, s, turns);
-        } else if (wallArt[key]) {
-          bctx.save();
-          bctx.translate(px + s / 2, py + s / 2);
-          bctx.rotate(turns * (Math.PI / 2));
-          bctx.drawImage(wallArt[key], -s / 2, -s / 2, s, s);
-          bctx.restore();
-        } else {
-          // Round-3 fix: this tile's art image never loaded (see the
-          // wallTileSources retry/give-up block above) -- draw a flat rock
-          // fill with a rim stroke instead of leaving this tile as invisible
-          // open water, so level geometry is never silently missing.
-          bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
-          bctx.fillRect(px, py, s, s);
-          bctx.strokeStyle = RIM_COLOR;
-          bctx.lineWidth = s * 0.08;
-          bctx.strokeRect(px + bctx.lineWidth / 2, py + bctx.lineWidth / 2, s - bctx.lineWidth, s - bctx.lineWidth);
-        }
-
         // Round-2 fix (Daniel's screenshot review: soft rock buried inside
         // solid rock rendered as a flat blocky patch with hard square edges
         // and no rim -- looked like a missing texture, no counterpart in the
@@ -586,26 +450,18 @@ export function createRenderer(ctx, world) {
         // open face to be reached/blown open from; a fully-buried v===2 tile
         // (surrounded by solid rock on all 4 sides) stays visually identical
         // to normal rock instead.
-        if (v === 2 && (openN || openE || openS || openW)) {
-          // Soft (breakable) rock: same shape, a warm coral tint (flat base
-          // colour so it reads as diggable/distinct even before its own
-          // noise pass below) so it stays distinct from unbreakable
-          // (green-rimmed) walls.
-          bctx.save();
-          bctx.globalCompositeOperation = 'source-atop';
-          bctx.fillStyle = 'rgba(210,130,80,0.30)';
-          bctx.fillRect(px, py, s, s);
-          bctx.restore();
-          softTiles.push({ px, py });
-        }
-
-        // Round any concave corner the picked art doesn't already show an
-        // open edge at (an open edge there is already handled by the art).
-        const r = s * 0.32;
-        if (!openN && !openW && !solidAt(tx - 1, ty - 1)) carveConcaveCorner(bctx, px, py, 0, r);
-        if (!openN && !openE && !solidAt(tx + 1, ty - 1)) carveConcaveCorner(bctx, px + s, py, 1, r);
-        if (!openS && !openE && !solidAt(tx + 1, ty + 1)) carveConcaveCorner(bctx, px + s, py + s, 2, r);
-        if (!openS && !openW && !solidAt(tx - 1, ty + 1)) carveConcaveCorner(bctx, px, py + s, 3, r);
+        const exposed = !solidAt(tx, ty - 1) || !solidAt(tx + 1, ty) || !solidAt(tx, ty + 1) || !solidAt(tx - 1, ty);
+        if (!exposed) continue;
+        // Soft (breakable) rock: same shape, a warm coral tint (flat base
+        // colour so it reads as diggable/distinct even before its own
+        // noise pass below) so it stays distinct from unbreakable
+        // (green-rimmed) walls.
+        bctx.save();
+        bctx.globalCompositeOperation = 'source-atop';
+        bctx.fillStyle = 'rgba(210,130,80,0.30)';
+        bctx.fillRect(px, py, s, s);
+        bctx.restore();
+        softTiles.push({ px, py });
       }
     }
     // Surface texture pass, baked once here (never per-frame): the seamless
@@ -621,7 +477,6 @@ export function createRenderer(ctx, world) {
   }
 
   function getBakedWalls(entry) {
-    if (!tilesReady) return null;
     const cached = wallCache.get(entry.index);
     if (!cached || entry.chunk.dirty) {
       bakeChunkWalls(entry);
@@ -862,7 +717,6 @@ export function createRenderer(ctx, world) {
   // same rock fill + noise the walls use, so it reads as more cave rather
   // than open water.
   function drawOuterRock(canvasW, canvasH) {
-    if (!tilesReady) return;
     const left = worldToScreen(camera, canvasW, canvasH, 0, 0).x;
     const right = worldToScreen(camera, canvasW, canvasH, chunkW, 0).x;
     ctx.save();

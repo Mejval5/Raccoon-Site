@@ -43,11 +43,30 @@ function collideWithWalls(e, world) {
   resolveCircleVsGrid(e, { isSolid: (tx, ty) => world.isSolid(tx, ty) });
 }
 
-const ENEMY_MIN_SEP = 0.55; // tiles, centre to centre -- "keep a minimum separation between enemies"
+// Round-7 fix (Daniel's screenshot review round 6, item 3: "piranhas stack
+// into a double-decker"). The old flat 0.55-tile minimum was tuned to the
+// enemies' small physics collision radii (PIRANHA_RADIUS=0.4 etc, used for
+// octopus-contact damage only), not their much bigger drawn sprites -- a
+// piranha's art reads about 1.8 tiles long (enemy-draw.js's own round-2 note
+// on the Unity collider it was matched to), so two chasing piranhas could sit
+// well inside 0.55 tiles of each other and overlap by more than half their
+// length. Each kind now carries its own approximate visual half-extent
+// (`ENEMY_SEP_HALF_EXTENT`, tiles) and a pair's minimum separation is the SUM
+// of the two half-extents -- close to the sprite's own footprint -- instead
+// of one fixed constant for every kind. Kinds not listed keep the old
+// half-extent (0.275, i.e. the previous 0.55 split evenly).
+const ENEMY_MIN_SEP_DEFAULT_HALF = 0.275;
+const ENEMY_SEP_HALF_EXTENT = {
+  piranha: 0.68, // two piranhas -> 1.36 tiles apart, inside the review's suggested 1.2-1.5 range
+  crab: 0.45,
+  manta: 0.55,
+};
+function sepHalfExtent(kind) { return ENEMY_SEP_HALF_EXTENT[kind] ?? ENEMY_MIN_SEP_DEFAULT_HALF; }
 
 /** Cheap O(n^2) pairwise separation pass (enemy counts per chunk are small,
- * single digits) -- pushes any two moving enemies that drifted inside
- * ENEMY_MIN_SEP apart back out along the line between them, split evenly. */
+ * single digits) -- pushes any two moving enemies that drifted closer than
+ * the sum of their visual half-extents back out along the line between them,
+ * split evenly. */
 function separateEnemies(list) {
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
@@ -55,10 +74,11 @@ function separateEnemies(list) {
     for (let j = i + 1; j < list.length; j++) {
       const b = list[j];
       if (b.dead || !b.moving) continue;
+      const minSep = sepHalfExtent(a.kind) + sepHalfExtent(b.kind);
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
-      if (d >= ENEMY_MIN_SEP || d < 1e-6) continue;
-      const push = (ENEMY_MIN_SEP - d) / 2;
+      if (d >= minSep || d < 1e-6) continue;
+      const push = (minSep - d) / 2;
       const nx = dx / d, ny = dy / d;
       a.x -= nx * push; a.y -= ny * push;
       b.x += nx * push; b.y += ny * push;

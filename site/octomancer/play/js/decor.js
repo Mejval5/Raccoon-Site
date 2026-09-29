@@ -45,7 +45,19 @@ const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 // creature here). Dropped from spawn entirely; decor-draw.js's `eye`/
 // `eyeblue` image loads and draw branch are removed too, so there's no dead
 // reference left pointing at them.
-export const CRITTER_KINDS_WALL = ['rune1', 'rune3', 'rune5', 'bush2', 'bushmini'];
+// Round-7 fix (Daniel's screenshot review round 6, item 5: "bush decor shows
+// as a blurry, outline-less green smudge, not a plant"). `decor-bushmini.
+// webp`'s source art is itself a soft, edgeless glow blob (not a mistake in
+// how it was drawn here -- there is no crisp outline to preserve), so no
+// filter change fixes it; dropped from spawn entirely, same call already
+// made for the other art that never read as intended (`eye`/`eyeblue`,
+// round 6; `critter-jelly`, round 3). `bush2` DOES have real leaf/frond
+// shapes and stays, but see the `!ceilingCap` check below (findWallCritters)
+// -- the review's other complaint ("under ceilings it looks like a splat, or
+// a dripping smear") was the same asset hung upside-down with its own
+// gravity-shaped silhouette now pointing the wrong way, which no filter or
+// flip fixes either; it now only spawns growing up from a floor.
+export const CRITTER_KINDS_WALL = ['rune1', 'rune3', 'rune5', 'bush2'];
 // Round-3 fix (Daniel's screenshot review: "the faint open-water 'jelly'
 // critter reads as a UI glyph, a flat teal dot above two dashes, a bit like
 // a person icon -- nothing like it appears in the promo video"). The
@@ -145,17 +157,24 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // a bush -- its rim curves away right where the bush would sit,
         // leaving a gap. Skip bush placements there (other kinds keep
         // anchoring fine at a corner, e.g. eyes/runes).
-        if ((kind === 'bush2' || kind === 'bushmini') && (floorCap || ceilingCap)) {
+        if (kind === 'bush2' && (floorCap || ceilingCap)) {
           const cornerOpen = (nx) => nx < 0 || nx >= chunkW || chunk.tiles[anchorSolidY * chunkW + nx] === 0;
           if (cornerOpen(anchorSolidX - 1) || cornerOpen(anchorSolidX + 1)) continue;
         }
         // Round-5 fix (Daniel's screenshot review round 4, issue 2: "side-wall
         // bushes still float detached in open water" -- the promo video only
-        // ever shows bush2/bushmini growing out of a floor or ceiling; a
-        // side-wall face was never a placement the art was drawn for, and no
-        // anchor depth reads right there. Drop the kind entirely for a plain
+        // ever shows bush2 growing out of a floor or ceiling; a side-wall
+        // face was never a placement the art was drawn for, and no anchor
+        // depth reads right there. Drop the kind entirely for a plain
         // side-wall anchor rather than trying to tune INTO_WALL further.
-        if ((kind === 'bush2' || kind === 'bushmini') && wallSide && !floorCap && !ceilingCap) continue;
+        if (kind === 'bush2' && wallSide && !floorCap && !ceilingCap) continue;
+        // Round-7 fix (Daniel's screenshot review round 6, item 5): a
+        // ceiling-hung bush2 read as "a splat, or a dripping olive-yellow
+        // smear with specks trailing below" -- the sprite's own silhouette
+        // (a plant growing up, wide base tapering to fine fronds at the top)
+        // is only readable that way up; flipped upside-down under a ceiling
+        // it inverts into exactly that drip/smear shape. Floor-only.
+        if (kind === 'bush2' && ceilingCap) continue;
         // Same "end of a wall run" corner check floor/ceiling anchors already
         // get above, applied to side-wall anchors too: skip whenever the row
         // above or below the anchor's solid neighbour is open, i.e. the rock
@@ -192,7 +211,7 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         // (removed above), so this simplifies to just the rune check.
         const isRune = kind.startsWith('rune');
         const isRimKind = isRune;
-        const isBush = kind === 'bush2' || kind === 'bushmini';
+        const isBush = kind === 'bush2';
         let wallDir = 0;
         if (wallSide) wallDir = chunk.tiles[y * chunkW + (x + 1)] !== 0 ? 1 : -1;
         // Round-5 fix (Daniel's screenshot review round 4, issue 4: "runes

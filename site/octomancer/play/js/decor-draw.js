@@ -31,7 +31,6 @@ const IMAGES = {
   rune3: loadImage(ASSET('decor-rune3.webp')),
   rune5: loadImage(ASSET('decor-rune5.webp')),
   bush2: loadImage(ASSET('decor-bush2.webp')),
-  bushmini: loadImage(ASSET('decor-bushmini.webp')),
 };
 
 function ready(img) { return img.complete && img.naturalWidth > 0; }
@@ -75,6 +74,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   if (!ready(img)) return;
   let worldSize = 0.6;
   let dx = 0, dy = 0, rot = 0, scaleY = 1, alpha = 1;
+  let facingRight = null; // non-null overrides c.flip with a direction-of-travel mirror (fish, round-7)
   const t = reduced ? 0 : time;
 
   if (c.kind === 'fish') {
@@ -82,8 +82,20 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // nearly octopus-sized; octo-video-fish-swarm.webp shows them at about a
     // third of the octopus).
     worldSize = 0.25;
-    dx = Math.sin(t * 0.6 + c.phase) * 0.5;
+    const phaseArg = t * 0.6 + c.phase;
+    dx = Math.sin(phaseArg) * 0.5;
     dy = Math.sin(t * 1.3 + c.phase * 1.7) * 0.12;
+    // Round-7 fix (Daniel's screenshot review round 6, item 4: "ambient fish
+    // all face right and never flip... half the time they swim backwards").
+    // `critter-fish.webp`'s default art faces -x (head/nose to the left,
+    // same convention as the piranha sprite); the old code never mirrored it
+    // at all, so every fish drew nose-left even on the half of its sin()
+    // oscillation where dx's own derivative (velocity) pointed +x -- tail
+    // first, and identical for every fish on screen. `cos(phaseArg)` is that
+    // derivative's sign (d/dt of sin is cos); mirror the sprite whenever it's
+    // positive (moving +x/right) so the fish always faces the way it's
+    // actually swimming.
+    facingRight = Math.cos(phaseArg) > 0;
   } else if (c.kind === 'jelly') {
     worldSize = 0.55;
     dy = Math.sin(t * 0.9 + c.phase) * 0.2;
@@ -106,7 +118,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // blue tint below (drawn after the sprite, `source-atop`) replaces the
     // source art's white with the video's pale-blue rune colour.
     alpha = 0.3 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase));
-  } else if (c.kind === 'bush2' || c.kind === 'bushmini') {
+  } else if (c.kind === 'bush2') {
     worldSize = 0.55;
     rot = Math.sin(t * 0.8 + c.phase) * 0.1;
   }
@@ -120,8 +132,10 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   if (c.onCeiling) ctx.scale(1, -1); // hang the sprite from the ceiling right-side up in world space
   if (rot) ctx.rotate(rot);
   // Side-wall critters face outward from the wall they're anchored into
-  // (wallDir -1/+1); everything else keeps its deterministic random flip.
-  const flip = c.wallDir ? c.wallDir < 0 : c.flip;
+  // (wallDir -1/+1); a fish (facingRight, round-7) mirrors to match its
+  // current direction of travel; everything else keeps its deterministic
+  // random flip.
+  const flip = c.wallDir ? c.wallDir < 0 : facingRight !== null ? facingRight : c.flip;
   ctx.scale(flip ? -1 : 1, scaleY);
   // Round-2 fix (Daniel's screenshot review): the bright lime `bushmini`
   // blobs read far more saturated than the video's pale sage/beige plants;
@@ -137,7 +151,16 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // ceiling with a drooping leaf, which reads exactly like a dripping
   // jellyfish). Desaturating without the sepia hue-shift keeps it a pale,
   // muted GREEN -- what round-2/4 actually asked for -- instead of yellow.
-  if (c.kind === 'bushmini' || c.kind === 'bush2') ctx.filter = 'grayscale(0.35) saturate(0.8) brightness(1.05)';
+  // Round-7 fix (Daniel's screenshot review round 6, item 5: "bush decor
+  // shows as a blurry, outline-less green smudge"). A `ctx.filter` graph
+  // forces the browser to rasterize the sprite through an offscreen filter
+  // pass rather than blit it directly -- fine for a few pixels of hue/
+  // brightness shift, but stacked on top of the image already being scaled
+  // up from a small source it read as soft/blurry rather than crisp,
+  // unlike every other sprite in the game (all drawn filter-free). Dropped:
+  // `bushmini` is gone entirely (see decor.js), and `bush2`'s own source art
+  // is a plausible muted green already, so it draws unfiltered/native now,
+  // same as every other critter/decor sprite.
   const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
   const drawImg = isRune ? (getTintedRune(c.kind) || img) : img;
   ctx.drawImage(drawImg, -w / 2, -h / 2, w, h);

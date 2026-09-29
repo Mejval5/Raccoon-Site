@@ -5,21 +5,21 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 
 | play/assets file | source (octomancer-unity/) | owner |
 |---|---|---|
-| `assets/tiles/tile-0.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\0.png` | Milan Švancara |
-| `assets/tiles/tile-1.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\1.png` | Milan Švancara |
+| `assets/tiles/tile-0.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\0.png` | Milan Švancara |
+| `assets/tiles/tile-1.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\1.png` | Milan Švancara |
 | `assets/tiles/tile-2-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-2.png` | Milan Švancara |
 | `assets/tiles/tile-2-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-3.png` | Milan Švancara |
 | `assets/tiles/tile-2-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2-4.png` | Milan Švancara |
-| `assets/tiles/tile-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2.png` | Milan Švancara |
-| `assets/tiles/tile-2A.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2A.png` | Milan Švancara |
+| `assets/tiles/tile-2.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2.png` | Milan Švancara |
+| `assets/tiles/tile-2A.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\2A.png` | Milan Švancara |
 | `assets/tiles/tile-3-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\3-2.png` | Milan Švancara |
-| `assets/tiles/tile-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\3.png` | Milan Švancara |
+| `assets/tiles/tile-3.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\3.png` | Milan Švancara |
 | `assets/tiles/tile-4-2.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-2.png` | Milan Švancara |
 | `assets/tiles/tile-4-3.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-3.png` | Milan Švancara |
 | `assets/tiles/tile-4-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-4.png` | Milan Švancara |
 | `assets/tiles/tile-4-5.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4-5.png` | Milan Švancara |
 | `assets/tiles/tile-4.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\4.png` | Milan Švancara |
-| `assets/tiles/tile-5.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\5.png` | Milan Švancara |
+| `assets/tiles/tile-5.webp` (unused as of round-7 fix pass -- walls now fill/stroke one traced-and-smoothed outline per chunk instead of per-tile art, render.js's `traceWallOutlines`) | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\5.png` | Milan Švancara |
 | `assets/tiles/tile-6.webp` | `octomancer-unity\Assets\Sprites\Tiles\TilesetMilan\6.png` | Milan Švancara |
 | `assets/bg-cave.webp` | `site/img/octomancer/cave-bg.webp` (already shipped on the title screen; itself sourced from `octomancer-unity\Assets\Sprites\Background\` per `octomancer-web/harvest/MANIFEST.md`, bucket A). Visual pass (this session): replaces `bg-far.webp` (removed), which was BGFar.png tiled every 40 world units — too bright/saturated and showed a stippled circle-pattern texture plus a visible seam at the tile boundary. Drawn once in world space near the surface instead of tiled, so Start Game's zoom also lands on the same art. | Milan Švancara |
 | `assets/plant1.webp` | `octomancer-unity\Assets\Sprites\Background\Plant1.png` | Milan Švancara |
@@ -54,7 +54,7 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 | `assets/decor-eyeblue.webp` (unused as of round-6 fix pass) | `octomancer-unity\Assets\Sprites\Background\EyeBlue.png` (cropped) | Milan Švancara |
 | `assets/decor-rune1.webp`, `-rune3.webp`, `-rune5.webp` | `octomancer-unity\Assets\Sprites\Runes\Rune{1,3,5}.png` (bucket D, kept; cropped) | Milan Švancara |
 | `assets/decor-bush2.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NeutralPlants.old\Bush2.png` (bucket D, kept; cropped) | Milan Švancara |
-| `assets/decor-bushmini.webp` | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NeutralPlants.old\BushMini.png` (bucket D, kept; cropped) | Milan Švancara |
+| `assets/decor-bushmini.webp` (unused as of round-7 fix pass -- the source export itself is a soft, edgeless glow blob with no plant outline to preserve, not fixable by removing a draw-time filter) | `octomancer-unity\OldAssets\Sprites\NPCs\NPC.old\Old\NeutralPlants.old\BushMini.png` (bucket D, kept; cropped) | Milan Švancara |
 
 No noise, vignette, spikes or portal files are shipped as images: those are
 code-drawn or excluded (OVERNIGHT.md §2, DECISIONS §1 Q1). The bomb, its fuse
