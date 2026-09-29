@@ -268,7 +268,10 @@ test("buildGuestEmail: FR version has subject, French date, venue, and escapes i
     assert.ok(email.message.html.includes(`mailto:${addr}`));
   }
   assert.equal(email.message.html.includes("<script>"), false);
-  assert.equal(email.message.html.includes("<img"), false);
+  // Design A's hero has legitimate decorative <img> tags (hills/blossom); only
+  // the injected, attribute-based <img> from the name must never appear raw.
+  assert.equal(email.message.html.includes("<img src=x"), false);
+  assert.ok(email.message.html.includes("&lt;img src=x"));
   assert.equal(email.message.html.includes("<b>bold"), false);
   assert.match(email.message.html, /&lt;b&gt;bold&lt;\/b&gt;<br>second line/);
 
@@ -342,7 +345,10 @@ test("buildGuestEmail: escapes user input in HTML (name, party, note)", () => {
     ).data;
     const { html } = buildGuestEmail(data).message;
     assert.equal(html.includes("<script>"), false);
-    assert.equal(html.includes("<img"), false);
+    // Design A's hero has legitimate decorative <img> tags (hills/blossom); only
+    // the injected, attribute-based <img> from the name must never appear raw.
+    assert.equal(html.includes("<img src=x"), false);
+    assert.ok(html.includes("&lt;img src=x"));
     assert.equal(html.includes("<b>bold"), false);
     assert.match(html, /&lt;b&gt;bold&lt;\/b&gt;<br>second line/);
   }
@@ -413,6 +419,95 @@ test("buildGuestEmail: note recap label is 'Dotazy'/'Questions' (not 'Poznámka'
     assert.equal(text.includes("Poznámka"), false);
     assert.equal(/\bNote:/.test(text), false);
     assert.equal(text.includes("Remarque"), false);
+  }
+});
+
+// --- Design A ports (wedding/email-templates/guest-a*.html, couple-a*.html) ---
+
+test("buildGuestEmail: design A hero renders for every language and answer (intro, button, contacts, escaped recap, absolute images)", () => {
+  const introFragment = {
+    cs: { yes: "Máme obrovskou radost", no: "Je nám líto" },
+    en: { yes: "We are thrilled", no: "you will be missed" },
+    fr: { yes: "Nous sommes ravis", no: "vous nous manquerez" },
+  };
+  for (const lang of ["cs", "en", "fr"]) {
+    for (const attending of ["yes", "no"]) {
+      const data = validateRsvp(
+        validBody({
+          lang,
+          attending,
+          email: "jana@example.com",
+          name: "Jana <script>alert(1)</script> Nováková",
+        })
+      ).data;
+      const { html } = buildGuestEmail(data).message;
+
+      // Right intro copy for this language/answer.
+      assert.ok(
+        html.includes(introFragment[lang][attending]),
+        `expected ${lang}/${attending} intro fragment in html`
+      );
+
+      // "Open the invitation" button (+ plain-text fallback link) points at the site.
+      assert.ok(html.includes(`href="${INVITE_URL}"`));
+
+      // Both couple addresses are linked as mailto in the contact sentence.
+      for (const addr of COUPLE_EMAILS) {
+        assert.ok(html.includes(`mailto:${addr}`));
+      }
+
+      // The recap escapes a hostile name instead of leaking a <script> tag.
+      assert.equal(html.includes("<script>alert(1)</script>"), false);
+      assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+
+      // Guest-A images are hosted absolute URLs, decorative (alt="").
+      assert.ok(
+        html.includes(
+          '<img src="https://raccoon.website/svatba/email/hills.png"'
+        )
+      );
+      assert.ok(
+        html.includes(
+          '<img src="https://raccoon.website/svatba/email/blossom.png"'
+        )
+      );
+      assert.match(
+        html,
+        /https:\/\/raccoon\.website\/svatba\/email\/hills\.png"[^>]*alt=""/
+      );
+      assert.match(
+        html,
+        /https:\/\/raccoon\.website\/svatba\/email\/blossom\.png"[^>]*alt=""/
+      );
+    }
+  }
+});
+
+test("buildCoupleEmail: design A headline, no IP/Prohlížeč rows, mailto for the guest, notify-only recipients", () => {
+  for (const attending of ["yes", "no"]) {
+    const data = validateRsvp(
+      validBody({ attending, name: "Jana Nováková", email: "jana@example.com" })
+    ).data;
+    const email = buildCoupleEmail(data, {
+      createdAt: new Date("2026-09-29T01:18:22+02:00"),
+      ip: "203.0.113.7",
+      userAgent: "Mozilla/5.0",
+    });
+
+    assert.deepEqual(email.to, NOTIFY_EMAILS);
+
+    const verb = attending === "yes" ? "přijde" : "nepřijde";
+    assert.match(email.message.html, new RegExp(`Jana Nov[aá]kov[aá][^<]*<span[^>]*>${verb}`));
+    assert.ok(email.message.text.startsWith(`Jana Nováková ${verb}`));
+
+    for (const html of [email.message.html]) {
+      assert.equal(html.includes(">IP<"), false);
+      assert.equal(html.includes("Prohlížeč"), false);
+    }
+    assert.equal(email.message.text.includes("IP:"), false);
+    assert.equal(email.message.text.includes("Prohlížeč"), false);
+
+    assert.ok(email.message.html.includes(`mailto:jana@example.com`));
   }
 });
 
