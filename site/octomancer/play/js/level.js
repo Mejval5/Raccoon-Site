@@ -525,7 +525,37 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   // the exit ring lies on the floor: drop the exit cell down the open water column to the first solid tile
   const ey0 = ey;
   while (ey + 1 < LEVEL_H - BORDER && tiles[(ey + 1) * LEVEL_W + ex] === 0) ey++;
-  if (ey !== ey0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex && marks[i * 3 + 1] === ey0) marks[i * 3 + 1] = ey;
+  // the ring is ~2.7 tiles wide: slide the exit along its floor run so ex-1..ex+1 all have floor under them (and water beside)
+  const ex0 = ex;
+  {
+    const T = (x, y) => tiles[y * LEVEL_W + x];
+    const supported = (x) => x - 1 >= BORDER && x + 1 < LEVEL_W - BORDER &&
+      T(x - 1, ey) === 0 && T(x, ey) === 0 && T(x + 1, ey) === 0 &&
+      T(x - 1, ey + 1) !== 0 && T(x, ey + 1) !== 0 && T(x + 1, ey + 1) !== 0;
+    if (!supported(ex)) {
+      // nearest flat 3-tile floor run within a few tiles (same row first, then other heights), still solvable
+      const ey1 = ey;
+      const cands = [];
+      for (let y = ey1 - 10; y <= ey1 + 10; y++) {
+        if (y < BORDER + 3 * 16 || y + 1 >= LEVEL_H - BORDER) continue;
+        for (let x = Math.max(BORDER + 1, ex0 - 16); x <= Math.min(LEVEL_W - BORDER - 2, ex0 + 16); x++) {
+          ey = y;
+          if (!supported(x)) continue;
+          if (shop && x + 2 > shop.x0 && x - 1 < shop.x1 && y + 2 > shop.y0 && y - 1 < shop.y1) continue;
+          cands.push([Math.abs(x - ex0) + Math.abs(y - ey1) * 1.5, x, y]);
+        }
+      }
+      cands.sort((p, q) => p[0] - q[0]);
+      let best = null;
+      for (let k = 0; k < cands.length && k < 6 && !best; k++) {
+        const [, x, y] = cands[k];
+        if (fatWaterSolvable(tiles, sx, sy, x, y) && finalPathOk(tiles, sx, sy, x, y, shop)) best = [x, y];
+      }
+      ey = ey1;
+      if (best) { ex = best[0]; ey = best[1]; }
+    }
+  }
+  if (ey !== ey0 || ex !== ex0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex0 && marks[i * 3 + 1] === ey0) { marks[i * 3] = ex; marks[i * 3 + 1] = ey; }
 
   return {
     w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,

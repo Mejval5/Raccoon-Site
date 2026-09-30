@@ -56,7 +56,7 @@ export const WORLD_W = CHUNK_W;
 // the top (never show above row 0) without ever clamping the bottom.
 export const WORLD_H = 1e7;
 
-const RESIDENT_BEHIND = 1; // chunks kept behind the octopus's current chunk
+const RESIDENT_BEHIND = 2; // chunks kept behind the octopus's current chunk
 const RESIDENT_AHEAD = 2; // chunks kept generated ahead of it
 const GENERATE_AHEAD_FRACTION = 2 / 3; // generate the next chunk this far into the lowest one
 
@@ -305,7 +305,13 @@ export function createWorld(seed) {
         while (highestGenerated < curChunk + RESIDENT_AHEAD) ensureNext();
       }
       for (const ci of [...chunks.keys()]) {
-        if (ci < curChunk - RESIDENT_BEHIND) chunks.delete(ci);
+        if (ci < curChunk - RESIDENT_BEHIND) {
+          chunks.delete(ci);
+          // the chunk below the dropped one is now the topmost resident: a missing neighbour counts as solid,
+          // so retrace + rebake it and its top edge gets a real rim (no open-water cut into the void)
+          const below = chunks.get(ci + 1);
+          if (below) { below.dirty = true; outlineVersion.set(ci + 1, (outlineVersion.get(ci + 1) || 0) + 1); }
+        }
       }
     },
 

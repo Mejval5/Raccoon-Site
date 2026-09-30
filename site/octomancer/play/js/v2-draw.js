@@ -91,12 +91,14 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
 
   // --- journal board: a wooden plank hung on the rock face, outlined like the sprites ---
   if (m.boardX >= 0) {
-    const bx = sx(m.boardX + 0.5 - 0.38), by = sy(m.boardY + 0.5 - 0.2);
+    const bx = sx(m.boardX + 0.5), by0 = sy(m.boardY + 1);  // by0 = ledge floor line; the board stands on it, inside the 1-tile ledge
+    let by = by0 - ppu * 0.6;
     const w = ppu * 1.7, h = ppu * 1.2;
     const boardImg = artImg('board');
     if (boardImg && bx > -w && bx < cw + w && by > -h && by < ch + h) {
       // generated notice board (Milan style); the word goes on a small plaque under it
-      const dw = ppu * 1.6, dh = dw * (boardImg.naturalHeight / boardImg.naturalWidth);
+      const dw = ppu * 1.0, dh = dw * (boardImg.naturalHeight / boardImg.naturalWidth);
+      by = by0 - dh / 2;
       ctx.drawImage(boardImg, bx - dw / 2, by - dh / 2, dw, dh);
       ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.3))}px Quicksand, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

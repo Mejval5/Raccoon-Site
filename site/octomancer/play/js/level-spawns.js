@@ -74,10 +74,12 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   const shop = level.shop;
   const SHOP_CALM = 5; // tiles around the shop room where nothing spawns, so patrols do not drift in
   const inShop = (x, y) => !!shop && x >= shop.x0 - SHOP_CALM && x < shop.x1 + SHOP_CALM && y >= shop.y0 - SHOP_CALM && y < shop.y1 + SHOP_CALM;
+  // nothing static sits inside the exit ring (about 2.7 tiles wide) or right against it
+  const nearExit = (x, y) => level.exitX !== undefined && Math.abs(x - level.exitX) <= 3 && y >= level.exitY - 3 && y <= level.exitY + 1;
   const openCells = [];
   for (let y = BORDER; y < H - BORDER; y++) {
     for (let x = BORDER + 1; x < W - BORDER - 1; x++) {
-      if (t[idx(x, y)] === 0 && reached[idx(x, y)] && farFromStart(x, y) && !inShop(x, y)) openCells.push([x, y]);
+      if (t[idx(x, y)] === 0 && reached[idx(x, y)] && farFromStart(x, y) && !inShop(x, y) && !nearExit(x, y)) openCells.push([x, y]);
     }
   }
   const spawns = [];

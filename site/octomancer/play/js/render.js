@@ -921,6 +921,19 @@ export function createRenderer(ctx, world) {
   // fix already applied to the vertical case.
   function drawWalls(canvasW, canvasH, resident) {
     if (world.v2) { drawBandWalls(canvasW, canvasH); return; }
+    if (resident.length) {
+      // endless mode: the chunks above the top resident one were dropped and count as solid (world.tileAt),
+      // so draw them as rock too, instead of open water cut flat
+      const topEntry = resident[0];
+      const cutY = Math.round(worldToScreen(camera, canvasW, canvasH, 0, topEntry.yOffset).y);
+      if (topEntry.index > 0 && cutY > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+        ctx.fillRect(0, 0, canvasW, cutY + 1);
+        if (rockNoisePattern) { ctx.fillStyle = rockNoisePattern; ctx.fillRect(0, 0, canvasW, cutY + 1); }
+        ctx.restore();
+      }
+    }
     for (const entry of resident) {
       const canvas = getBakedWalls(entry);
       if (!canvas) continue;

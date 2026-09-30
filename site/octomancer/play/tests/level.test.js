@@ -57,6 +57,16 @@ export async function runLevelTests(assert, approx) {
   assert('level: marker list has one start and one exit on water', markBad === 0);
   assert('level: start in the top room row, exit in the bottom room row', cornerBad === 0);
   const rate = fallbacks / total;
+  // round 26: the exit ring is ~2.7 tiles wide, so the floor under ex-1..ex+1 must be solid (where a run exists)
+  let ringBad = 0, ringTotal = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const lv = generateLevel(seed, 0, bank);
+    if (lv.fallback) continue;
+    ringTotal++;
+    const T = (x, y) => lv.tiles[y * LEVEL_W + x];
+    for (let dx = -1; dx <= 1; dx++) if (T(lv.exitX + dx, lv.exitY + 1) === 0) { ringBad++; break; }
+  }
+  assert(`level: exit ring has floor under its full width (${ringBad}/${ringTotal} bad, <= 10%)`, ringBad <= ringTotal * 0.1);
   assert(`level: fallback rate ${(rate * 100).toFixed(2)}% < 1%`, rate < 0.01);
 
   // determinism and purity
