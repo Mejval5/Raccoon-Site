@@ -528,3 +528,13 @@ Scope of B1 (this replaces the order of M2-M7 until B1 runs):
 - **B1-4 Journal scaffolding** (`js/journal.js`, save.js): discovered entries keyed by id for places, creatures and items, persisted, with a simple list screen opened from the hub. The content fills in later.
 - **B1-5 Biome 1 art pass** (after B1-1..4 run): generate the biome-1 tile set and backdrop with openai-image-gen in Milan's style, using his sprites as edit references, low/medium quality, few images.
 - Enemies, combat (M3/M4), specials, quests and foliage patterns come after B1 runs end to end.
+
+## 11. Spelunky 2 gap: top 5 scheduled (2026-09-30, rounds 24-28)
+
+1. Biome 1 art pass (generated, Milan style, at most 12 images).
+2. Traps and hazards placed by the pattern table: current jet, spike wall, falling rock, electric eel, anemone cluster; existing enemies placed by patterns with a ramp over 1-1..1-3.
+3. Loot and secrets: breakable clams and pots, hidden rock pockets with a cue, chests (some trapped), relic pedestal with a chase.
+4. Carried items: flippers, lantern, shell magnet, bomb bag, heart container; found, bought, kept between levels, lost on death.
+5. Run loop and meta: death and clear screens with stats, best runs, level title cards, seeded runs, hub shortcut to 1-2 after one clear, journal stats page.
+
+Deferred until Daniel's auto-fire verdict: combat (M3/M4). After these five: biome 2 (Kelp Caves) with its own bank, enemies and rules.
