@@ -4,9 +4,9 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_ITEM = 'item', CAT_QUEST = 'quest';
-export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_ITEM, CAT_QUEST];
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', item: 'Items', quest: 'Quests' };
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_QUEST = 'quest';
+export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_QUEST];
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', quest: 'Quests' };
 
 /** Seed content; the art and longer text come later. Ids are stable: saves store them. */
 export const ENTRIES = [
@@ -33,6 +33,17 @@ export const ENTRIES = [
     text: 'A fixed turret grown into the wall. It fires slow shots along its line of sight.' },
   { id: 'creature-beholder', cat: CAT_CREATURE, name: 'The Beholder',
     text: 'It comes for anyone who lingers too long in one level, and it does not stop.' },
+
+  { id: 'hazard-jet', cat: CAT_HAZARD, name: 'Current Jet',
+    text: 'A vent in the rock that blasts water along a line of bubbles. It does no harm, but it will carry you wherever it points.' },
+  { id: 'hazard-spikes', cat: CAT_HAZARD, name: 'Spike Wall',
+    text: 'A strip of hard spikes set into the rock face. Touching it hurts, so keep a body length away.' },
+  { id: 'hazard-rock', cat: CAT_HAZARD, name: 'Loose Rock',
+    text: 'A boulder wedged in a ledge that drops when something swims underneath. It hurts on the way down, then settles as ordinary rock that a bomb will clear.' },
+  { id: 'hazard-eel', cat: CAT_HAZARD, name: 'Electric Eel',
+    text: 'It patrols a narrow shaft. The body glows just before it lets out a ring of shock that spreads through open water; rock stops it.' },
+  { id: 'hazard-anemone', cat: CAT_HAZARD, name: 'Anemone Cluster',
+    text: 'Soft pink fronds that sway on the cave floor. They sting on contact, so swim over them, not through them.' },
 
   { id: 'item-plankton', cat: CAT_ITEM, name: 'Plankton',
     text: 'Glowing drifts of tiny life. Collect it for score.' },

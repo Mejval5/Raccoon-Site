@@ -199,6 +199,13 @@ export function createRenderer(ctx, world) {
   /** @type {Map<number, {canvas:HTMLCanvasElement, bakedTiles:Uint8Array|null}>} */
   const wallCache = new Map();
 
+  // round 29 (endless only): each baked chunk carries a transparent margin of about a quarter tile above and below
+  // its rows. Where a water pocket's top row sits exactly on the top of the topmost resident chunk (the swim-up cap
+  // line) its mint rim runs along the chunk edge; clipped to the exact chunk rect it came out half as thick with hard
+  // corners. The margin lets the whole stroke (and the smoothed corners) bake; drawWalls draws it only at the cap line
+  // and crops it everywhere else, so chunk seams stay exactly what they were.
+  const CHUNK_MARGIN_PX = Math.round(0.25 * BAKE_PX_PER_UNIT);
+
   const RIM_COLOR = `rgba(${RIM_TARGET.join(',')},0.95)`;
 
   // Round-8 fix (Daniel's screenshot review round 7, item 1 -- SEVERE
@@ -436,9 +443,11 @@ export function createRenderer(ctx, world) {
     if (!canvas) {
       canvas = document.createElement('canvas');
       canvas.width = chunkW * BAKE_PX_PER_UNIT;
-      canvas.height = chunkH * BAKE_PX_PER_UNIT;
+      canvas.height = chunkH * BAKE_PX_PER_UNIT + 2 * CHUNK_MARGIN_PX;
     }
-    paintWallCanvas(canvas, chunkLoopsPx(entry, BAKE_PX_PER_UNIT), entry.yOffset);
+    const loops = chunkLoopsPx(entry, BAKE_PX_PER_UNIT);
+    for (const loop of loops) for (const pt of loop) pt.y += CHUNK_MARGIN_PX;
+    paintWallCanvas(canvas, loops, entry.yOffset - CHUNK_MARGIN_PX / BAKE_PX_PER_UNIT);
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
   }
 
@@ -938,12 +947,14 @@ export function createRenderer(ctx, world) {
 
   function drawWalls(canvasW, canvasH, resident) {
     if (world.v2) { drawBandWalls(canvasW, canvasH); return; }
+    let capped = false;
     if (resident.length) {
       // endless mode: the chunks above the top resident one were dropped and count as solid (world.tileAt),
       // so draw them as rock too, instead of open water cut flat
       const topEntry = resident[0];
       const cutY = Math.round(worldToScreen(camera, canvasW, canvasH, 0, topEntry.yOffset).y);
       if (topEntry.index > 0 && cutY > 0) {
+        capped = true;
         // round 28: paint the cap exactly like a baked chunk (same canvas fill + paintNoise, then the same scaled
         // drawImage), one chunk-sized tile at a time going up, so brightness and grain match across the join
         const flat = `rgb(${WALL_FILL_COLOR.join(',')})`;
@@ -969,7 +980,14 @@ export function createRenderer(ctx, world) {
       const bottomRight = worldToScreen(camera, canvasW, canvasH, chunkW, entry.yOffset + chunkH);
       const x0 = Math.round(topLeft.x), y0 = Math.round(topLeft.y);
       const x1 = Math.round(bottomRight.x), y1 = Math.round(bottomRight.y);
-      ctx.drawImage(canvas, x0, y0, x1 - x0, y1 - y0);
+      const M = CHUNK_MARGIN_PX, coreH = chunkH * BAKE_PX_PER_UNIT;
+      if (capped && entry === resident[0]) {
+        // the cap line: keep the top margin so a rim lying on the chunk edge bakes at full thickness
+        const k = (y1 - y0) / coreH;
+        ctx.drawImage(canvas, 0, 0, canvas.width, M + coreH, x0, y0 - M * k, x1 - x0, (y1 - y0) + M * k);
+      } else {
+        ctx.drawImage(canvas, 0, M, canvas.width, coreH, x0, y0, x1 - x0, y1 - y0);
+      }
     }
   }
 

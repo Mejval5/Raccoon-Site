@@ -369,7 +369,7 @@ export function createEnemies() {
       if (s.type !== 'enemy-slot') continue;
       const wy = s.y + yOffset;
       if (!chunk.noDepthGate && wy < ENEMY_MIN_DEPTH) continue;
-      const kind = pickKind(s.placement, wy + (chunk.depthBias || 0), rng, s.flatRun !== false, !!s.nearSideWall, s.mantaFit !== false, !!s.narrowShaft);
+      const kind = s.kind || pickKind(s.placement, wy + (chunk.depthBias || 0), rng, s.flatRun !== false, !!s.nearSideWall, s.mantaFit !== false, !!s.narrowShaft);
       list.push(makeEnemy(kind, s.x, wy, index, s.placement, s.wallDir || 0));
     }
     if (list.length) byChunk.set(index, list);

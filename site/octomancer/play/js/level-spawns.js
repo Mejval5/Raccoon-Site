@@ -11,7 +11,9 @@
 //   - never in the 2-tile border.
 
 import { mulberry32, hashSeed } from './rng.js';
-import { LEVEL_W as W, LEVEL_H as H, BORDER } from './level.js';
+import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk } from './level.js';
+import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
+import { makeHazardRecord, hazardBlockers } from './hazards.js';
 
 export const START_SAFE_RADIUS = 7;
 
@@ -56,6 +58,28 @@ function hasOpenClearance(t, x, y, r) {
     }
   }
   return true;
+}
+
+/**
+ * The `enemy-slot` record for an enemy pattern hit: placement from the facing (floor / ceiling / wall / open),
+ * plus the flags gen.js tagged its slots with. Null when the surface is too thin to hold the enemy.
+ */
+function makeEnemySlot(t, kind, x, y, dx, dy) {
+  let placement = 'open', wallDir = 0;
+  if (dy < 0) placement = 'floor'; else if (dy > 0) placement = 'ceiling'; else if (dx !== 0) { placement = 'wall'; wallDir = -dx; }
+  let flatRun = true;
+  if (placement !== 'open') {
+    const [ax, ay] = placement === 'floor' ? [x, y + 1] : placement === 'ceiling' ? [x, y - 1] : [x - dx, y];
+    if (isThinSurface(t, ax, ay)) return null;
+    flatRun = !isCornerAnchor(t, ax, ay);
+  }
+  const nearSideWall = (placement === 'floor' || placement === 'ceiling') && (solidAt(t, x - 1, y) || solidAt(t, x + 1, y));
+  if (kind === 'cannon' && nearSideWall) return null; // a round body at a concave corner reads half buried
+  if ((kind === 'crab' || kind === 'horns') && !flatRun) return null;
+  let mantaFit = true;
+  for (let yy = -2; yy <= 2 && mantaFit; yy++) for (let xx = -1; xx <= 1; xx++) if (solidAt(t, x + xx, y + yy)) { mantaFit = false; break; }
+  const narrowShaft = solidAt(t, x - 1, y) && solidAt(t, x + 1, y);
+  return { type: 'enemy-slot', kind, placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall, mantaFit, narrowShaft };
 }
 
 /**
@@ -109,35 +133,37 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     spawns.push({ type: 'shell', x: c[0] + 0.5, y: c[1] + 0.5 });
   }
 
-  // Enemy slots, tagged by placement exactly as gen.js does.
-  const depthBonus = Math.min(3, Math.floor((levelIndex >>> 0) / 4));
-  const slotCount = 16 + depthBonus * 3 + Math.floor(rng() * 8);
-  const MIN_ENEMY_SEP = 1.6;
-  const placed = [];
-  for (let i = 0; i < slotCount; i++) {
-    const [x, y] = pick(openCells);
-    if (placed.some((p) => Math.hypot(x - p.x, y - p.y) < MIN_ENEMY_SEP)) continue;
-    let placement = 'open';
-    if (solidAt(t, x, y + 1)) placement = 'floor';
-    else if (solidAt(t, x, y - 1)) placement = 'ceiling';
-    else if (solidAt(t, x - 1, y) || solidAt(t, x + 1, y)) placement = 'wall';
-    let flatRun = true, wallDir = 0;
-    if (placement !== 'open') {
-      const wallOnRight = solidAt(t, x + 1, y);
-      const [ax, ay] = placement === 'floor' ? [x, y + 1] : placement === 'ceiling' ? [x, y - 1]
-        : (wallOnRight ? [x + 1, y] : [x - 1, y]);
-      if (placement === 'wall') wallDir = wallOnRight ? 1 : -1;
-      if (isThinSurface(t, ax, ay)) placement = 'open';
-      else flatRun = !isCornerAnchor(t, ax, ay);
+  // Enemies and hazards: the pattern table (data/patterns.json, patterns.js) is matched once over the final
+  // tiles; hits become spawns under each pattern's per-level chance and cap (the 1-1 / 1-2 / 1-3 ramp). Enemies
+  // keep the `enemy-slot` record the rest of the game reads (now with the `kind` the pattern names); hazards are
+  // `hazard` records (hazards.js). Blocking hazards are then checked with the A* pass and dropped, newest first,
+  // until the exit (and the shop) stay reachable.
+  const table = getPatternTable();
+  if (table) {
+    const hit = matchPatterns(table, t, W, H);
+    const prng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0xa77e5));
+    const ok = new Uint8Array(W * H);
+    for (let i = 0; i < openCells.length; i++) ok[idx(openCells[i][0], openCells[i][1])] = 1;
+    const occupied = [];
+    for (const s of spawns) if (s.type === 'shell') occupied.push(s.x, s.y, 1.5);
+    const build = (p, x, y, dx, dy) => {
+      const tx = Math.floor(x), ty = Math.floor(y);
+      if (!ok[idx(tx, ty)]) return null;
+      if (table.kind[p] === 'hazard') return makeHazardRecord(table.spawn[p], x, y, dx, dy, t, W, H);
+      return makeEnemySlot(t, table.spawn[p], tx, ty, dx, dy);
+    };
+    const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied);
+    // A*: blocking hazards must leave the exit (and shop) reachable
+    const collect = () => { const b = []; for (const r of placed) if (r.type === 'hazard') hazardBlockers(r, b); return b; };
+    for (let guard = 0; guard < 64; guard++) {
+      const bl = collect();
+      if (!bl.length || finalPathOk(t, level.startX, level.startY, level.exitX, level.exitY, level.shop, bl)) break;
+      let k = placed.length - 1;
+      while (k >= 0 && !(placed[k].type === 'hazard' && hazardBlockers(placed[k]).length)) k--;
+      if (k < 0) break;
+      placed.splice(k, 1);
     }
-    if (placement === 'open' && !hasOpenClearance(t, x, y, 1)) continue;
-    const nearSideWall = (placement === 'floor' || placement === 'ceiling')
-      && (solidAt(t, x - 1, y) || solidAt(t, x + 1, y));
-    let mantaFit = true;
-    for (let dy = -2; dy <= 2 && mantaFit; dy++) for (let dx = -1; dx <= 1; dx++) if (solidAt(t, x + dx, y + dy)) { mantaFit = false; break; }
-    const narrowShaft = solidAt(t, x - 1, y) && solidAt(t, x + 1, y);
-    spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall, mantaFit, narrowShaft });
-    placed.push({ x, y });
+    for (const r of placed) spawns.push(r);
   }
   return { spawns, openCells: openCells.length };
 }

@@ -16,6 +16,9 @@ import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
+import { createHazards, hazardJournalId } from './hazards.js';
+import { drawHazards } from './hazards-draw.js';
+import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs } from './bomb.js';
 import { createParticles } from './particles.js';
@@ -66,6 +69,7 @@ let questTable = null;
 let shopItems = [];
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
+  setPatternTable(await fetchPatterns());
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   shopItems = await fetchShopItems();
@@ -123,6 +127,7 @@ let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
 let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
+let hazards = createHazards();
 let bombs = createBombs();
 let particles = createParticles();
 let autoDiveOn = false;
@@ -309,6 +314,13 @@ function step(dt) {
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
   enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident);
+  if (V2 && !isSafeState(run)) {
+    hazards.update(dt, sim.time, octo, world, resident);
+    for (const ev of hazards.events) {
+      if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
+      else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
+    }
+  }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -446,6 +458,7 @@ function resetWorld(newSeed) {
   pickups = createPickups();
   decor = createDecor(world.width, world.chunkHeight);
   enemies = createEnemies();
+  hazards = createHazards();
   if (AUTO) autofire = createAutofire();
   bombs = createBombs();
   particles = createParticles();
@@ -547,6 +560,9 @@ function stepV2(snap) {
     }
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
   } else ui.setPrompt(null);
+  if ((seeTick & 7) === 0 && run.state === S_BIOME) {
+    for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
+  }
   if ((seeTick++ & 7) === 0) {
     for (const e of enemies.all()) {
       if (e.dead) continue;
@@ -571,6 +587,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (lv.signX !== undefined && lv.signX >= 0) drawQuestSign(c, camera, cw, ch, lv.signX, lv.signY, t);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
+    drawHazards(c, camera, cw, ch, hazards.data, t);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
     if (quest && quest.status === 0 && quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
     if (quest && quest.plan && quest.plan.kindId === Q_VAULT) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t, quest.collected);
@@ -744,6 +761,12 @@ window.__octo = {
       signQuest: hubQuestPlan ? hubQuestPlan.id : null,
       pockets: world.level.nPockets ? Array.from(world.level.pockets) : [],
     };
+  },
+  /** v2: the hazards of this level (kind code, position, state) for tests and review. */
+  hazards() {
+    const d = hazards.data, out = [];
+    for (let i = 0; i < d.n; i++) out.push({ kind: d.kind[i], x: d.x[i], y: d.y[i], dx: d.dx[i], dy: d.dy[i], len: d.len[i], state: d.state[i], a: d.a[i], b: d.b[i], t: d.t[i], r: d.r[i] });
+    return out;
   },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },

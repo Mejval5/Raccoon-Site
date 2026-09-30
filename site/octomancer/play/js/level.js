@@ -385,10 +385,10 @@ function carvePockets(tiles, reached, prng, out, shop) {
 /**
  * The A* check (pathcheck.js) on the FINAL tiles of a level: the exit trigger is reachable from the start
  * for a body of the octopus's real radius, and, when there is a shop, its keeper and every pedestal are
- * reachable too. Returns true when the level is fine.
+ * reachable too. `blockers` (hazards.js hazardBlockers) are circles the body must keep out of. Returns true when the level is fine.
  */
-export function finalPathOk(tiles, sx, sy, ex, ey, shop) {
-  const grid = createPathGrid(LEVEL_W, LEVEL_H, (x, y) => tiles[y * LEVEL_W + x] !== 0);
+export function finalPathOk(tiles, sx, sy, ex, ey, shop, blockers) {
+  const grid = createPathGrid(LEVEL_W, LEVEL_H, (x, y) => tiles[y * LEVEL_W + x] !== 0, blockers ? { blockers } : undefined);
   if (!findPath(grid, sx + 0.5, sy + 0.5, ex + 0.5, ey + 0.5)) return false;
   if (shop) {
     const reached = reachableNodes(grid, sx + 0.5, sy + 0.5);

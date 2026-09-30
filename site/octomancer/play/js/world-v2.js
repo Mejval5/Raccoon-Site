@@ -176,6 +176,14 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       return true;
     },
 
+    /** A falling rock settles: a water tile becomes breakable rock (hazards.js). False when it is not open water. */
+    placeRock(tx, ty) {
+      const x = Math.floor(tx), y = Math.floor(ty);
+      if (bedrock(x, y) || tiles[y * W + x] !== 0) return false;
+      setTile(x, y, 1);
+      return true;
+    },
+
     getWallOutline,
     wallSegmentsNear,
 

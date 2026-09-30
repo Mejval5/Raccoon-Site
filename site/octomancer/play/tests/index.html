@@ -108,7 +108,10 @@ await runRoomTests(assert, approx);
 import { runLevelTests } from './level.test.js';
 await runLevelTests(assert, approx);
 
-// --- v2 single-level world, band wall cache and spawn adapter (M1-4/M1-5) ---
+// --- v2 single-level world, band wall cache and spawn adapter (M1-4/M1-5); the spawn adapter reads the
+// pattern table (round 30), which main.js registers in the game ---
+import { registerPatternTable } from './patterns.test.js';
+await registerPatternTable();
 import { runWorldV2Tests } from './world-v2.test.js';
 await runWorldV2Tests(assert, approx);
 
@@ -132,6 +135,12 @@ await runQuestTests(assert, approx);
 // --- Round 24: generated Shallows art ---
 import { runV2ArtTests } from './v2-art.test.js';
 await runV2ArtTests(assert, approx);
+
+// --- Round 30: pattern spawning and the five hazards ---
+import { runPatternTests } from './patterns.test.js';
+await runPatternTests(assert);
+import { runHazardTests } from './hazards.test.js';
+await runHazardTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
