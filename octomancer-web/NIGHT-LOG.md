@@ -2549,3 +2549,18 @@ out in the review) confirming it now bakes as plain rock.
 Screenshots: `octomancer-web/night/fix-r17-dive-{s1-desk,s7-desk,
 s42-phone}-{spawn,0..3}.png`, `fix-r17-zoom-softrock-s77.png`,
 `fix-r17-zoom-{octopus-enemies,vines}.png`.
+
+## Round 18: V2 M1-4 and M1-5 behind ?v2=1
+
+Endless mode without the flag is unchanged (endless seed 1 spawn frame differs from round 17 by 0.05% of pixels, animated fish only). Tests 1756/1756, 0 console errors.
+
+- **M1-4** `js/world-v2.js` (`createLevelWorld`): one 34x68 level, same interface as `createWorld`, presented as one resident chunk so decor, pickups, enemies and physics run unchanged. Outline traced per row band (same padded trace as chunks), lazily, cached until a bomb changes it; a bomb retraces only the band(s) it touches (test: 1 band). `breakTile` breaks any interior rock, never `isBedrock`. Camera clamps to 34x68 (world.height is real).
+- `render.js`: wall bake split into `paintWallCanvas` (shared with endless) and 512 px bands; `wallBandWindow` keeps the on-screen bands plus one each side; at most one rebake per frame beyond bands needed on screen. Deviation: a phone viewport (24 tiles) spans 3-4 bands of 512 px, so the cap is "on screen + 2" (6-7 live of 14 on phone, 4 of 7 on desktop), not literally 3. The test asserts that rule. Band bakes measured at 0.1-2.5 ms; bomb frames at most 8.8 ms (375x812 and desktop); the one 58 ms outlier was the death frame, not a bomb.
+- **M1-5** `js/level-spawns.js`: gen.js tagging (plankton swarms, shells, enemy slots with placement, flatRun, wallDir) over the whole level, reachable water only, none within 7 tiles of S, none in border/rock. Shells sit on floor water (no soft rock in v2). `enemies.js`/`pickups.js` honour chunk.salt/noDepthGate/depthBias/exclude (absent in endless). Beholder unchanged. Reaching E shows a "Level clear" overlay, Next level = levelIndex+1.
+- Hooks: `__octo.teleport(x,y)`, `__octo.level()`. `?level=N`.
+- Tests: `tests/world-v2.test.js` (bands ring, renderer ring through a dive, border vs bombs, retrace count, spawns none in rock / near start, exit reachable).
+- Review, 3 seeds desk+phone: no seams (crops at band boundaries clean), walls same look as endless, border survives bombs, exit reachable (seed 1 autodive cleared it; other seeds died to enemies), overlay and next level work.
+- **Layout issue (open):** generated caves are too open versus the store shots: water 72% of interior vs 60% endless, rooms average 68% open with every weight 1. Concrete fix: weight room variants by open fraction in rooms.json (weight 2 for octo-2, 4, 11, 13, Building at 0.50-0.61; weight 0.5 for octo-1, 7, 8, 9, 12, 15 at 0.76-0.80), target about 62% water. Not applied (changes level determinism and tests).
+- Memory note: at DPR 2 a band is about 6 MB, 7 live is about 40 MB; consider baking v2 bands at min(BAKE, 64) px/unit on phones.
+
+Screenshots: `octomancer-web/night/fix-r18-*.png`.

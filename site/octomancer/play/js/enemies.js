@@ -361,13 +361,15 @@ export function createEnemies() {
   function spawnFromSlots(index, chunk, yOffset) {
     if (spawnedChunks.has(index)) return;
     spawnedChunks.add(index);
-    const rng = makeRng(index * 104729 + 7);
+    // v2 whole-level chunk (world-v2.js): per-level salt, no depth gate, and a
+    // depth bias so kind tiers (manta, cannon) can appear in a 68-row level.
+    const rng = makeRng(chunk.salt !== undefined ? chunk.salt : index * 104729 + 7);
     const list = [];
     for (const s of chunk.spawns) {
       if (s.type !== 'enemy-slot') continue;
       const wy = s.y + yOffset;
-      if (wy < ENEMY_MIN_DEPTH) continue;
-      const kind = pickKind(s.placement, wy, rng, s.flatRun !== false, !!s.nearSideWall);
+      if (!chunk.noDepthGate && wy < ENEMY_MIN_DEPTH) continue;
+      const kind = pickKind(s.placement, wy + (chunk.depthBias || 0), rng, s.flatRun !== false, !!s.nearSideWall);
       list.push(makeEnemy(kind, s.x, wy, index, s.placement, s.wallDir || 0));
     }
     if (list.length) byChunk.set(index, list);

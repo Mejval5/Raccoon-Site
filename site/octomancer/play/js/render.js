@@ -65,6 +65,7 @@ import { depthTint, findPlantAnchors, findClusterMates } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
+import { wallBandWindow } from './world-v2.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -76,6 +77,7 @@ const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 // resolution by the page's own DPR (capped so a stray DPR 3-4 display, or a
 // very zoomed-in view, doesn't blow up chunk canvas memory -- each one is
 // already `32 x 24` tiles).
+export const WALL_BAND_PX = 512; // v2 wall cache band height, baked px
 const BAKE_PX_PER_UNIT = Math.min(96, Math.round(48 * (typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1)));
 
 // The cave silhouette fades out by this world depth, below which the deep
@@ -188,6 +190,7 @@ export function createRenderer(ctx, world) {
   };
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
+  if (world.v2) world.configureBands(Math.max(2, Math.round(WALL_BAND_PX / BAKE_PX_PER_UNIT)));
 
   // --- Per-chunk baked wall cache, rebaked only when a chunk's tiles change
   // (bomb breaks) or when it is seen for the first time. ---
@@ -359,14 +362,10 @@ export function createRenderer(ctx, world) {
     bctx.restore();
   }
 
-  function bakeChunkWalls(entry) {
-    const { chunk } = entry;
-    let canvas = wallCache.get(entry.index)?.canvas;
-    if (!canvas) {
-      canvas = document.createElement('canvas');
-      canvas.width = chunkW * BAKE_PX_PER_UNIT;
-      canvas.height = chunkH * BAKE_PX_PER_UNIT;
-    }
+  // Shared wall-art pass: fill + rim from already-px loops, clipped to the
+  // canvas, then the seamless noise grain. `yOffsetTiles` is the world row
+  // the canvas top sits at (so the noise tiles across neighbouring canvases).
+  function paintWallCanvas(canvas, loops, yOffsetTiles) {
     const bctx = canvas.getContext('2d');
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -375,12 +374,12 @@ export function createRenderer(ctx, world) {
     // `chunkLoopsPx` above), instead of per-tile art pieces each carrying
     // their own rim stroke. Round-1 fix (Daniel's screenshot review: the
     // horizontal seam / "wall borders look broken") still applies inside
-    // `getWallOutline`/the soft-tile pass below: a tile's row above/below a
-    // chunk boundary asks the real world tile (crossing into the
-    // neighbouring chunk via `world.tileAt`) instead of assuming solid, so
-    // passages that continue into the next chunk don't bake a spurious
-    // closed rim cap across them; left/right of the chunk is still always
-    // solid (the level's real outer border, not a chunk seam).
+    // `getWallOutline`: a tile's row above/below a chunk boundary asks the
+    // real world tile (crossing into the neighbouring chunk via
+    // `world.tileAt`) instead of assuming solid, so passages that continue
+    // into the next chunk don't bake a spurious closed rim cap across them;
+    // left/right of the chunk is still always solid (the level's real outer
+    // border, not a chunk seam).
     //
     // Round-8 fix (item 1, SEVERE regression): `getWallOutline`'s trace
     // pads beyond this chunk's own tile bounds (see outline.js) so a loop
@@ -392,7 +391,6 @@ export function createRenderer(ctx, world) {
     bctx.beginPath();
     bctx.rect(0, 0, canvas.width, canvas.height);
     bctx.clip();
-    const loops = chunkLoopsPx(entry, s);
     bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     pathFromLoops(bctx, loops);
     bctx.fill('nonzero');
@@ -405,14 +403,86 @@ export function createRenderer(ctx, world) {
     bctx.restore();
 
     // Round-17 fix: soft (breakable) rock no longer gets any tint/texture
-    // pass of its own -- see the comment above `bakeChunkWalls` (the removed
+    // pass of its own -- see the comment above (the removed
     // `paintSoftTile`/`coralNoise*` block) for why. It bakes through the
     // same fill/rim/grain as every other wall tile below.
     //
     // Surface texture pass, baked once here (never per-frame): the seamless
     // fBm field masked onto every opaque wall pixel via source-atop.
-    paintNoise(bctx, entry, rockNoisePattern, rockNoiseCanvas, 0, 0, canvas.width, canvas.height);
+    paintNoise(bctx, { yOffset: yOffsetTiles }, rockNoisePattern, rockNoiseCanvas, 0, 0, canvas.width, canvas.height);
+  }
+
+  function bakeChunkWalls(entry) {
+    const { chunk } = entry;
+    let canvas = wallCache.get(entry.index)?.canvas;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.width = chunkW * BAKE_PX_PER_UNIT;
+      canvas.height = chunkH * BAKE_PX_PER_UNIT;
+    }
+    paintWallCanvas(canvas, chunkLoopsPx(entry, BAKE_PX_PER_UNIT), entry.yOffset);
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
+  }
+
+  // --- v2 single-level walls (world-v2.js): the wall art is cached in
+  // horizontal bands of about WALL_BAND_PX baked pixels. Only the bands on
+  // screen plus one on each side stay cached (`wallBandWindow`); a bomb
+  // rebakes just the bands whose outline changed, at most one per frame
+  // beyond the ones needed on screen, so no single frame pays for a whole
+  // blast crossing several bands.
+  const bandCache = new Map(); // band -> {canvas, version}
+  let bandBakes = 0; // total bakes, for tests / perf checks
+  let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single band bake
+  function bandLoopsPx(bi, y0) {
+    const outline = world.getWallOutline(bi);
+    if (!outline) return [];
+    const s = BAKE_PX_PER_UNIT;
+    return outline.loops.map((loop) => loop.map((p) => ({ x: p.x * s, y: (p.y - y0) * s })));
+  }
+  function bakeBand(bi) {
+    const rows = world.bandRows, y0 = bi * rows, h = Math.min(rows, world.height - y0);
+    let entry = bandCache.get(bi);
+    let canvas = entry && entry.canvas;
+    const wantH = h * BAKE_PX_PER_UNIT;
+    if (!canvas || canvas.height !== wantH) {
+      canvas = document.createElement('canvas');
+      canvas.width = chunkW * BAKE_PX_PER_UNIT;
+      canvas.height = wantH;
+    }
+    const t0 = performance.now();
+    paintWallCanvas(canvas, bandLoopsPx(bi, y0), y0);
+    bandCache.set(bi, { canvas, version: world.bandVersion(bi) });
+    bandBakes++;
+    bandBakeLastMs = performance.now() - t0;
+    if (bandBakeLastMs > bandBakeMaxMs) bandBakeMaxMs = bandBakeLastMs;
+  }
+  function drawBandWalls(canvasW, canvasH) {
+    const rows = world.bandRows, n = world.bandCount();
+    const halfH = canvasH / 2 / camera.pxPerUnit;
+    const win = wallBandWindow(camera.y - halfH, camera.y + halfH, rows, n);
+    for (const bi of [...bandCache.keys()]) if (bi < win.keepFrom || bi > win.keepTo) bandCache.delete(bi);
+    let budget = 1;
+    // Visible bands first: a missing one must bake now; a stale one (bomb) may
+    // keep drawing its old canvas one more frame if the budget is spent.
+    for (let bi = win.visFrom; bi <= win.visTo; bi++) {
+      const c = bandCache.get(bi);
+      if (!c) bakeBand(bi);
+      else if (c.version !== world.bandVersion(bi) && budget > 0) { bakeBand(bi); budget--; }
+    }
+    for (let bi = win.keepFrom; bi <= win.keepTo && budget > 0; bi++) {
+      if (bi >= win.visFrom && bi <= win.visTo) continue;
+      const c = bandCache.get(bi);
+      if (!c || c.version !== world.bandVersion(bi)) { bakeBand(bi); budget--; }
+    }
+    for (let bi = win.visFrom; bi <= win.visTo; bi++) {
+      const c = bandCache.get(bi);
+      if (!c) continue;
+      const y0 = bi * rows, y1 = Math.min(world.height, y0 + rows);
+      const tl = worldToScreen(camera, canvasW, canvasH, 0, y0);
+      const br = worldToScreen(camera, canvasW, canvasH, chunkW, y1);
+      const sx0 = Math.round(tl.x), sy0 = Math.round(tl.y);
+      ctx.drawImage(c.canvas, sx0, sy0, Math.round(br.x) - sx0, Math.round(br.y) - sy0);
+    }
   }
 
   function getBakedWalls(entry) {
@@ -794,6 +864,7 @@ export function createRenderer(ctx, world) {
   // exactly shared edge with no seam, matching the "line through the screen"
   // fix already applied to the vertical case.
   function drawWalls(canvasW, canvasH, resident) {
+    if (world.v2) { drawBandWalls(canvasW, canvasH); return; }
     for (const entry of resident) {
       const canvas = getBakedWalls(entry);
       if (!canvas) continue;
@@ -894,6 +965,8 @@ export function createRenderer(ctx, world) {
 
   return {
     camera,
+    /** v2: how many wall bands are cached / were on screen last frame. */
+    wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
       resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0, extraDraw = null,
     }) {
@@ -901,7 +974,7 @@ export function createRenderer(ctx, world) {
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
       // of the run (~10 min soak test caught this: heap kept climbing).
       const liveIdx = new Set(resident.map((r) => r.index));
-      for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) wallCache.delete(ci);
+      if (!world.v2) for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) wallCache.delete(ci);
       // Round-6 task 3: follow the octopus's INTERPOLATED (render-alpha)
       // position, not its raw fixed-step one -- camera.js's own doc comment
       // already said it should ("following the octopus's interpolated

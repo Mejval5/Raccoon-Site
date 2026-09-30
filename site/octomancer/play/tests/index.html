@@ -108,6 +108,10 @@ await runRoomTests(assert, approx);
 import { runLevelTests } from './level.test.js';
 await runLevelTests(assert, approx);
 
+// --- v2 single-level world, band wall cache and spawn adapter (M1-4/M1-5) ---
+import { runWorldV2Tests } from './world-v2.test.js';
+await runWorldV2Tests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

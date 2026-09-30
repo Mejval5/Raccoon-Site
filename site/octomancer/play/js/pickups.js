@@ -73,6 +73,8 @@ function buildChunkPickups(chunk, yOffset, seedSalt) {
         }
         if (!found) continue; // no open spot near the swarm centre after several tries -- drop it rather than embed it in rock
         const by = byLocal + yOffset;
+        // v2: keep the start area clear (world-v2.js sets chunk.exclude).
+        if (chunk.exclude && Math.hypot(bx - chunk.exclude.x, by - chunk.exclude.y) < chunk.exclude.r) continue;
         items.push({ type: 'plankton', x: bx, y: by, baseX: bx, baseY: by, phase, collected: false });
       }
     }
@@ -91,7 +93,7 @@ export function createPickups() {
 
   function ensureChunk(ci, chunk, yOffset) {
     if (byChunk.has(ci)) return byChunk.get(ci);
-    const items = buildChunkPickups(chunk, yOffset, ci * 7919 + 13);
+    const items = buildChunkPickups(chunk, yOffset, chunk.salt !== undefined ? (chunk.salt % 233280) : ci * 7919 + 13);
     byChunk.set(ci, items);
     return items;
   }

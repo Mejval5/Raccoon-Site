@@ -6,12 +6,14 @@ import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
 import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
+import { createLevelWorld } from './world-v2.js';
+import { fetchRoomBank } from './rooms.js';
+import { setDefaultBank } from './level.js';
 import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
-import { CHUNK_H, CHUNK_W } from './gen.js';
 import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
 import { createAutofire } from './autofire.js';
@@ -36,6 +38,12 @@ const initialSeed = Number(params.get('seed')) || 1;
 const AUTO = params.get('auto') === '1';
 if (AUTO) setHpMode(true);
 let autofire = AUTO ? createAutofire() : null;
+// V2-PLAN M1-4/M1-5: ?v2=1 plays one generated 34x68 level (world-v2.js) instead
+// of the endless chunk stream. Without the flag nothing below changes.
+const V2 = params.get('v2') === '1';
+let levelIndex = Math.max(0, Number(params.get('level')) || 0);
+if (V2) setDefaultBank(await fetchRoomBank());
+function makeWorld(runSeed) { return V2 ? createLevelWorld(runSeed, levelIndex) : createWorld(runSeed); }
 
 let dpr = 1;
 // M7-3 perf pass: "DPR step-down to 1.0 if median > 20ms for 2s". Once
@@ -71,11 +79,11 @@ input.onModeChange((mode) => {
 
 // --- Simulation state ---
 let seed = initialSeed;
-let world = createWorld(seed);
+let world = makeWorld(seed);
 let octo = createOctopus(world.startX, world.startY);
 let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
-let decor = createDecor(CHUNK_W, CHUNK_H);
+let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
 let bombs = createBombs();
 let particles = createParticles();
@@ -102,6 +110,7 @@ const ui = createUI(hudEl, {
   muted: audio.isMuted(),
   onRestart() {
     ui.hideGameOver();
+    levelIndex = 0;
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
     applyPaused();
@@ -194,11 +203,13 @@ function step(dt) {
   if (octo.dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
     if (snap.dash.pressed) {
       ui.hideGameOver();
+      levelIndex = 0;
       resetWorld(Math.floor(Math.random() * 1e9));
       window.dispatchEvent(new CustomEvent('restart'));
     }
     return;
   }
+  if (levelClear) { if (snap.dash.pressed) nextLevel(); return; }
   stepOctopus(octo, snap, dt, world);
   if (octo.dashedThisStep) {
     sfx.dash();
@@ -216,6 +227,7 @@ function step(dt) {
     }
   }
   world.update(octo.y);
+  if (V2 && !octo.dead && world.reachedExit(octo.x, octo.y)) showLevelClear();
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident, world);
   for (const ev of pickups.events) {
@@ -344,11 +356,11 @@ loop.start();
 
 function resetWorld(newSeed) {
   seed = newSeed;
-  world = createWorld(seed);
+  world = makeWorld(seed);
   octo = createOctopus(world.startX, world.startY);
   renderer = createRenderer(ctx, world);
   pickups = createPickups();
-  decor = createDecor(CHUNK_W, CHUNK_H);
+  decor = createDecor(world.width, world.chunkHeight);
   enemies = createEnemies();
   if (AUTO) autofire = createAutofire();
   bombs = createBombs();
@@ -359,7 +371,31 @@ function resetWorld(newSeed) {
   trailTimer = 0;
   dreadLevel = 0;
   prevHearts = octo.hearts;
+  levelClear = false;
+  hideLevelClear();
   ui.hideGameOver();
+}
+
+// --- v2 level clear (M1-5: a simple overlay; the next-level flow is M2) ---
+let levelClear = false;
+let levelClearEl = null;
+function showLevelClear() {
+  levelClear = true;
+  if (!levelClearEl) {
+    levelClearEl = document.createElement('div');
+    levelClearEl.id = 'level-clear';
+    levelClearEl.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(4,20,34,0.72);color:#baffea;font:700 32px system-ui,sans-serif;z-index:20;text-align:center';
+    levelClearEl.innerHTML = '<div>Level clear</div><button type="button" style="font:600 18px system-ui;padding:12px 28px;border-radius:10px;border:0;background:#7cf0d0;color:#04202f">Next level</button>';
+    levelClearEl.querySelector('button').addEventListener('click', nextLevel);
+    document.body.appendChild(levelClearEl);
+  }
+  levelClearEl.style.display = 'flex';
+}
+function hideLevelClear() { if (levelClearEl) levelClearEl.style.display = 'none'; }
+function nextLevel() {
+  levelIndex++;
+  resetWorld(seed);
+  window.dispatchEvent(new CustomEvent('restart'));
 }
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
@@ -444,6 +480,21 @@ window.__octo = {
     applyPaused();
     window.dispatchEvent(new CustomEvent('restart'));
     return seed;
+  },
+  /** Debug: place the octopus (tests, screenshots). */
+  teleport(x, y) {
+    octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0;
+    return { x, y };
+  },
+  /** v2 only: level info for tests/review. */
+  level() {
+    if (!V2) return null;
+    const l = world.level;
+    return {
+      levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
+      tiles: Array.from(l.tiles), w: world.width, h: world.height, fallback: l.fallback,
+      bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), levelClear,
+    };
   },
   audio() {
     return { started: audio.isStarted(), muted: audio.isMuted(), track: audio.currentTrack() };
