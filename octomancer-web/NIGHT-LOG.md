@@ -2581,3 +2581,9 @@ Endless mode without the flag is unchanged (seed 1 frame vs HEAD: 0.07% pixels d
 - Review (desktop 1440x900 and 375x812): hub -> board -> tutorial (all four prompts, bomb wall opens) -> Shallows 1-1..1-3 -> end screen -> hub, second dive skips the tutorial, death returns to the hub, swimming into the well with real input works. Layouts read as winding caves (`fix-r20-layout-overview.png`). Fixed during review: hub prompt radius (was out of range at spawn), prompt banner overlapped the mute button on phone, ring too faint on light water, journal list too tall.
 - Open: hearts/bombs carry but score does not; hub board sits in open water (no wall art); enemies, foliage and specials still use the old slot spawner.
 - Screenshots: `night/fix-r20-*.png`.
+
+## Round 21 (visual fixes)
+- "Dive" label only drawn when the ring is on screen and outside the bottom-left hint band.
+- Exit ring: single thick warm ring lying on the floor with a strong glow and sparks (hub entrance moved to the well's bottom row so it sits in the floor).
+- Journal board: moved to (7,13) against the left mound's rock face, rounded frame, ropes, outline. hub.json rebuilt.
+- Depth: water gradient darkening capped (t <= 0.5) so caves stay lighter than the rock fill. Tests 1841/1841, 0 console errors. Screenshots: night/fix-r21-*.png.

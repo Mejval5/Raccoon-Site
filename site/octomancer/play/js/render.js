@@ -532,7 +532,7 @@ export function createRenderer(ctx, world) {
   // colour instead of undershooting it; the depth-darkening falloff itself
   // (still goes dark at extreme depth, for gameplay readability) is unchanged.
   function drawBackground(canvasW, canvasH, time, depth) {
-    const t = Math.min(1, depth / 400);
+    const t = Math.min(0.5, depth / 400); // capped so water stays clearly lighter than the rock fill
     const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
     grad.addColorStop(0, `rgb(${lerp(140, 20, t)},${lerp(252, 46, t)},${lerp(252, 76, t)})`);
     grad.addColorStop(1, `rgb(${lerp(118, 10, t)},${lerp(230, 26, t)},${lerp(238, 46, t)})`);

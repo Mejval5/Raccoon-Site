@@ -68,9 +68,9 @@ rect(hub, 24, 14, 28, 15, '#'); rect(hub, 25, 13, 27, 13, '#')
 rect(hub, 4, 9, 5, 13)
 border(hub)
 shave(hub)
-hub[13][6] = 'J'      # journal board, swim into it
+hub[13][7] = 'J'      # journal board, hung on the face of the left mound (rock at x=8), swim into it
 hub[12][22] = 'S'
-hub[20][16] = 'E'     # the dive entrance, at the bottom of the well
+hub[21][16] = 'E'     # the dive entrance, ring on the floor of the well
 hub_json = {
     'id': 'hub', 'name': 'The Hub', 'rows': rows(hub),
     'prompts': [
