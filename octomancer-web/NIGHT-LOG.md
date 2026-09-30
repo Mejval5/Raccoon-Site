@@ -2628,3 +2628,11 @@ Endless mode is unchanged (a page without `?v2=1` makes 0 requests into `img/v2/
 - Tests: `tests/v2-art.test.js` (13 checks: files load, keyed alpha, no magenta, opaque far layer, seamless and on-colour rock tile, counter slices, all draw paths with art incl. the no-ceiling post).
 - Cut / open: the stall sheet's counter is stretched from a 20 px slice (wood grain streaks, rope reads as a straight line); the pedestal sprite is masked by colour and keeps a few dark wood pixels at its base; the rock tile repeats visibly every 9 units (softened by the cross-blend); no separate hub-quest-sign text plaque art (code-drawn text on the plank).
 - Screenshots: `night/fix-r24-*.png`.
+
+## Round 25 visual fixes
+- Exit ring: `level.js` drops the exit cell (and its marker) down the water column to the first solid tile, so ring and trigger sit on a real floor.
+- Vault bush: wall critters remember their support tile (`support`); `visibleCritters` drops any whose tile a bomb removed.
+- Vault chest: 0.85 tile, inset 0.12 from the left rim, base on the rim's inner edge.
+- Shop keeper (and sign) drawn centred in the gap between the two pedestals that bracket it (keeper sits between 2 and 3 when the room is flipped).
+- Tutorial wall cracks clipped to wall cells with water beside them (none on the rock above and below the passage).
+- Hub Journal board 0.5 tile left, label above the board.

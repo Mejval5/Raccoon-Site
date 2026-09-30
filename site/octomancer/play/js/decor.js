@@ -293,6 +293,7 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
         }
         out.push({
           kind, x: ax, y: ay,
+          support: anchorSolidY * chunkW + anchorSolidX, // tile the sprite is mounted on; if a bomb removes it the decor goes too
           onFloor: floorCap, onCeiling: !floorCap && ceilingCap, wallDir,
           phase: (h % 1000) / 1000 * Math.PI * 2,
           flip: (h >> 3) % 2 === 0,
@@ -482,10 +483,13 @@ export function createDecor(chunkW, chunkH) {
      * each one's own `phase`, so nothing here needs per-frame state. */
     visibleCritters(resident) {
       const out = [];
-      for (const { index } of resident) {
+      for (const { index, chunk } of resident) {
         const entry = byChunk.get(index);
         if (!entry) continue;
-        out.push(...entry.critters);
+        for (const c of entry.critters) {
+          if (c.support !== undefined && chunk.tiles[c.support] === 0) continue; // its rock was bombed away
+          out.push(c);
+        }
       }
       return out;
     },

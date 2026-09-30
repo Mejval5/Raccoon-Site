@@ -155,18 +155,22 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   ctx.save();
   ctx.beginPath();
   let any = false;
+  const crackRects = []; // cells that border water sideways: cracks stay on the passage, never on the rock above and below it
+  let cMinY = 1e9, cMaxY = -1e9, cMinX = 1e9, cMaxX = -1e9;
   for (let i = 0; i < walls.length; i += 2) {
     const tx = walls[i], ty = walls[i + 1];
     if (open(tx, ty)) continue;
     n++; cx += tx + 0.5; cy += ty + 0.5;
     if (tx < minX) minX = tx; if (tx > maxX) maxX = tx; if (ty < minY) minY = ty; if (ty > maxY) maxY = ty;
     const l = open(tx - 1, ty), r = open(tx + 1, ty), u = open(tx, ty - 1), d = open(tx, ty + 1);
+    if (l || r) { if (ty < cMinY) cMinY = ty; if (ty > cMaxY) cMaxY = ty; if (tx < cMinX) cMinX = tx; if (tx > cMaxX) cMaxX = tx; }
     const x = sx(tx), y = sy(ty);
     if (x < -ppu || x > cw + ppu || y < -ppu || y > ch + ppu) continue;
     // the rect grows into neighbouring wall cells (no seams) and stays inset from water faces
     const x0 = x + (l ? inset : -1), x1 = x + ppu - (r ? inset : -1);
     const y0 = y + (u ? inset : -1), y1 = y + ppu - (d ? inset : -1);
     ctx.rect(x0, y0, x1 - x0, y1 - y0); any = true;
+    if (l || r) crackRects.push(x0, y0, x1 - x0, y1 - y0);
   }
   if (any) {
     ctx.clip();
@@ -174,12 +178,17 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
     ctx.fillStyle = `rgba(255,232,190,${0.01 + 0.012 * pulse + 0.05 * cue.attention})`;
     ctx.fillRect(0, 0, cw, ch);
     const crackImg = artImg('crackWall');
-    if (crackImg) {
+    ctx.restore(); ctx.save();
+    ctx.beginPath();
+    for (let k = 0; k < crackRects.length; k += 4) ctx.rect(crackRects[k], crackRects[k + 1], crackRects[k + 2], crackRects[k + 3]);
+    ctx.clip();
+    if (!crackRects.length) { /* nothing borders water: no cracks */ }
+    else if (crackImg) {
       // generated crack sprite, repeated down the wall in 4 tile segments (alternate flips and sway), inside the clip
       const segH = 4, segW = segH * (crackImg.naturalWidth / crackImg.naturalHeight);
-      const mid = (minX + maxX + 1) / 2;
+      const mid = (cMinX + cMaxX + 1) / 2;
       ctx.globalAlpha = 0.9;
-      for (let k = 0, y = minY; y < maxY + 1; y += segH - 0.2, k++) {
+      for (let k = 0, y = cMinY; y < cMaxY + 1; y += segH - 0.2, k++) {
         const flip = k & 1, jx = ((k * 7) % 5 - 2) * 0.18;
         ctx.save();
         ctx.translate(sx(mid + jx), sy(y));
@@ -190,7 +199,7 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
       ctx.globalAlpha = 1;
     } else {
       // a few irregular cracks running through the whole wall (world space, deterministic)
-      strokeCracks(ctx, sx, sy, ppu, makeCracks(minX, minY, maxX - minX + 1, maxY - minY + 1, Math.max(2, Math.round((maxY - minY + 1) / 3))));
+      strokeCracks(ctx, sx, sy, ppu, makeCracks(cMinX, cMinY, cMaxX - cMinX + 1, cMaxY - cMinY + 1, Math.max(2, Math.round((cMaxY - cMinY + 1) / 3))));
     }
   }
   ctx.restore();
@@ -277,10 +286,11 @@ export function drawVaultCache(ctx, camera, cw, ch, x, y, time, opened = false) 
   const img = artImg(opened ? 'chestOpen' : 'chestClosed');
   const g = 0.5 + 0.5 * Math.sin(time * 3);
   if (img) {
-    const dw = ppu * 0.72, dh = dw * (img.naturalHeight / img.naturalWidth);
-    const foot = cy + ppu * 0.5 - ppu * 0.1; // tile floor minus the rim inset
-    ctx.drawImage(img, cx - dw / 2, foot - dh, dw, dh);
-    if (!opened) glint(ctx, cx + dw * 0.22, foot - dh * 0.72, ppu * 0.8, 0.5 + 0.4 * g);
+    const dw = ppu * 0.85, dh = dw * (img.naturalHeight / img.naturalWidth);
+    const foot = cy + ppu * 0.5 - ppu * 0.2; // tile floor minus the rim's inner edge
+    const ccx = cx + ppu * 0.12;              // nudged off the left wall's rim
+    ctx.drawImage(img, ccx - dw / 2, foot - dh, dw, dh);
+    if (!opened) glint(ctx, ccx + dw * 0.22, foot - dh * 0.72, ppu * 0.8, 0.5 + 0.4 * g);
     return;
   }
   const w = ppu * 0.8, h = ppu * 0.52, lw = Math.max(1.5, ppu * 0.06);
@@ -400,7 +410,14 @@ const SIGN_W = 2.6, KEEPER_W = 1.5, PED_W = 0.8;       // tiles
 
 function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   const { ppu, sx, sy } = view(camera, cw, ch);
-  const kx = sx(st.keeperX);
+  // the keeper (and the sign over it) stands centred in the gap between the two pedestals that bracket its
+  // spot, so its sprite clears both plinths (the room art puts the keeper only 1 tile from each)
+  let keeperWX = st.keeperX;
+  for (let i = 0; i < 2; i++) {
+    const a = st.px[i * 2], b = st.px[i * 2 + 2];
+    if (st.keeperX >= a && st.keeperX <= b) { keeperWX = (a + b) / 2; break; }
+  }
+  const kx = sx(keeperWX);
   const floorTop = Math.floor(st.px[1]) + 1;           // world y of the stall floor's surface
   if (kx < -ppu * 8 || kx > cw + ppu * 8 || sy(floorTop) < -ppu * 8 || sy(floorTop) > ch + ppu * 8) return;
   const lw = Math.max(1.5, ppu * 0.06);
@@ -434,7 +451,7 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   const ropeDx = sw * (0.5 - SIGN_ROPE);
   let ceil = null;
   if (tileAt) {
-    const wx0 = st.keeperX - ropeDx / ppu, wx1 = st.keeperX + ropeDx / ppu;
+    const wx0 = keeperWX - ropeDx / ppu, wx1 = keeperWX + ropeDx / ppu;
     const wy = camera.y + (sTop - ch / 2) / ppu;       // world y of the sign's top
     for (let dy = 0; dy < 7 && ceil === null; dy++) {
       const ty = Math.floor(wy - 0.1) - dy;

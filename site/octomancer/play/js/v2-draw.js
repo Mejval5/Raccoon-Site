@@ -91,7 +91,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
 
   // --- journal board: a wooden plank hung on the rock face, outlined like the sprites ---
   if (m.boardX >= 0) {
-    const bx = sx(m.boardX + 0.5 + 0.35), by = sy(m.boardY + 0.5 - 0.2);
+    const bx = sx(m.boardX + 0.5 - 0.38), by = sy(m.boardY + 0.5 - 0.2);
     const w = ppu * 1.7, h = ppu * 1.2;
     const boardImg = artImg('board');
     if (boardImg && bx > -w && bx < cw + w && by > -h && by < ch + h) {
@@ -101,8 +101,8 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.3))}px Quicksand, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.lineWidth = Math.max(2, ppu * 0.1); ctx.lineJoin = 'round'; ctx.strokeStyle = '#3a2410';
-      ctx.strokeText('Journal', bx, by + dh / 2 + ppu * 0.22);
-      ctx.fillStyle = '#f6e7b8'; ctx.fillText('Journal', bx, by + dh / 2 + ppu * 0.22);
+      ctx.strokeText('Journal', bx, by - dh / 2 - ppu * 0.2);
+      ctx.fillStyle = '#f6e7b8'; ctx.fillText('Journal', bx, by - dh / 2 - ppu * 0.2);
     } else if (bx > -w && bx < cw + w && by > -h && by < ch + h) {
       const lw = Math.max(2, ppu * 0.09);
       ctx.lineJoin = 'round';

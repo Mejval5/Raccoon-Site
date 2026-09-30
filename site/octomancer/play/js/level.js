@@ -522,6 +522,11 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     }
   }
 
+  // the exit ring lies on the floor: drop the exit cell down the open water column to the first solid tile
+  const ey0 = ey;
+  while (ey + 1 < LEVEL_H - BORDER && tiles[(ey + 1) * LEVEL_W + ex] === 0) ey++;
+  if (ey !== ey0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex && marks[i * 3 + 1] === ey0) marks[i * 3 + 1] = ey;
+
   return {
     w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
     startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
