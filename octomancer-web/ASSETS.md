@@ -65,6 +65,7 @@ spark, the explosion ring and debris particles are code-drawn (M3-3).
 |---|---|---|
 | `audio/medles.opus`, `audio/medles.mp3` | `octomancer-unity\Assets\Sounds\Mj 362 - Octopus Medles.mp3`, encoded by `web/tools/encode_music.py` (ffmpeg, libopus/libmp3lame, 96kbps) | Milan Švancara |
 | `audio/flute.opus`, `audio/flute.mp3` | `octomancer-unity\Assets\Sounds\Svancara Strings - Flûte de forêt.wav`, encoded by `web/tools/encode_music.py` | Milan Švancara |
+| `../data/rooms.json` (level data, at `play/data/`, not `play/assets/`: the 18 room bitmaps as plain JSON strings, rock/water/portal cells only, no image shipped) | `octomancer-unityAssetsSpritesTilemapWorldGenRooms0-15.png`, `Building.png`, `Pool.png`, exported by `octomancer-web/tools/export_rooms.py` | Milan Švancara (level art) |
 
 `Mj -  312 Q.mp3` stays harvested-only, not shipped (DECISIONS §1 Q7).
 Dash/hurt/bomb SFX are synthesised in code (`play/js/sfx.js`, plain
