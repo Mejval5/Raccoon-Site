@@ -56,6 +56,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     salt: hashSalt(runSeed, levelIndex),
     exitCol: level.exitX,
     // decor: no plants inside the shop stall (counter span + 3 tiles each side, from above the sign to below the floor)
+    plantKeepOut: [
+      ...(level.exitX >= 0 && level.exitX !== undefined ? [{ x0: level.exitX - 2, x1: level.exitX + 3, y0: level.exitY - 1, y1: level.exitY + 2 }] : []),
+      ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
+    ],
     plantFree: level.shop ? {
       x0: Math.min(level.shop.px[0], level.shop.kx) - 3, x1: Math.max(level.shop.px[4], level.shop.kx) + 4,
       y0: level.shop.ky - 5, y1: Math.max(level.shop.px[1], level.shop.px[3], level.shop.px[5]) + 3,

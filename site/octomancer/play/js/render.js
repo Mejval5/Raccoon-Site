@@ -930,7 +930,16 @@ export function createRenderer(ctx, world) {
         ctx.save();
         ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
         ctx.fillRect(0, 0, canvasW, cutY + 1);
-        if (rockNoisePattern) { ctx.fillStyle = rockNoisePattern; ctx.fillRect(0, 0, canvasW, cutY + 1); }
+        if (rockNoisePattern) {
+          // round 27: same world-aligned noise phase as the baked chunk (paintNoise), so the grain continues across cutY
+          const top = worldToScreen(camera, canvasW, canvasH, 0, topEntry.yOffset);
+          const k = camera.pxPerUnit / BAKE_PX_PER_UNIT;
+          const offPx = ((topEntry.yOffset * BAKE_PX_PER_UNIT) % rockNoiseCanvas.height + rockNoiseCanvas.height) % rockNoiseCanvas.height;
+          ctx.translate(top.x, top.y - offPx * k);
+          ctx.scale(k, k);
+          ctx.fillStyle = rockNoisePattern;
+          ctx.fillRect(-top.x / k, (0 - (top.y - offPx * k)) / k, canvasW / k + top.x / k, (cutY + 1 - (top.y - offPx * k)) / k);
+        }
         ctx.restore();
       }
     }

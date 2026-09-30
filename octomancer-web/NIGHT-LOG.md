@@ -2636,3 +2636,8 @@ Endless mode is unchanged (a page without `?v2=1` makes 0 requests into `img/v2/
 - Shop keeper (and sign) drawn centred in the gap between the two pedestals that bracket it (keeper sits between 2 and 3 when the room is flipped).
 - Tutorial wall cracks clipped to wall cells with water beside them (none on the rock above and below the passage).
 - Hub Journal board 0.5 tile left, label above the board.
+
+## Round 27 visual fixes
+- Plants: `chunk.plantKeepOut` (world-v2.js) holds the exit ring box (exit +-2 x, -1..+1 y) and the hub board box (board +-1 x, -1..+2 y); `findPlantAnchors` skips anchors inside.
+- Endless swim-up cap: the noise grain over the cap now uses the same world-aligned phase and scale as the baked chunk (`paintNoise`), so the texture continues across the cut.
+- Tests 1929/1929, 0 console errors. Screenshots `night/fix-r27-*.png`.
