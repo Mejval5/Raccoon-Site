@@ -380,6 +380,8 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
   for (let ty = 1; ty < chunkH - 1; ty++) {
     for (let tx = 1; tx < chunkW - 1; tx++) {
       if (chunk.tiles[ty * chunkW + tx] === 0) continue; // must itself be solid
+      const nf = chunk.plantFree; // v2: the shop stall (counter span plus a margin) grows no foliage
+      if (nf && tx >= nf.x0 && tx < nf.x1 && ty >= nf.y0 && ty < nf.y1) continue;
       if (nearEnemySlot(chunk, tx, ty)) continue; // round-13 review: no plant on an urchin/cannon/horns
       const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
       const openAbove = chunk.tiles[(ty - 1) * chunkW + tx] === 0;

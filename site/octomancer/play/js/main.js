@@ -31,7 +31,7 @@ import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import {
   fetchQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
@@ -568,7 +568,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   }
   if (lv.signX !== undefined && lv.signX >= 0) drawQuestSign(c, camera, cw, ch, lv.signX, lv.signY, t);
   if (run.state === S_BIOME) {
-    if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t);
+    if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
+    if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
     if (quest && quest.status === 0) {
       if (quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
       else if (quest.plan.kindId === Q_VAULT && !quest.collected) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t);

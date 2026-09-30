@@ -108,6 +108,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
+  align-self: flex-start;
+  padding: 1px 8px 2px;
+  border-radius: 9px;
+  background: rgba(4, 18, 30, 0.42); /* soft backing so sprites under the stats do not hurt legibility */
 }
 .octo-hud-stat { white-space: nowrap; }
 .octo-hud-score { color: #fff; font-weight: 700; }
@@ -267,7 +271,7 @@ body {
   width: min(88vw, 460px);
   padding: 10px 16px 12px;
   border-radius: 14px;
-  background: rgba(6, 22, 34, 0.82);
+  background: rgb(6, 22, 34); /* opaque: world sprites must not show through the text */
   border: 1px solid rgba(186, 255, 234, 0.3);
   color: #eafffa;
   text-align: center;

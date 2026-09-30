@@ -2604,3 +2604,13 @@ Endless mode without the flag is unchanged (the new code only loads data and mod
 - Build tools updated (`tools/biome1-rooms.txt`, `tools/build_authored_maps.py`); regenerating the JSON gives the shipped files.
 - Open: the shop and quest art are code-drawn placeholders; the vault pocket reads as a lit cave hole with a chest and two shells (no crack marks on the rock around it); the pest piranhas are ordinary piranhas (they chase); rescue is the most common quest because it has the most placements.
 - Screenshots: `night/fix-r22-*.png`.
+
+## Round 23 (visual fixes, quests and shops)
+Tests 1915/1915, 0 console errors.
+- Tutorial bomb wall: one clip over the standing wall cells, inset from water faces (green rim visible), no per-tile grid or repeated glyph, a barely-there tint plus a few irregular cracks across the whole wall (shared `makeCracks`/`strokeCracks`).
+- Shop sign: ropes ray-cast up to the rock ceiling above the sign; no ceiling within 6 tiles gives a post on the counter instead. Plants: `chunk.plantFree` (world-v2.js) keeps decor out of the stall (counter span + 3 tiles), read in `findPlantAnchors`.
+- Hub Quests sign moved to (26,12) on top of the right mound (hub.json rebuilt), plank wholly in water, post reaches the floor.
+- Rescue critter: placed on a tile with a clear 3x3 block (0.8 tiles to rock, fallback to any spot), drawn at about 0.7x the octopus, halo capped under 0.7 tiles and fainter.
+- Vault: chest rests on the pocket floor (left cell), shells in the right column, `drawPocketCracks` marks the two rock tiles on the entrance side of every sealed pocket with the wall's crack style.
+- Prompt banner fully opaque; HUD stat line gets a soft dark backing.
+- Screenshots: `night/fix-r23-*.png`.

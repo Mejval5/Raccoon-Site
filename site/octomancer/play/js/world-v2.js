@@ -55,6 +55,11 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     noDepthGate: true, // enemies.js: no "first 40 units enemy-free" rule in a whole-level chunk
     salt: hashSalt(runSeed, levelIndex),
     exitCol: level.exitX,
+    // decor: no plants inside the shop stall (counter span + 3 tiles each side, from above the sign to below the floor)
+    plantFree: level.shop ? {
+      x0: Math.min(level.shop.px[0], level.shop.kx) - 3, x1: Math.max(level.shop.px[4], level.shop.kx) + 4,
+      y0: level.shop.ky - 5, y1: Math.max(level.shop.px[1], level.shop.px[3], level.shop.px[5]) + 3,
+    } : undefined,
   };
 
   let deepestY = startY;

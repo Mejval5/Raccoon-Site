@@ -69,7 +69,7 @@ rect(hub, 4, 9, 5, 13)
 border(hub)
 shave(hub)
 hub[13][7] = 'J'      # journal board, hung on the face of the left mound (rock at x=8), swim into it
-hub[13][29] = 'Q'      # quest sign, in the nook right of the right mound (round 22)
+hub[12][26] = 'Q'      # quest sign, standing on top of the right mound in open water (round 23)
 hub[12][22] = 'S'
 hub[21][16] = 'E'     # the dive entrance, ring on the floor of the well
 hub_json = {

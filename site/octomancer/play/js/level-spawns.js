@@ -81,11 +81,11 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     }
   }
   const spawns = [];
-  // sealed rock pockets (level.js carvePockets) hold two shells on their bottom row; the vault quest
-  // puts its cache on the top row
+  // sealed rock pockets (level.js carvePockets) hold two shells in their right column; the vault quest
+  // rests its cache on the floor of the left cell
   for (let i = 0; i < (level.nPockets || 0); i++) {
     const px = level.pockets[i * 3], py = level.pockets[i * 3 + 1];
-    spawns.push({ type: 'shell', x: px + 0.5, y: py + 1.5 }, { type: 'shell', x: px + 1.5, y: py + 1.5 });
+    spawns.push({ type: 'shell', x: px + 1.5, y: py + 1.5 }, { type: 'shell', x: px + 1.5, y: py + 0.6 }); // right column: the vault chest takes the bottom-left
   }
   if (!openCells.length) return { spawns, openCells: 0 };
   const pick = (list) => list[Math.floor(rng() * list.length)];

@@ -89,10 +89,13 @@ export function planQuest(level, table, runSeed, levelIndex) {
       case Q_VAULT: {
         if (!(level.nPockets > 0)) return null;
         const px = level.pockets[0], py = level.pockets[1];
-        return Float32Array.of(px + 1.0, py + 0.55);
+        return Float32Array.of(px + 0.5, py + 1.72); // the chest rests on the pocket floor, left cell (shells sit right of it)
       }
       case Q_RESCUE: {
-        const all = spots(false);
+        // the critter needs open water all round (>= 0.8 tiles to rock: the 3x3 block around its tile centre is
+        // water), so its fins and halo never touch the wall; tight corners only as a last resort
+        let all = spots(true);
+        if (!all.length) all = spots(false);
         // a side pocket: prefer spots well off the shortest route, then any spot off it
         for (const minRoute of [4, 2.5, 1.5]) {
           const cand = [];
