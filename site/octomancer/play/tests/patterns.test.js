@@ -5,6 +5,7 @@ import { createRoomBank } from '../js/rooms.js';
 import { generateLevel, finalPathOk, LEVEL_W, LEVEL_H } from '../js/level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from '../js/level-spawns.js';
 import { hazardBlockers, HAZARD_CODE } from '../js/hazards.js';
+import { LOOT_CODE } from '../js/loot.js';
 import { createEnemies } from '../js/enemies.js';
 import { createOctopus } from '../js/octopus.js';
 import { pathSolvable } from '../js/pathcheck.js';
@@ -72,10 +73,10 @@ export async function runPatternTests(assert) {
   const HAZARD_KINDS = Object.keys(HAZARD_CODE);
   let shapeBad = '';
   for (const p of json.patterns) {
-    if (!p.id || !['enemy', 'hazard'].includes(p.kind)) shapeBad += ' kind:' + p.id;
-    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : !HAZARD_KINDS.includes(p.spawn)) shapeBad += ' spawn:' + p.id;
+    if (!p.id || !['enemy', 'hazard', 'loot'].includes(p.kind)) shapeBad += ' kind:' + p.id;
+    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : p.kind === 'hazard' ? !HAZARD_KINDS.includes(p.spawn) : !Object.keys(LOOT_CODE).includes(p.spawn)) shapeBad += ' spawn:' + p.id;
     if (p.rows.length !== 5 || p.rows.some((r) => !/^[#.?]{5}$/.test(r))) shapeBad += ' rows:' + p.id;
-    if (p.rows[p.anchor[1]][p.anchor[0]] !== '.') shapeBad += ' anchor:' + p.id;
+    if (p.rows[p.anchor[1]][p.anchor[0]] !== (p.spawn === 'pocket' ? '#' : '.')) shapeBad += ' anchor:' + p.id; // a hidden pocket's anchor is a rock tile
     if (p.chance.length !== NLEVELS || p.cap.length !== NLEVELS || p.chance.some((c) => c < 0 || c > 1) || p.cap.some((c) => c < 0 || !Number.isInteger(c))) shapeBad += ' ramp:' + p.id;
   }
   assert('patterns: every entry has a 5x5 kernel, a water anchor, a known spawn and a chance and cap for each of 1-1, 1-2, 1-3' + shapeBad, shapeBad === '');

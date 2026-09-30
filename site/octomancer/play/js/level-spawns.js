@@ -14,8 +14,19 @@ import { mulberry32, hashSeed } from './rng.js';
 import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk } from './level.js';
 import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
+import { makeLootRecord, RELIC_CHANCE } from './loot.js';
 
 export const START_SAFE_RADIUS = 7;
+// Things that hurt from a distance stay out of reach of an idle octopus at the start: a cannon shot flies
+// CANNON_RANGE (10) tiles and a manta drops from 8, so they keep 12 tiles from the start; hazards keep 10
+// (the jet's stream is up to 7 long and an eel's ring 3).
+export const RANGED_START_KEEP_OUT = 12;
+export const HAZARD_START_KEEP_OUT = 10;
+export const ENEMY_START_KEEP_OUT = 9; // every enemy (a piranha notices at 6 and starts 0.05 off its cell)
+// A patroller walks its whole row (piranha, crab: wall to wall; manta: 5 tiles either side), so what counts is how
+// near that stretch comes to the start: never inside its notice range (piranha 6, manta 8), plus a margin.
+const PATROL_CLEAR = { piranha: 7.6, crab: 3, manta: 9 };
+const PATROL_REACH = { piranha: 99, crab: 99, manta: 5 };
 
 function idx(x, y) { return y * W + x; }
 
@@ -58,6 +69,15 @@ function hasOpenClearance(t, x, y, r) {
     }
   }
   return true;
+}
+
+/** Distance from (sx, sy) to the stretch of water cells a patroller on row `ty` can walk, `reach` tiles either side of `tx`. */
+function patrolDistance(t, tx, ty, reach, sx, sy) {
+  let xl = tx, xr = tx;
+  while (tx - xl < reach && xl - 1 >= 0 && t[idx(xl - 1, ty)] === 0) xl--;
+  while (xr - tx < reach && xr + 1 < W && t[idx(xr + 1, ty)] === 0) xr++;
+  const nx = Math.max(xl, Math.min(xr + 1, sx));
+  return Math.hypot(nx - sx, ty + 0.5 - sy);
 }
 
 /**
@@ -146,11 +166,31 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     for (let i = 0; i < openCells.length; i++) ok[idx(openCells[i][0], openCells[i][1])] = 1;
     const occupied = [];
     for (const s of spawns) if (s.type === 'shell') occupied.push(s.x, s.y, 1.5);
+    const lrng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0x100700));
+    const relicOk = lrng() < RELIC_CHANCE; // a relic in 1 in 3 levels
     const build = (p, x, y, dx, dy) => {
       const tx = Math.floor(x), ty = Math.floor(y);
+      const kind = table.kind[p], name = table.spawn[p];
+      const fromStart = Math.hypot(x - sx, y - sy);
+      if (kind === 'loot') {
+        if (name === 'pocket') {
+          // the anchor is a rock tile inside the level border; the water it can be bombed from is 2 tiles towards dir
+          if (tx < BORDER || ty < BORDER || tx >= W - BORDER || ty >= H - BORDER || t[idx(tx, ty)] === 0) return null;
+          const wx = tx + dx * 2, wy = ty + dy * 2;
+          if (wx < 0 || wy < 0 || wx >= W || wy >= H || !ok[idx(wx, wy)] || fromStart < safe || inShop(tx, ty)) return null;
+          return makeLootRecord(name, x, y, dx, dy, lrng);
+        }
+        if (!ok[idx(tx, ty)]) return null;
+        return makeLootRecord(name, x, y, dx, dy, lrng, relicOk);
+      }
       if (!ok[idx(tx, ty)]) return null;
-      if (table.kind[p] === 'hazard') return makeHazardRecord(table.spawn[p], x, y, dx, dy, t, W, H);
-      return makeEnemySlot(t, table.spawn[p], tx, ty, dx, dy);
+      if (kind === 'hazard') {
+        if (fromStart < HAZARD_START_KEEP_OUT) return null;
+        return makeHazardRecord(name, x, y, dx, dy, t, W, H);
+      }
+      if (fromStart < ((name === 'cannon' || name === 'manta') ? RANGED_START_KEEP_OUT : ENEMY_START_KEEP_OUT)) return null;
+      if (PATROL_CLEAR[name] && patrolDistance(t, tx, ty, PATROL_REACH[name], sx, sy) < PATROL_CLEAR[name]) return null;
+      return makeEnemySlot(t, name, tx, ty, dx, dy);
     };
     const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied);
     // A*: blocking hazards must leave the exit (and shop) reachable

@@ -6,7 +6,7 @@ import { CATEGORIES, CATEGORY_TITLES } from './journal.js';
 /**
  * @param {HTMLElement} root the #hud element
  * @param {ReturnType<import('./journal.js').createJournal>} journal
- * @param {{onClose?:()=>void}} handlers
+ * @param {{onClose?:()=>void, onOpen?:()=>void}} handlers
  */
 export function createJournalScreen(root, journal, handlers = {}) {
   const overlay = document.createElement('div');
@@ -62,7 +62,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) hide(); });
 
   return {
-    show() { open = true; render(); overlay.style.display = 'flex'; body.scrollTop = 0; },
+    show() { open = true; if (handlers.onOpen) handlers.onOpen(); render(); overlay.style.display = 'flex'; body.scrollTop = 0; },
     hide,
     isOpen() { return open; },
   };

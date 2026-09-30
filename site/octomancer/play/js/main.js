@@ -18,6 +18,8 @@ import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
+import { createLoot, lootJournalId, spreadShells, TRAP_SWARM, LOOT_NAMES } from './loot.js';
+import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs } from './bomb.js';
@@ -42,7 +44,7 @@ import {
 } from './quests.js';
 import { fetchShopItems, createShopState, shopStep } from './shop.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
-import { HEART_MAX, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
+import { HEART_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
 
@@ -128,6 +130,7 @@ let pickups = createPickups();
 let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
 let hazards = createHazards();
+let loot = createLoot();
 let bombs = createBombs();
 let particles = createParticles();
 let autoDiveOn = false;
@@ -181,7 +184,7 @@ const ui = createUI(hudEl, {
 
 // v2 journal (B1-4): entries persisted through save.js; the list screen opens from the hub board.
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds });
-const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; } });
+const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; }, onOpen() { ui.setPrompt(null); } });
 let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 function announceJournal() {
   for (const id of journal.takeNew()) {
@@ -321,6 +324,7 @@ function step(dt) {
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
     }
   }
+  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -329,7 +333,11 @@ function step(dt) {
   dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
   audio.setBeholderDread(dreadLevel);
   bombs.update(dt, world, octo, enemies);
-  for (const ev of bombs.events) if (ev.type === 'exploded') { particles.bombDebris(ev.x, ev.y); sfx.bomb(); }
+  for (const ev of bombs.events) {
+    if (ev.type !== 'exploded') continue;
+    particles.bombDebris(ev.x, ev.y); sfx.bomb();
+    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); }
+  }
   for (const ev of enemies.events) {
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
@@ -438,8 +446,8 @@ function render(alpha, frameMs) {
     depth: Math.round(depth), score: liveScore, best: bestScore,
     stage: V2 ? stageLabel(run) : undefined,
     shells: V2 ? run.shells : undefined,
-    quest: V2 && quest ? questHudText(quest) : '',
-    questState: V2 && quest ? (quest.status === ST_DONE ? 'done' : quest.status === ST_FAILED ? 'failed' : '') : '',
+    quest: V2 && loot.chaseLeft() > 0 ? 'Run! The ceiling is falling: ' + Math.ceil(loot.chaseLeft()) + 's' : V2 && quest ? questHudText(quest) : '',
+    questState: V2 && loot.chaseLeft() > 0 ? 'failed' : V2 && quest ? (quest.status === ST_DONE ? 'done' : quest.status === ST_FAILED ? 'failed' : '') : '',
   });
   debug.tick();
 }
@@ -459,6 +467,7 @@ function resetWorld(newSeed) {
   decor = createDecor(world.width, world.chunkHeight);
   enemies = createEnemies();
   hazards = createHazards();
+  loot = createLoot();
   if (AUTO) autofire = createAutofire();
   bombs = createBombs();
   particles = createParticles();
@@ -563,6 +572,9 @@ function stepV2(snap) {
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
     for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
   }
+  if ((seeTick & 7) === 4 && run.state === S_BIOME) {
+    for (const lk of loot.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(lootJournalId(lk));
+  }
   if ((seeTick++ & 7) === 0) {
     for (const e of enemies.all()) {
       if (e.dead) continue;
@@ -587,12 +599,59 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (lv.signX !== undefined && lv.signX >= 0) drawQuestSign(c, camera, cw, ch, lv.signX, lv.signY, t);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
-    drawHazards(c, camera, cw, ch, hazards.data, t);
+    drawLoot(c, camera, cw, ch, loot.data, t);
+    drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
     if (quest && quest.status === 0 && quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
     if (quest && quest.plan && quest.plan.kindId === Q_VAULT) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t, quest.collected);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+}
+
+// --- round 31: loot and secrets (js/loot.js) ---
+function dropShells(n, x, y) {
+  for (const p of spreadShells(n, x, y)) pickups.dropShell(p.x, p.y);
+}
+function handleLootEvents() {
+  for (const ev of loot.takeEvents()) {
+    switch (ev.type) {
+      case 'break':
+        particles.bombDebris(ev.x, ev.y); sfx.bomb();
+        dropShells(ev.shells, ev.x, ev.y);
+        discover(lootJournalId(ev.lk));
+        break;
+      case 'chest':
+        particles.pickupSparkle(ev.x, ev.y - 0.3, '#ffe38a'); sfx.chime();
+        dropShells(ev.shells, ev.x, ev.y - 0.4);
+        discover('loot-chest');
+        if (ev.trap) ui.showToast('It was trapped!');
+        break;
+      case 'trap':
+        if (ev.trap === TRAP_SWARM) for (let k = 0; k < ev.n; k++) enemies.spawnAt('piranha', ev.x + (k - 1) * 0.6, ev.y - 0.3 - (k % 2) * 0.4, 'open', 0);
+        else { particles.bombDebris(ev.x, ev.y); sfx.hurt(); }
+        break;
+      case 'pocket':
+        particles.bombDebris(ev.x, ev.y);
+        if (ev.shells) dropShells(ev.shells, ev.x, ev.y);
+        discover('loot-pocket');
+        ui.showToast('A hidden pocket!');
+        break;
+      case 'item':
+        particles.pickupSparkle(ev.x, ev.y, ev.item === 2 ? '#ff8a9a' : '#cfe8ff'); sfx.chime();
+        discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
+        break;
+      case 'relic':
+        run.shells += ev.shells;
+        particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
+        discover('loot-relic');
+        ui.showToast('Relic taken, +' + ev.shells + ' shells. The ceiling is coming down!', 4200);
+        break;
+      case 'chaseEnd': ui.showToast('The rumbling stops'); break;
+      case 'rockLanded': particles.bombDebris(ev.x, ev.y); break;
+      case 'hurt': particles.deathPoof(ev.x, ev.y, '#d9cdb8'); break;
+      default: break;
+    }
+  }
 }
 
 // --- round 22: quests, shops, shells ---
@@ -662,7 +721,7 @@ window.__octo = {
       residentChunks: world.residentChunkCount(),
       // Round-8 item 5: exposed for the look-ahead camera's own real-rAF-
       // frame verification (see NIGHT-LOG.md); harmless outside tests.
-      camera: { x: renderer.camera.x, y: renderer.camera.y },
+      camera: { x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit },
       pickups: { ...pickups.totals },
       enemyCount: enemies.count(),
       beholder: enemies.beholder() ? { x: enemies.beholder().x, y: enemies.beholder().y } : null,
@@ -767,6 +826,12 @@ window.__octo = {
     const d = hazards.data, out = [];
     for (let i = 0; i < d.n; i++) out.push({ kind: d.kind[i], x: d.x[i], y: d.y[i], dx: d.dx[i], dy: d.dy[i], len: d.len[i], state: d.state[i], a: d.a[i], b: d.b[i], t: d.t[i], r: d.r[i] });
     return out;
+  },
+  /** v2: the loot of this level (kind name, position, state) for tests and review. */
+  loot() {
+    const d = loot.data, out = [];
+    for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
+    return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
   },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },

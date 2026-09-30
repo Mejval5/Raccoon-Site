@@ -4,9 +4,9 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_QUEST = 'quest';
-export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_QUEST];
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', quest: 'Quests' };
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_QUEST = 'quest';
+export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT, CAT_QUEST];
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', quest: 'Quests' };
 
 /** Seed content; the art and longer text come later. Ids are stable: saves store them. */
 export const ENTRIES = [
@@ -55,6 +55,17 @@ export const ENTRIES = [
     text: 'Sold at the Shell Stall. Restores one heart, up to your maximum.' },
   { id: 'item-bombpack', cat: CAT_ITEM, name: 'Bomb Pack',
     text: 'Sold at the Shell Stall. Three bombs in one bundle, up to the most you can carry.' },
+
+  { id: 'loot-clam', cat: CAT_LOOT, name: 'Clam',
+    text: 'A sleeping clam with something shiny inside. A dash straight through it, or a bomb, cracks it open and sends shells tumbling out.' },
+  { id: 'loot-pot', cat: CAT_LOOT, name: 'Clay Pot',
+    text: 'An old pot left on the cave floor. It shatters to a dash or a blast, and there are always a few shells in the pieces.' },
+  { id: 'loot-chest', cat: CAT_LOOT, name: 'Chest',
+    text: 'Swim into a chest to open it: a small pile of shells. Not every one is honest, and some bite back with spikes or a swarm of piranhas.' },
+  { id: 'loot-pocket', cat: CAT_LOOT, name: 'Hidden Pocket',
+    text: 'A rock tile with a hairline crack or a faint glint, hollow inside. Bomb it from the nearest cave and see what was tucked away.' },
+  { id: 'loot-relic', cat: CAT_LOOT, name: 'The Relic',
+    text: 'A golden idol on a pedestal, worth twenty-five shells. The moment you lift it the ceiling starts to come down, for about ten seconds: keep moving.' },
 
   { id: 'quest-rescue', cat: CAT_QUEST, name: 'Rescue the Lost Critter',
     text: 'A small creature is stranded in a side pocket. Touch it and it follows your trail: bring it to the exit.' },

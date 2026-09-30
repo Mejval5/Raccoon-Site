@@ -104,7 +104,7 @@ function enemySlotCellSet(chunk) {
   const set = new Set();
   if (!chunk.spawns) return set;
   for (const s of chunk.spawns) {
-    if (s.type !== 'enemy-slot' && s.type !== 'hazard') continue;
+    if (s.type !== 'enemy-slot' && s.type !== 'hazard' && s.type !== 'loot') continue;
     // s.x/s.y are local tile coords + 0.5 (gen.js); floor gets the tile back.
     set.add(`${Math.floor(s.x)},${Math.floor(s.y)}`);
   }
@@ -358,7 +358,7 @@ function findVents(chunk, yOffset, chunkW, chunkH) {
 function nearEnemySlot(chunk, tx, ty) {
   if (!chunk.spawns) return false;
   for (const s of chunk.spawns) {
-    if (s.type !== 'enemy-slot' && s.type !== 'hazard') continue;
+    if (s.type !== 'enemy-slot' && s.type !== 'hazard' && s.type !== 'loot') continue;
     const sx = Math.floor(s.x), sy = Math.floor(s.y);
     if (Math.abs(sx - tx) <= 1 && Math.abs(sy - ty) <= 1) return true;
   }

@@ -142,6 +142,10 @@ await runPatternTests(assert);
 import { runHazardTests } from './hazards.test.js';
 await runHazardTests(assert);
 
+// --- Round 31: loot and secrets, and the idle-at-start safety check ---
+import { runLootTests } from './loot.test.js';
+await runLootTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
