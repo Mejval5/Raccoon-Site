@@ -11,7 +11,7 @@
 // octomancer-unity/Assets/Sprites/NPCs/**, `unity/Scripts/Player/EyeChaser.cs`
 // for the Beholder's straight-line chase. DECISIONS-2026-09-29.md §2.
 //
-// M6 (2021 creatures, `OldAssets/.../NPC.old/`): spiked mine (`NPC8`), crabs
+// M6 (2021 creatures, `OldAssets/.../NPC.old/`): crabs
 // (`CrabFlatten`/`CrabFlatten2`), spike horns (`NPC6`), manta (`NPC10` +
 // `NPC10Ball`). OVERNIGHT.md §4 M6.
 
@@ -21,7 +21,6 @@ import {
   CANNON_SHOT_SPEED, CANNON_SHOT_RADIUS, BEHOLDER_SPAWN_TIME,
   BEHOLDER_SPAWN_HEIGHT, BEHOLDER_RADIUS, BEHOLDER_SPEED, BEHOLDER_SPEED_RAMP,
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
-  MINE_RADIUS, MINE_BLAST_RADIUS, MINE_ARM_TIME, MINE_BOB_AMPLITUDE, MINE_BOB_SPEED,
   CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
   HORNS_RADIUS,
   MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
@@ -162,7 +161,7 @@ function sepHalfExtent(kind) { return ENEMY_SEP_HALF_EXTENT[kind] ?? ENEMY_MIN_S
 // urchin ~0.5 (its spiky sphere reads round, so x=y). Kinds without an entry
 // fall back to the old scalar default on both axes. Also, `separateEnemies`
 // used to skip any pair unless BOTH sides were `moving` -- a static
-// emplacement (urchin, mine) never pushed back, so a moving enemy pathing
+// emplacement (urchin) never pushed back, so a moving enemy pathing
 // past one could visibly sit right on top of it. The loop below still skips
 // two STATIC enemies against each other (they never move, nothing to
 // resolve), but now separates a moving enemy from a static one too, pushing
@@ -172,7 +171,6 @@ const ENEMY_SEP_EXTENT = {
   manta: { hx: 1.4, hy: 0.4 },
   urchin: { hx: 0.5, hy: 0.5 },
   crab: { hx: 0.45, hy: 0.45 },
-  mine: { hx: 0.4, hy: 0.4 },
 };
 function sepExtent(kind) {
   const e = ENEMY_SEP_EXTENT[kind];
@@ -182,7 +180,7 @@ function sepExtent(kind) {
 /** Cheap O(n^2) pairwise separation pass (enemy counts per chunk are small,
  * single digits) -- pushes any two enemies whose per-axis half-extent boxes,
  * projected along the line between them, overlap back apart along that
- * line. A static enemy (urchin, mine, horns, cannon) never moves itself, but
+ * line. A static enemy (urchin, horns, cannon) never moves itself, but
  * still pushes a moving enemy off of it. */
 function separateEnemies(list) {
   for (let i = 0; i < list.length; i++) {
@@ -276,7 +274,6 @@ function pickKind(placement, depth, rng, flatRun, nearSideWall) {
   const candidates = [];
   if (placement === 'open') {
     candidates.push('piranha');
-    if (depth > 60) candidates.push('mine');
     if (depth > 100) candidates.push('manta');
   } else {
     candidates.push('urchin');
@@ -306,7 +303,7 @@ let nextId = 1;
 function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   // `moving`: round-6 task 5 -- which kinds get grid collision + the
   // minimum-separation pass (`collideWithWalls`/`separateEnemies` below).
-  // Static emplacements (urchin/cannon/horns/mine) stay exactly as they
+  // Static emplacements (urchin/cannon/horns) stay exactly as they
   // were: anchored by decor.js/gen.js's own surface placement, no physics.
   const base = {
     id: nextId++, kind, x, y, prevX: x, prevY: y, vx: 0, vy: 0, dead: false,
@@ -323,12 +320,6 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   }
   if (kind === 'cannon') {
     return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: false, cooldown: CANNON_FIRE_PERIOD * Math.random() };
-  }
-  if (kind === 'mine') {
-    return {
-      ...base, radius: MINE_RADIUS, contactDamage: false, dashKillable: false,
-      state: 'idle', armTimer: 0, baseY: y, spawnTime: null,
-    };
   }
   if (kind === 'crab') {
     const fast = Math.random() < 0.4;
@@ -439,7 +430,7 @@ export function createEnemies() {
     // Round-6 task 5: same grid collision as every other moving enemy --
     // mostly a no-op here (the ahead-checks above already keep a crab off
     // rock along its own walk direction) but also catches the perpendicular
-    // axis (e.g. a bomb/mine reshaping the floor out from under it).
+    // axis (e.g. a bomb reshaping the floor out from under it).
     collideWithWalls(e, world);
   }
 
@@ -474,38 +465,6 @@ export function createEnemies() {
         });
         events.push({ type: 'shotFired', kind: 'manta' });
       }
-    }
-  }
-
-  function armMine(e) {
-    if (e.dead || e.state !== 'idle') return;
-    e.state = 'armed';
-    e.armTimer = MINE_ARM_TIME;
-  }
-
-  /** Mine explosion: same shape as a bomb (breaks soft rock in a radius,
-   * hurts the octopus if still inside, kills non-immune enemies in range),
-   * plus chaining: any other idle mine caught in the blast arms too, so two
-   * mines next to each other both eventually go off. */
-  function explodeMine(e, world, octo) {
-    e.state = 'exploded';
-    e.dead = true;
-    events.push({ type: 'mineExploded', x: e.x, y: e.y });
-    const minTx = Math.floor(e.x - MINE_BLAST_RADIUS), maxTx = Math.floor(e.x + MINE_BLAST_RADIUS);
-    const minTy = Math.floor(e.y - MINE_BLAST_RADIUS), maxTy = Math.floor(e.y + MINE_BLAST_RADIUS);
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      for (let tx = minTx; tx <= maxTx; tx++) {
-        if (dist(tx + 0.5, ty + 0.5, e.x, e.y) <= MINE_BLAST_RADIUS) world.breakTile(tx, ty);
-      }
-    }
-    if (!octo.dead && dist(octo.x, octo.y, e.x, e.y) <= MINE_BLAST_RADIUS + octo.radius) {
-      hurtOctopus(octo, e.x, e.y);
-    }
-    for (const other of allEnemies()) {
-      if (other.dead || other === e || other.immune) continue;
-      if (dist(other.x, other.y, e.x, e.y) > MINE_BLAST_RADIUS) continue;
-      if (other.kind === 'mine') armMine(other);
-      else killEnemy(other, 'mine');
     }
   }
 
@@ -581,18 +540,6 @@ export function createEnemies() {
         else if (e.kind === 'crab') updateCrab(e, dt, world);
         else if (e.kind === 'manta') updateManta(e, dt, time, octo, world);
 
-        if (e.kind === 'mine') {
-          if (e.spawnTime === null) e.spawnTime = time; // start the bob at 0 offset
-          e.y = e.baseY + Math.sin((time - e.spawnTime) * MINE_BOB_SPEED) * MINE_BOB_AMPLITUDE;
-          const touching = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius;
-          if (touching && e.state === 'idle') armMine(e);
-          if (e.state === 'armed') {
-            e.armTimer -= dt;
-            if (e.armTimer <= 0) explodeMine(e, world, octo);
-          }
-          continue;
-        }
-
         if (!e.contactDamage) continue;
         if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius) {
           if (e.dashKillable && octoSpeed >= DASH_KILL_SPEED) {
@@ -629,15 +576,13 @@ export function createEnemies() {
     },
 
     /** Kill every enemy (not the Beholder or an immune trap) within `radius`
-     * of (x,y) - used by bomb.js. A mine in range arms instead of dying
-     * outright, so its own blast (with chaining) fires a beat later.
+     * of (x,y) - used by bomb.js.
      * Returns the count killed. */
     killInRadius(x, y, radius) {
       let n = 0;
       for (const e of allEnemies()) {
         if (e.dead) continue;
         if (dist(e.x, e.y, x, y) > radius) continue;
-        if (e.kind === 'mine') { armMine(e); continue; }
         if (e.immune) continue;
         killEnemy(e, 'bomb'); n++;
       }

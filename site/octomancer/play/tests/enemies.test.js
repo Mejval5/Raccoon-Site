@@ -128,32 +128,21 @@ export function runEnemyTests(assert, approx) {
     assert('Beholder: a bomb does not kill it', b.dead === false);
   }
 
-  // --- M6-1 Spiked mine: touch arms it, explodes after 0.5s (OVERNIGHT M6-1) ---
+  // --- Mines were removed (Daniel): none ever spawns, at any seed or depth ---
   {
-    const world = makeBombWorld();
-    const o = createOctopus(0, 0.1); // just touching a mine at (0,0)
-    const enemies = createEnemies();
-    const m = enemies.spawnAt('mine', 0, 0);
-    enemies.update(0.02, 0, o, world, []); // contact -> armed
-    assert('mine: touch arms it, does not explode immediately', m.dead === false && m.state === 'armed');
-    for (let i = 0; i < 30; i++) enemies.update(0.02, 0.02 * (i + 2), o, world, []); // + 0.6s
-    assert('mine: explodes about 0.5s after arming', m.dead === true);
-    let cleared = 0;
-    for (const v of world.tiles.values()) if (v === 0) cleared++;
-    assert('mine: explosion clears soft rock like a bomb', cleared > 0);
-  }
-
-  // --- M6-1 Spiked mine: a bomb blast arms it, and two mines chain ---
-  {
-    const world = makeBombWorld();
-    const o = createOctopus(20, 20); // far away
-    const enemies = createEnemies();
-    const m1 = enemies.spawnAt('mine', 0.3, 0);
-    const m2 = enemies.spawnAt('mine', -0.3, 0); // within m1's blast radius too
-    const bombs = createBombs();
-    bombs.place(o, 0, 0);
-    for (let i = 0; i < 200; i++) { bombs.update(0.02, world, o, enemies); enemies.update(0.02, i * 0.02, o, world, []); }
-    assert('mine: a bomb blast chains into both nearby mines', m1.dead === true && m2.dead === true);
+    let sawMine = false, total = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const enemies = createEnemies();
+      const spawns = [];
+      for (let i = 0; i < 60; i++) {
+        const placement = ['open', 'floor', 'ceiling', 'wall'][i % 4];
+        spawns.push({ type: 'enemy-slot', x: i, y: 40 + i * 7, placement, flatRun: true });
+      }
+      const o = createOctopus(20, 20);
+      enemies.update(0.02, 0, o, makeBombWorld(), [{ index: seed, yOffset: seed * 300, chunk: { spawns } }]);
+      for (const e of enemies.all()) { total++; if (e.kind === 'mine') sawMine = true; }
+    }
+    assert('no mine ever spawns across seeds and depths', total > 0 && !sawMine);
   }
 
   // --- M6-3 Crab: never walks off a ledge, turns at the edge instead ---

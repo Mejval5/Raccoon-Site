@@ -104,13 +104,7 @@ export const BEHOLDER_SPEED = 4.5; // u/s
 export const BEHOLDER_SPEED_RAMP = 0.1; // +u/s per 10s alive
 
 // --- M6: the 2021 creatures (OVERNIGHT.md §4 M6, DECISIONS §2) ---
-// Spiked mine (`NPC8`): bobs, and touch/dash/bomb-blast arms it (a short
-// flash), then it explodes like a bomb -- a tool as much as a threat.
-export const MINE_RADIUS = 0.4;
-export const MINE_BLAST_RADIUS = 2; // OVERNIGHT.md M6-1: "r 2, breaks rock, chain-reacts"
-export const MINE_ARM_TIME = 0.5; // s, "0.5s flash"
-export const MINE_BOB_AMPLITUDE = 0.3; // u, "bobs +-0.3u"
-export const MINE_BOB_SPEED = 2; // rad/s
+// Spiked mine was removed (Daniel: ugly, urchins cover the same job).
 
 // Crabs (`CrabFlatten` slow, `CrabFlatten2` fast): walk a ledge, turn at
 // edges and walls.

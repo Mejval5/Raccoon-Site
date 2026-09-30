@@ -187,7 +187,7 @@ function isCornerAnchor(tiles, ax, ay) {
 /** Round-4 fix (Daniel's screenshot review round 3: "piranhas can spawn
  * stacked and draw over walls"). True if every tile in the (2r+1)x(2r+1)
  * block centred on (x,y) is open water -- enough clearance for an open-water
- * enemy's sprite half-extents (piranha/mine/manta, worldSize up to ~1.15, so
+ * enemy's sprite half-extents (piranha/manta, worldSize up to ~1.15, so
  * r=1 covers a full tile of headroom on every side) to never overlap solid
  * rock. Out-of-chunk counts as not-clear (unknown neighbour). */
 function hasOpenClearance(tiles, x, y, r) {
@@ -474,7 +474,7 @@ export function generateChunk(seed, chunkIndex, entryCol) {
       // of these, but as a defence in depth, never anchor a wall-mounted
       // enemy slot (crab/horns/urchin/cannon) to a thin nub/island (open on
       // 3+ of its own 4 sides, not "a surface at least 2 tiles wide"); fall
-      // back to an open-water placement (piranha/mine/manta) instead of
+      // back to an open-water placement (piranha/manta) instead of
       // dropping the slot outright, so per-chunk enemy density is unaffected.
       //
       // Round-4 addition: also tag whether the anchor is a "flat run" (not

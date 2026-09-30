@@ -1,5 +1,5 @@
 // Enemy + bomb art and particle rendering. OVERNIGHT.md §4 M3-3, M6-2.
-// Urchin/piranha/cannon/shot/Beholder/mine/crabs/horns/manta are Milan's
+// Urchin/piranha/cannon/shot/Beholder/crabs/horns/manta are Milan's
 // sprites, exported to display size in play/assets/ (web/ASSETS.md has the
 // source rows); the bomb itself, its fuse spark, the explosion ring and
 // debris are code-drawn (OVERNIGHT.md §2 art rule: "Drawn in code ... bomb
@@ -18,9 +18,8 @@ const piranhaImg = loadImage(ASSET('enemy-piranha.webp'));
 const cannonImg = loadImage(ASSET('enemy-cannon.webp'));
 const shotImg = loadImage(ASSET('enemy-shot.webp'));
 const beholderFrames = [0, 1, 2, 3, 4, 5].map((i) => loadImage(ASSET(`enemy-beholder-${i}.webp`)));
-// M6: the 2021 creatures (`NPC8`, `CrabFlatten`/`CrabFlatten2`, `NPC6`,
+// M6: the 2021 creatures (`CrabFlatten`/`CrabFlatten2`, `NPC6`,
 // `NPC10`/`NPC10Ball` -- OldAssets/.../NPC.old/, DECISIONS §2).
-const mineImg = loadImage(ASSET('enemy-mine.webp'));
 const crabSlowImg = loadImage(ASSET('enemy-crab-slow.webp'));
 const crabFastImg = loadImage(ASSET('enemy-crab-fast.webp'));
 const hornsImg = loadImage(ASSET('enemy-horns.webp'));
@@ -135,7 +134,7 @@ function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, wor
 // fast mover like a chasing piranha or the Beholder visibly stair-stepped
 // once per fixed step. `ix`/`iy` below blend each enemy's last-step and
 // current position the same way `drawOcto` already does; a stationary
-// emplacement (urchin/cannon/horns/mine, `moving` false and `prevX===x`) is
+// emplacement (urchin/cannon/horns, `moving` false and `prevX===x`) is
 // unaffected since the interpolation is a no-op when the position didn't
 // change.
 function interpPos(e, alpha) {
@@ -188,9 +187,6 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       // Dread: a soft light cone toward the octopus grows as it nears (M7
       // will tune this further; a first cut lands here since the Beholder is
       // brand-new this milestone).
-    } else if (e.kind === 'mine') {
-      const flash = e.state === 'armed' ? 1 : e.hitFlash;
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, mineImg, ex, ey, 0.8, 0, flash);
     } else if (e.kind === 'crab') {
       const img = e.variant === 'fast' ? crabFastImg : crabSlowImg;
       // Face the walk direction; flip vertically when it's hanging from a
