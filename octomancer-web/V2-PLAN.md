@@ -538,3 +538,5 @@ Scope of B1 (this replaces the order of M2-M7 until B1 runs):
 5. Run loop and meta: death and clear screens with stats, best runs, level title cards, seeded runs, hub shortcut to 1-2 after one clear, journal stats page.
 
 Deferred until Daniel's auto-fire verdict: combat (M3/M4). After these five: biome 2 (Kelp Caves) with its own bank, enemies and rules.
+
+Note (2026-09-30, late): rounds 24-28 delivered only item 1 (art pass) plus polish; items 2-5 were never seen by the fixer because the workflow replaced the todo with review issues after round 1. The script now carries one mandatory feature per round. Items 2-5 relaunched as rounds 29-32.
