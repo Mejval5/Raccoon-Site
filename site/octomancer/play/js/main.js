@@ -13,7 +13,8 @@ import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { CHUNK_H, CHUNK_W } from './gen.js';
 import { isBaked } from './octopus-draw.js';
-import { createEnemies } from './enemies.js';
+import { createEnemies, setHpMode } from './enemies.js';
+import { createAutofire } from './autofire.js';
 import { createBombs } from './bomb.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
@@ -31,6 +32,10 @@ const hudEl = document.getElementById('hud');
 
 const params = new URLSearchParams(location.search);
 const initialSeed = Number(params.get('seed')) || 1;
+// M1-0 combat spike: ?auto=1 turns on enemy hp and Ink Jet auto-fire (js/autofire.js).
+const AUTO = params.get('auto') === '1';
+if (AUTO) setHpMode(true);
+let autofire = AUTO ? createAutofire() : null;
 
 let dpr = 1;
 // M7-3 perf pass: "DPR step-down to 1.0 if median > 20ms for 2s". Once
@@ -221,6 +226,7 @@ function step(dt) {
   prevHearts = octo.hearts;
   decor.update(dt, resident);
   enemies.update(dt, sim.time, octo, world, resident);
+  if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
   audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
@@ -321,6 +327,7 @@ function render(alpha, frameMs) {
     particles: particles.pool,
     shakeOffset: particles.shakeOffset(),
     dreadLevel,
+    extraDraw: autofire ? autofire.draw : null,
   });
   ui.updateHud({
     hearts: octo.hearts, heartMax: HEART_MAX,
@@ -343,6 +350,7 @@ function resetWorld(newSeed) {
   pickups = createPickups();
   decor = createDecor(CHUNK_W, CHUNK_H);
   enemies = createEnemies();
+  if (AUTO) autofire = createAutofire();
   bombs = createBombs();
   particles = createParticles();
   sim.time = 0;
@@ -410,6 +418,7 @@ window.__octo = {
   placeBomb(x, y) {
     return bombs.place(octo, x != null ? x : octo.x, y != null ? y : octo.y);
   },
+  auto() { return autofire ? { ...autofire.stats } : null; },
   autoDive(on) {
     autoDiveOn = !!on;
     return { autoDive: autoDiveOn, implemented: true };

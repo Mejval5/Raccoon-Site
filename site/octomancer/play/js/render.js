@@ -895,7 +895,7 @@ export function createRenderer(ctx, world) {
   return {
     camera,
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0,
+      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0, extraDraw = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -955,6 +955,7 @@ export function createRenderer(ctx, world) {
       drawPickups(canvasW, canvasH, pickups, time);
       drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
       drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
+      if (extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       drawOcto(octo, alpha, canvasW, canvasH, time);
       ctx.restore();

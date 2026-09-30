@@ -300,6 +300,12 @@ function pickKind(placement, depth, rng, flatRun, nearSideWall) {
 
 let nextId = 1;
 
+// M1-0 combat spike (?auto=1 only, V2-PLAN section 4): hit points per kind.
+// Urchin and horns are hazards (Daniel's Q7): no hp, so Ink Jet ignores them.
+let hpMode = false;
+const ENEMY_HP = { piranha: 6, crab: 10, cannon: 14, manta: 16 };
+export function setHpMode(on) { hpMode = !!on; }
+
 function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   // `moving`: round-6 task 5 -- which kinds get grid collision + the
   // minimum-separation pass (`collideWithWalls`/`separateEnemies` below).
@@ -309,6 +315,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
     id: nextId++, kind, x, y, prevX: x, prevY: y, vx: 0, vy: 0, dead: false,
     chunkIndex, placement, wallDir, hitFlash: 0, moving: false,
   };
+  if (hpMode && ENEMY_HP[kind]) { base.hp = ENEMY_HP[kind]; base.maxHp = base.hp; }
   if (kind === 'urchin') {
     return { ...base, radius: URCHIN_RADIUS, contactDamage: true, dashKillable: false };
   }
@@ -366,6 +373,7 @@ export function createEnemies() {
     if (list.length) byChunk.set(index, list);
   }
 
+  const liveCache = []; // reusable list for autofire (rebuilt each step in hpMode)
   function allEnemies() {
     const out = [];
     for (const list of byChunk.values()) out.push(...list);
@@ -573,6 +581,21 @@ export function createEnemies() {
 
       updateShots(dt, octo, world, hurtOctopus);
       updateBeholder(dt, octo, time, hurtOctopus, world);
+      if (hpMode) {
+        liveCache.length = 0;
+        for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) if (!list[i].dead) liveCache.push(list[i]);
+      }
+    },
+
+    /** Spike: live enemies (no Beholder), valid until the next update(). */
+    live() { return liveCache; },
+    /** Spike: apply weapon damage to an enemy that has hp; kills via the normal death event. */
+    hurt(e, dmg) {
+      if (e.dead || e.hp === undefined) return false;
+      e.hp -= dmg;
+      e.hitFlash = 0.25;
+      if (e.hp <= 0) killEnemy(e, 'ink');
+      return true;
     },
 
     /** Kill every enemy (not the Beholder or an immune trap) within `radius`
