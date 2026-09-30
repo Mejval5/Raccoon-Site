@@ -9,7 +9,7 @@ import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
@@ -23,7 +23,7 @@ import { createUI } from './ui.js';
 import { computeScore } from './score.js';
 import { loadBest, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone } from './save.js';
 import {
-  createRun, runEvent, levelSpec, stageLabel, isSafeState, BIOME_LEVELS, BIOME_NAME,
+  createRun, runEvent, levelSpec, stageLabel, isSafeState, nextDiveSeed, BIOME_LEVELS, BIOME_NAME,
   S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
@@ -31,6 +31,14 @@ import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
+import { drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop } from './v2-props-draw.js';
+import { generateLevel } from './level.js';
+import {
+  fetchQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
+  Q_RESCUE, Q_VAULT, Q_PEST, ST_DONE, ST_FAILED,
+} from './quests.js';
+import { fetchShopItems, createShopState, shopStep } from './shop.js';
+import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
 import { HEART_MAX, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
@@ -54,9 +62,13 @@ let autofire = AUTO ? createAutofire() : null;
 const V2 = params.get('v2') === '1';
 let authoredJson = null;
 let run = null;
+let questTable = null;
+let shopItems = [];
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
   authoredJson = await fetchAuthoredMaps();
+  questTable = await fetchQuests();
+  shopItems = await fetchShopItems();
   run = createRun(initialSeed, { tutorialDone: getTutorialDone() });
   const at = params.get('at');
   if (at === 'tutorial') run.state = S_TUTORIAL;
@@ -114,6 +126,7 @@ let enemies = createEnemies();
 let bombs = createBombs();
 let particles = createParticles();
 let autoDiveOn = false;
+let godMode = false; // test hook only (__octo.god): scripted playthroughs ignore enemy contact
 let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
 let trailTimer = 0; // M7-1: bubble-trail spawn accumulator, rate scaled by speed
 let dreadLevel = 0; // M7-1/M7-2: Beholder proximity in [0,1], shared by render's dread overlay and audio's drone
@@ -122,6 +135,11 @@ let dreadLevel = 0; // M7-1/M7-2: Beholder proximity in [0,1], shared by render'
 const audio = createAudio();
 const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
+// v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
+let quest = null;
+let shopSt = null;
+let tutState = createTutorialState();
+let hubQuestPlan = null;
 
 const sim = {
   time: 0,
@@ -260,6 +278,7 @@ function step(dt) {
     }
     return;
   }
+  if (godMode && !octo.dead) octo.invulnTimer = Math.max(octo.invulnTimer, 0.5);
   stepOctopus(octo, snap, dt, world);
   if (octo.dashedThisStep) {
     sfx.dash();
@@ -283,9 +302,9 @@ function step(dt) {
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);
-    if (V2) discover(itemId(ev.type));
+    if (V2) { discover(itemId(ev.type)); if (ev.type === 'shell') run.shells++; }
   }
-  if (octo.hearts < prevHearts) sfx.hurt();
+  if (octo.hearts < prevHearts) { sfx.hurt(); if (V2) questOnHurt(quest); }
   prevHearts = octo.hearts;
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
@@ -299,9 +318,17 @@ function step(dt) {
   audio.setBeholderDread(dreadLevel);
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) if (ev.type === 'exploded') { particles.bombDebris(ev.x, ev.y); sfx.bomb(); }
-  for (const ev of enemies.events) if (ev.type === 'enemyKilled') { particles.deathPoof(ev.x, ev.y); runKills++; }
+  for (const ev of enemies.events) {
+    if (ev.type !== 'enemyKilled') continue;
+    particles.deathPoof(ev.x, ev.y); runKills++;
+    if (V2 && !isSafeState(run)) {
+      // kills drop shells (about 2 in 3) and count for the pest-control quest
+      if (killDropRoll(runKills) < 0.67) pickups.dropShell(ev.x, ev.y);
+      if (questOnKill(quest, ev.kind)) payQuest();
+    }
+  }
   particles.update(dt);
-  if (snap.bomb.pressed && bombs.place(octo, octo.x, octo.y) && V2) discover('item-bomb');
+  if (snap.bomb.pressed && bombs.place(octo, octo.x, octo.y) && V2) { discover('item-bomb'); tutorialActed(tutState); }
 
   const depth = Math.max(0, world.depth() - world.startY);
   liveScore = computeScore(depth, pickups.totals, runKills);
@@ -398,6 +425,9 @@ function render(alpha, frameMs) {
     bombs: octo.bombs,
     depth: Math.round(depth), score: liveScore, best: bestScore,
     stage: V2 ? stageLabel(run) : undefined,
+    shells: V2 ? run.shells : undefined,
+    quest: V2 && quest ? questHudText(quest) : '',
+    questState: V2 && quest ? (quest.status === ST_DONE ? 'done' : quest.status === ST_FAILED ? 'failed' : '') : '',
   });
   debug.tick();
 }
@@ -427,6 +457,7 @@ function resetWorld(newSeed) {
   ui.hideGameOver();
   ui.hideEnd();
   ui.setPrompt(null);
+  if (V2) setupLevelExtras();
 }
 
 // --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
@@ -480,7 +511,21 @@ const solidForSight = (tx, ty) => world.isSolid(tx, ty);
 /** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
-  if (world.reachedExit(octo.x, octo.y)) { v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT); return; }
+  if (run.state === S_BIOME) {
+    if (questUpdate(quest, octo, world)) payQuest();
+    const ev = shopStep(shopSt, octo, run.shells, STEP);
+    if (ev) onShopEvent(ev);
+    if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) discover('place-shop');
+  }
+  if (world.reachedExit(octo.x, octo.y)) {
+    if (run.state === S_BIOME && questOnExit(quest)) payQuest();
+    v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT);
+    return;
+  }
+  if (lv.signX !== undefined && lv.signX >= 0) {
+    const d = Math.hypot(octo.x - (lv.signX + 0.5), octo.y - (lv.signY + 0.5));
+    if (d < 2.6) { ui.setPrompt('Quest board: next dive', hubQuestPlan ? questSignText(hubQuestPlan) : 'No quest yet.'); return; }
+  }
   if (lv.boardX >= 0) {
     const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
     if (d > 2.2) boardCooldown = false;
@@ -493,8 +538,12 @@ function stepV2(snap) {
       if (d < p.r && d < bd) { best = p; bd = d; }
     }
     const touchy = snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer());
+    // tutorial: bombs never run out while the wall stands, and an idle player gets the bomb hint back
+    if (run.state === S_TUTORIAL) {
+      tutorialStep(tutState, octo, wallIntact(lv), STEP);
+      if (tutState.hint) { const bp = lv.prompts.find((p) => p.refillBomb); if (bp) best = bp; }
+    }
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
-    if (best && best.refillBomb && octo.bombs < 1 && wallIntact(lv)) addBomb(octo);
   } else ui.setPrompt(null);
   if ((seeTick++ & 7) === 0) {
     for (const e of enemies.all()) {
@@ -513,11 +562,70 @@ function v2Extra(c, camera, w2s, cw, ch) {
     boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
     label: run.state === S_HUB ? 'Dive' : '',
   }, sim.time);
+  const t = sim.time;
+  if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
+    drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
+  }
+  if (lv.signX !== undefined && lv.signX >= 0) drawQuestSign(c, camera, cw, ch, lv.signX, lv.signY, t);
+  if (run.state === S_BIOME) {
+    if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t);
+    if (quest && quest.status === 0) {
+      if (quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
+      else if (quest.plan.kindId === Q_VAULT && !quest.collected) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t);
+    }
+  }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+}
+
+// --- round 22: quests, shops, shells ---
+function killDropRoll(n) {
+  let h = Math.imul((n + 1) >>> 0, 2654435761) ^ Math.imul(seed >>> 0, 40503);
+  h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+}
+
+/** Roll and place this level's quest and shop (Shallows levels only) and refresh the hub sign preview. */
+function setupLevelExtras() {
+  quest = null; shopSt = null; tutState = createTutorialState(); hubQuestPlan = null;
+  if (run.state === S_BIOME) {
+    const spec = levelSpec(run);
+    const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex);
+    quest = createQuestState(plan);
+    if (plan && plan.kindId === Q_PEST) for (let i = 0; i < plan.pos.length; i += 2) enemies.spawnAt('piranha', plan.pos[i], plan.pos[i + 1], 'open', 0);
+    shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex);
+  } else if (run.state === S_HUB) {
+    // the sign shows the quest of the next dive's first level: the same plan that level will roll
+    const ns = nextDiveSeed(run);
+    hubQuestPlan = planQuest(generateLevel(ns, 0), questTable, ns, 0);
+  }
+}
+
+function payQuest() {
+  const p = quest.plan;
+  run.shells += p.reward;
+  ui.showToast('Quest complete: ' + p.name + ', +' + p.reward + ' shells');
+  sfx.chime();
+  particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
+  if (p.journal) discover(p.journal);
+}
+
+function onShopEvent(ev) {
+  if (ev.type === 'bought') {
+    run.shells = ev.shells;
+    ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells');
+    sfx.chime();
+    particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
+    if (ev.item.journal) discover(ev.item.journal);
+  } else if (ev.type === 'poor') {
+    ui.showToast(ev.item.name + ' costs ' + ev.price + ' shells, you have ' + ev.shells);
+  } else {
+    ui.showToast(ev.item.effect === 'heart' ? 'Your hearts are already full' : 'You cannot carry more bombs');
+  }
 }
 
 if (V2) {
   ui.setGameOverLabels('The dark took you', 'Back to the hub');
+  setupLevelExtras();
   discoverStatePlace();
   if (run.state === S_END) showEndScreen();
 }
@@ -626,6 +734,19 @@ window.__octo = {
   journal() { return { found: journal.list().filter((e) => e.found).map((e) => e.id), count: journal.count(), open: journalScreen.isOpen() }; },
   openJournal() { journalScreen.show(); return true; },
   closeJournal() { journalScreen.hide(); return true; },
+  /** v2: quest / shop / wallet snapshot for tests and review. */
+  extras() {
+    return {
+      shells: run ? run.shells : 0,
+      quest: quest ? { id: quest.plan.id, status: quest.status, progress: quest.progress, goal: quest.goal, following: quest.following, pos: Array.from(quest.plan.pos), hud: questHudText(quest) } : null,
+      shop: shopSt ? { keeper: [shopSt.keeperX, shopSt.keeperY], px: Array.from(shopSt.px), stock: Array.from(shopSt.stock, (i) => shopSt.items[i].id), sold: Array.from(shopSt.sold) } : null,
+      signQuest: hubQuestPlan ? hubQuestPlan.id : null,
+      pockets: world.level.nPockets ? Array.from(world.level.pockets) : [],
+    };
+  },
+  /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
+  god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
+  giveShells(n) { if (run) run.shells += n | 0; return run ? run.shells : 0; },
   runEvent(name) {
     const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE }[name];
     return v2Event(ev);

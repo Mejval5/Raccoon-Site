@@ -28,8 +28,18 @@ export function createUI(root, handlers) {
   // v2 only: the run state and level ("Shallows 1-2"); it replaces depth and best.
   const stageEl = el('span', 'octo-hud-stat octo-hud-stage');
   stageEl.style.display = 'none';
-  stats.append(stageEl, bombsEl, depthEl, scoreEl, bestEl);
-  bar.append(heartsRow, stats);
+  // v2 only: the shell currency (icon + count) and the level's quest line
+  const shellsEl = el('span', 'octo-hud-stat octo-hud-shells');
+  const shellsIcon = el('img', 'octo-hud-shell-icon');
+  shellsIcon.src = './assets/shell-blue.webp';
+  shellsIcon.alt = 'Shells';
+  const shellsNum = el('span', 'octo-hud-shell-num', '0');
+  shellsEl.append(shellsIcon, shellsNum);
+  shellsEl.style.display = 'none';
+  const questEl = el('div', 'octo-hud-quest');
+  questEl.style.display = 'none';
+  stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
+  bar.append(heartsRow, stats, questEl);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
   pauseBtn.type = 'button';
@@ -105,6 +115,12 @@ export function createUI(root, handlers) {
     depthEl.style.display = v2 ? 'none' : '';
     bestEl.style.display = v2 ? 'none' : '';
     if (v2 && stageEl.textContent !== state.stage) stageEl.textContent = state.stage;
+    shellsEl.style.display = v2 && state.shells !== undefined ? '' : 'none';
+    if (state.shells !== undefined && shellsNum.textContent !== String(state.shells)) shellsNum.textContent = String(state.shells);
+    const qt = state.quest || '';
+    questEl.style.display = qt ? '' : 'none';
+    if (questEl.textContent !== qt) questEl.textContent = qt;
+    questEl.dataset.state = state.questState || '';
     depthEl.textContent = `Depth ${state.depth}m`;
     scoreEl.textContent = `Score ${state.score}`;
     bestEl.textContent = `Best ${state.best}`;

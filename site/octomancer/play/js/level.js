@@ -10,8 +10,10 @@ import { mulberry32, hashSeed } from './rng.js';
 import {
   ROOM_W, ROOM_H, RC, CELL_ROCK, CELL_QUANTUM,
   MK_START, MK_EXIT, MK_NONE, KIND_NORMAL,
-  TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
+  TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, TAG_SHOP, PROP_KEEPER, PROP_PEDESTAL,
+  ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
 } from './rooms.js';
+import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 
 export const ROOMS_X = 3, ROOMS_Y = 4, BORDER = 2;
 export const LEVEL_W = ROOMS_X * ROOM_W + 2 * BORDER; // 34
@@ -20,6 +22,8 @@ export const NROOMS = ROOMS_X * ROOMS_Y;
 export const MAX_ATTEMPTS = 10;
 export const STOP_ROLL = 0.25;
 export const MAX_ANCHORS = 128;
+export const MAX_POCKETS = 2;
+export const SHOP_CHANCE = 0.58; // chance a level asks for a shop room (about 1 in 2 get one once placement and the A* check are through)
 
 // roomRole codes
 export const ROLE_FILLER = 0, ROLE_PATH = 1, ROLE_START = 2, ROLE_END = 3;
@@ -134,7 +138,7 @@ function fillEmpty(rng, bank, roomVar) {
     let n = 0, nAny = 0;
     for (let a = 0; a < V; a++) {
       if (kind[a] !== KIND_NORMAL) continue;
-      if (tagged && (tags[a] & (TAG_START | TAG_EXIT))) continue; // markers only in the start and end rooms
+      if (tagged && (tags[a] & (TAG_START | TAG_EXIT | TAG_SHOP))) continue; // markers only in the start and end rooms; shops are placed on purpose
       _cand2[nAny++] = a;
       // connects to at least one placed neighbour (fewer sealed rooms)
       if ((nL >= 0 && connR[nL * V + a]) || (nR >= 0 && connL[nR * V + a]) ||
@@ -267,6 +271,133 @@ function carvePath(tiles, sx, sy, ex, ey) {
   for (let x = x0; x !== x1 + step; x += step) put(x, y1);
 }
 
+// ---------------------------------------------------------------- shop, pockets, final check
+
+/**
+ * Turn one filler cell into a shop room: a 'shop'-tagged variant that shares an open seam with at least
+ * one PATH neighbour (so the shop hangs off the main route, never on it). Uses its own rng so levels
+ * without a shop keep exactly the tiles they had before. Returns the cell, or -1.
+ */
+function placeShop(srng, bank, roomVar, roomRole) {
+  const { V, tags, connR, connL, connD, connU } = bank;
+  const pairs = [];
+  for (let cell = 0; cell < NROOMS; cell++) {
+    if (roomRole[cell] !== ROLE_FILLER) continue;
+    const cx = cell % ROOMS_X, cy = (cell / ROOMS_X) | 0;
+    const pathAt = (c) => roomRole[c] !== ROLE_FILLER;
+    const nL = cx > 0 && pathAt(cell - 1) ? roomVar[cell - 1] : -1;
+    const nR = cx < ROOMS_X - 1 && pathAt(cell + 1) ? roomVar[cell + 1] : -1;
+    const nU = cy > 0 && pathAt(cell - ROOMS_X) ? roomVar[cell - ROOMS_X] : -1;
+    const nD = cy < ROOMS_Y - 1 && pathAt(cell + ROOMS_X) ? roomVar[cell + ROOMS_X] : -1;
+    for (let a = 0; a < V; a++) {
+      if (!(tags[a] & TAG_SHOP)) continue;
+      if ((nL >= 0 && connR[nL * V + a]) || (nR >= 0 && connL[nR * V + a]) ||
+          (nU >= 0 && connD[nU * V + a]) || (nD >= 0 && connU[nD * V + a])) pairs.push(cell, a);
+    }
+  }
+  if (!pairs.length) return -1;
+  const k = Math.floor(srng() * (pairs.length / 2)) * 2;
+  roomVar[pairs[k]] = pairs[k + 1];
+  return pairs[k];
+}
+
+/** Shop layout in level tile coords from the placed room's props: keeper, 3 pedestals (left to right), room rect. */
+function readShop(bank, roomVar, cell) {
+  const ox = BORDER + (cell % ROOMS_X) * ROOM_W, oy = BORDER + ((cell / ROOMS_X) | 0) * ROOM_H;
+  const src = roomVar[cell] * RC;
+  let kx = -1, ky = -1;
+  const ped = [];
+  for (let i = 0; i < RC; i++) {
+    const p = bank.props[src + i];
+    if (!p) continue;
+    const x = ox + (i % ROOM_W), y = oy + ((i / ROOM_W) | 0);
+    if (p === PROP_KEEPER) { kx = x; ky = y; } else if (p === PROP_PEDESTAL) ped.push([x, y]);
+  }
+  if (kx < 0 || ped.length < 3) return null;
+  ped.sort((a, b) => a[0] - b[0]);
+  const px = new Int16Array(6);
+  for (let i = 0; i < 3; i++) { px[i * 2] = ped[i][0]; px[i * 2 + 1] = ped[i][1]; }
+  return { cell, kx, ky, px, x0: ox, y0: oy, x1: ox + ROOM_W, y1: oy + ROOM_H };
+}
+
+/** 4-neighbour water flood from a tile (fresh array; used once per attempt). */
+function floodWater(tiles, sx, sy) {
+  const seen = new Uint8Array(LEVEL_W * LEVEL_H);
+  const q = new Int32Array(LEVEL_W * LEVEL_H);
+  let qh = 0, qt = 0;
+  const s = sy * LEVEL_W + sx;
+  if (tiles[s] !== 0) return seen;
+  q[qt++] = s; seen[s] = 1;
+  while (qh < qt) {
+    const i = q[qh++], x = i % LEVEL_W;
+    if (i >= LEVEL_W && !seen[i - LEVEL_W] && tiles[i - LEVEL_W] === 0) { seen[i - LEVEL_W] = 1; q[qt++] = i - LEVEL_W; }
+    if (i + LEVEL_W < tiles.length && !seen[i + LEVEL_W] && tiles[i + LEVEL_W] === 0) { seen[i + LEVEL_W] = 1; q[qt++] = i + LEVEL_W; }
+    if (x > 0 && !seen[i - 1] && tiles[i - 1] === 0) { seen[i - 1] = 1; q[qt++] = i - 1; }
+    if (x < LEVEL_W - 1 && !seen[i + 1] && tiles[i + 1] === 0) { seen[i + 1] = 1; q[qt++] = i + 1; }
+  }
+  return seen;
+}
+
+function rockBlock(tiles, x, y) {
+  for (let yy = y - 2; yy <= y + 3; yy++) for (let xx = x - 2; xx <= x + 3; xx++) if (tiles[yy * LEVEL_W + xx] === 0) return false;
+  return true;
+}
+
+/**
+ * Sealed 2x2 water pockets inside thick rock (a 6x6 block of rock around each: two tiles of it on every
+ * side), each with a 2-wide reachable open spot three tiles from it on at least one side, so one bomb from
+ * that spot cracks a channel in. They hold shells (level-spawns.js) and are the vault of the vault quest.
+ * out: x, y (top-left of the 2x2) and the entrance side (ANCH_* code) per pocket. Returns the count.
+ */
+function carvePockets(tiles, reached, prng, out, shop) {
+  const W = LEVEL_W;
+  const cand = [];
+  const R = (x, y) => reached[y * W + x] === 1;
+  for (let y = BORDER + 2; y <= LEVEL_H - BORDER - 4; y++) {
+    for (let x = BORDER + 2; x <= W - BORDER - 4; x++) {
+      if (!rockBlock(tiles, x, y)) continue;
+      // never beside the shop: bombing a vault must not open the stall's floor
+      if (shop && x + 4 > shop.x0 - 3 && x - 3 < shop.x1 + 3 && y + 4 > shop.y0 - 3 && y - 3 < shop.y1 + 3) continue;
+      let side = 0;
+      if (x - 3 >= 0 && R(x - 3, y) && R(x - 3, y + 1)) side = ANCH_LEFT;
+      else if (x + 4 < W && R(x + 4, y) && R(x + 4, y + 1)) side = ANCH_RIGHT;
+      else if (y - 3 >= 0 && R(x, y - 3) && R(x + 1, y - 3)) side = ANCH_UP;
+      else if (y + 4 < LEVEL_H && R(x, y + 4) && R(x + 1, y + 4)) side = ANCH_DOWN;
+      if (side) cand.push(x, y, side);
+    }
+  }
+  let n = 0;
+  const want = 1 + (prng() < 0.45 ? 1 : 0);
+  for (let tries = 0; tries < 12 && n < want && cand.length; tries++) {
+    const k = Math.floor(prng() * (cand.length / 3)) * 3;
+    const x = cand[k], y = cand[k + 1], side = cand[k + 2];
+    cand.splice(k, 3);
+    let near = false;
+    for (let i = 0; i < n; i++) if (Math.abs(out[i * 3] - x) < 8 && Math.abs(out[i * 3 + 1] - y) < 8) near = true;
+    if (near || !rockBlock(tiles, x, y)) continue;
+    tiles[y * W + x] = tiles[y * W + x + 1] = tiles[(y + 1) * W + x] = tiles[(y + 1) * W + x + 1] = 0;
+    out[n * 3] = x; out[n * 3 + 1] = y; out[n * 3 + 2] = side;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * The A* check (pathcheck.js) on the FINAL tiles of a level: the exit trigger is reachable from the start
+ * for a body of the octopus's real radius, and, when there is a shop, its keeper and every pedestal are
+ * reachable too. Returns true when the level is fine.
+ */
+export function finalPathOk(tiles, sx, sy, ex, ey, shop) {
+  const grid = createPathGrid(LEVEL_W, LEVEL_H, (x, y) => tiles[y * LEVEL_W + x] !== 0);
+  if (!findPath(grid, sx + 0.5, sy + 0.5, ex + 0.5, ey + 0.5)) return false;
+  if (shop) {
+    const reached = reachableNodes(grid, sx + 0.5, sy + 0.5);
+    if (!reachedNear(grid, reached, shop.kx + 0.5, shop.ky + 0.5)) return false;
+    for (let i = 0; i < 3; i++) if (!reachedNear(grid, reached, shop.px[i * 2] + 0.5, shop.px[i * 2 + 1] + 0.5)) return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------- generateLevel
 
 /**
@@ -277,6 +408,8 @@ function carvePath(tiles, sx, sy, ex, ey) {
  *   startX/startY/exitX/exitY     tile coords of the entry and exit portals
  *   attempts   how many plans were tried; fallback 1 if the carved corridor was needed
  *   nSpawns    0 (spawns arrive with the pattern engine)
+ *   shop       null, or {cell, kx, ky, px:Int16Array(6), x0,y0,x1,y1}: keeper and 3 pedestals in tile coords
+ *   pockets    Int16Array(3*2): x, y, entrance side per sealed 2x2 pocket; nPockets used
  */
 export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   if (!bank) throw new Error('generateLevel: no room bank (call setDefaultBank or pass one)');
@@ -288,6 +421,10 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   const plan = new Int16Array(NROOMS);
   const path = new Uint8Array(NROOMS);
   let sx = 0, sy = 0, ex = 0, ey = 0, attempts = 0, fallback = 0, ok = false, havePlan = false;
+  const pockets = new Int16Array(3 * MAX_POCKETS);
+  let nPockets = 0, shop = null;
+  // a shop in about half the levels of a tagged bank (decided per level, dropped again after 5 failed attempts)
+  const wantShop = !!(bank.tagged && bank.tags.some((t) => t & TAG_SHOP)) && mulberry32(hashSeed(base, 0x5409))() < SHOP_CHANCE;
   const mx = bank.markerXY;
   const cellX = (cell) => BORDER + (cell % ROOMS_X) * ROOM_W;
   const cellY = (cell) => BORDER + ((cell / ROOMS_X) | 0) * ROOM_H;
@@ -306,6 +443,9 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     // 3. fill, 4. stamp + shave
     fillEmpty(rng, bank, plan);
     for (let i = 0; i < NROOMS; i++) { roomVar[i] = plan[i]; roomRole[i] = planRole[i]; }
+    shop = null; nPockets = 0;
+    let shopCell = -1;
+    if (wantShop && att < 5) shopCell = placeShop(mulberry32(hashSeed(base, 0x5408 + att)), bank, roomVar, roomRole);
     stampRooms(rng, bank, roomVar, tiles);
     const sCell = path[0], eCell = path[n - 1];
     sx = cellX(sCell) + mx[roomVar[sCell] * 2]; sy = cellY(sCell) + mx[roomVar[sCell] * 2 + 1];
@@ -313,8 +453,11 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     carveClearance(tiles, sx, sy);
     carveClearance(tiles, ex, ey);
     shaveNubsAndSmallIslands(tiles);
-    // 5. guarantee: exit reachable from start through fat water, no bombs
-    ok = fatWaterSolvable(tiles, sx, sy, ex, ey);
+    if (shopCell >= 0) shop = readShop(bank, roomVar, shopCell);
+    if (bank.tagged) nPockets = carvePockets(tiles, floodWater(tiles, sx, sy), mulberry32(hashSeed(base, 0x70c4 + att)), pockets, shop);
+    // 5. guarantee: exit reachable from start through fat water, no bombs; then the A* check (real octopus
+    // radius) on the final tiles, plus the shop's keeper and pedestals when there is a shop
+    ok = fatWaterSolvable(tiles, sx, sy, ex, ey) && (shopCell < 0 || shop !== null) && finalPathOk(tiles, sx, sy, ex, ey, shop);
   }
 
   // The biome bank could not produce a solvable level: use the Octomancer PNG bank instead.
@@ -326,6 +469,7 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
 
   if (!ok) {
     fallback = 1;
+    shop = null; nPockets = 0;
     if (!havePlan) {
       // no plan formed at all: one marker room everywhere, start top-left, exit bottom-right
       let a = 0;
@@ -381,5 +525,6 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   return {
     w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
     startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
+    shop, pockets, nPockets,
   };
 }

@@ -25,11 +25,15 @@ export const KIND_NORMAL = 0, KIND_START = 1, KIND_END = 2, KIND_POOL = 3;
 // bank.flags bits
 export const FLAG_H = 1, FLAG_V = 2;
 // bank.tags bits (biome-1 bank, Spelunky-style room roles; 0 for untagged banks)
-export const TAG_START = 1, TAG_EXIT = 2, TAG_PATH = 4, TAG_DROP = 8, TAG_LAND = 16, TAG_SIDE = 32;
-const TAG_NAMES = { start: TAG_START, exit: TAG_EXIT, 'path-LR': TAG_PATH, path: TAG_PATH, drop: TAG_DROP, landing: TAG_LAND, side: TAG_SIDE };
+export const TAG_START = 1, TAG_EXIT = 2, TAG_PATH = 4, TAG_DROP = 8, TAG_LAND = 16, TAG_SIDE = 32, TAG_SHOP = 64;
+const TAG_NAMES = { start: TAG_START, exit: TAG_EXIT, 'path-LR': TAG_PATH, path: TAG_PATH, drop: TAG_DROP, landing: TAG_LAND, side: TAG_SIDE, shop: TAG_SHOP };
 // bank.anchors codes: pattern anchors written in room ASCII ('^' 'v' '<' '>'), each a water cell
 export const ANCH_NONE = 0, ANCH_UP = 1, ANCH_DOWN = 2, ANCH_LEFT = 3, ANCH_RIGHT = 4;
 const ANCHOR_CHARS = { '^': ANCH_UP, v: ANCH_DOWN, '<': ANCH_LEFT, '>': ANCH_RIGHT };
+
+// bank.props codes: shop furniture written in room ASCII ('Y' the shopkeeper's spot, '@' an item pedestal), each a water cell
+export const PROP_NONE = 0, PROP_KEEPER = 1, PROP_PEDESTAL = 2;
+const PROP_CHARS = { Y: PROP_KEEPER, '@': PROP_PEDESTAL };
 
 const MARKER_CHARS = { S: MK_START, E: MK_EXIT, P: MK_PORTAL, C: MK_CHEST, N: MK_NEST, K: MK_CAGE, H: MK_POOL, Q: MK_TREASURE };
 const KIND_NAMES = { room: KIND_NORMAL, start: KIND_START, end: KIND_END, pool: KIND_POOL };
@@ -55,6 +59,7 @@ export function loadRoomBank(rooms) {
   const flags = new Uint8Array(V);
   const tags = new Uint8Array(V);
   const anchors = new Uint8Array(V * RC);
+  const props = new Uint8Array(V * RC);
   const tagged = rooms.some((r) => r.tags);
   const ids = new Array(V);
 
@@ -82,6 +87,8 @@ export function loadRoomBank(rooms) {
             if (fl & FLAG_H && code >= ANCH_LEFT) code = code === ANCH_LEFT ? ANCH_RIGHT : ANCH_LEFT;
             if (fl & FLAG_V && code <= ANCH_DOWN) code = code === ANCH_UP ? ANCH_DOWN : ANCH_UP;
             anchors[o + y * ROOM_W + x] = code;
+          } else if (PROP_CHARS[ch] !== undefined) {
+            props[o + y * ROOM_W + x] = PROP_CHARS[ch];
           } else if (ch === '#') c = CELL_ROCK;
           else if (ch === '?') c = CELL_QUANTUM;
           else if (MARKER_CHARS[ch] !== undefined) {
@@ -116,7 +123,7 @@ export function loadRoomBank(rooms) {
       v++;
     }
   }
-  return { V, cells, marker, markerXY, maskU, maskD, maskL, maskR, kind, weight, base, flags, ids, tags, anchors, tagged, nRooms: rooms.length };
+  return { V, cells, marker, markerXY, maskU, maskD, maskL, maskR, kind, weight, base, flags, ids, tags, anchors, props, tagged, nRooms: rooms.length };
 }
 
 /** Pairwise tables: connX[a*V+b] = 1 when room b, placed on side X of room a, shares an open edge cell. */

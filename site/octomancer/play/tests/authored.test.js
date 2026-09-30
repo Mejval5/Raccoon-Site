@@ -1,6 +1,6 @@
 // B1-3 authored maps (hub.json, tutorial.json): parsing, solvability, the bomb wall, and the
 // single-level world built from an authored level.
-import { parseAuthoredMap, MK_BOARD } from '../js/authored.js';
+import { parseAuthoredMap, MK_BOARD, MK_SIGN } from '../js/authored.js';
 import { createLevelWorld } from '../js/world-v2.js';
 
 /** Generic 4-neighbour BFS over "fat" water (2x2 blocks) on a w x h grid. */
@@ -34,9 +34,9 @@ export async function runAuthoredTests(assert) {
   assert(`authored hub: ${hub.w}x${hub.h}, one or two screens (34 wide, at most 2x24 tall)`, hub.w === 34 && hub.h >= 20 && hub.h <= 48);
   assert('authored hub: has a start, a dive entrance (E) and a journal board (J)', hub.startX >= 0 && hub.exitX >= 0 && hub.boardX >= 0);
   assert('authored hub: the dive entrance is below the start, at the bottom of a shaft (swim down into it)', hub.exitY > hub.startY + 4);
-  assert('authored hub: marks list holds start, exit and board', (() => {
+  assert('authored hub: marks list holds start, exit, board and quest sign', (() => {
     const kinds = []; for (let k = 0; k < hub.nMarks; k++) kinds.push(hub.marks[k * 3 + 2]);
-    return kinds.length === 3 && kinds.includes(MK_BOARD);
+    return kinds.length === 4 && kinds.includes(MK_BOARD) && kinds.includes(MK_SIGN);
   })());
   assert('authored hub: start reaches the dive entrance without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.exitX, hub.exitY));
   assert('authored hub: start reaches the journal board without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.boardX, hub.boardY));

@@ -158,6 +158,13 @@ export function createPickups() {
       }
     },
     events,
+    /** v2: a shell dropped by a defeated creature, in the single level chunk (index 0). False before that chunk exists. */
+    dropShell(x, y) {
+      const items = byChunk.get(0);
+      if (!items) return false;
+      items.push({ type: 'shell', x, y, hidden: false, collected: false, dropped: true });
+      return true;
+    },
     /** Visible, uncollected pickups in world space, for render.js. */
     visible(resident) {
       const out = [];

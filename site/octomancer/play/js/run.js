@@ -25,6 +25,7 @@ export function createRun(seed, opts = {}) {
     diveSeed: seed >>> 0,
     tutorialDone: !!opts.tutorialDone,
     levelsCleared: 0,    // biome levels exited in the current dive
+    shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     deaths: 0,
   };
 }
@@ -34,6 +35,7 @@ function startDive(run) {
   run.state = S_BIOME;
   run.level = 1;
   run.levelsCleared = 0;
+  run.shells = 0;
 }
 
 /**
@@ -43,7 +45,7 @@ function startDive(run) {
 export function runEvent(run, ev) {
   if (ev === EV_DEATH) {
     run.deaths++;
-    run.state = S_HUB; run.level = 0; run.levelsCleared = 0;
+    run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0;
     return true;
   }
   switch (run.state) {
@@ -70,6 +72,9 @@ export function runEvent(run, ev) {
       return false;
   }
 }
+
+/** The seed the NEXT dive will use (the hub sign previews that dive's first quest with it). */
+export function nextDiveSeed(run) { return hashSeed(run.seed, run.dives); }
 
 /** What to load for the current state: {kind:'hub'|'tutorial'|'generated'|'end', seed, levelIndex}. */
 export function levelSpec(run) {

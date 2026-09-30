@@ -4,9 +4,9 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_ITEM = 'item';
-export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_ITEM];
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', item: 'Items' };
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_ITEM = 'item', CAT_QUEST = 'quest';
+export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_ITEM, CAT_QUEST];
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', item: 'Items', quest: 'Quests' };
 
 /** Seed content; the art and longer text come later. Ids are stable: saves store them. */
 export const ENTRIES = [
@@ -16,6 +16,8 @@ export const ENTRIES = [
     text: 'A short cave that teaches swimming, dashing and bombing. It ends in a ring that leads on to the Shallows.' },
   { id: 'place-shallows', cat: CAT_PLACE, name: 'The Shallows',
     text: 'The first biome: sunlit caves of winding tunnels, ledges and shafts. Find the ring at the bottom of each level to swim deeper.' },
+  { id: 'place-shop', cat: CAT_PLACE, name: 'The Shell Stall',
+    text: 'A keeper with three pedestals, tucked into a side cave. Swim onto an item to buy it with shells.' },
 
   { id: 'creature-urchin', cat: CAT_CREATURE, name: 'Urchin',
     text: 'A spiny ball that sits still on the rock. It never chases you, but touching it hurts.' },
@@ -38,6 +40,19 @@ export const ENTRIES = [
     text: 'A rare find, often tucked away on the cave floor. Worth a lot of score.' },
   { id: 'item-bomb', cat: CAT_ITEM, name: 'Bomb',
     text: 'Place one and swim clear: after a short fuse it breaks nearby rock and hurts anything close, you included.' },
+  { id: 'item-heart', cat: CAT_ITEM, name: 'Heart',
+    text: 'Sold at the Shell Stall. Restores one heart, up to your maximum.' },
+  { id: 'item-bombpack', cat: CAT_ITEM, name: 'Bomb Pack',
+    text: 'Sold at the Shell Stall. Three bombs in one bundle, up to the most you can carry.' },
+
+  { id: 'quest-rescue', cat: CAT_QUEST, name: 'Rescue the Lost Critter',
+    text: 'A small creature is stranded in a side pocket. Touch it and it follows your trail: bring it to the exit.' },
+  { id: 'quest-vault', cat: CAT_QUEST, name: 'Crack the Vault',
+    text: 'A cache is sealed inside a pocket of rock. Bomb it open from the nearest cave and swim in.' },
+  { id: 'quest-untouched', cat: CAT_QUEST, name: 'Untouched',
+    text: 'Reach the exit without losing a single heart.' },
+  { id: 'quest-pest', cat: CAT_QUEST, name: 'Pest Control',
+    text: 'Piranhas have moved in. Dash through or blast enough of them to clear the level.' },
 ];
 
 const INDEX = new Map(ENTRIES.map((e, i) => [e.id, i]));

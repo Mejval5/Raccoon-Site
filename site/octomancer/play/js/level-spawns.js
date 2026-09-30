@@ -70,13 +70,23 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   const sx = level.startX + 0.5, sy = level.startY + 0.5;
   const farFromStart = (x, y) => Math.hypot(x + 0.5 - sx, y + 0.5 - sy) >= safe;
 
+  // the shop room stays calm: no enemies, swarms or loose shells inside it or near it
+  const shop = level.shop;
+  const SHOP_CALM = 5; // tiles around the shop room where nothing spawns, so patrols do not drift in
+  const inShop = (x, y) => !!shop && x >= shop.x0 - SHOP_CALM && x < shop.x1 + SHOP_CALM && y >= shop.y0 - SHOP_CALM && y < shop.y1 + SHOP_CALM;
   const openCells = [];
   for (let y = BORDER; y < H - BORDER; y++) {
     for (let x = BORDER + 1; x < W - BORDER - 1; x++) {
-      if (t[idx(x, y)] === 0 && reached[idx(x, y)] && farFromStart(x, y)) openCells.push([x, y]);
+      if (t[idx(x, y)] === 0 && reached[idx(x, y)] && farFromStart(x, y) && !inShop(x, y)) openCells.push([x, y]);
     }
   }
   const spawns = [];
+  // sealed rock pockets (level.js carvePockets) hold two shells on their bottom row; the vault quest
+  // puts its cache on the top row
+  for (let i = 0; i < (level.nPockets || 0); i++) {
+    const px = level.pockets[i * 3], py = level.pockets[i * 3 + 1];
+    spawns.push({ type: 'shell', x: px + 0.5, y: py + 1.5 }, { type: 'shell', x: px + 1.5, y: py + 1.5 });
+  }
   if (!openCells.length) return { spawns, openCells: 0 };
   const pick = (list) => list[Math.floor(rng() * list.length)];
 

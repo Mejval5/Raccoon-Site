@@ -244,6 +244,21 @@ body {
 
 /* --- v2 (?v2=1): stage label, tutorial prompts, toasts, journal screen, end screen --- */
 .octo-hud-stage { color: #fff; font-weight: 700; }
+.octo-hud-shells { display: inline-flex; align-items: center; gap: 3px; color: #ffe38a; font-weight: 700; }
+.octo-hud-shell-icon { width: 15px; height: 15px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.octo-hud-quest {
+  align-self: flex-start;
+  max-width: min(100%, 420px);
+  padding: 3px 10px 4px;
+  border-radius: 10px;
+  background: rgba(6, 22, 34, 0.62);
+  border: 1px solid rgba(255, 227, 138, 0.4);
+  color: #ffe38a;
+  font: 700 12px/1.3 'Quicksand', sans-serif;
+  text-shadow: 0 1px 2px rgba(0,0,0,.7);
+}
+.octo-hud-quest[data-state="done"] { color: #9dffd8; border-color: rgba(157, 255, 216, 0.55); }
+.octo-hud-quest[data-state="failed"] { color: #ff9a8a; border-color: rgba(255, 154, 138, 0.5); }
 #hud > .octo-prompt {
   position: absolute;
   left: 50%;

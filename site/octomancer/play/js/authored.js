@@ -3,12 +3,13 @@
 // returns (tiles + start / exit + marks), at any size. Behind ?v2=1.
 //
 // Rows: '#' rock, '.' water, 'S' start, 'E' exit (in the hub: the dive entrance),
-// 'J' journal board, 'W' a bomb-breakable wall tile (rock like any other interior rock).
+// 'J' journal board, 'Q' quest sign (hub), 'W' a bomb-breakable wall tile (rock like any other interior rock).
 // The 2-tile border is bedrock (the world treats it as unbreakable).
 
 import { MK_START, MK_EXIT } from './rooms.js';
+import { createPathGrid, findPath } from './pathcheck.js';
 
-export const MK_BOARD = 9;
+export const MK_BOARD = 9, MK_SIGN = 10;
 export const AUTHORED_BORDER = 2;
 
 /**
@@ -20,7 +21,7 @@ export function parseAuthoredMap(json) {
   const tiles = new Uint8Array(w * h);
   const marks = new Int16Array(3 * 16);
   const walls = [];
-  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1;
+  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1, qx = -1, qy = -1;
   for (let y = 0; y < h; y++) {
     if (rows[y].length !== w) throw new Error('map ' + json.id + ' row ' + y + ' has width ' + rows[y].length + ', expected ' + w);
     for (let x = 0; x < w; x++) {
@@ -31,6 +32,7 @@ export function parseAuthoredMap(json) {
       else if (ch === 'S') { sx = x; sy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_START; nMarks++; }
       else if (ch === 'E') { ex = x; ey = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_EXIT; nMarks++; }
       else if (ch === 'J') { bx = x; by = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_BOARD; nMarks++; }
+      else if (ch === 'Q') { qx = x; qy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SIGN; nMarks++; }
       else if (ch !== '.') throw new Error('map ' + json.id + ': unknown character ' + ch);
       tiles[y * w + x] = t;
     }
@@ -44,7 +46,7 @@ export function parseAuthoredMap(json) {
   }
   return {
     authored: true, id: json.id, name: json.name || json.id, w, h, tiles, marks, nMarks,
-    startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by,
+    startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by, signX: qx, signY: qy,
     walls: Int16Array.from(walls), // x,y pairs of the bomb wall tiles
     prompts: json.prompts || [], spawns: json.spawns || [],
     nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0,
@@ -56,4 +58,15 @@ export async function fetchAuthoredMaps(base = 'data/') {
   const [hub, tut] = await Promise.all([fetch(base + 'hub.json'), fetch(base + 'tutorial.json')]);
   if (!hub.ok || !tut.ok) throw new Error('authored maps: ' + hub.status + '/' + tut.status);
   return { hub: await hub.json(), tutorial: await tut.json() };
+}
+
+/**
+ * A* check for an authored map (pathcheck.js, real octopus radius): the exit trigger is reachable from S.
+ * Bomb-wall tiles count as passable only when `bombsGuaranteed` (the tutorial refills bombs, tutorial.js).
+ */
+export function authoredSolvable(map, bombsGuaranteed = false) {
+  const wall = new Uint8Array(map.w * map.h);
+  if (bombsGuaranteed) for (let i = 0; i < map.walls.length; i += 2) wall[map.walls[i + 1] * map.w + map.walls[i]] = 1;
+  const grid = createPathGrid(map.w, map.h, (x, y) => map.tiles[y * map.w + x] !== 0 && !wall[y * map.w + x]);
+  return findPath(grid, map.startX + 0.5, map.startY + 0.5, map.exitX + 0.5, map.exitY + 0.5) !== null;
 }

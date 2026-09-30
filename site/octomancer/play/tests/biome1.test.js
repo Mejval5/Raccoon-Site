@@ -12,8 +12,8 @@ export async function loadBiome1Json() {
   return res.json();
 }
 
-const ALLOWED = new Set('#.SE?^v<>'.split(''));
-const TAGS = ['start', 'exit', 'path-LR', 'drop', 'landing', 'side'];
+const ALLOWED = new Set('#.SE?^v<>Y@'.split(''));
+const TAGS = ['start', 'exit', 'path-LR', 'drop', 'landing', 'side', 'shop'];
 
 /** Fat-water BFS inside one room's raw cells (rock = '#' or '?', everything else water). */
 function roomReach(rows, from, to) {

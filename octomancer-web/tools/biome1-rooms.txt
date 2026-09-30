@@ -1,6 +1,6 @@
 // Biome 1 (Shallows) room bank source: one block per room, 16 rows of 10 chars.
 // Header line: room <id> | tags (comma) | flip (h, v, hv or none) | weight
-// Rows: '#' rock, '.' water, 'S' start, 'E' exit, '?' 50% rock, and anchors '^' 'v' '<' '>'
+// Rows: '#' rock, '.' water, 'S' start, 'E' exit, 'Y' shopkeeper and '@' pedestal (shop rooms), '?' 50% rock, and anchors '^' 'v' '<' '>'
 // (a water cell touching rock above / below / left / right). Rock features are at least 2 thick.
 // Build: python octomancer-web/tools/build_biome1_rooms.py
 
@@ -489,3 +489,59 @@ room b1-side-tall | side | h | 1
 ##......##
 ###....###
 ###....###
+
+// Shop rooms (round 22): tag 'shop', never on the main path. 'Y' the shopkeeper's spot, '@' an item pedestal (three per room),
+// both water cells. Flip h only (pedestals need a floor). level.js places one in about half of the levels.
+room b1-shop-hall | shop | h | 1
+##########
+##########
+##########
+###....###
+##......##
+#........#
+..........
+..........
+....Y.....
+..........
+..........
+..@..@..@.
+##########
+##########
+##########
+##########
+
+room b1-shop-nook | shop | h | 1
+###....###
+###....###
+###....###
+##......##
+#........#
+.........#
+.........#
+.........#
+....Y....#
+.........#
+.........#
+..@..@..@#
+##########
+##########
+##########
+##########
+
+room b1-shop-crossing | shop | h | 1
+###....###
+###....###
+###....###
+##......##
+#........#
+..........
+..........
+..........
+....Y.....
+..........
+..........
+..@..@..@.
+##########
+##########
+##########
+##########

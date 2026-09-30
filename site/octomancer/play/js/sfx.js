@@ -52,6 +52,13 @@ export function createSfx(audio) {
   }
   return {
     dash() { play((ctx, dest) => tone(ctx, dest, { freq: 320, sweep: 720, dur: 0.14, type: 'sawtooth', gain: 0.18 })); },
+    /** v2: a purchase or a finished quest, two rising notes. */
+    chime() {
+      play((ctx, dest) => {
+        tone(ctx, dest, { freq: 660, dur: 0.12, type: 'triangle', gain: 0.16 });
+        setTimeout(() => play((c, d) => tone(c, d, { freq: 990, dur: 0.18, type: 'triangle', gain: 0.16 })), 90);
+      });
+    },
     hurt() { play((ctx, dest) => tone(ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
     bomb() {
       play((ctx, dest) => {

@@ -1,7 +1,7 @@
 """Build site/octomancer/play/data/hub.json and tutorial.json (authored ASCII maps).
 
 Legend: '#' rock, '.' water, 'S' start, 'E' exit (the dive entrance in the hub),
-'J' journal board (hub only), 'W' a breakable wall tile (rock; the tutorial bomb wall).
+'J' journal board (hub only), 'Q' quest sign (hub only), 'W' a breakable wall tile (rock; the tutorial bomb wall).
 Everything is rock outside the carved shapes; a 2 tile bedrock border is kept by the loader.
 Run: python octomancer-web/tools/build_authored_maps.py
 """
@@ -69,14 +69,15 @@ rect(hub, 4, 9, 5, 13)
 border(hub)
 shave(hub)
 hub[13][7] = 'J'      # journal board, hung on the face of the left mound (rock at x=8), swim into it
+hub[13][29] = 'Q'      # quest sign, in the nook right of the right mound (round 22)
 hub[12][22] = 'S'
 hub[21][16] = 'E'     # the dive entrance, ring on the floor of the well
 hub_json = {
     'id': 'hub', 'name': 'The Hub', 'rows': rows(hub),
     'prompts': [
         {'x': 19, 'y': 12, 'r': 10, 'title': 'Welcome to the Shallows',
-         'desktop': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal.',
-         'touch': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal.'},
+         'desktop': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal, and read the sign on the right for your quest.',
+         'touch': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal, and read the sign on the right for your quest.'},
     ],
     'spawns': [{'type': 'plankton-swarm', 'x': 26.5, 'y': 9.5, 'count': 6}],
 }
