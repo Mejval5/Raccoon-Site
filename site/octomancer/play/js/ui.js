@@ -2,6 +2,7 @@
 // canvas (OVERNIGHT.md §2 "Canvas 2D, one canvas, HUD and menus as HTML/CSS").
 // OVERNIGHT.md §4 M4-1.
 
+import { artUrl } from './v2-art.js';
 const HEART_SRC = './assets/ui-heart.webp';
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
@@ -88,7 +89,14 @@ export function createUI(root, handlers) {
   toastEl.style.display = 'none';
   let toastTimer = 0;
 
-  root.append(bar, pauseBtn, muteBtn, controlsHelp, promptEl, toastEl);
+  // v2 level title card: the generated ribbon with the stage name, fades in and out at a level start
+  const titleEl = el('div', 'octo-title');
+  titleEl.style.display = 'none';
+  const titleText = el('div', 'octo-title-text');
+  const titleSub = el('div', 'octo-title-sub');
+  titleEl.append(titleText, titleSub);
+  let titleTimer = 0, titleTimer2 = 0;
+  root.append(bar, pauseBtn, muteBtn, controlsHelp, promptEl, toastEl, titleEl);
 
   /** @type {HTMLImageElement[]} */
   const heartEls = [];
@@ -181,6 +189,18 @@ export function createUI(root, handlers) {
       if (promptText.textContent !== text) promptText.textContent = text;
       promptEl.style.display = '';
     },
+    /** Level title card ("Shallows 1-2"), optional small line under it (e.g. the seed); fades away by itself. */
+    showTitle(text, sub = '', ms = 2600) {
+      clearTimeout(titleTimer); clearTimeout(titleTimer2);
+      titleText.textContent = text; titleSub.textContent = sub;
+      titleSub.style.display = sub ? '' : 'none';
+      titleEl.style.backgroundImage = `url(${artUrl('title-banner.webp')})`;
+      titleEl.style.display = '';
+      titleEl.style.opacity = '0';
+      titleTimer2 = setTimeout(() => { titleEl.style.opacity = '1'; }, 30);
+      titleTimer = setTimeout(() => { titleEl.style.opacity = '0'; titleTimer = setTimeout(() => { titleEl.style.display = 'none'; }, 700); }, ms);
+    },
+    titleShown() { return titleEl.style.display !== 'none'; },
     showToast(text, ms = 3200) {
       toastEl.textContent = text;
       toastEl.style.display = '';

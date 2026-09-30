@@ -1,12 +1,15 @@
-// Code-drawn placeholders for the round-22 v2 props (the art comes later): the tutorial's bomb-wall cue,
+// v2 props: generated Milan-style art (round 24, js/v2-art.js) with the round-22 code drawings as the fallback
+// while an image has not loaded: the tutorial's bomb-wall cue,
 // the hub quest sign, the shop (keeper, plinths, item icons, prices), the rescue critter and the vault
 // cache. Called from main.js's extraDraw hook after enemies and bombs, before the octopus. Device pixels.
+
+import { artImg, COUNTER_SLICES } from './v2-art.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
 
 const shellImg = new Image();
-shellImg.src = './assets/shell-blue.webp';
+shellImg.src = new URL('../assets/shell-blue.webp', import.meta.url).href;
 
 function view(camera, cw, ch) {
   const ppu = camera.pxPerUnit;
@@ -126,7 +129,13 @@ export function drawPocketCracks(ctx, camera, cw, ch, pockets, n, tileAt) {
     }
     ctx.clip();
     // cracks run along the line from the entrance towards the pocket
-    strokeCracks(ctx, sx, sy, ppu, makeCracks(bx, by, bw, bh, 2, side === 1 || side === 2));
+    const crack = artImg('crackVault');
+    if (crack) {
+      const cw2 = ppu * 2.1, ch2 = cw2 * (crack.naturalHeight / crack.naturalWidth);
+      ctx.globalAlpha = 0.92;
+      ctx.drawImage(crack, sx(bx + 1) - cw2 / 2, sy(by + 1) - ch2 / 2, cw2, ch2);
+      ctx.globalAlpha = 1;
+    } else strokeCracks(ctx, sx, sy, ppu, makeCracks(bx, by, bw, bh, 2, side === 1 || side === 2));
     ctx.restore();
   }
 }
@@ -164,8 +173,25 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
     const pulse = 0.5 + 0.5 * Math.sin(time * 3);
     ctx.fillStyle = `rgba(255,232,190,${0.01 + 0.012 * pulse + 0.05 * cue.attention})`;
     ctx.fillRect(0, 0, cw, ch);
-    // a few irregular cracks running through the whole wall (world space, deterministic)
-    strokeCracks(ctx, sx, sy, ppu, makeCracks(minX, minY, maxX - minX + 1, maxY - minY + 1, Math.max(2, Math.round((maxY - minY + 1) / 3))));
+    const crackImg = artImg('crackWall');
+    if (crackImg) {
+      // generated crack sprite, repeated down the wall in 4 tile segments (alternate flips and sway), inside the clip
+      const segH = 4, segW = segH * (crackImg.naturalWidth / crackImg.naturalHeight);
+      const mid = (minX + maxX + 1) / 2;
+      ctx.globalAlpha = 0.9;
+      for (let k = 0, y = minY; y < maxY + 1; y += segH - 0.2, k++) {
+        const flip = k & 1, jx = ((k * 7) % 5 - 2) * 0.18;
+        ctx.save();
+        ctx.translate(sx(mid + jx), sy(y));
+        if (flip) ctx.scale(-1, 1);
+        ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      // a few irregular cracks running through the whole wall (world space, deterministic)
+      strokeCracks(ctx, sx, sy, ppu, makeCracks(minX, minY, maxX - minX + 1, maxY - minY + 1, Math.max(2, Math.round((maxY - minY + 1) / 3))));
+    }
   }
   ctx.restore();
   if (!n) return;
@@ -174,21 +200,30 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   const p = (time * (0.9 + 0.8 * cue.attention)) % 1;
   ctx.strokeStyle = `rgba(255,214,120,${(1 - p) * (0.75 + 0.25 * cue.attention)})`;
   ctx.lineWidth = Math.max(2, ppu * 0.1);
-  ctx.beginPath(); ctx.arc(mx, my, ppu * (0.7 + 1.3 * p), 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(mx, my, ppu * (0.4 + 0.4 * p), 0, TAU); ctx.stroke(); // the ring stays inside the 2 tile wide wall
   const s = 1 + 0.08 * Math.sin(time * 5);
   ctx.fillStyle = 'rgba(6,22,34,0.75)';
-  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.78 * s, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.fill();
   ctx.strokeStyle = '#ffd678'; ctx.lineWidth = Math.max(1.5, ppu * 0.07);
-  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.78 * s, 0, TAU); ctx.stroke();
-  bombGlyph(ctx, mx - ppu * 0.05, my + ppu * 0.08, ppu * 0.38 * s, time);
+  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.stroke();
+  bombGlyph(ctx, mx - ppu * 0.04, my + ppu * 0.06, ppu * 0.3 * s, time);
 }
 
-/** The hub's quest sign: a plank on a post with a bobbing "!" over it, like the journal board. */
+/** The hub's quest sign: the generated plank on a post (floor at the post's foot) with the word on its face. */
 export function drawQuestSign(ctx, camera, cw, ch, x, y, time) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const bx = sx(x + 0.5), by = sy(y + 0.05); // plank wholly in the water above the floor tile, post reaching down to its top
   const w = ppu * 1.7, h = ppu * 1.15;
   if (bx < -w || bx > cw + w || by < -h * 2 || by > ch + h) return;
+  const img = artImg('questSign');
+  if (img) {
+    const dw = ppu * 1.7, dh = dw * (img.naturalHeight / img.naturalWidth);
+    const top = by + ppu * 1.0 - dh;            // the post's foot sits on the floor tile
+    ctx.drawImage(img, bx - dw / 2, top, dw, dh);
+    // the plank face is the top 57 % of the sprite; its "!" sits in the right quarter, so the word goes left
+    label(ctx, 'Quests', bx - dw * 0.12, top + dh * 0.29, ppu * 0.27, '#f6e7b8', '#3a2410');
+    return;
+  }
   const lw = Math.max(2, ppu * 0.09);
   ctx.lineJoin = 'round';
   ctx.fillStyle = '#7a5230'; ctx.strokeStyle = INK; ctx.lineWidth = lw;
@@ -231,11 +266,23 @@ export function drawCritter(ctx, camera, cw, ch, x, y, following, time) {
   ctx.beginPath(); ctx.arc(cx, cy + r * 0.2, r * 0.3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
 }
 
-/** The vault cache: a small gold chest with a glint, sealed in its pocket until the rock is bombed away. */
-export function drawVaultCache(ctx, camera, cw, ch, x, y, time) {
+/**
+ * The vault cache: the generated chest resting on the pocket floor, inset from the rock rim so it never
+ * overlaps it (closed and glinting until taken, open once `opened`). (x, y) is the centre of its tile.
+ */
+export function drawVaultCache(ctx, camera, cw, ch, x, y, time, opened = false) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 2 || cy > ch + ppu * 2) return;
+  const img = artImg(opened ? 'chestOpen' : 'chestClosed');
+  const g = 0.5 + 0.5 * Math.sin(time * 3);
+  if (img) {
+    const dw = ppu * 0.72, dh = dw * (img.naturalHeight / img.naturalWidth);
+    const foot = cy + ppu * 0.5 - ppu * 0.1; // tile floor minus the rim inset
+    ctx.drawImage(img, cx - dw / 2, foot - dh, dw, dh);
+    if (!opened) glint(ctx, cx + dw * 0.22, foot - dh * 0.72, ppu * 0.8, 0.5 + 0.4 * g);
+    return;
+  }
   const w = ppu * 0.8, h = ppu * 0.52, lw = Math.max(1.5, ppu * 0.06);
   ctx.lineJoin = 'round';
   ctx.fillStyle = '#c98a2c'; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = lw;
@@ -243,9 +290,11 @@ export function drawVaultCache(ctx, camera, cw, ch, x, y, time) {
   ctx.fillStyle = '#e8b04a';
   ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - h / 2, w, h * 0.42, [ppu * 0.1, ppu * 0.1, 0, 0]); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#3a2410'; ctx.fillRect(cx - ppu * 0.05, cy - h * 0.1, ppu * 0.1, h * 0.28);
-  const g = 0.5 + 0.5 * Math.sin(time * 3);
-  ctx.fillStyle = `rgba(255,248,200,${0.5 + 0.4 * g})`;
-  const gx = cx + w * 0.3, gy = cy - h * 0.7;
+  if (!opened) glint(ctx, cx + w * 0.3, cy - h * 0.7, ppu, 0.5 + 0.4 * g);
+}
+
+function glint(ctx, gx, gy, ppu, alpha) {
+  ctx.fillStyle = `rgba(255,248,200,${alpha})`;
   ctx.beginPath(); ctx.moveTo(gx, gy - ppu * 0.2); ctx.lineTo(gx + ppu * 0.05, gy - ppu * 0.05); ctx.lineTo(gx + ppu * 0.2, gy);
   ctx.lineTo(gx + ppu * 0.05, gy + ppu * 0.05); ctx.lineTo(gx, gy + ppu * 0.2); ctx.lineTo(gx - ppu * 0.05, gy + ppu * 0.05);
   ctx.lineTo(gx - ppu * 0.2, gy); ctx.lineTo(gx - ppu * 0.05, gy - ppu * 0.05); ctx.closePath(); ctx.fill();
@@ -259,6 +308,7 @@ export function drawVaultCache(ctx, camera, cw, ch, x, y, time) {
  * @param {{items:any[], stock:Uint8Array, sold:Uint8Array, px:Float32Array, keeperX:number, keeperY:number}} st
  */
 export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
+  if (artImg('keeper') && artImg('sign') && artImg('pedestal') && artImg('counter')) { drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt); return; }
   const { ppu, sx, sy } = view(camera, cw, ch);
   const kx = sx(st.keeperX), ky = sy(st.keeperY);
   if (kx < -ppu * 8 || kx > cw + ppu * 8 || ky < -ppu * 8 || ky > ch + ppu * 8) return;
@@ -336,6 +386,103 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
     ctx.fillStyle = 'rgba(6,22,34,0.85)'; ctx.strokeStyle = afford ? '#ffe38a' : '#ff8a80'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
     ctx.beginPath(); ctx.roundRect(px - pw / 2, ty - ph / 2, pw, ph, ph / 2); ctx.fill(); ctx.stroke();
     shellIcon(ctx, px - pw / 2 + ppu * 0.26, ty, ppu * 0.36);
+    ctx.fillStyle = afford ? '#ffe38a' : '#ff8a80';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, px + ppu * 0.2, ty + ppu * 0.02);
+  }
+}
+
+// ---- the generated shop stall (round 24) ----
+const CNT_SRC_H = 181, CNT_TOP = 49, CNT_FOOT = 176; // counter strip: sprite height, y of the counter's top face and of its foot
+const CNT_SCALE = 0.0035;                              // tiles per source pixel: the body is about 0.45 tile tall
+const SIGN_ROPE = 0.16;                                // rope x of the sign sprite, from each side (fraction of its width)
+const SIGN_W = 2.6, KEEPER_W = 1.5, PED_W = 0.8;       // tiles
+
+function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const kx = sx(st.keeperX);
+  const floorTop = Math.floor(st.px[1]) + 1;           // world y of the stall floor's surface
+  if (kx < -ppu * 8 || kx > cw + ppu * 8 || sy(floorTop) < -ppu * 8 || sy(floorTop) > ch + ppu * 8) return;
+  const lw = Math.max(1.5, ppu * 0.06);
+  ctx.lineJoin = 'round';
+  const gp = ppu * CNT_SCALE;
+
+  // counter strip: left cap, stretched middle, right cap, foot on the floor
+  const counter = artImg('counter');
+  const xL = sx(st.px[0] - 1.1), xR = sx(st.px[4] + 1.1);
+  const cy0 = sy(floorTop) - CNT_FOOT * gp;            // dest y of the strip's top
+  const [lw0, mw0, rw0] = COUNTER_SLICES;
+  const capL = lw0 * gp, capR = rw0 * gp;
+  ctx.drawImage(counter, 0, 0, lw0, CNT_SRC_H, xL, cy0, capL, CNT_SRC_H * gp);
+  ctx.drawImage(counter, lw0, 0, mw0, CNT_SRC_H, xL + capL - 0.5, cy0, xR - xL - capL - capR + 1, CNT_SRC_H * gp);
+  ctx.drawImage(counter, lw0 + mw0, 0, rw0, CNT_SRC_H, xR - capR, cy0, capR, CNT_SRC_H * gp);
+  const counterTopY = cy0 + CNT_TOP * gp;
+
+  // keeper: sits behind / on the counter between the first two pedestals
+  const keeper = artImg('keeper');
+  const kw = ppu * KEEPER_W, kh = kw * (keeper.naturalHeight / keeper.naturalWidth);
+  const bob = Math.sin(time * 1.6) * ppu * 0.035;
+  const kBottom = counterTopY + ppu * 0.06 + bob;
+  ctx.drawImage(keeper, kx - kw / 2, kBottom - kh, kw, kh);
+
+  // sign: hangs from ropes that reach the rock ceiling above it; with no ceiling in reach it stands on a
+  // post at the counter's left END (never behind the keeper)
+  const sign = artImg('sign');
+  const sw = ppu * SIGN_W, sh = sw * (sign.naturalHeight / sign.naturalWidth);
+  const signCy = kBottom - kh - sh * 0.5 - ppu * 0.25;
+  const sTop = signCy - sh / 2;
+  const ropeDx = sw * (0.5 - SIGN_ROPE);
+  let ceil = null;
+  if (tileAt) {
+    const wx0 = st.keeperX - ropeDx / ppu, wx1 = st.keeperX + ropeDx / ppu;
+    const wy = camera.y + (sTop - ch / 2) / ppu;       // world y of the sign's top
+    for (let dy = 0; dy < 7 && ceil === null; dy++) {
+      const ty = Math.floor(wy - 0.1) - dy;
+      const a = tileAt(Math.floor(wx0), ty) !== 0, b = tileAt(Math.floor(wx1), ty) !== 0;
+      if (a && b) ceil = ty + 1;
+      else if (a || b) break;
+    }
+  }
+  let signX = kx;
+  if (ceil !== null) {
+    const topY = sy(ceil) - 1;
+    ctx.strokeStyle = INK; ctx.lineWidth = Math.max(3, ppu * 0.1);
+    ctx.beginPath(); ctx.moveTo(kx - ropeDx, sTop + ppu * 0.1); ctx.lineTo(kx - ropeDx, topY); ctx.moveTo(kx + ropeDx, sTop + ppu * 0.1); ctx.lineTo(kx + ropeDx, topY); ctx.stroke();
+    ctx.strokeStyle = '#b98b4a'; ctx.lineWidth = Math.max(1.5, ppu * 0.055);
+    ctx.beginPath(); ctx.moveTo(kx - ropeDx, sTop + ppu * 0.1); ctx.lineTo(kx - ropeDx, topY); ctx.moveTo(kx + ropeDx, sTop + ppu * 0.1); ctx.lineTo(kx + ropeDx, topY); ctx.stroke();
+    ctx.drawImage(sign, kx - sw / 2, sTop, sw, sh);
+  } else {
+    // post planted on the left end of the counter; the sign (ropes cropped off) rests on top of it
+    signX = xL + capL * 0.5 + sw * 0.5 - ppu * 0.3;
+    const px0 = xL + capL * 0.5 + ppu * 0.15, postTop = counterTopY - ppu * 2.75;
+    ctx.fillStyle = '#8a5a32'; ctx.strokeStyle = '#2a170a'; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.roundRect(px0 - ppu * 0.09, postTop, ppu * 0.18, counterTopY - postTop + ppu * 0.05, ppu * 0.04); ctx.fill(); ctx.stroke();
+    const cropY = sign.naturalHeight * 0.2, dh = sh * 0.8;
+    ctx.drawImage(sign, 0, cropY, sign.naturalWidth, sign.naturalHeight - cropY, signX - sw / 2, postTop - dh + ppu * 0.12, sw, dh);
+    signX = signX;
+  }
+  label(ctx, 'SHOP', signX, ceil !== null ? signCy + sh * 0.04 : (counterTopY - ppu * 2.75) - sh * 0.4 + ppu * 0.12, ppu * 0.44, '#f6e7b8', '#3a2410');
+
+  // pedestals, item icons and prices
+  const ped = artImg('pedestal');
+  const pw = ppu * PED_W, phh = pw * (ped.naturalHeight / ped.naturalWidth);
+  for (let i = 0; i < 3; i++) {
+    const item = st.items[st.stock[i]];
+    const px = sx(st.px[i * 2]), py = sy(st.px[i * 2 + 1]);
+    const pBottom = counterTopY + ppu * 0.1;
+    ctx.drawImage(ped, px - pw / 2, pBottom - phh, pw, phh);
+    const sold = st.sold[i] === 1;
+    const iy = pBottom - phh - ppu * 0.36 + Math.sin(time * 2.2 + i * 1.7) * ppu * 0.05;
+    if (!sold) itemGlyph(ctx, item.glyph, px, iy, ppu * 0.36, time + i);
+    const ty = iy - ppu * 0.72;
+    if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); continue; }
+    const afford = shells >= item.price;
+    const text = String(item.price);
+    ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;
+    const tw = ctx.measureText(text).width, pillW = tw + ppu * 0.75, pillH = ppu * 0.44;
+    ctx.fillStyle = 'rgba(6,22,34,0.85)'; ctx.strokeStyle = afford ? '#ffe38a' : '#ff8a80'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
+    ctx.beginPath(); ctx.roundRect(px - pillW / 2, ty - pillH / 2, pillW, pillH, pillH / 2); ctx.fill(); ctx.stroke();
+    shellIcon(ctx, px - pillW / 2 + ppu * 0.26, ty, ppu * 0.36);
     ctx.fillStyle = afford ? '#ffe38a' : '#ff8a80';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(text, px + ppu * 0.2, ty + ppu * 0.02);

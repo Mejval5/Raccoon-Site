@@ -66,6 +66,7 @@ import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
 import { wallBandWindow } from './world-v2.js';
+import { ensureV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -78,6 +79,7 @@ const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 // very zoomed-in view, doesn't blow up chunk canvas memory -- each one is
 // already `32 x 24` tiles).
 export const WALL_BAND_PX = 512; // v2 wall cache band height, baked px
+const ROCK_TEX_ALPHA = 0.8; // v2 rock texture strength over the flat fill
 const BAKE_PX_PER_UNIT = Math.min(96, Math.round(48 * (typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1)));
 
 // The cave silhouette fades out by this world depth, below which the deep
@@ -394,6 +396,22 @@ export function createRenderer(ctx, world) {
     bctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     pathFromLoops(bctx, loops);
     bctx.fill('nonzero');
+    // round 24 (v2 only): the generated Shallows rock texture over the flat fill, world-aligned so
+    // neighbouring bands continue it; the rim stroke below still follows the traced outline.
+    const rockImg = world.v2 ? artImg('rock') : null;
+    if (rockImg) {
+      const pat = bctx.createPattern(rockImg, 'repeat');
+      if (pat && pat.setTransform) {
+        const k = (ROCK_TILE_UNITS * s) / rockImg.naturalWidth;
+        pat.setTransform(new DOMMatrix([k, 0, 0, k, 0, -yOffsetTiles * s]));
+        bctx.save();
+        bctx.globalAlpha = ROCK_TEX_ALPHA;
+        bctx.fillStyle = pat;
+        pathFromLoops(bctx, loops);
+        bctx.fill('nonzero');
+        bctx.restore();
+      }
+    }
     bctx.strokeStyle = RIM_COLOR;
     bctx.lineWidth = s * 0.1;
     bctx.lineJoin = 'round';
@@ -431,6 +449,7 @@ export function createRenderer(ctx, world) {
   // beyond the ones needed on screen, so no single frame pays for a whole
   // blast crossing several bands.
   const bandCache = new Map(); // band -> {canvas, version}
+  if (world.v2) ensureV2Art((key) => { if (key === 'rock') bandCache.clear(); }); // bake with the texture once it is there
   let bandBakes = 0; // total bakes, for tests / perf checks
   let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single band bake
   function bandLoopsPx(bi, y0) {
@@ -538,7 +557,8 @@ export function createRenderer(ctx, world) {
     grad.addColorStop(1, `rgb(${lerp(118, 10, t)},${lerp(230, 26, t)},${lerp(238, 46, t)})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
-    drawCaveArt(canvasW, canvasH, depth);
+    if (world.v2) drawV2Backdrop(canvasW, canvasH, depth);
+    else drawCaveArt(canvasW, canvasH, depth);
     ctx.save();
     ctx.globalAlpha = 0.06;
     ctx.globalCompositeOperation = 'overlay';
@@ -551,6 +571,42 @@ export function createRenderer(ctx, world) {
       }
     }
     ctx.restore();
+  }
+
+  // Round 24 (v2 only): two generated Shallows backdrop layers with their own parallax. The far layer is a
+  // misty cave of pillars and kelp multiplied over the water gradient; the near layer is sparser silhouettes.
+  // Both are mirrored side by side (and the near one top to bottom) so they tile without a seam.
+  const V2_FAR_PARALLAX = 0.12, V2_NEAR_PARALLAX = 0.3;
+  function drawV2Layer(img, parallax, canvasW, canvasH, alpha, mode, heightUnits) {
+    const ppu = camera.pxPerUnit;
+    const h = Math.max(canvasH * 1.05, heightUnits * ppu), w = h * (img.naturalWidth / img.naturalHeight);
+    const ox = -((camera.x * ppu * parallax) % (w * 2));
+    const oy = -((camera.y * ppu * parallax) % (h * 2));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.globalCompositeOperation = mode;
+    for (let iy = -1; iy * h + oy < canvasH; iy++) {
+      const y = oy + iy * h;
+      if (y + h < 0) continue;
+      for (let ix = -1; ix * w + ox < canvasW; ix++) {
+        const x = ox + ix * w;
+        if (x + w < 0) continue;
+        const fx = (((ix % 2) + 2) % 2) === 1, fy = (((iy % 2) + 2) % 2) === 1;
+        if (!fx && !fy) { ctx.drawImage(img, x, y, w, h); continue; }
+        ctx.save();
+        ctx.translate(fx ? x + w : x, fy ? y + h : y);
+        ctx.scale(fx ? -1 : 1, fy ? -1 : 1);
+        ctx.drawImage(img, 0, 0, w, h);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+  function drawV2Backdrop(canvasW, canvasH, depth) {
+    const far = artImg('far'), near = artImg('near');
+    const fade = 1 - Math.min(0.5, depth / 240);
+    if (far) drawV2Layer(far, V2_FAR_PARALLAX, canvasW, canvasH, 0.3 * fade, 'multiply', 40);
+    if (near) drawV2Layer(near, V2_NEAR_PARALLAX, canvasW, canvasH, 0.2 * fade, 'multiply', 30);
   }
 
   // Milan's cave-mouth art (same file as the title screen, so Start Game's

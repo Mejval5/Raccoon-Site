@@ -324,3 +324,27 @@ body {
 .octo-journal-name { font-weight: 700; font-size: 15px; }
 .octo-journal-text { font-size: 13px; opacity: .85; line-height: 1.35; }
 .octo-journal-unknown { opacity: .5; }
+
+/* v2 level title card (round 24): the generated ribbon behind the stage name */
+#hud > .octo-title {
+  position: absolute;
+  left: 50%;
+  top: calc(18% + var(--safe-t));
+  transform: translateX(-50%);
+  width: min(86vw, 520px);
+  aspect-ratio: 725 / 176;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 12%;
+  box-sizing: border-box;
+  opacity: 0;
+  transition: opacity 500ms ease;
+  pointer-events: none;
+  z-index: 5;
+  font-family: 'Quicksand', sans-serif;
+  text-align: center;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,.35));
+}
+.octo-title-text { white-space: nowrap; font-size: clamp(18px, 5vw, 28px); font-weight: 700; color: #eafffa; text-shadow: 0 2px 3px rgba(0,0,0,.6); line-height: 1.1; }
+.octo-title-sub { font-size: clamp(11px, 2.6vw, 13px); font-weight: 600; color: #a8f0d8; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-top: 3px; }

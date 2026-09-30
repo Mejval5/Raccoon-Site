@@ -71,3 +71,23 @@ spark, the explosion ring and debris particles are code-drawn (M3-3).
 Dash/hurt/bomb SFX are synthesised in code (`play/js/sfx.js`, plain
 oscillators + filtered noise, no samples): nothing from `Sounds/Effects/` or
 `Sounds/*.wav` library SFX ships.
+
+## Generated v2 art (`play/img/v2/`, round 24, behind `?v2=1`)
+
+All rows: **generated, Milan style**. Made with the openai-image-gen skill (`image.py edit`, model gpt-image-2, `-i` a contact sheet of Milan's sprites (`enemy-urchin`, `enemy-crab-slow`, `shell-blue`, ...) as the style reference, plus the game's own wall screenshot or cave backdrop where noted), quality medium, 11 images generated in total (limit 12). The API refused `--background transparent` for this model, so every sprite was generated on a flat magenta (#FF00FF) background and keyed to alpha in Pillow (`despill` on the soft edge), then cropped, resized and saved as webp. No text is baked into any image: words ("SHOP", "Journal", "Quests", the level name) are drawn by the code over the plain art.
+
+| file | what | notes |
+|---|---|---|
+| `img/v2/shallows-rock.webp` | Shallows rock tile, 512 px = 9 world units | generated from the wall fill crop; made seamless with an offset cross-blend; drawn under the traced mint rim |
+| `img/v2/shallows-far.webp` | backdrop layer 1, distant misty cave | multiplied over the water gradient, parallax 0.12, mirrored tiling |
+| `img/v2/shallows-near.webp` | backdrop layer 2, nearer kelp / coral / root silhouettes (keyed) | multiplied, parallax 0.30, mirrored tiling |
+| `img/v2/exit-ring.webp` | glowing portal ring lying on the floor | exit ring as is; the hub dive ring is the same file hue-rotated once on load |
+| `img/v2/shop-keeper.webp` | hermit-crab shopkeeper | second generation, from the stall sheet as reference 2 |
+| `img/v2/shop-sign.webp`, `shop-pedestal.webp`, `shop-counter.webp` | hanging sign, stone pedestal, counter strip (left cap, stretchable middle, right cap) | cut from one stall sheet (keeper, counter, 3 pedestals, sign) |
+| `img/v2/chest-closed.webp`, `chest-open.webp` | treasure chest, closed and open with glow | one sheet, split |
+| `img/v2/crack-vault.webp` | crack web over the rock of a sealed vault pocket | |
+| `img/v2/crack-wall.webp` | tall crack for the tutorial bomb wall | repeated and flipped down the wall |
+| `img/v2/hub-board.webp`, `hub-questsign.webp` | wall-mounted notice board and the quest signpost (with a painted "!") | one sheet, split |
+| `img/v2/title-banner.webp` | ribbon behind the level title card | |
+
+Image budget: rock 1, backdrops 2, ring 1, stall 1, keeper 1, chest 1, vault crack 1, wall crack 1, boards 1, banner 1 = 11 (all medium; no separate low drafts were made to stay under 12, the four failed `--background transparent` calls never reached the model).

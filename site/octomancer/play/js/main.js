@@ -436,6 +436,7 @@ const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
 loop.start();
+if (V2 && run.state === S_BIOME) ui.showTitle(stageLabel(run)); // the first level's title card
 
 function resetWorld(newSeed) {
   seed = V2 ? levelSpec(run).seed : newSeed;
@@ -458,6 +459,7 @@ function resetWorld(newSeed) {
   ui.hideEnd();
   ui.setPrompt(null);
   if (V2) setupLevelExtras();
+  if (V2 && run.state === S_BIOME) ui.showTitle(stageLabel(run));
 }
 
 // --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
@@ -558,7 +560,7 @@ function stepV2(snap) {
 function v2Extra(c, camera, w2s, cw, ch) {
   const lv = world.level;
   drawV2Marks(c, camera, cw, ch, {
-    exitX: lv.exitX, exitY: lv.exitY,
+    exitX: lv.exitX, exitY: lv.exitY, tileAt: world.tileAt,
     boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
     label: run.state === S_HUB ? 'Dive' : '',
   }, sim.time);
@@ -570,10 +572,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
-    if (quest && quest.status === 0) {
-      if (quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
-      else if (quest.plan.kindId === Q_VAULT && !quest.collected) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t);
-    }
+    if (quest && quest.status === 0 && quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
+    if (quest && quest.plan && quest.plan.kindId === Q_VAULT) drawVaultCache(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1], t, quest.collected);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
 }

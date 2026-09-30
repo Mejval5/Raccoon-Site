@@ -129,6 +129,10 @@ await runPathcheckTests(assert, approx);
 import { runQuestTests } from './quests.test.js';
 await runQuestTests(assert, approx);
 
+// --- Round 24: generated Shallows art ---
+import { runV2ArtTests } from './v2-art.test.js';
+await runV2ArtTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
