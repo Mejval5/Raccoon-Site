@@ -516,3 +516,15 @@ they are data, but M7-4 needs the five recorded runs to be real runs on a phone,
 
 Q7 hazards: yes (urchins are hazards; cannons keep HP). Mines are removed from the game entirely (Daniel: ugly, urchins cover it). Q1: 12 levels with a win screen. Q2: the treasure pocket. The M1-0 combat spike runs first. Q3-Q6, Q8 and Q9 go ahead on their defaults unless Daniel says otherwise.
 Daniel is away tonight (2026-09-30) and delegated decisions: the spike ships behind ?auto=1 and M1 proceeds behind ?v2=1; his feel verdict is still needed before M2.
+
+## 10. Re-scope: Biome 1 scaffolding first (Daniel, 2026-09-30)
+
+Daniel: SmartRooms' rooms and visuals are only a demo, so take its code and concepts, not its content. The model is Spelunky 2. Build the scaffolding for the first biome, get it running, and only then add enemies, visuals and so on. Assets come from image generation (openai-image-gen), in Milan's style.
+
+Scope of B1 (this replaces the order of M2-M7 until B1 runs):
+- **B1-1 Run flow state machine** (`js/run.js`, flat state): `hub -> tutorial -> biome1 L1 -> L2 -> L3 -> biome-end screen`. Death returns you to the hub. Each state is a generated or authored level loaded through the single-level world from M1-4. Level transitions use a short fade.
+- **B1-2 Room templates as data** (`play/data/biome1-rooms.json`), in the Spelunky style: ASCII rows (`#` rock, `.` water, `S` start, `E` exit, `?` a 50% "quantum" tile, `^`/`v`/`<`/`>` pattern anchors), tagged by type (path LR, drop, landing, side, start, exit). 20-30 hand-authored 10x16 rooms for biome 1; the Octomancer PNG rooms stay only as a fallback bank.
+- **B1-3 Hub and tutorial as authored maps** (`hub.json`, `tutorial.json`): the hub is one screen with an entrance to the dive and a journal board. The tutorial is a short authored level with prompts: swim, dash, bomb a wall, reach the exit.
+- **B1-4 Journal scaffolding** (`js/journal.js`, save.js): discovered entries keyed by id for places, creatures and items, persisted, with a simple list screen opened from the hub. The content fills in later.
+- **B1-5 Biome 1 art pass** (after B1-1..4 run): generate the biome-1 tile set and backdrop with openai-image-gen in Milan's style, using his sprites as edit references, low/medium quality, few images.
+- Enemies, combat (M3/M4), specials, quests and foliage patterns come after B1 runs end to end.
