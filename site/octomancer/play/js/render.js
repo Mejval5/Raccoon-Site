@@ -919,6 +919,23 @@ export function createRenderer(ctx, world) {
   // as this chunk's bottom) to the same rounding gives adjacent chunks an
   // exactly shared edge with no seam, matching the "line through the screen"
   // fix already applied to the vertical case.
+  // round 28: a flat-rock tile baked like a wall chunk (fill + world-aligned noise), cached per noise phase
+  const capCache = new Map();
+  function getCapCanvas(yOffsetTiles) {
+    const key = ((yOffsetTiles * BAKE_PX_PER_UNIT) % rockNoiseCanvas.height + rockNoiseCanvas.height) % rockNoiseCanvas.height;
+    let c = capCache.get(key);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = chunkW * BAKE_PX_PER_UNIT; c.height = chunkH * BAKE_PX_PER_UNIT;
+      const b = c.getContext('2d');
+      b.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+      b.fillRect(0, 0, c.width, c.height);
+      if (rockNoisePattern) paintNoise(b, { yOffset: yOffsetTiles }, rockNoisePattern, rockNoiseCanvas, 0, 0, c.width, c.height);
+      capCache.set(key, c);
+    }
+    return c;
+  }
+
   function drawWalls(canvasW, canvasH, resident) {
     if (world.v2) { drawBandWalls(canvasW, canvasH); return; }
     if (resident.length) {
@@ -927,18 +944,20 @@ export function createRenderer(ctx, world) {
       const topEntry = resident[0];
       const cutY = Math.round(worldToScreen(camera, canvasW, canvasH, 0, topEntry.yOffset).y);
       if (topEntry.index > 0 && cutY > 0) {
+        // round 28: paint the cap exactly like a baked chunk (same canvas fill + paintNoise, then the same scaled
+        // drawImage), one chunk-sized tile at a time going up, so brightness and grain match across the join
+        const flat = `rgb(${WALL_FILL_COLOR.join(',')})`;
         ctx.save();
-        ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
+        ctx.fillStyle = flat;
         ctx.fillRect(0, 0, canvasW, cutY + 1);
-        if (rockNoisePattern) {
-          // round 27: same world-aligned noise phase as the baked chunk (paintNoise), so the grain continues across cutY
-          const top = worldToScreen(camera, canvasW, canvasH, 0, topEntry.yOffset);
-          const k = camera.pxPerUnit / BAKE_PX_PER_UNIT;
-          const offPx = ((topEntry.yOffset * BAKE_PX_PER_UNIT) % rockNoiseCanvas.height + rockNoiseCanvas.height) % rockNoiseCanvas.height;
-          ctx.translate(top.x, top.y - offPx * k);
-          ctx.scale(k, k);
-          ctx.fillStyle = rockNoisePattern;
-          ctx.fillRect(-top.x / k, (0 - (top.y - offPx * k)) / k, canvasW / k + top.x / k, (cutY + 1 - (top.y - offPx * k)) / k);
+        let yOff = topEntry.yOffset - chunkH;
+        for (let j = 0; j < 8; j++, yOff -= chunkH) {
+          const tl = worldToScreen(camera, canvasW, canvasH, 0, yOff);
+          const br = worldToScreen(camera, canvasW, canvasH, chunkW, yOff + chunkH);
+          if (br.y < 0) break;
+          const y0 = Math.round(tl.y), y1 = Math.round(br.y);
+          if (y1 <= y0) continue;
+          ctx.drawImage(getCapCanvas(yOff), Math.round(tl.x), y0, Math.round(br.x) - Math.round(tl.x), y1 - y0 + (j === 0 ? 1 : 0));
         }
         ctx.restore();
       }

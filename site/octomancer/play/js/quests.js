@@ -191,12 +191,25 @@ export function questUpdate(st, octo, world) {
       const lag = Math.min(CRITTER_LAG, st.filled);
       const i = (st.head - lag + TRAIL * 2) % TRAIL;
       let tx = st.trail[i * 2], ty = st.trail[i * 2 + 1];
-      // keep beside the octopus, not inside it
+      // keep beside the octopus, not inside it, and never on its centre: if the wanted point is solid, pick the
+      // free spot around the octopus (8 directions, 0.95-1.1 tiles) closest to the trail point
       const dx = tx - octo.x, dy = ty - octo.y, d = Math.hypot(dx, dy);
       if (d < 0.95) { const ux = d > 1e-3 ? dx / d : -0.7, uy = d > 1e-3 ? dy / d : 0.7; tx = octo.x + ux * 0.95; ty = octo.y + uy * 0.95; }
-      if (world.isSolid(tx, ty)) { tx = octo.x; ty = octo.y; }
-      st.cx += (tx - st.cx) * 0.3; st.cy += (ty - st.cy) * 0.3;
-      if (world.isSolid(st.cx, st.cy)) { st.cx = octo.x; st.cy = octo.y; }
+      if (world.isSolid(tx, ty)) {
+        const want = { x: tx, y: ty };
+        let best = null, bd = Infinity;
+        for (const r of [0.95, 1.1]) {
+          for (let a = 0; a < 8; a++) {
+            const px = octo.x + Math.cos(a * Math.PI / 4) * r, py = octo.y + Math.sin(a * Math.PI / 4) * r;
+            if (world.isSolid(px, py)) continue;
+            const dd = Math.hypot(px - want.x, py - want.y);
+            if (dd < bd) { bd = dd; best = [px, py]; }
+          }
+        }
+        if (best) { tx = best[0]; ty = best[1]; } else { tx = st.cx; ty = st.cy; }
+      }
+      const nx = st.cx + (tx - st.cx) * 0.3, ny = st.cy + (ty - st.cy) * 0.3;
+      if (!world.isSolid(nx, ny)) { st.cx = nx; st.cy = ny; }
     }
   } else if (k === Q_VAULT && !st.collected) {
     if (Math.hypot(octo.x - st.plan.pos[0], octo.y - st.plan.pos[1]) < TOUCH_R) { st.collected = true; return finish(st); }
