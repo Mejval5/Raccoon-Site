@@ -121,7 +121,10 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     if (placement === 'open' && !hasOpenClearance(t, x, y, 1)) continue;
     const nearSideWall = (placement === 'floor' || placement === 'ceiling')
       && (solidAt(t, x - 1, y) || solidAt(t, x + 1, y));
-    spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall });
+    let mantaFit = true;
+    for (let dy = -2; dy <= 2 && mantaFit; dy++) for (let dx = -1; dx <= 1; dx++) if (solidAt(t, x + dx, y + dy)) { mantaFit = false; break; }
+    const narrowShaft = solidAt(t, x - 1, y) && solidAt(t, x + 1, y);
+    spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall, mantaFit, narrowShaft });
     placed.push({ x, y });
   }
   return { spawns, openCells: openCells.length };

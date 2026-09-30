@@ -270,11 +270,11 @@ function makeRng(seedSalt) {
 // and ceiling, but only on a "flat run" anchor (gen.js's `flatRun`, set
 // false at convex ceiling/floor corners) -- Daniel's review: "horns at
 // convex ceiling corners hang in open water below the rim".
-function pickKind(placement, depth, rng, flatRun, nearSideWall) {
+function pickKind(placement, depth, rng, flatRun, nearSideWall, mantaFit = true, narrowShaft = false) {
   const candidates = [];
   if (placement === 'open') {
     candidates.push('piranha');
-    if (depth > 100) candidates.push('manta');
+    if (depth > 100 && mantaFit) candidates.push('manta');
   } else {
     candidates.push('urchin');
     // Round-6 fix (reviewer leftover, NIGHT-LOG.md task 6: "floor
@@ -285,7 +285,7 @@ function pickKind(placement, depth, rng, flatRun, nearSideWall) {
     // spawn with its far side hanging past the rim into open water before
     // its very first patrol step ever turned it around.
     if (placement === 'floor' && flatRun) candidates.push('crab');
-    if ((placement === 'floor' || placement === 'ceiling') && flatRun) candidates.push('horns');
+    if ((placement === 'floor' || placement === 'ceiling') && flatRun && !(placement === 'ceiling' && narrowShaft)) candidates.push('horns');
   }
   // Round-11 fix (review round 10 leftover, issue 3): skip a cannon slot at
   // a concave floor/ceiling-meets-wall corner (gen.js's `nearSideWall`) --
@@ -369,7 +369,7 @@ export function createEnemies() {
       if (s.type !== 'enemy-slot') continue;
       const wy = s.y + yOffset;
       if (!chunk.noDepthGate && wy < ENEMY_MIN_DEPTH) continue;
-      const kind = pickKind(s.placement, wy + (chunk.depthBias || 0), rng, s.flatRun !== false, !!s.nearSideWall);
+      const kind = pickKind(s.placement, wy + (chunk.depthBias || 0), rng, s.flatRun !== false, !!s.nearSideWall, s.mantaFit !== false, !!s.narrowShaft);
       list.push(makeEnemy(kind, s.x, wy, index, s.placement, s.wallDir || 0));
     }
     if (list.length) byChunk.set(index, list);
@@ -446,6 +446,7 @@ export function createEnemies() {
 
   function updateManta(e, dt, time, octo, world) {
     if (e.spawnTime === null) e.spawnTime = time; // start the sine at 0 offset, not a random phase
+    const px = e.x, py = e.y;
     e.x += e.dir * MANTA_SPEED * dt;
     // Wide back-and-forth patrol around its spawn point (the "wide sine"
     // glide), so it stays somewhere a diving octopus will pass, rather than
@@ -460,6 +461,20 @@ export function createEnemies() {
     // below now use the wing axis (`collideMantaWithWalls`/
     // `MANTA_WING_HALF_LEN`), not the small physics radius, so a wingtip
     // never has to already be inside rock before the manta reacts.
+    // Round-19: never glide into a gap narrower than the wingspan (pushing
+    // from both wingtips left it overlapping rock on both sides): if the
+    // wing axis does not fit at the new spot, keep the old x and/or y.
+    const fits = (x, y) => {
+      for (const dy of [-MANTA_BODY_HALF_HEIGHT, 0, MANTA_BODY_HALF_HEIGHT]) {
+        if (world.isSolid(x - MANTA_WING_HALF_LEN, y + dy) || world.isSolid(x + MANTA_WING_HALF_LEN, y + dy)) return false;
+      }
+      return true;
+    };
+    if (!fits(e.x, e.y)) {
+      if (fits(px, e.y)) { e.x = px; e.dir *= -1; }
+      else if (fits(e.x, py)) { e.y = py; }
+      else { e.x = px; e.y = py; e.dir *= -1; }
+    }
     collideMantaWithWalls(e, world);
     if (world.isSolid(e.x + Math.sign(e.dir || 1) * (MANTA_WING_HALF_LEN + 0.1), e.y)) e.dir *= -1;
     const d = dist(e.x, e.y, octo.x, octo.y);

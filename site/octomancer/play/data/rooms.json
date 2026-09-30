@@ -30,7 +30,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "##......##",
@@ -56,7 +56,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 2,
   "kind": "room",
   "cells": [
    "##......##",
@@ -108,7 +108,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 2,
   "kind": "room",
   "cells": [
    "#####.....",
@@ -186,7 +186,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "..........",
@@ -212,7 +212,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "..........",
@@ -238,7 +238,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "..........",
@@ -290,7 +290,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 2,
   "kind": "room",
   "cells": [
    ".......###",
@@ -316,7 +316,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "........##",
@@ -342,7 +342,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 2,
   "kind": "room",
   "cells": [
    "####......",
@@ -394,7 +394,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 0.5,
   "kind": "room",
   "cells": [
    "###.......",
@@ -420,7 +420,7 @@
   "w": 10,
   "h": 16,
   "flip": "hv",
-  "weight": 1,
+  "weight": 2,
   "kind": "room",
   "cells": [
    "##########",

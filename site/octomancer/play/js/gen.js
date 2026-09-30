@@ -511,7 +511,15 @@ export function generateChunk(seed, chunkIndex, entryCol) {
       // has no per-side inset to correct for a second, perpendicular wall.
       const nearSideWall = (placement === 'floor' || placement === 'ceiling')
         && (smoothed[idx(x - 1, y)] !== 0 || smoothed[idx(x + 1, y)] !== 0);
-      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall });
+      // Round-19: manta needs 3 open tiles across at baseY and +/- its sine sway;
+      // horns must not fill a 1-tile-wide shaft (rock on both sides of the cell).
+      let mantaFit = true;
+      if (placement === 'open') for (let dy = -2; dy <= 2 && mantaFit; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= CHUNK_W || ny < 0 || ny >= CHUNK_H || smoothed[idx(nx, ny)] !== 0) { mantaFit = false; break; }
+      }
+      const narrowShaft = smoothed[idx(x - 1, y)] !== 0 && smoothed[idx(x + 1, y)] !== 0;
+      spawns.push({ type: 'enemy-slot', placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall, mantaFit, narrowShaft });
       placedSlots.push({ x, y });
     }
   }

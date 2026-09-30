@@ -2564,3 +2564,9 @@ Endless mode without the flag is unchanged (endless seed 1 spawn frame differs f
 - Memory note: at DPR 2 a band is about 6 MB, 7 live is about 40 MB; consider baking v2 bands at min(BAKE, 64) px/unit on phones.
 
 Screenshots: `octomancer-web/night/fix-r18-*.png`.
+
+## Round 19 (visual fixes)
+- Manta: updateManta now rejects any step where the wing axis (x +/- 1.4 at y, y +/- 0.4) would touch rock, keeping the old x (and reversing) or old y, so it never settles in a gap narrower than its wingspan; gen.js/level-spawns.js tag open slots `mantaFit` (3 open tiles across, 5 rows) and pickKind only offers manta then (else piranha). Dive check: 0 wingtips in rock over 18 samples.
+- Ceiling horns: slots tagged `narrowShaft` (rock both sides of the cell) never get horns.
+- v2 rooms.json weights by open fraction (2 for <0.62 open, 0.5 for >0.74). Tests 1756/1756, 0 console errors.
+- Screenshots: night/fix-r19-*.png
