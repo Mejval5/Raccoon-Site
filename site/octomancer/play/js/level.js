@@ -10,6 +10,7 @@ import { mulberry32, hashSeed } from './rng.js';
 import {
   ROOM_W, ROOM_H, RC, CELL_ROCK, CELL_QUANTUM,
   MK_START, MK_EXIT, MK_NONE, KIND_NORMAL,
+  TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
 } from './rooms.js';
 
 export const ROOMS_X = 3, ROOMS_Y = 4, BORDER = 2;
@@ -18,6 +19,7 @@ export const LEVEL_H = ROOMS_Y * ROOM_H + 2 * BORDER; // 68
 export const NROOMS = ROOMS_X * ROOMS_Y;
 export const MAX_ATTEMPTS = 10;
 export const STOP_ROLL = 0.25;
+export const MAX_ANCHORS = 128;
 
 // roomRole codes
 export const ROLE_FILLER = 0, ROLE_PATH = 1, ROLE_START = 2, ROLE_END = 3;
@@ -62,7 +64,7 @@ const DIR_R = 0, DIR_D = 1, DIR_L = 2;
  * Fills roomVar (variant per cell, -1 = empty), roomRole and path (cell order).
  */
 function planPath(rng, bank, roomVar, roomRole, path) {
-  const { V, kind, marker, weight, connR, connD, connL, hasR, hasD, hasL } = bank;
+  const { V, kind, marker, weight, connR, connD, connL, hasR, hasD, hasL, tags, tagged } = bank;
   let cx = Math.floor(rng() * ROOMS_X), cy = 0;
   let prev = -1, prevDir = -1, n = 0;
   for (let guard = 0; guard < NROOMS; guard++) {
@@ -77,7 +79,19 @@ function planPath(rng, bank, roomVar, roomRole, path) {
       if (prev >= 0) {
         const t = prevDir === DIR_R ? connR : prevDir === DIR_D ? connD : connL;
         if (!t[prev * V + a]) continue;
-      } else if (marker[a] === MK_NONE) continue;
+      } else if (tagged ? !(tags[a] & TAG_START) : marker[a] === MK_NONE) continue;
+      if (tagged) {
+        // Spelunky flow: a start room, then path/drop/landing rooms, then an exit room.
+        // Going down needs a DROP (or the start room); arriving from above needs a LANDING or DROP.
+        const tg = tags[a];
+        const enteredDown = prevDir === DIR_D;
+        if (tg & TAG_EXIT) { if (!(enteredDown || prevDir >= 0)) continue; _cand2[nEnd++] = a; continue; }
+        if (prev >= 0 && !(tg & (TAG_PATH | TAG_DROP | TAG_LAND))) continue;
+        if (enteredDown && !(tg & (TAG_LAND | TAG_DROP))) continue;
+        const go = (canR && hasR[a]) || (canL && hasL[a]) || (canD && hasD[a] && (tg & (TAG_DROP | TAG_START)));
+        if (go) _cand[nGo++] = a;
+        continue;
+      }
       const go = (canR && hasR[a]) || (canD && hasD[a]) || (canL && hasL[a]);
       if (go) _cand[nGo++] = a;
       if (marker[a] !== MK_NONE) _cand2[nEnd++] = a;
@@ -93,7 +107,8 @@ function planPath(rng, bank, roomVar, roomRole, path) {
     path[n++] = cell;
     if (isEnd) return n;
     // direction: down is favoured (weight 2), sides 1 each, only where a neighbour can connect
-    const wR = canR && hasR[a] ? 1 : 0, wL = canL && hasL[a] ? 1 : 0, wD = canD && hasD[a] ? 2 : 0;
+    const dropOk = !tagged || (tags[a] & (TAG_DROP | TAG_START));
+    const wR = canR && hasR[a] ? 1 : 0, wL = canL && hasL[a] ? 1 : 0, wD = canD && hasD[a] && dropOk ? 2 : 0;
     let r = rng() * (wR + wL + wD);
     let dir;
     if ((r -= wR) < 0) dir = DIR_R;
@@ -108,7 +123,7 @@ function planPath(rng, bank, roomVar, roomRole, path) {
 // ---------------------------------------------------------------- step 3: fill
 
 function fillEmpty(rng, bank, roomVar) {
-  const { V, kind, weight, connR, connD, connL, connU } = bank;
+  const { V, kind, weight, connR, connD, connL, connU, tags, tagged } = bank;
   for (let cell = 0; cell < NROOMS; cell++) {
     if (roomVar[cell] >= 0) continue;
     const cx = cell % ROOMS_X, cy = (cell / ROOMS_X) | 0;
@@ -119,6 +134,7 @@ function fillEmpty(rng, bank, roomVar) {
     let n = 0, nAny = 0;
     for (let a = 0; a < V; a++) {
       if (kind[a] !== KIND_NORMAL) continue;
+      if (tagged && (tags[a] & (TAG_START | TAG_EXIT))) continue; // markers only in the start and end rooms
       _cand2[nAny++] = a;
       // connects to at least one placed neighbour (fewer sealed rooms)
       if ((nL >= 0 && connR[nL * V + a]) || (nR >= 0 && connL[nR * V + a]) ||
@@ -301,6 +317,13 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     ok = fatWaterSolvable(tiles, sx, sy, ex, ey);
   }
 
+  // The biome bank could not produce a solvable level: use the Octomancer PNG bank instead.
+  if (!ok && bank.fallbackBank) {
+    const lv = generateLevel(runSeed, levelIndex, bank.fallbackBank);
+    lv.bankFallback = 1;
+    return lv;
+  }
+
   if (!ok) {
     fallback = 1;
     if (!havePlan) {
@@ -334,5 +357,29 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     nMarks++;
   }
 
-  return { tiles, roomVar, roomRole, marks, nMarks, startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, nSpawns: 0 };
+  // pattern anchors ('^' 'v' '<' '>' in the room ASCII), kept only where the rock they
+  // point at is still there after quantum rolls and shaving
+  const anchors = new Int16Array(3 * MAX_ANCHORS);
+  let nAnchors = 0;
+  if (bank.anchors) {
+    for (let cell = 0; cell < NROOMS && nAnchors < MAX_ANCHORS; cell++) {
+      const src = roomVar[cell] * RC, ox = cellX(cell), oy = cellY(cell);
+      for (let i = 0; i < RC && nAnchors < MAX_ANCHORS; i++) {
+        const code = bank.anchors[src + i];
+        if (!code) continue;
+        const ax = ox + (i % ROOM_W), ay = oy + ((i / ROOM_W) | 0);
+        if (tiles[ay * LEVEL_W + ax] !== 0) continue;
+        const dx = code === ANCH_LEFT ? -1 : code === ANCH_RIGHT ? 1 : 0;
+        const dy = code === ANCH_UP ? -1 : code === ANCH_DOWN ? 1 : 0;
+        if (tiles[(ay + dy) * LEVEL_W + ax + dx] === 0) continue;
+        anchors[nAnchors * 3] = ax; anchors[nAnchors * 3 + 1] = ay; anchors[nAnchors * 3 + 2] = code;
+        nAnchors++;
+      }
+    }
+  }
+
+  return {
+    w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
+    startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
+  };
 }

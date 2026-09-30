@@ -13,7 +13,7 @@
 // Bands are the unit render.js caches wall canvases in; `configureBands(rows)`
 // lets the renderer pick the band height (about 512 px of baked canvas).
 
-import { generateLevel, isBedrock, LEVEL_W, LEVEL_H } from './level.js';
+import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
 import {
   traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
@@ -38,15 +38,19 @@ export function wallBandWindow(topY, bottomY, rows, count) {
  * @param {number} runSeed
  * @param {number} levelIndex
  */
-export function createLevelWorld(runSeed, levelIndex = 0) {
-  const level = generateLevel(runSeed, levelIndex);
+export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
+  // opts.level: a prebuilt level (authored hub / tutorial from authored.js, any size);
+  // otherwise one is generated (34x68).
+  const authored = !!(opts && opts.level);
+  const level = authored ? opts.level : generateLevel(runSeed, levelIndex);
   const tiles = level.tiles;
-  const W = LEVEL_W, H = LEVEL_H;
+  const W = level.w || LEVEL_W, H = level.h || LEVEL_H;
+  const bedrock = (x, y) => x < BORDER || x >= W - BORDER || y < BORDER || y >= H - BORDER;
   const startX = level.startX + 0.5, startY = level.startY + 0.5;
-  const spawnInfo = buildLevelSpawns(level, runSeed, levelIndex);
+  const spawnInfo = authored ? { spawns: level.spawns || [] } : buildLevelSpawns(level, runSeed, levelIndex);
   const chunk = {
     tiles, width: W, height: H, spawns: spawnInfo.spawns, dirty: true,
-    exclude: { x: startX, y: startY, r: START_SAFE_RADIUS },
+    exclude: authored ? undefined : { x: startX, y: startY, r: START_SAFE_RADIUS },
     depthBias: 40 + levelIndex * 15,
     noDepthGate: true, // enemies.js: no "first 40 units enemy-free" rule in a whole-level chunk
     salt: hashSalt(runSeed, levelIndex),
@@ -148,15 +152,16 @@ export function createLevelWorld(runSeed, levelIndex = 0) {
 
     isSolid(tx, ty) { return tileAt(Math.floor(tx), Math.floor(ty)) !== 0; },
     tileAt,
-    isBedrock,
+    authored,
+    isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !isBedrock(x, y) && tileAt(x, y) !== 0;
+      return !bedrock(x, y) && tileAt(x, y) !== 0;
     },
     /** Bomb break: any interior rock, never the 2-tile border. */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (isBedrock(x, y)) return false;
+      if (bedrock(x, y)) return false;
       if (tiles[y * W + x] === 0) return false;
       setTile(x, y, 0);
       return true;

@@ -7,9 +7,9 @@ import { createTouchUI } from './touch-ui.js';
 import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
-import { fetchRoomBank } from './rooms.js';
+import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
@@ -21,7 +21,16 @@ import { createBombs } from './bomb.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { loadBest, recordRun } from './save.js';
+import { loadBest, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone } from './save.js';
+import {
+  createRun, runEvent, levelSpec, stageLabel, isSafeState, BIOME_LEVELS, BIOME_NAME,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE,
+} from './run.js';
+import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
+import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
+import { createJournalScreen } from './journal-ui.js';
+import { hasLineOfSight } from './pathfind.js';
+import { drawV2Marks } from './v2-draw.js';
 import { HEART_MAX, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
@@ -38,12 +47,29 @@ const initialSeed = Number(params.get('seed')) || 1;
 const AUTO = params.get('auto') === '1';
 if (AUTO) setHpMode(true);
 let autofire = AUTO ? createAutofire() : null;
-// V2-PLAN M1-4/M1-5: ?v2=1 plays one generated 34x68 level (world-v2.js) instead
-// of the endless chunk stream. Without the flag nothing below changes.
+// V2-PLAN M1-4/M1-5 and section 10: ?v2=1 plays the Biome 1 run (hub -> tutorial ->
+// Shallows 1-1..1-3 -> end screen, js/run.js) through the single-level world
+// (world-v2.js) instead of the endless chunk stream. Without the flag nothing below
+// changes. ?at=hub|tutorial|1|2|3|end starts at a given state (tests, review).
 const V2 = params.get('v2') === '1';
-let levelIndex = Math.max(0, Number(params.get('level')) || 0);
-if (V2) setDefaultBank(await fetchRoomBank());
-function makeWorld(runSeed) { return V2 ? createLevelWorld(runSeed, levelIndex) : createWorld(runSeed); }
+let authoredJson = null;
+let run = null;
+if (V2) {
+  setDefaultBank(await fetchBiome1Bank());
+  authoredJson = await fetchAuthoredMaps();
+  run = createRun(initialSeed, { tutorialDone: getTutorialDone() });
+  const at = params.get('at');
+  if (at === 'tutorial') run.state = S_TUTORIAL;
+  else if (at === 'end') run.state = S_END;
+  else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); }
+}
+function makeWorld(runSeed) {
+  if (!V2) return createWorld(runSeed);
+  const spec = levelSpec(run);
+  if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.hub) });
+  if (spec.kind === 'tutorial') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.tutorial) });
+  return createLevelWorld(spec.seed, spec.levelIndex);
+}
 
 let dpr = 1;
 // M7-3 perf pass: "DPR step-down to 1.0 if median > 20ms for 2s". Once
@@ -110,12 +136,13 @@ const ui = createUI(hudEl, {
   muted: audio.isMuted(),
   onRestart() {
     ui.hideGameOver();
-    levelIndex = 0;
+    if (V2) { v2Event(EV_DEATH); return; }
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
     applyPaused();
     window.dispatchEvent(new CustomEvent('restart'));
   },
+  onEndContinue() { v2Event(EV_CONTINUE); },
   onExit() {
     location.href = '/octomancer/';
   },
@@ -128,6 +155,21 @@ const ui = createUI(hudEl, {
     return audio.toggleMute();
   },
 });
+
+// v2 journal (B1-4): entries persisted through save.js; the list screen opens from the hub board.
+const journal = createJournal({ load: getJournalIds, save: saveJournalIds });
+const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; } });
+let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
+function announceJournal() {
+  for (const id of journal.takeNew()) {
+    const e = ENTRIES.find((x) => x.id === id);
+    if (e) ui.showToast('New journal entry: ' + e.name);
+  }
+}
+function discover(id) { if (id && journal.discover(id)) announceJournal(); }
+function discoverStatePlace() {
+  discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : null);
+}
 
 // Manual (Esc/button) and automatic (hidden tab/blur) pause are tracked
 // separately and combined, so a window focus event can never silently
@@ -149,7 +191,10 @@ window.addEventListener('focus', () => { if (!document.hidden) { autoPaused = fa
 // Esc toggles pause directly (not routed through step()'s input snapshot:
 // the fixed-step loop stops calling step() at all while paused, so a
 // pause-driven "unpause" check inside step() would never run again).
+let keyboardSeen = false;
+window.addEventListener('keydown', () => { keyboardSeen = true; });
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && V2 && journalScreen.isOpen()) { journalScreen.hide(); return; }
   if (e.code !== 'Escape' || octo.dead) return;
   manualPaused = !manualPaused;
   applyPaused();
@@ -197,19 +242,24 @@ function step(dt) {
   }
   sim.lastInput = snap;
 
+  // v2 states that freeze the simulation: the fade between levels, the journal, the end screen.
+  if (V2) {
+    if (ui.isEndShown()) { if (snap.dash.pressed) v2Event(EV_CONTINUE); return; }
+    if (transitioning || journalScreen.isOpen()) return;
+  }
+
   // Game-over overlay is up: Enter/Z/Shift (the dash keys) or a tap on
   // "Swim again" restarts; Esc/pause button do nothing there (handled by
   // onTogglePause's own `octo.dead` guard).
   if (octo.dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
     if (snap.dash.pressed) {
       ui.hideGameOver();
-      levelIndex = 0;
+      if (V2) { v2Event(EV_DEATH); return; }
       resetWorld(Math.floor(Math.random() * 1e9));
       window.dispatchEvent(new CustomEvent('restart'));
     }
     return;
   }
-  if (levelClear) { if (snap.dash.pressed) nextLevel(); return; }
   stepOctopus(octo, snap, dt, world);
   if (octo.dashedThisStep) {
     sfx.dash();
@@ -227,17 +277,19 @@ function step(dt) {
     }
   }
   world.update(octo.y);
-  if (V2 && !octo.dead && world.reachedExit(octo.x, octo.y)) showLevelClear();
+  if (V2 && !octo.dead) stepV2(snap);
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo, resident, world);
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);
+    if (V2) discover(itemId(ev.type));
   }
   if (octo.hearts < prevHearts) sfx.hurt();
   prevHearts = octo.hearts;
   decor.update(dt, resident);
-  enemies.update(dt, sim.time, octo, world, resident);
+  // v2 hub and tutorial: no enemies, and the Beholder timer never runs
+  enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident);
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -249,7 +301,7 @@ function step(dt) {
   for (const ev of bombs.events) if (ev.type === 'exploded') { particles.bombDebris(ev.x, ev.y); sfx.bomb(); }
   for (const ev of enemies.events) if (ev.type === 'enemyKilled') { particles.deathPoof(ev.x, ev.y); runKills++; }
   particles.update(dt);
-  if (snap.bomb.pressed) bombs.place(octo, octo.x, octo.y);
+  if (snap.bomb.pressed && bombs.place(octo, octo.x, octo.y) && V2) discover('item-bomb');
 
   const depth = Math.max(0, world.depth() - world.startY);
   liveScore = computeScore(depth, pickups.totals, runKills);
@@ -339,12 +391,13 @@ function render(alpha, frameMs) {
     particles: particles.pool,
     shakeOffset: particles.shakeOffset(),
     dreadLevel,
-    extraDraw: autofire ? autofire.draw : null,
+    extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
   });
   ui.updateHud({
     hearts: octo.hearts, heartMax: HEART_MAX,
     bombs: octo.bombs,
     depth: Math.round(depth), score: liveScore, best: bestScore,
+    stage: V2 ? stageLabel(run) : undefined,
   });
   debug.tick();
 }
@@ -355,7 +408,7 @@ const debug = createDebugOverlay(debugEl, { loop, input });
 loop.start();
 
 function resetWorld(newSeed) {
-  seed = newSeed;
+  seed = V2 ? levelSpec(run).seed : newSeed;
   world = makeWorld(seed);
   octo = createOctopus(world.startX, world.startY);
   renderer = createRenderer(ctx, world);
@@ -371,31 +424,102 @@ function resetWorld(newSeed) {
   trailTimer = 0;
   dreadLevel = 0;
   prevHearts = octo.hearts;
-  levelClear = false;
-  hideLevelClear();
   ui.hideGameOver();
+  ui.hideEnd();
+  ui.setPrompt(null);
 }
 
-// --- v2 level clear (M1-5: a simple overlay; the next-level flow is M2) ---
-let levelClear = false;
-let levelClearEl = null;
-function showLevelClear() {
-  levelClear = true;
-  if (!levelClearEl) {
-    levelClearEl = document.createElement('div');
-    levelClearEl.id = 'level-clear';
-    levelClearEl.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(4,20,34,0.72);color:#baffea;font:700 32px system-ui,sans-serif;z-index:20;text-align:center';
-    levelClearEl.innerHTML = '<div>Level clear</div><button type="button" style="font:600 18px system-ui;padding:12px 28px;border-radius:10px;border:0;background:#7cf0d0;color:#04202f">Next level</button>';
-    levelClearEl.querySelector('button').addEventListener('click', nextLevel);
-    document.body.appendChild(levelClearEl);
+// --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
+let transitioning = false;
+const FADE_MS = 320;
+let fadeEl = null;
+function ensureFade() {
+  if (!fadeEl) {
+    fadeEl = document.createElement('div');
+    fadeEl.id = 'octo-fade';
+    fadeEl.style.cssText = `position:fixed;inset:0;background:#04121c;opacity:0;pointer-events:none;z-index:30;transition:opacity ${FADE_MS}ms ease`;
+    document.body.appendChild(fadeEl);
   }
-  levelClearEl.style.display = 'flex';
+  return fadeEl;
 }
-function hideLevelClear() { if (levelClearEl) levelClearEl.style.display = 'none'; }
-function nextLevel() {
-  levelIndex++;
-  resetWorld(seed);
-  window.dispatchEvent(new CustomEvent('restart'));
+
+/** Apply a run event; on a state change fade out, load the next level, fade in. */
+function v2Event(ev) {
+  if (!V2 || transitioning) return false;
+  const prevState = run.state;
+  const carry = { hearts: octo.hearts, bombs: octo.bombs };
+  if (!runEvent(run, ev)) return false;
+  if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true);
+  if (run.state === S_END) { showEndScreen(); return true; }
+  transitioning = true;
+  const fade = ensureFade();
+  fade.style.opacity = '1';
+  setTimeout(() => {
+    resetWorld(0);
+    if (run.state === S_BIOME && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    discoverStatePlace();
+    window.dispatchEvent(new CustomEvent('restart'));
+    fade.style.opacity = '0';
+    setTimeout(() => { transitioning = false; }, FADE_MS);
+  }, FADE_MS);
+  return true;
+}
+
+function showEndScreen() {
+  ui.showEnd(BIOME_NAME + ' cleared', `${run.levelsCleared} of ${BIOME_LEVELS} levels cleared`);
+}
+
+const SEE_RANGE = 9; // tiles: a creature this close in line of sight counts as seen
+let seeTick = 0;
+function wallIntact(lv) {
+  for (let i = 0; i < lv.walls.length; i += 2) if (world.tileAt(lv.walls[i], lv.walls[i + 1]) !== 0) return true;
+  return false;
+}
+const solidForSight = (tx, ty) => world.isSolid(tx, ty);
+
+/** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
+function stepV2(snap) {
+  const lv = world.level;
+  if (world.reachedExit(octo.x, octo.y)) { v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT); return; }
+  if (lv.boardX >= 0) {
+    const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
+    if (d > 2.2) boardCooldown = false;
+    else if (d < 1.2 && !boardCooldown) { octo.vx = octo.vy = 0; journalScreen.show(); ui.setPrompt(null); return; }
+  }
+  if (lv.prompts && lv.prompts.length) {
+    let best = null, bd = 1e9;
+    for (const p of lv.prompts) {
+      const d = Math.hypot(octo.x - p.x, octo.y - p.y);
+      if (d < p.r && d < bd) { best = p; bd = d; }
+    }
+    const touchy = snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer());
+    ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
+    if (best && best.refillBomb && octo.bombs < 1 && wallIntact(lv)) addBomb(octo);
+  } else ui.setPrompt(null);
+  if ((seeTick++ & 7) === 0) {
+    for (const e of enemies.all()) {
+      if (e.dead) continue;
+      const id = creatureId(e.kind);
+      if (!id || journal.has(id)) continue;
+      if (Math.hypot(e.x - octo.x, e.y - octo.y) < SEE_RANGE && hasLineOfSight(solidForSight, octo.x, octo.y, e.x, e.y)) discover(id);
+    }
+  }
+}
+
+function v2Extra(c, camera, w2s, cw, ch) {
+  const lv = world.level;
+  drawV2Marks(c, camera, cw, ch, {
+    exitX: lv.exitX, exitY: lv.exitY,
+    boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
+    label: run.state === S_HUB ? 'Dive' : '',
+  }, sim.time);
+  if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+}
+
+if (V2) {
+  ui.setGameOverLabels('The dark took you', 'Back to the hub');
+  discoverStatePlace();
+  if (run.state === S_END) showEndScreen();
 }
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
@@ -491,10 +615,20 @@ window.__octo = {
     if (!V2) return null;
     const l = world.level;
     return {
-      levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
-      tiles: Array.from(l.tiles), w: world.width, h: world.height, fallback: l.fallback,
-      bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), levelClear,
+      levelIndex: levelSpec(run).levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
+      w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), boardX: world.level.boardX === undefined ? -1 : world.level.boardX, boardY: world.level.boardY === undefined ? -1 : world.level.boardY,
+      prompts: world.level.prompts || [], walls: world.level.walls ? Array.from(world.level.walls) : [], transitioning,
+      tiles: Array.from(l.tiles), fallback: l.fallback, bankFallback: l.bankFallback || 0,
+      bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), journalOpen: journalScreen.isOpen(), endShown: ui.isEndShown(),
     };
+  },
+  /** v2: journal ids found, open the journal, apply a run event by name (tests, review). */
+  journal() { return { found: journal.list().filter((e) => e.found).map((e) => e.id), count: journal.count(), open: journalScreen.isOpen() }; },
+  openJournal() { journalScreen.show(); return true; },
+  closeJournal() { journalScreen.hide(); return true; },
+  runEvent(name) {
+    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE }[name];
+    return v2Event(ev);
   },
   audio() {
     return { started: audio.isStarted(), muted: audio.isMuted(), track: audio.currentTrack() };

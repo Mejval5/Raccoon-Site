@@ -112,6 +112,17 @@ await runLevelTests(assert, approx);
 import { runWorldV2Tests } from './world-v2.test.js';
 await runWorldV2Tests(assert, approx);
 
+// --- Biome 1 scaffolding (V2-PLAN section 10): run flow, room bank, authored
+// hub / tutorial, journal ---
+import { runRunTests } from './run.test.js';
+runRunTests(assert, approx);
+import { runBiome1Tests } from './biome1.test.js';
+await runBiome1Tests(assert, approx);
+import { runAuthoredTests } from './authored.test.js';
+await runAuthoredTests(assert, approx);
+import { runJournalTests } from './journal.test.js';
+runJournalTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

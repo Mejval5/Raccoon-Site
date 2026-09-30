@@ -241,3 +241,67 @@ body {
   text-shadow: 0 1px 3px rgba(0,0,0,.7);
   pointer-events: none;
 }
+
+/* --- v2 (?v2=1): stage label, tutorial prompts, toasts, journal screen, end screen --- */
+.octo-hud-stage { color: #fff; font-weight: 700; }
+#hud > .octo-prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(104px + var(--safe-t));
+  transform: translateX(-50%);
+  width: min(88vw, 460px);
+  padding: 10px 16px 12px;
+  border-radius: 14px;
+  background: rgba(6, 22, 34, 0.82);
+  border: 1px solid rgba(186, 255, 234, 0.3);
+  color: #eafffa;
+  text-align: center;
+  font-family: 'Quicksand', sans-serif;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  pointer-events: none;
+  z-index: 3;
+}
+.octo-prompt-title { font-size: 15px; font-weight: 700; color: #7cf0d0; margin-bottom: 2px; }
+.octo-prompt-text { font-size: 14px; font-weight: 600; line-height: 1.35; }
+#hud > .octo-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(24px + var(--safe-b));
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(6, 22, 34, 0.86);
+  border: 1px solid rgba(255, 227, 138, 0.55);
+  color: #ffe38a;
+  font: 700 13px 'Quicksand', sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 4;
+}
+.octo-journal-panel {
+  width: min(92vw, 480px);
+  max-width: min(92vw, 480px);
+  max-height: 86dvh;
+  padding: 20px 20px 16px;
+}
+.octo-journal-body {
+  width: 100%;
+  overflow-y: auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.octo-journal-cat {
+  font: 700 12px 'Quicksand', sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #7cf0d0;
+  margin-top: 8px;
+}
+.octo-journal-entry { padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); }
+.octo-journal-name { font-weight: 700; font-size: 15px; }
+.octo-journal-text { font-size: 13px; opacity: .85; line-height: 1.35; }
+.octo-journal-unknown { opacity: .5; }

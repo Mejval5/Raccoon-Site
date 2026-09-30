@@ -25,7 +25,10 @@ export function createUI(root, handlers) {
   const depthEl = el('span', 'octo-hud-stat octo-hud-depth');
   const scoreEl = el('span', 'octo-hud-stat octo-hud-score');
   const bestEl = el('span', 'octo-hud-stat octo-hud-best');
-  stats.append(bombsEl, depthEl, scoreEl, bestEl);
+  // v2 only: the run state and level ("Shallows 1-2"); it replaces depth and best.
+  const stageEl = el('span', 'octo-hud-stat octo-hud-stage');
+  stageEl.style.display = 'none';
+  stats.append(stageEl, bombsEl, depthEl, scoreEl, bestEl);
   bar.append(heartsRow, stats);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
@@ -65,7 +68,17 @@ export function createUI(root, handlers) {
     controlsHelp.style.display = 'none';
   }
 
-  root.append(bar, pauseBtn, muteBtn, controlsHelp);
+  // v2: tutorial / hub prompt banner (top centre) and small toasts ("New journal entry")
+  const promptEl = el('div', 'octo-prompt');
+  promptEl.style.display = 'none';
+  const promptTitle = el('div', 'octo-prompt-title');
+  const promptText = el('div', 'octo-prompt-text');
+  promptEl.append(promptTitle, promptText);
+  const toastEl = el('div', 'octo-toast');
+  toastEl.style.display = 'none';
+  let toastTimer = 0;
+
+  root.append(bar, pauseBtn, muteBtn, controlsHelp, promptEl, toastEl);
 
   /** @type {HTMLImageElement[]} */
   const heartEls = [];
@@ -87,6 +100,11 @@ export function createUI(root, handlers) {
       heartEls[i].style.opacity = i < state.hearts ? '1' : '0.25';
     }
     bombsEl.textContent = `Bombs ${state.bombs}`;
+    const v2 = state.stage !== undefined;
+    stageEl.style.display = v2 ? '' : 'none';
+    depthEl.style.display = v2 ? 'none' : '';
+    bestEl.style.display = v2 ? 'none' : '';
+    if (v2 && stageEl.textContent !== state.stage) stageEl.textContent = state.stage;
     depthEl.textContent = `Depth ${state.depth}m`;
     scoreEl.textContent = `Score ${state.score}`;
     bestEl.textContent = `Best ${state.best}`;
@@ -129,8 +147,35 @@ export function createUI(root, handlers) {
   restartBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
   exitBtn.addEventListener('click', () => handlers.onExit && handlers.onExit());
 
+  // --- v2 end-of-biome screen ---
+  const endScreen = makeOverlay('octo-end-overlay');
+  const endTitle = el('div', 'octo-overlay-title');
+  const endSub = el('div', 'octo-overlay-score');
+  const endBtn = el('button', 'octo-btn-wide', 'Back to the hub');
+  endBtn.type = 'button';
+  endScreen.panel.append(endTitle, endSub, endBtn, el('div', 'octo-credit', CREDIT_TEXT));
+  endBtn.addEventListener('click', () => handlers.onEndContinue && handlers.onEndContinue());
+
   return {
     updateHud,
+    /** Prompt banner: title + text, or null to hide it. */
+    setPrompt(title, text) {
+      if (!title) { promptEl.style.display = 'none'; return; }
+      if (promptTitle.textContent !== title) promptTitle.textContent = title;
+      if (promptText.textContent !== text) promptText.textContent = text;
+      promptEl.style.display = '';
+    },
+    showToast(text, ms = 3200) {
+      toastEl.textContent = text;
+      toastEl.style.display = '';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, ms);
+    },
+    showEnd(title, sub) { endTitle.textContent = title; endSub.textContent = sub; endScreen.overlayEl.style.display = 'flex'; },
+    hideEnd() { endScreen.overlayEl.style.display = 'none'; },
+    isEndShown() { return endScreen.overlayEl.style.display !== 'none'; },
+    /** v2: the game-over button returns to the hub. */
+    setGameOverLabels(title, button) { goTitle.textContent = title; restartBtn.textContent = button; },
     hideControlsHelp() { controlsHelp.style.display = 'none'; },
     showControlsHelp() { controlsHelp.style.display = ''; },
     showPause() { pause.overlayEl.style.display = 'flex'; },

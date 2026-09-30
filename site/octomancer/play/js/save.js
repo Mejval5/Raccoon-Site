@@ -5,8 +5,8 @@
 
 const KEY = 'octomancer.best.v1';
 
-/** @type {{v:1, best:number, runs:number, muted:boolean}} */
-let memory = { v: 1, best: 0, runs: 0, muted: false };
+/** @type {{v:1, best:number, runs:number, muted:boolean, tutorialDone:boolean, journal:string[]}} */
+let memory = { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [] };
 let loaded = false;
 
 function readFromStorage() {
@@ -40,10 +40,12 @@ export function loadBest() {
         best: Number(obj.best) || 0,
         runs: Number(obj.runs) || 0,
         muted: !!obj.muted,
+        tutorialDone: !!obj.tutorialDone,
+        journal: Array.isArray(obj.journal) ? obj.journal.filter((id) => typeof id === 'string').slice(0, 1000) : [],
       };
     }
   }
-  return { ...memory };
+  return { ...memory, journal: memory.journal.slice() };
 }
 
 /** Records a finished run's score: bumps `runs`, raises `best` if beaten,
@@ -64,4 +66,33 @@ export function setMuted(muted) {
   loadBest();
   memory.muted = !!muted;
   writeToStorage();
+}
+
+// --- v2 profile (B1-4): journal discoveries and whether the tutorial was played ---
+
+export function getJournalIds() {
+  return loadBest().journal;
+}
+
+/** Persist the discovered journal entry ids (replaces the stored list). */
+export function saveJournalIds(ids) {
+  loadBest();
+  memory.journal = Array.from(ids).filter((id) => typeof id === 'string');
+  writeToStorage();
+}
+
+export function getTutorialDone() {
+  return loadBest().tutorialDone;
+}
+
+export function setTutorialDone(done) {
+  loadBest();
+  memory.tutorialDone = !!done;
+  writeToStorage();
+}
+
+/** Test hook: forget the in-memory copy so the next load re-reads localStorage. */
+export function _resetForTests() {
+  memory = { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [] };
+  loaded = false;
 }
