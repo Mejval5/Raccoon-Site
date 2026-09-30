@@ -101,6 +101,13 @@ runOutlineTests(assert, approx);
 import { runWorldTests } from './world.test.js';
 runWorldTests(assert, approx);
 
+// --- v2 room bank (rooms.js, M1-2) and level generator (level.js, M1-3);
+// not wired into the running game yet ---
+import { runRoomTests } from './rooms.test.js';
+await runRoomTests(assert, approx);
+import { runLevelTests } from './level.test.js';
+await runLevelTests(assert, approx);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
