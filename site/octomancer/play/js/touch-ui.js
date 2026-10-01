@@ -6,7 +6,14 @@
 const MM_TO_PX = 96 / 25.4; // CSS px per mm at 96 CSS dpi
 const STICK_RADIUS_MM = 12;
 
-export function createTouchUI(root, input) {
+/**
+ * @param root the #touch-ui layer (holds the Dash / Bomb buttons and the stick; it has pointer-events:none, only its
+ *   children take events)
+ * @param input the input layer
+ * @param field the element touches land on for the floating stick (the game canvas). #touch-ui sits over the canvas
+ *   but ignores pointers, so every touch goes to the canvas: the stick's listeners must be there, not on `root`.
+ */
+export function createTouchUI(root, input, field = root) {
   const stickRadius = STICK_RADIUS_MM * MM_TO_PX;
   let visible = false;
 
@@ -103,28 +110,36 @@ export function createTouchUI(root, input) {
     btn.held = false;
   }
 
-  root.addEventListener('pointerdown', (e) => {
+  // Touch only (a mouse or pen on the canvas is the mouse controls' business). The buttons are children of `root` (so
+  // their events bubble to it); everything else lands on `field`. The same handlers serve both.
+  function capture(el, id) { try { el.setPointerCapture(id); } catch (err) { /* a synthetic pointer cannot be captured */ } }
+  function onDown(e) {
+    if (e.pointerType !== 'touch') return;
+    // no compatibility mouse events afterwards: they would switch the input mode to 'mouse' and hide these controls
+    if (e.cancelable) e.preventDefault();
     show();
     input.setMode('touch');
-    if (e.target === dashBtn) { pressBtn(dashBtn, input.touch.dash); dashBtn.setPointerCapture(e.pointerId); return; }
-    if (e.target === bombBtn) { pressBtn(bombBtn, input.touch.bomb); bombBtn.setPointerCapture(e.pointerId); return; }
+    if (e.target === dashBtn) { pressBtn(dashBtn, input.touch.dash); capture(dashBtn, e.pointerId); return; }
+    if (e.target === bombBtn) { pressBtn(bombBtn, input.touch.bomb); capture(bombBtn, e.pointerId); return; }
     if (stickPointerId === null && stickStart(e.clientX, e.clientY)) {
       stickPointerId = e.pointerId;
-      root.setPointerCapture(e.pointerId);
+      capture(e.target, e.pointerId);
     }
-  }, { passive: true });
-
-  root.addEventListener('pointermove', (e) => {
+  }
+  function onMove(e) {
     if (e.pointerId === stickPointerId) stickMove(e.clientX, e.clientY);
-  }, { passive: true });
-
+  }
   function endPointer(e) {
     if (e.pointerId === stickPointerId) { stickEnd(); stickPointerId = null; }
     if (e.target === dashBtn) releaseBtn(dashBtn, input.touch.dash);
     if (e.target === bombBtn) releaseBtn(bombBtn, input.touch.bomb);
   }
-  root.addEventListener('pointerup', endPointer, { passive: true });
-  root.addEventListener('pointercancel', endPointer, { passive: true });
+  for (const el of field === root ? [root] : [root, field]) {
+    el.addEventListener('pointerdown', onDown, { passive: false });
+    el.addEventListener('pointermove', onMove, { passive: true });
+    el.addEventListener('pointerup', endPointer, { passive: true });
+    el.addEventListener('pointercancel', endPointer, { passive: true });
+  }
 
   input.onModeChange((mode) => { if (mode === 'keyboard' || mode === 'mouse') hide(); });
 

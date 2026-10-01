@@ -92,8 +92,8 @@ export const PIRANHA_PATROL_SPEED = 2.5;
 export const PIRANHA_CHASE_SPEED = 4;
 export const PIRANHA_CHASE_RANGE = 6;
 export const CANNON_RADIUS = 0.45;
-export const CANNON_RANGE = 10;
-export const CANNON_FIRE_PERIOD = 2.5;
+export const CANNON_RANGE = 8; // r35: within a phone view; it needs a clear line, a 0.6 s glow, then a 2 s reload
+export const CANNON_FIRE_PERIOD = 2.6; // glow 0.6 + reload 2.0 (enemies.js has the two parts)
 export const CANNON_SHOT_SPEED = 5;
 export const CANNON_SHOT_RADIUS = 0.25;
 

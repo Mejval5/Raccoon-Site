@@ -191,19 +191,7 @@ export function runEnemyTests(assert, approx) {
     assert('horns: immune to bomb blasts too', h.dead === false);
   }
 
-  // --- M6-4 Manta: drops an aimed ball within ~3.1s of the octopus in range ---
-  {
-    const world = { isSolid: () => false, breakTile() {} };
-    const enemies = createEnemies();
-    const o = createOctopus(0, 0);
-    const m = enemies.spawnAt('manta', 3, 0, 'open');
-    let firedBy = null;
-    for (let i = 0; i < 160; i++) { // 3.2s
-      enemies.update(0.02, i * 0.02, o, world, []);
-      if (enemies.shots().length && firedBy === null) firedBy = i * 0.02;
-    }
-    assert('manta: fires an aimed ball within 3.1s of the octopus entering range', firedBy !== null && firedBy <= 3.1);
-  }
+  // (round 35: the manta no longer drops balls; its dive pattern is tested in enemies-r35.test.js)
 
   // --- M6-4 Manta: dies to a dash ---
   {

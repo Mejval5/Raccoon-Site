@@ -32,6 +32,7 @@ export const MAX_SPEED = 14;
 const BOUNCE_MIN = 0.9;        // u/s of impact speed below which nothing bounces
 const BOUNCE_FULL = 3;         // ... and above which (BOUNCE_MIN + this) the full restitution applies
 const SLEEP_SPEED = 0.12, SLEEP_TIME = 0.45, STICK_SPEED = 0.3;
+const STICK_CEIL_SPEED = 0.5; // u/s of impact speed up into a ceiling at which a bomb sticks to it
 export const RUBBLE_LIFE = 3, RUBBLE_FADE = 0.8;
 export const THROW_SPEED = 9; // bombs: u/s added to the octopus's velocity in the aim direction
 export const BLAST_POWER = 11;  // u/s of velocity change for a unit-mass prop at the centre of a blast
@@ -151,12 +152,14 @@ export function createProps(cap = DEFAULT_CAP) {
       const vn = contact.vn, e = REST[d.kind[i]] * Math.min(1, (-vn - BOUNCE_MIN) / BOUNCE_FULL);
       if (-vn > BOUNCE_MIN && e > 0) { B.vx += -e * vn * contact.nx; B.vy += -e * vn * contact.ny; }
       if (contact.ny < -0.3) d.grounded[i] = 1;
+      // a bomb thrown up against a ceiling sticks to it (as in Spelunky); stepOne turns this into PS_HELD
+      if (d.kind[i] === PK_BOMB && contact.ny > 0.6 && -vn > STICK_CEIL_SPEED) ceilHit = true;
       lastNx = contact.nx; lastNy = contact.ny;
     }
     d.x[i] = B.x; d.y[i] = B.y; d.vx[i] = B.vx; d.vy[i] = B.vy;
     return touched;
   }
-  let lastNx = 0, lastNy = 0;
+  let lastNx = 0, lastNy = 0, ceilHit = false;
 
   function stepOne(i, dt, world) {
     const k = d.kind[i];
@@ -165,6 +168,7 @@ export function createProps(cap = DEFAULT_CAP) {
     d.vx[i] *= f; d.vy[i] *= f;
     clampSpeed(i);
     d.grounded[i] = 0;
+    ceilHit = false;
     const speed = Math.hypot(d.vx[i], d.vy[i]);
     const r = d.radius[i];
     let steps = 1;
@@ -174,6 +178,10 @@ export function createProps(cap = DEFAULT_CAP) {
     for (let s = 0; s < steps; s++) {
       d.x[i] += d.vx[i] * sub; d.y[i] += d.vy[i] * sub;
       if (collideWorld(i, world)) touched = true;
+    }
+    if (ceilHit) {
+      const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i] - r - 0.2);
+      if (world.tileAt ? world.tileAt(tx, ty) !== 0 : world.isSolid(tx + 0.5, ty + 0.5)) { hold(i, tx, ty); return; }
     }
     if (touched) {
       // rolling friction along the surface, and a stick threshold so a slow prop on a shallow slope stays put
@@ -232,7 +240,7 @@ export function createProps(cap = DEFAULT_CAP) {
   function pushByOctopus(octo) {
     if (!octo || octo.dead) return;
     for (let i = 0; i < d.n; i++) {
-      if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.grace[i] > 0) continue;
+      if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.grace[i] > 0 || d.state[i] === PS_HELD) continue;
       let dx = d.x[i] - octo.x, dy = d.y[i] - octo.y;
       const rr = d.radius[i] + octo.radius * 0.9;
       if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
@@ -242,8 +250,56 @@ export function createProps(cap = DEFAULT_CAP) {
       d.x[i] += dx * (rr - dist); d.y[i] += dy * (rr - dist);
       const rel = (d.vx[i] - octo.vx) * dx + (d.vy[i] - octo.vy) * dy;
       if (rel < 0) { d.vx[i] -= 1.4 * rel * dx; d.vy[i] -= 1.4 * rel * dy; }
+      // the octopus never holds a bomb up: one resting on its head is nudged sideways until it rolls off
+      if (dy < -0.5) d.vx[i] += (dx >= 0 ? 1 : -1) * 0.17; // about 8 u/s^2 sideways
       d.state[i] = PS_FREE; d.rest[i] = 0;
       clampSpeed(i);
+    }
+  }
+
+  /** Moving enemies (crab, piranha, manta) are solid to a bomb: it is shoved out of the body and kicked along. */
+  function pushByEnemies(list) {
+    if (!list) return;
+    for (let k = 0; k < list.length; k++) {
+      const e = list[k];
+      if (!e.moving || e.dead || e.ghost || e.kind === 'beholder') continue;
+      const er = e.radius + 0.05;
+      for (let i = 0; i < d.n; i++) {
+        if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.state[i] === PS_HELD) continue;
+        let dx = d.x[i] - e.x, dy = d.y[i] - e.y;
+        const rr = d.radius[i] + er;
+        if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
+        let dist = Math.hypot(dx, dy);
+        if (dist >= rr) continue;
+        if (dist < 1e-5) { dx = e.vx >= 0 ? 1 : -1; dy = 0; dist = 1; } else { dx /= dist; dy /= dist; }
+        d.x[i] += dx * (rr - dist); d.y[i] += dy * (rr - dist);
+        const rel = (d.vx[i] - (e.vx || 0)) * dx + (d.vy[i] - (e.vy || 0)) * dy;
+        if (rel < 0) { d.vx[i] -= 1.3 * rel * dx; d.vy[i] -= 1.3 * rel * dy; }
+        d.state[i] = PS_FREE; d.rest[i] = 0;
+        clampSpeed(i);
+      }
+    }
+  }
+
+  /** Rubble spreads out: awake chips closer than their own size are pushed apart (cheap, capped). */
+  function separateRubble() {
+    let n = 0;
+    for (let a = 0; a < nAwake && n < 48; a++) {
+      const i = awake[a];
+      if (!d.alive[i] || d.kind[i] !== PK_RUBBLE) continue;
+      n++;
+      for (let b = a + 1; b < nAwake; b++) {
+        const j = awake[b];
+        if (!d.alive[j] || d.kind[j] !== PK_RUBBLE) continue;
+        let dx = d.x[j] - d.x[i], dy = d.y[j] - d.y[i];
+        const rr = (d.radius[i] + d.radius[j]) * 1.2;
+        if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
+        let dist = Math.hypot(dx, dy);
+        if (dist >= rr) continue;
+        if (dist < 1e-5) { const a2 = (i * 2.399 + j) % 6.283; dx = Math.cos(a2); dy = Math.sin(a2); dist = 1; } else { dx /= dist; dy /= dist; }
+        const push = (rr - Math.min(dist, rr)) * 0.5;
+        d.x[i] -= dx * push; d.y[i] -= dy * push; d.x[j] += dx * push; d.y[j] += dy * push;
+      }
     }
   }
 
@@ -254,8 +310,8 @@ export function createProps(cap = DEFAULT_CAP) {
     /** Indices of live props of one kind (tests, drawing). */
     ofKind(k, out = []) { out.length = 0; for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === k) out.push(i); return out; },
 
-    /** One fixed step. `octo` is optional (bombs get pushed by it). */
-    step(dt, world, octo) {
+    /** One fixed step. `octo` is optional (bombs get pushed by it); `enemies` (optional list of enemy records) are solid to bombs. */
+    step(dt, world, octo, enemies) {
       const v = world.tileVersion;
       if (v !== undefined && v !== lastVersion) {
         if (lastVersion !== -1) { wakeAll(); checkSupports(world); }
@@ -273,8 +329,9 @@ export function createProps(cap = DEFAULT_CAP) {
         awake[nAwake++] = i;
         stepOne(i, dt, world);
       }
-      if (nAwake > 0) separate();
+      if (nAwake > 0) { separate(); separateRubble(); }
       if (octo) pushByOctopus(octo);
+      if (enemies) pushByEnemies(enemies);
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in
       for (let i = 0; i < d.n; i++) {
         if (d.alive[i] && d.state[i] !== PS_HELD && solidAt(world, d.x[i], d.y[i])) eject(i, world);

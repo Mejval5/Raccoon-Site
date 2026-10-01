@@ -819,6 +819,33 @@ export function createRenderer(ctx, world) {
     ctx.restore();
   }
 
+  // Round 35: the approach cue. While the Beholder is off screen, a red pulsing arrow sits on the screen edge in its
+  // direction (bigger and faster as it closes in); once it is on screen the dread glow above takes over.
+  function drawBeholderCue(canvasW, canvasH, beholder, dreadLevel, time, reduced) {
+    if (!beholder) return;
+    const s = worldToScreen(camera, canvasW, canvasH, beholder.x, beholder.y);
+    const m = camera.pxPerUnit * 1.2;
+    if (s.x > -m && s.x < canvasW + m && s.y > -m && s.y < canvasH + m) return;
+    const cx = canvasW / 2, cy = canvasH / 2;
+    const dx = s.x - cx, dy = s.y - cy;
+    const inset = camera.pxPerUnit * 0.9;
+    const k = Math.min((cx - inset) / (Math.abs(dx) || 1e-6), (cy - inset) / (Math.abs(dy) || 1e-6));
+    const ax = cx + dx * k, ay = cy + dy * k;
+    const near = Math.max(0.35, dreadLevel);
+    const pulse = reduced ? 1 : 0.75 + 0.25 * Math.sin(time * (5 + near * 7));
+    const size = camera.pxPerUnit * (0.5 + 0.45 * near) * pulse;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = `rgba(255,50,50,${(0.55 + 0.4 * near).toFixed(3)})`;
+    ctx.strokeStyle = 'rgba(40,0,0,0.85)';
+    ctx.lineWidth = Math.max(2, size * 0.12);
+    ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(size * 0.6, 0); ctx.lineTo(-size * 0.45, -size * 0.55); ctx.lineTo(-size * 0.2, 0); ctx.lineTo(-size * 0.45, size * 0.55); ctx.closePath();
+    ctx.stroke(); ctx.fill();
+    ctx.restore();
+  }
+
   // Layering pass (this session, per Daniel: "the plants are on top of
   // terrain which was not the case, they need to be behind so they poke out
   // of the terrain"). drawPlants/drawCritters now run BEFORE drawWalls (see
@@ -1165,6 +1192,7 @@ export function createRenderer(ctx, world) {
       drawVignette(canvasW, canvasH);
       const beholder = enemies.find((e) => e.kind === 'beholder' && !e.dead);
       drawBeholderDread(canvasW, canvasH, beholder, dreadLevel, time, reduced);
+      drawBeholderCue(canvasW, canvasH, beholder, dreadLevel, time, reduced);
     },
   };
 }

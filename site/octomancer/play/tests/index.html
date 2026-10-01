@@ -158,6 +158,10 @@ await runMetaTests(assert);
 import { runPropsTests } from './props.test.js';
 await runPropsTests(assert);
 
+// --- Round 35: enemy patterns, QA-ENEMIES regressions, round-34 review fixes ---
+import { runEnemyR35Tests } from './enemies-r35.test.js';
+await runEnemyR35Tests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

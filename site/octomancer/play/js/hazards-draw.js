@@ -1,7 +1,8 @@
 // Hazard drawing (hazards.js), all code-drawn shapes (no sprites this round). Called from main.js's v2 extra
 // draw hook, in device pixels, after enemies and bombs and before the octopus. Reads the flat hazard arrays.
 
-import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_HALF_LEN, SPIKE_REACH, EEL_HALF_BODY, EEL_RING_MAX } from './hazards.js';
+import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_HALF_LEN, SPIKE_REACH, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT } from './hazards.js';
+import { prefersReducedMotion } from './config.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -26,7 +27,7 @@ export function drawHazards(ctx, camera, cw, ch, d, time, isSolid) {
     switch (d.kind[i]) {
       case HZ_JET: drawJet(ctx, sx, sy, ppu, d.dx[i], d.dy[i], d.len[i], time, i); break;
       case HZ_SPIKES: drawSpikes(ctx, sx, sy, ppu, d.dx[i], d.dy[i], isSolid, d.x[i], d.y[i]); break;
-      case HZ_ROCK: if (d.state[i] !== 3) drawRock(ctx, sx, sy, ppu, d.state[i], time, i, d.v[i]); break;
+      case HZ_ROCK: if (d.state[i] !== 3) drawRock(ctx, sx, sy, ppu, d.state[i], time, i, d.v[i], isSolid, d.x[i], d.y[i], d.a[i]); break;
       case HZ_EEL: drawEel(ctx, sx, sy, ppu, d.state[i], d.r[i], d.t[i], time, isSolid, d.x[i], d.y[i]); break;
       case HZ_ANEMONE: drawAnemone(ctx, sx, sy, ppu, time, i); break;
       default: break;
@@ -174,15 +175,29 @@ export function drawBoulder(ctx, x, y, R, seed, rot = 0) {
   ctx.restore();
 }
 
-function drawRock(ctx, sx, sy, ppu, state, time, seed, vy) {
-  const shake = state === 1 ? Math.sin(time * 70) * 0.045 * ppu : 0;
+function drawRock(ctx, sx, sy, ppu, state, time, seed, vy, isSolid, wx, wy, landY) {
+  const calm = prefersReducedMotion();
+  const shake = state === 1 && !calm ? Math.sin(time * 70) * 0.09 * ppu : 0; // r35: twice the old rumble, it was easy to miss
+  if (state === 1 && landY > wy) { // a shadow grows on the floor under it while it rumbles
+    const fy = sy + (landY - wy + 0.5) * ppu, k = 0.5 + 0.5 * Math.abs(Math.sin(time * 12));
+    ctx.fillStyle = 'rgba(6,10,20,' + (0.3 + 0.25 * k).toFixed(3) + ')';
+    ctx.beginPath(); ctx.ellipse(sx, fy - 0.04 * ppu, 0.55 * ppu, 0.1 * ppu, 0, 0, TAU); ctx.fill();
+  }
   if (state === 2) { // motion streaks above a falling rock
     ctx.strokeStyle = 'rgba(200,200,190,0.35)';
     ctx.lineWidth = Math.max(1, ppu * 0.05);
     const l = Math.min(1.4, vy * 0.12) * ppu;
     for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(sx + k * 0.25 * ppu, sy - 0.5 * ppu); ctx.lineTo(sx + k * 0.25 * ppu, sy - 0.5 * ppu - l); ctx.stroke(); }
   }
-  const R = 0.5 * ppu;
+  let R = 0.5 * ppu;
+  // hanging in a ceiling corner beside a wall: shrink a little and lean off the wall so the rim is not covered
+  let lean = 0;
+  if (state < 2 && isSolid) {
+    const tx = Math.floor(wx), ty = Math.floor(wy);
+    const l = isSolid(tx - 1, ty), r = isSolid(tx + 1, ty);
+    if (l !== r) { R = 0.45 * ppu; lean = (l ? 0.12 : -0.12) * ppu; }
+  }
+  sx += lean;
   if (state < 2) {
     // hanging: a dark gap where it meets the ceiling, and a few grains of grit trickling down
     const top = sy - 0.5 * ppu;
@@ -270,10 +285,23 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
     ctx.lineWidth = 0.3 * ppu; ringPath(0.08); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,220,' + (0.95 * fade + 0.05).toFixed(3) + ')';
     ctx.lineWidth = Math.max(1.5, 0.07 * ppu); ringPath(0.07); ctx.stroke();
-  } else if (glow > 0) { // telegraph: a small ring drawing in
+  } else if (glow > 0) { // telegraph: a small ring drawing in, and 0.5 s of crackling arcs round the body
+    const u = Math.max(0, Math.min(1, (cycle - EEL_CHARGE_AT) / (EEL_FIRE_AT - EEL_CHARGE_AT)));
     ctx.strokeStyle = 'rgba(255,245,140,' + (0.5 * glow).toFixed(3) + ')';
     ctx.lineWidth = Math.max(1, 0.04 * ppu);
-    ctx.beginPath(); ctx.arc(sx, sy, (1.0 - 0.5 * ((cycle - 1.3) / 0.6)) * ppu, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(sx, sy, (1.0 - 0.5 * u) * ppu, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,230,0.95)'; ctx.lineWidth = Math.max(1.5, 0.045 * ppu); ctx.lineJoin = 'miter';
+    const flick = Math.floor(time * 30); // a new set of arcs 30 times a second
+    for (let k = 0; k < 4; k++) {
+      let a = hash(flick * 7 + k) * TAU, r = 0.15 * ppu;
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * r, sy + (hash(flick + k * 3) - 0.5) * 2 * half * 0.9);
+      for (let j = 0; j < 4; j++) {
+        a += (hash(flick * 3 + k * 11 + j) - 0.5) * 1.8; r += (0.16 + 0.14 * hash(flick + j * 5 + k)) * ppu * (0.6 + 0.6 * u);
+        ctx.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r * 0.9);
+      }
+      ctx.stroke();
+    }
   }
 }
 

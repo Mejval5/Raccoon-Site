@@ -42,6 +42,21 @@ export function createParticles() {
       }
       shakeScreen(0.35);
     },
+    /** A bomb going off: rock chips plus bright sparks, and a shake that grows as the blast gets near the octopus. */
+    blastBurst(x, y, fromOcto = 0) {
+      for (let i = 0; i < 16; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 3;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.4 + Math.random() * 0.3, 0.05, '#8a7a6a');
+      }
+      // a few bright sparks with the chips (the blast itself is drawn by enemy-draw.js drawBlast)
+      for (let i = 0; i < 10; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 4;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.25 + Math.random() * 0.2, 0.07, i % 2 ? '#ffe46a' : '#fff6c0');
+      }
+      shakeScreen(0.1 + 0.3 * Math.max(0, 1 - fromOcto / 14)); // a bigger shake the nearer the blast is to the octopus
+    },
     /** M7-1: a small ink puff kicked out behind the octopus on dash, in the
      * direction it dashed from (opposite `angle`). Skipped under reduced
      * motion like the rest of the pool's decorative bursts. */

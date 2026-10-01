@@ -16,16 +16,16 @@
 // `NPC10Ball`). OVERNIGHT.md §4 M6.
 
 import {
-  URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_PATROL_SPEED, PIRANHA_CHASE_SPEED,
-  PIRANHA_CHASE_RANGE, CANNON_RADIUS, CANNON_RANGE, CANNON_FIRE_PERIOD,
+  URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_CHASE_SPEED,
+  PIRANHA_CHASE_RANGE, CANNON_RADIUS, CANNON_RANGE,
   CANNON_SHOT_SPEED, CANNON_SHOT_RADIUS, BEHOLDER_SPAWN_TIME,
   BEHOLDER_SPAWN_HEIGHT, BEHOLDER_RADIUS, BEHOLDER_SPEED, BEHOLDER_SPEED_RAMP,
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
   CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
   HORNS_RADIUS,
   MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
-  MANTA_DROP_PERIOD, MANTA_RANGE, MANTA_BALL_SPEED, MANTA_BALL_RADIUS,
 } from './config.js';
+import { PK_BOMB } from './props.js';
 import { hurtOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
@@ -57,7 +57,7 @@ function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 // collision now resolves against the larger of the two -- the same visual
 // half-extent the separation pass uses where one is defined for this kind,
 // otherwise falls back to the physics radius unchanged.
-function wallCollisionRadius(e) { return Math.max(e.radius, ENEMY_SEP_HALF_EXTENT[e.kind] ?? 0); }
+function wallCollisionRadius(e) { return e.wallR || Math.max(e.radius, ENEMY_SEP_HALF_EXTENT[e.kind] ?? 0); }
 function resolveWallsAt(e, world) {
   if (typeof world.wallSegmentsNear === 'function') {
     resolveCircleVsSegments(e, world.wallSegmentsNear(e.x, e.y, e.radius));
@@ -229,7 +229,12 @@ function chaseWithPath(e, world, targetX, targetY, speed, dt) {
   if (e.pathTimer === undefined) { e.pathTimer = (e.id % 7) * 0.03; e.path = null; e.pathIndex = 0; }
   const isSolid = (tx, ty) => world.isSolid(tx, ty);
   e.pathTimer -= dt;
-  const directClear = hasLineOfSight(isSolid, e.x, e.y, targetX, targetY);
+  // the straight line must be clear for the whole body, not just its centre ray: two more rays a body radius to each side
+  let directClear = hasLineOfSight(isSolid, e.x, e.y, targetX, targetY);
+  if (directClear && e.wallR) {
+    const dx = targetX - e.x, dy = targetY - e.y, l = Math.hypot(dx, dy) || 1, nx = -dy / l * e.wallR, ny = dx / l * e.wallR;
+    directClear = hasLineOfSight(isSolid, e.x + nx, e.y + ny, targetX + nx, targetY + ny) && hasLineOfSight(isSolid, e.x - nx, e.y - ny, targetX - nx, targetY - ny);
+  }
   if (directClear) {
     e.path = null;
   } else if (e.pathTimer <= 0 || !e.path || e.pathIndex >= e.path.length) {
@@ -306,47 +311,170 @@ let hpMode = false;
 const ENEMY_HP = { piranha: 6, crab: 10, cannon: 14, manta: 16 };
 export function setHpMode(on) { hpMode = !!on; }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Round 35: readable, Spelunky-style patterns. Every kind runs a small state machine on flat fields of its record
+// (`st` state, `t` timer, `tell` 0..1 while it telegraphs, `rs` its own xorshift32 state so a seed always replays the
+// same way). Nothing here calls Math.random.
+//
+//   piranha  PS_PATROL  idle drift +-5 tiles, turns at rock (probe = the hull, not a tile centre)
+//            PS_WINDUP  0.4 s: stops, faces you, flashes white (tell)
+//            PS_LUNGE   straight line at 7 u/s along the direction locked at the end of the wind-up
+//            PS_RECOVER 1 s: recoils and drifts, then back to patrol
+//   crab     CS_WALK    walks its ledge, turns at wall / ledge / resting bomb; octopus within 1.5 -> CS_PAUSE
+//            CS_PAUSE   0.35 s rears up (tell), CS_SNAP 0.2 s snaps (reach +0.4), CS_COOL 1 s
+//   cannon   CN_TRACK   turns its barrel slowly toward you (needs a clear line and the half plane it faces)
+//            CN_CHARGE  0.6 s glow, still turning at 40% rate; fires along the barrel, not at you
+//            CN_RELOAD  2 s
+//   manta    MA_GLIDE   wide sine glide; octopus below and within 1.2 tiles sideways with a clear drop -> MA_TELL
+//            MA_TELL    0.6 s stops, tilts and flashes; MA_DIVE steep dive to where you were; MA_RISE climbs back; 3 s cooldown
+//   urchin, horns: static; the spikes pulse slowly (2.6 s) and the contact radius pulses with them
+// ---------------------------------------------------------------------------------------------------------------
+export const PS_PATROL = 0, PS_WINDUP = 1, PS_LUNGE = 2, PS_RECOVER = 3;
+export const PIRANHA_WINDUP = 0.4, PIRANHA_LUNGE_SPEED = 7, PIRANHA_LUNGE_MAX = 1.1, PIRANHA_RECOVER = 1.0;
+export const PIRANHA_IDLE_SPEED = 1.5, PIRANHA_PATROL_RANGE = 5, PIRANHA_NOTICE = PIRANHA_CHASE_RANGE;
+export const CS_WALK = 0, CS_PAUSE = 1, CS_SNAP = 2, CS_COOL = 3;
+export const CRAB_SNAP_RANGE = 1.5, CRAB_PAUSE = 0.35, CRAB_SNAP = 0.2, CRAB_COOL = 1.0, CRAB_SNAP_REACH = 0.4;
+export const CN_TRACK = 0, CN_CHARGE = 1, CN_RELOAD = 2;
+export const CANNON_WINDUP = 0.6, CANNON_RELOAD = 2.0, CANNON_TURN = 1.2, CANNON_ARC = Math.PI / 2 - 0.12, CANNON_AIM_OK = 0.3;
+export const MA_GLIDE = 0, MA_TELL = 1, MA_DIVE = 2, MA_RISE = 3;
+export const MANTA_TELL = 0.6, MANTA_DIVE_SPEED = 6.5, MANTA_DIVE_MAX = 1.1, MANTA_RISE_SPEED = 2.8, MANTA_DIVE_COOLDOWN = 3;
+export const URCHIN_PULSE_PERIOD = 2.6;
+export const HIT_STOP = 0.06; // s the whole sim freezes on a dash kill
+const TAU = Math.PI * 2;
+
+function seedOf(x, y, kind) {
+  let h = (Math.imul(Math.floor(x * 64) + 1013, 374761393) ^ Math.imul(Math.floor(y * 64) + 7, 668265263) ^ Math.imul(kind.length * 31 + kind.charCodeAt(0), 2246822519)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) || 1;
+}
+/** xorshift32 on the enemy's own `rs` field, [0,1). */
+function rnd(e) {
+  let s = e.rs;
+  s = (s ^ (s << 13)) >>> 0; s = (s ^ (s >>> 17)) >>> 0; s = (s ^ (s << 5)) >>> 0;
+  e.rs = s;
+  return s / 4294967296;
+}
+function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU; return d; }
+function sgn(v, d = 1) { return v > 0 ? 1 : v < 0 ? -1 : d; }
+
+/** The direction a cannon faces out of its surface (radians, y down). */
+function cannonOut(placement, wallDir) {
+  if (placement === 'ceiling') return Math.PI / 2;
+  if (placement === 'wall' && wallDir) return wallDir > 0 ? Math.PI : 0; // solid on the right: faces left
+  return -Math.PI / 2; // floor, open
+}
+
 function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
-  // `moving`: round-6 task 5 -- which kinds get grid collision + the
-  // minimum-separation pass (`collideWithWalls`/`separateEnemies` below).
-  // Static emplacements (urchin/cannon/horns) stay exactly as they
-  // were: anchored by decor.js/gen.js's own surface placement, no physics.
+  // `moving`: which kinds get wall collision + the minimum-separation pass. Static emplacements
+  // (urchin / cannon / horns) are anchored by decor.js / gen.js's own surface placement.
   const base = {
     id: nextId++, kind, x, y, prevX: x, prevY: y, vx: 0, vy: 0, dead: false,
     chunkIndex, placement, wallDir, hitFlash: 0, moving: false, stun: 0, kvx: 0, kvy: 0,
+    st: 0, t: 0, tell: 0, ph: 0, face: 1, rs: seedOf(x, y, kind),
   };
+  base.ph = rnd(base) * TAU;
   if (hpMode && ENEMY_HP[kind]) { base.hp = ENEMY_HP[kind]; base.maxHp = base.hp; }
   if (kind === 'urchin') {
-    return { ...base, radius: URCHIN_RADIUS, contactDamage: true, dashKillable: false };
+    return { ...base, radius: URCHIN_RADIUS, r0: URCHIN_RADIUS, contactDamage: true, dashKillable: false, pulse: 0.5 };
   }
   if (kind === 'piranha') {
+    const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
       ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
-      dir: Math.random() < 0.5 ? -1 : 1, chasing: false,
+      dir, face: dir, chasing: false, baseX: x, baseY: y, flipCd: 0, stuck: 0, st: PS_PATROL, t: 0.3 + rnd(base) * 0.7,
+      lx: 0, ly: 0, ltrav: 0, lmax: 0, rvx: 0, rvy: 0,
     };
   }
   if (kind === 'cannon') {
-    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: false, cooldown: CANNON_FIRE_PERIOD * Math.random() };
+    const out = cannonOut(placement, wallDir);
+    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: false, st: CN_RELOAD, t: 1 + rnd(base), out, aim: out };
   }
   if (kind === 'crab') {
-    const fast = Math.random() < 0.4;
+    const fast = rnd(base) < 0.4;
+    const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
       ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true, moving: true,
-      dir: Math.random() < 0.5 ? -1 : 1, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW,
-      variant: fast ? 'fast' : 'slow',
+      dir, face: dir, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW, variant: fast ? 'fast' : 'slow', cool: 0, snapHit: false, st: CS_WALK,
     };
   }
   if (kind === 'horns') {
-    return { ...base, radius: HORNS_RADIUS, contactDamage: true, dashKillable: false, immune: true };
+    return { ...base, radius: HORNS_RADIUS, r0: HORNS_RADIUS, contactDamage: true, dashKillable: false, immune: true, pulse: 0.5 };
   }
   if (kind === 'manta') {
+    const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
       ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
-      dir: Math.random() < 0.5 ? -1 : 1, baseX: x, baseY: y, spawnTime: null,
-      dropCooldown: MANTA_DROP_PERIOD,
+      dir, face: dir, baseX: x, baseY: y, st: MA_GLIDE, cool: 1.5, stuck: 0, flipCd: 0, tx: 0, ty: 1, dived: 0,
     };
   }
   return base;
+}
+
+/** Is a hull of half length `reach` ahead of (x, y) in direction dir blocked (three samples across `halfH`)? */
+function blockedAhead(world, x, y, dir, reach, halfH) {
+  for (let k = -1; k <= 1; k++) if (world.isSolid(x + dir * reach, y + k * halfH)) return true;
+  return false;
+}
+
+// its body is 1.8 across but it squeezes through the 2-tile passages the level generator guarantees: the wall collision
+// uses a smaller circle (it used to wedge on rim corners with a clear straight line)
+const BEHOLDER_WALL_R = 0.55;
+const BEHOLDER_CLEAR = 1; // tiles of open space around its spawn cell (its body is 1.8 across)
+/** v2: the open cell, reachable from the octopus, nearest to `BEHOLDER_SPAWN_HEIGHT` above it but at least 13 tiles away
+ * (off screen on every viewport). Null when the world has no grid or nothing fits. */
+function findBeholderSpawn(octo, world) {
+  const W = world.width, H = world.height;
+  if (!W || !H || typeof world.isSolid !== 'function') return null;
+  const sx = Math.floor(octo.x), sy = Math.floor(octo.y);
+  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return null;
+  const seen = new Uint8Array(W * H), queue = new Int32Array(W * H);
+  let qh = 0, qt = 0;
+  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !world.isSolid(x + 0.5, y + 0.5);
+  if (!open(sx, sy)) return null;
+  seen[sy * W + sx] = 1; queue[qt++] = sy * W + sx;
+  const aimX = octo.x, aimY = octo.y - BEHOLDER_SPAWN_HEIGHT;
+  let best = -1, bestScore = Infinity;
+  while (qh < qt) {
+    const i = queue[qh++], x = i % W, y = (i / W) | 0;
+    const d = Math.hypot(x + 0.5 - octo.x, y + 0.5 - octo.y);
+    if (d >= 13) {
+      let clear = true;
+      for (let dy = -BEHOLDER_CLEAR; dy <= BEHOLDER_CLEAR && clear; dy++) for (let dx = -BEHOLDER_CLEAR; dx <= BEHOLDER_CLEAR; dx++) if (!open(x + dx, y + dy)) { clear = false; break; }
+      if (clear) {
+        const sc = Math.hypot(x + 0.5 - aimX, y + 0.5 - aimY);
+        if (sc < bestScore) { bestScore = sc; best = i; }
+      }
+    }
+    for (let k = 0; k < 4; k++) {
+      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (!open(nx, ny) || seen[ny * W + nx]) continue;
+      seen[ny * W + nx] = 1; queue[qt++] = ny * W + nx;
+    }
+  }
+  return best < 0 ? null : { x: (best % W) + 0.5, y: ((best / W) | 0) + 0.5 };
+}
+
+/** Nudge a body that ended up inside rock to the nearest open cell centre (spiral over 4 tiles). */
+function ejectFromRock(e, world) {
+  const cx = Math.floor(e.x), cy = Math.floor(e.y);
+  for (let r = 1; r <= 4; r++) {
+    let best = -1, bx = 0, by = 0;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || world.isSolid(cx + dx + 0.5, cy + dy + 0.5)) continue;
+      const dd = (cx + dx + 0.5 - e.x) ** 2 + (cy + dy + 0.5 - e.y) ** 2;
+      if (best < 0 || dd < best) { best = dd; bx = cx + dx + 0.5; by = cy + dy + 0.5; }
+    }
+    if (best >= 0) { e.x = bx; e.y = by; e.kvx = e.kvy = e.vx = e.vy = 0; return true; }
+  }
+  return false;
+}
+
+/** Is a static emplacement (urchin, horns, cannon) still standing on its surface tile? */
+function supported(e, world) {
+  if (e.placement === 'floor') return world.isSolid(e.x, e.y + 0.9);
+  if (e.placement === 'ceiling') return world.isSolid(e.x, e.y - 0.9);
+  if (e.placement === 'wall' && e.wallDir) return world.isSolid(e.x + e.wallDir * 0.9, e.y);
+  return true;
 }
 
 export function createEnemies() {
@@ -356,7 +484,9 @@ export function createEnemies() {
   /** @type {any[]} */
   let shots = [];
   let beholder = null;
-  const events = []; // consumed by main.js each frame: {type:'enemyKilled'|'shotFired', ...}
+  const ghosts = []; // a dash-killed enemy lingers 60 ms, flashing white, while the sim freezes (hit-stop)
+  let tileVer = -1;
+  const events = []; // consumed by main.js each frame: {type:'enemyKilled'|'shotFired'|'hitStop'|'beholderSpawned', ...}
 
   function spawnFromSlots(index, chunk, yOffset) {
     if (spawnedChunks.has(index)) return;
@@ -376,9 +506,10 @@ export function createEnemies() {
   }
 
   const liveCache = []; // reusable list for autofire (rebuilt each step in hpMode)
+  const stepList = []; // every enemy of this step (rebuilt once per update)
   function allEnemies() {
     const out = [];
-    for (const list of byChunk.values()) out.push(...list);
+    for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) out.push(list[i]);
     return out;
   }
 
@@ -386,9 +517,14 @@ export function createEnemies() {
     if (e.dead) return;
     e.dead = true;
     events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason });
+    if (reason === 'dash') {
+      // hit-stop: a white ghost of the enemy stays for 60 ms and main.js freezes the sim for as long
+      ghosts.push({ ...e, dead: false, ghost: true, t: HIT_STOP, hitFlash: 1.2, stun: 0, prevX: e.x, prevY: e.y });
+      events.push({ type: 'hitStop', dur: HIT_STOP });
+    }
   }
 
-  /** A stunned enemy drifts on its knockback velocity (drag, walls) until the stun runs out. */
+  /** A stunned enemy drifts on its knockback velocity (drag, walls) until the stun runs out, then picks its pattern up again. */
   function stepKnock(e, dt, world) {
     e.stun = Math.max(0, e.stun - dt);
     e.x += e.kvx * dt; e.y += e.kvy * dt;
@@ -396,113 +532,228 @@ export function createEnemies() {
     e.kvx *= f; e.kvy *= f;
     e.vx = e.kvx; e.vy = e.kvy;
     if (e.moving) collideWithWalls(e, world);
+    if (e.stun <= 0) resetPattern(e);
+  }
+  function resetPattern(e) {
+    e.tell = 0;
+    if (e.kind === 'piranha') { e.st = PS_PATROL; e.t = 0.5; e.flipCd = 0; }
+    else if (e.kind === 'crab') { e.st = CS_WALK; e.cool = 0.5; }
+    else if (e.kind === 'cannon') { e.st = CN_RELOAD; e.t = 1.0; }
+    else if (e.kind === 'manta') { e.st = MA_GLIDE; e.cool = 1.5; }
   }
 
+  // ------------------------------------------------------------------------------------------ piranha
+  function piranhaRecover(e, hit) {
+    e.st = PS_RECOVER; e.t = PIRANHA_RECOVER; e.tell = 0;
+    const k = hit ? 3.2 : 1.2;
+    e.rvx = -e.lx * k; e.rvy = -e.ly * k;
+  }
   function updatePiranha(e, dt, octo, world) {
-    const dToOcto = dist(e.x, e.y, octo.x, octo.y);
-    e.chasing = dToOcto < PIRANHA_CHASE_RANGE;
-    if (e.chasing) {
-      // Round-6 task 5: "once they spot the player", chase with A* instead
-      // of a straight line, same as the Beholder -- keeps the original's
-      // always-closing chase speed, just routed around rock.
-      chaseWithPath(e, world, octo.x, octo.y, PIRANHA_CHASE_SPEED, dt);
-    } else {
-      e.path = null; // drop any stale chase path once it stops chasing
-      e.vx = e.dir * PIRANHA_PATROL_SPEED;
-      e.vy = 0;
-      // Turn around at a wall or the edge of open water ahead.
-      const aheadX = e.x + e.dir * (e.radius + 0.15);
-      if (world.isSolid(aheadX, e.y)) e.dir *= -1;
-      e.x += e.vx * dt;
-      e.y += e.vy * dt;
-    }
-    collideWithWalls(e, world);
-  }
-
-  function updateCannon(e, dt, octo, world) {
-    e.cooldown -= dt;
-    const d = dist(e.x, e.y, octo.x, octo.y);
-    if (e.cooldown <= 0 && d < CANNON_RANGE) {
-      const dx = octo.x - e.x, dy = octo.y - e.y;
-      const len = Math.hypot(dx, dy) || 1;
-      shots.push({
-        x: e.x, y: e.y, vx: (dx / len) * CANNON_SHOT_SPEED, vy: (dy / len) * CANNON_SHOT_SPEED,
-        radius: CANNON_SHOT_RADIUS, dead: false,
-      });
-      e.cooldown = CANNON_FIRE_PERIOD;
-    }
-  }
-
-  function updateCrab(e, dt, world) {
-    const groundDy = e.placement === 'ceiling' ? -1 : 1;
-    const step = e.dir * e.speed * dt;
-    e.x += step;
-    const aheadX = e.x + e.dir * (e.radius + 0.15);
-    if (world.isSolid(aheadX, e.y)) {
-      // Wall ahead: undo the step and turn around.
-      e.x -= step;
-      e.dir *= -1;
-    } else if (!world.isSolid(aheadX, e.y + groundDy)) {
-      // No ledge/ceiling ahead: turn around before walking off it.
-      e.dir *= -1;
-    }
-    e.vx = e.dir * e.speed;
-    // Round-6 task 5: same grid collision as every other moving enemy --
-    // mostly a no-op here (the ahead-checks above already keep a crab off
-    // rock along its own walk direction) but also catches the perpendicular
-    // axis (e.g. a bomb reshaping the floor out from under it).
-    collideWithWalls(e, world);
-  }
-
-  function updateManta(e, dt, time, octo, world) {
-    if (e.spawnTime === null) e.spawnTime = time; // start the sine at 0 offset, not a random phase
     const px = e.x, py = e.y;
-    e.x += e.dir * MANTA_SPEED * dt;
-    // Wide back-and-forth patrol around its spawn point (the "wide sine"
-    // glide), so it stays somewhere a diving octopus will pass, rather than
-    // drifting off in one direction forever.
-    if (Math.abs(e.x - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
-    e.y = e.baseY + Math.sin((time - e.spawnTime) * MANTA_SINE_FREQ) * MANTA_SINE_AMPLITUDE;
-    e.vx = e.dir * MANTA_SPEED;
-    // Round-6 task 5: the manta spawns in open water but its sine glide can
-    // carry it into a wall it patrolled toward; bounce off rock the same way
-    // the octopus does rather than overlapping it.
-    // Round-12 fix: both the wall-collision call and the turn-around probe
-    // below now use the wing axis (`collideMantaWithWalls`/
-    // `MANTA_WING_HALF_LEN`), not the small physics radius, so a wingtip
-    // never has to already be inside rock before the manta reacts.
-    // Round-19: never glide into a gap narrower than the wingspan (pushing
-    // from both wingtips left it overlapping rock on both sides): if the
-    // wing axis does not fit at the new spot, keep the old x and/or y.
-    const fits = (x, y) => {
-      for (const dy of [-MANTA_BODY_HALF_HEIGHT, 0, MANTA_BODY_HALF_HEIGHT]) {
-        if (world.isSolid(x - MANTA_WING_HALF_LEN, y + dy) || world.isSolid(x + MANTA_WING_HALF_LEN, y + dy)) return false;
+    const seesOcto = () => !octo.dead && dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
+    e.chasing = e.st === PS_WINDUP || e.st === PS_LUNGE;
+    switch (e.st) {
+      case PS_PATROL: {
+        e.ph += dt * 1.3;
+        e.t = Math.max(0, e.t - dt);
+        e.flipCd = Math.max(0, e.flipCd - dt);
+        e.vx = e.dir * PIRANHA_IDLE_SPEED;
+        e.vy = Math.cos(e.ph) * 0.35 + Math.max(-0.6, Math.min(0.6, (e.baseY - e.y) * 0.5));
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        collideWithWalls(e, world);
+        // turn at the end of its range, or when the hull would meet rock (probe = nose + body radius, not a tile centre);
+        // a piranha that is not getting anywhere turns too (smoothed rims bulge a little past the tile edge)
+        const moved = Math.abs(e.x - px);
+        e.stuck = moved < 0.3 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0;
+        const far = (e.x - e.baseX) * e.dir > PIRANHA_PATROL_RANGE;
+        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_BODY_HALF_LEN + PIRANHA_BODY_HALF_HEIGHT + 0.15, 0.45))) {
+          e.dir = -e.dir; e.flipCd = 0.6; e.stuck = 0;
+        }
+        e.face = e.dir;
+        if (e.t <= 0 && seesOcto()) {
+          e.st = PS_WINDUP; e.t = PIRANHA_WINDUP; e.vx = e.vy = 0; e.tell = 0;
+          e.face = sgn(octo.x - e.x, e.face);
+        }
+        break;
       }
-      return true;
-    };
-    if (!fits(e.x, e.y)) {
-      if (fits(px, e.y)) { e.x = px; e.dir *= -1; }
-      else if (fits(e.x, py)) { e.y = py; }
-      else { e.x = px; e.y = py; e.dir *= -1; }
-    }
-    collideMantaWithWalls(e, world);
-    if (world.isSolid(e.x + Math.sign(e.dir || 1) * (MANTA_WING_HALF_LEN + 0.1), e.y)) e.dir *= -1;
-    const d = dist(e.x, e.y, octo.x, octo.y);
-    if (d < MANTA_RANGE) {
-      e.dropCooldown -= dt;
-      if (e.dropCooldown <= 0) {
-        e.dropCooldown = MANTA_DROP_PERIOD;
-        const dx = octo.x - e.x, dy = octo.y - e.y;
-        const len = Math.hypot(dx, dy) || 1;
-        shots.push({
-          x: e.x, y: e.y, vx: (dx / len) * MANTA_BALL_SPEED, vy: (dy / len) * MANTA_BALL_SPEED,
-          radius: MANTA_BALL_RADIUS, dead: false,
-        });
-        events.push({ type: 'shotFired', kind: 'manta' });
+      case PS_WINDUP: {
+        e.vx = e.vy = 0;
+        e.t -= dt; e.tell = Math.min(1, 1 - e.t / PIRANHA_WINDUP);
+        if (!octo.dead) e.face = sgn(octo.x - e.x, e.face);
+        if (e.t <= 0) {
+          if (octo.dead) { e.st = PS_PATROL; e.t = 0.5; e.tell = 0; break; }
+          const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
+          e.lx = dx / d; e.ly = dy / d; e.lmax = d + 1.5; e.ltrav = 0;
+          e.st = PS_LUNGE; e.t = PIRANHA_LUNGE_MAX; e.tell = 0; e.face = sgn(e.lx, e.face);
+        }
+        break;
+      }
+      case PS_LUNGE: {
+        e.vx = e.lx * PIRANHA_LUNGE_SPEED; e.vy = e.ly * PIRANHA_LUNGE_SPEED;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        collideWithWalls(e, world);
+        const moved = Math.hypot(e.x - px, e.y - py);
+        e.ltrav += moved; e.t -= dt;
+        if (moved < 0.4 * PIRANHA_LUNGE_SPEED * dt || e.t <= 0 || e.ltrav >= e.lmax) piranhaRecover(e, false);
+        break;
+      }
+      default: { // PS_RECOVER
+        e.t -= dt;
+        e.rvx *= 1 - Math.min(1, dt * 2.5); e.rvy *= 1 - Math.min(1, dt * 2.5);
+        e.vx = e.rvx; e.vy = e.rvy;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        collideWithWalls(e, world);
+        if (e.t <= 0) { e.st = PS_PATROL; e.t = 0.3; e.flipCd = 0; e.dir = e.face; }
       }
     }
   }
 
+  // ------------------------------------------------------------------------------------------ cannon
+  function updateCannon(e, dt, octo, world) {
+    // the target: octopus in range, inside the half plane the cannon faces, with a clear line
+    let target = false, want = e.out;
+    if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < CANNON_RANGE) {
+      const a = Math.atan2(octo.y - e.y, octo.x - e.x);
+      if (Math.abs(angDiff(a, e.out)) <= CANNON_ARC && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) { target = true; want = a; }
+    }
+    // turn slowly toward it (slower while charging), or back to rest
+    const rate = (e.st === CN_CHARGE ? CANNON_TURN * 0.4 : CANNON_TURN) * dt;
+    const diff = angDiff(want, e.aim);
+    e.aim += Math.max(-rate, Math.min(rate, diff));
+    if (e.st === CN_RELOAD) {
+      e.t -= dt;
+      if (e.t <= 0) { e.st = CN_TRACK; e.t = 0; }
+    } else if (e.st === CN_TRACK) {
+      if (target && Math.abs(angDiff(want, e.aim)) < CANNON_AIM_OK) { e.st = CN_CHARGE; e.t = CANNON_WINDUP; e.tell = 0; }
+    } else { // CN_CHARGE
+      e.t -= dt; e.tell = Math.min(1, 1 - e.t / CANNON_WINDUP);
+      if (!target) { e.st = CN_TRACK; e.tell = 0; return; } // lost the line: stand down
+      if (e.t <= 0) {
+        const ca = Math.cos(e.aim), sa = Math.sin(e.aim);
+        shots.push({ x: e.x + ca * 0.5, y: e.y + sa * 0.5, vx: ca * CANNON_SHOT_SPEED, vy: sa * CANNON_SHOT_SPEED, radius: CANNON_SHOT_RADIUS, dead: false });
+        events.push({ type: 'shotFired', kind: 'cannon' });
+        e.st = CN_RELOAD; e.t = CANNON_RELOAD; e.tell = 0;
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------ crab
+  function bombAhead(e, props) {
+    if (!props) return false;
+    const d = props.data;
+    for (let i = 0; i < d.n; i++) {
+      if (!d.alive[i] || d.kind[i] !== PK_BOMB) continue;
+      const dx = (d.x[i] - e.x) * e.dir;
+      if (dx > -0.2 && dx < e.radius + d.radius[i] + 0.25 && Math.abs(d.y[i] - e.y) < 0.8) return true;
+    }
+    return false;
+  }
+  function updateCrab(e, dt, octo, world, props) {
+    const groundDy = e.placement === 'ceiling' ? -1 : 1;
+    e.cool = Math.max(0, e.cool - dt);
+    const near = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3;
+    switch (e.st) {
+      case CS_WALK: {
+        // sinks if the floor under it was bombed away
+        if (groundDy === 1 && !world.isSolid(e.x, e.y + 0.6)) { e.y += 2.5 * dt; e.vy = 2.5; } else e.vy = 0;
+        const step = e.dir * e.speed * dt;
+        e.x += step;
+        const aheadX = e.x + e.dir * (e.radius + 0.15);
+        if (world.isSolid(aheadX, e.y) || bombAhead(e, props)) {
+          e.x -= step; e.dir *= -1; // wall (or a resting bomb) ahead: undo the step and turn around
+        } else if (!world.isSolid(aheadX, e.y + groundDy)) {
+          e.dir *= -1; // no ledge ahead: turn around before walking off it
+        }
+        e.vx = e.dir * e.speed; e.face = e.dir;
+        collideWithWalls(e, world);
+        if (e.cool <= 0 && near) { e.st = CS_PAUSE; e.t = CRAB_PAUSE; e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; e.vx = 0; e.tell = 0; }
+        break;
+      }
+      case CS_PAUSE:
+        e.vx = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / CRAB_PAUSE);
+        if (!octo.dead) { e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; }
+        if (e.t <= 0) { e.st = CS_SNAP; e.t = CRAB_SNAP; e.tell = 0; e.snapHit = false; }
+        break;
+      case CS_SNAP:
+        e.vx = 0; e.t -= dt;
+        if (!e.snapHit && !octo.dead && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
+          e.snapHit = true;
+          hurtOctopus(octo, e.x, e.y, 'crab');
+        }
+        if (e.t <= 0) { e.st = CS_COOL; e.t = CRAB_COOL; }
+        break;
+      default: // CS_COOL
+        e.vx = 0; e.t -= dt;
+        if (e.t <= 0) { e.st = CS_WALK; e.cool = 0.4; }
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------ manta
+  function mantaFits(world, x, y) {
+    for (const dy of [-MANTA_BODY_HALF_HEIGHT, 0, MANTA_BODY_HALF_HEIGHT]) {
+      if (world.isSolid(x - MANTA_WING_HALF_LEN - 0.2, y + dy) || world.isSolid(x + MANTA_WING_HALF_LEN + 0.2, y + dy)) return false;
+    }
+    return true;
+  }
+  function updateManta(e, dt, octo, world) {
+    const px = e.x, py = e.y;
+    e.ph += dt * MANTA_SINE_FREQ;
+    e.cool = Math.max(0, e.cool - dt);
+    const glideY = e.baseY + Math.sin(e.ph) * MANTA_SINE_AMPLITUDE;
+    switch (e.st) {
+      case MA_GLIDE: {
+        e.vx = e.dir * MANTA_SPEED;
+        let nx = e.x + e.vx * dt;
+        // wide back-and-forth around its spawn point; it turns while a wingtip (plus margin) is still clear of rock
+        if (Math.abs(nx - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
+        if (!mantaFits(world, nx, e.y)) { e.dir = -e.dir; nx = e.x; }
+        e.x = nx;
+        const ny = e.y + Math.max(-3 * dt, Math.min(3 * dt, glideY - e.y));
+        if (mantaFits(world, e.x, ny)) e.y = ny;
+        e.vy = (e.y - py) / dt;
+        collideMantaWithWalls(e, world);
+        const moved = Math.abs(e.x - px);
+        e.stuck = moved < 0.3 * MANTA_SPEED * dt ? e.stuck + dt : 0;
+        if (e.stuck > 0.3) { e.dir = -e.dir; e.stuck = 0; }
+        e.face = e.dir;
+        // octopus below it, in line, with a clear drop: tell, then dive
+        if (e.cool <= 0 && !octo.dead) {
+          const dy = octo.y - e.y;
+          if (Math.abs(octo.x - e.x) < 1.2 && dy > 1.5 && dy < 7 && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) {
+            e.st = MA_TELL; e.t = MANTA_TELL; e.vx = e.vy = 0; e.tell = 0;
+          }
+        }
+        break;
+      }
+      case MA_TELL:
+        e.vx = e.vy = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / MANTA_TELL);
+        if (e.t <= 0) {
+          const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
+          e.tx = dx / d; e.ty = dy / d; e.tell = 0;
+          if (octo.dead || e.ty < 0.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; break; }
+          e.st = MA_DIVE; e.t = MANTA_DIVE_MAX; e.dived = 0;
+        }
+        break;
+      case MA_DIVE: {
+        e.vx = e.tx * MANTA_DIVE_SPEED; e.vy = e.ty * MANTA_DIVE_SPEED;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        collideMantaWithWalls(e, world);
+        const moved = Math.hypot(e.x - px, e.y - py);
+        e.t -= dt; e.dived += moved;
+        if (moved < 0.4 * MANTA_DIVE_SPEED * dt || e.t <= 0 || e.dived > 6.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; }
+        break;
+      }
+      default: { // MA_RISE: climb back to its glide line
+        const dy = glideY - e.y;
+        e.vx = 0; e.vy = Math.max(-MANTA_RISE_SPEED, Math.min(MANTA_RISE_SPEED, dy * 3));
+        e.y += e.vy * dt;
+        collideMantaWithWalls(e, world);
+        if (Math.abs(glideY - e.y) < 0.2 || Math.abs(e.y - py) < 0.2 * MANTA_RISE_SPEED * dt) e.st = MA_GLIDE;
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------ shots, beholder
   function updateShots(dt, octo, world, hurtFn) {
     for (const s of shots) {
       if (s.dead) continue;
@@ -519,10 +770,13 @@ export function createEnemies() {
 
   function updateBeholder(dt, octo, time, hurtFn, world) {
     if (!beholder && time >= BEHOLDER_SPAWN_TIME) {
+      // v2 (a level grid): the nearest open cell reachable from the octopus, off screen; before, it spawned at
+      // octo.y - 20 even when that was rock or outside the level and sat there forever
+      const sp = findBeholderSpawn(octo, world) || { x: octo.x, y: octo.y - BEHOLDER_SPAWN_HEIGHT };
       beholder = {
-        id: nextId++, kind: 'beholder', x: octo.x, y: octo.y - BEHOLDER_SPAWN_HEIGHT,
-        prevX: octo.x, prevY: octo.y - BEHOLDER_SPAWN_HEIGHT,
-        vx: 0, vy: 0, radius: BEHOLDER_RADIUS, dead: false, spawnedAt: time, moving: true,
+        id: nextId++, kind: 'beholder', x: sp.x, y: sp.y,
+        prevX: sp.x, prevY: sp.y,
+        vx: 0, vy: 0, radius: BEHOLDER_RADIUS, wallR: BEHOLDER_WALL_R, dead: false, spawnedAt: time, moving: true,
       };
       events.push({ type: 'beholderSpawned', x: beholder.x, y: beholder.y });
     }
@@ -530,12 +784,7 @@ export function createEnemies() {
     beholder.prevX = beholder.x; beholder.prevY = beholder.y;
     const aliveFor = time - beholder.spawnedAt;
     const speed = BEHOLDER_SPEED + BEHOLDER_SPEED_RAMP * (aliveFor / 10);
-    // Round-6 task 5: the Beholder used to "ignore rock" entirely (a
-    // straight-line homing chase, EyeChaser.cs). It now collides with the
-    // grid like every other moving enemy, so a straight line alone would let
-    // it get stuck on the far side of a wall from the octopus -- chase with
-    // the same A*-on-the-grid path the piranha uses, keeping the same
-    // always-closing speed ramp.
+    // It collides with the grid like every other moving enemy and chases with A* (the piranha no longer does).
     chaseWithPath(beholder, world, octo.x, octo.y, speed, dt);
     collideWithWalls(beholder, world);
     if (!octo.dead && dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) {
@@ -545,14 +794,20 @@ export function createEnemies() {
 
   return {
     events,
-    /** All resident enemies plus the Beholder (if spawned), for rendering. */
-    all() { return beholder ? [...allEnemies(), beholder] : allEnemies(); },
+    /** All resident enemies plus the Beholder (if spawned) and any hit-stop ghosts, for rendering. */
+    all() {
+      const a = allEnemies();
+      if (beholder) a.push(beholder);
+      for (let i = 0; i < ghosts.length; i++) a.push(ghosts[i]);
+      return a;
+    },
     shots() { return shots; },
     beholder() { return beholder; },
 
-    /** One fixed step. */
-    update(dt, time, octo, world, resident) {
+    /** One fixed step. `props` (v2, optional): resting bombs make a crab turn around. */
+    update(dt, time, octo, world, resident, props = null) {
       events.length = 0;
+      for (let i = ghosts.length - 1; i >= 0; i--) { ghosts[i].t -= dt; if (ghosts[i].t <= 0) ghosts.splice(i, 1); }
       const liveChunks = new Set(resident.map((r) => r.index));
       for (const { index, yOffset, chunk } of resident) spawnFromSlots(index, chunk, yOffset);
       for (const ci of [...byChunk.keys()]) {
@@ -564,17 +819,33 @@ export function createEnemies() {
       // last step's position before anything moves, and give every chaser
       // this step's share of the shared pathfinding node budget.
       resetPathBudget();
-      for (const e of allEnemies()) { e.prevX = e.x; e.prevY = e.y; }
+      stepList.length = 0;
+      for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) stepList.push(list[i]);
+      for (let i = 0; i < stepList.length; i++) { const e = stepList[i]; e.prevX = e.x; e.prevY = e.y; }
+
+      // a static emplacement whose surface tile was bombed away is gone (it would float)
+      const ver = world.tileVersion;
+      if (ver !== undefined && ver !== tileVer) {
+        if (tileVer !== -1) for (let i = 0; i < stepList.length; i++) { const e = stepList[i]; if (!e.moving && !e.dead && !supported(e, world)) e.dead = true; }
+        tileVer = ver;
+      }
 
       const octoSpeed = Math.hypot(octo.vx, octo.vy);
-      for (const e of allEnemies()) {
+      for (let i = 0; i < stepList.length; i++) {
+        const e = stepList[i];
         if (e.dead) continue;
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
         if (e.stun > 0) { stepKnock(e, dt, world); continue; } // knocked about by a blast: no AI, no contact damage
         if (e.kind === 'piranha') updatePiranha(e, dt, octo, world);
         else if (e.kind === 'cannon') updateCannon(e, dt, octo, world);
-        else if (e.kind === 'crab') updateCrab(e, dt, world);
-        else if (e.kind === 'manta') updateManta(e, dt, time, octo, world);
+        else if (e.kind === 'crab') updateCrab(e, dt, octo, world, props);
+        else if (e.kind === 'manta') updateManta(e, dt, octo, world);
+        else if (e.kind === 'urchin' || e.kind === 'horns') {
+          // slow spike pulse: the drawn spikes and the contact radius breathe together
+          e.ph += dt * TAU / URCHIN_PULSE_PERIOD;
+          e.pulse = 0.5 + 0.5 * Math.sin(e.ph);
+          e.radius = e.r0 * (0.92 + 0.2 * e.pulse);
+        }
 
         if (!e.contactDamage) continue;
         if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius) {
@@ -582,24 +853,18 @@ export function createEnemies() {
             killEnemy(e, 'dash');
           } else {
             hurtOctopus(octo, e.x, e.y, e.kind);
+            if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
           }
         }
       }
-      separateEnemies(allEnemies());
-      // Round-11 fix (review round 10 leftover, issue 1's ordering note:
-      // "check that enemy-separation, or the push from an urchin, runs
-      // BEFORE collideWithWalls -- if separation runs after, it pushes
-      // piranhas back into rock after the wall resolve"). It does run after
-      // (each enemy's own `update*` already resolves its OWN wall
-      // collision, inline, before this pass) -- `separateEnemies` above can
-      // push either side of a too-close pair straight into a wall the pair
-      // is swimming along, with nothing to resolve it again until next
-      // step's movement happens to pull it back out. Re-clamp every moving
-      // enemy against walls once more right after separation so a push from
-      // this step never gets to render as an overlap.
-      for (const e of allEnemies()) {
+      separateEnemies(stepList);
+      // Round-11 fix: re-clamp every moving enemy against walls once more right after separation so a push from
+      // this step never gets to render as an overlap; and (r35) nothing may stay inside rock.
+      for (let i = 0; i < stepList.length; i++) {
+        const e = stepList[i];
         if (e.dead || !e.moving) continue;
         collideWithWalls(e, world);
+        if (world.isSolid(e.x, e.y)) ejectFromRock(e, world);
       }
       // Prune dead enemies out of their chunk lists (dash/bomb kills).
       for (const [ci, list] of byChunk) {
@@ -644,20 +909,33 @@ export function createEnemies() {
       return n;
     },
 
-    /** A blast at (x, y): every live moving enemy within `reach` is knocked away (radial, linear falloff) and
-     * stunned for `stun` s. Returns the count. (Kills are bomb.js's killInRadius; this moves what survived.) */
+    /** A blast at (x, y): every live moving enemy (and cannon) within `reach` is knocked away (radial, linear falloff),
+     * flashes and is stunned for `stun` s. Returns the count. (Kills are bomb.js's killInRadius; this moves what survived.) */
     knockInRadius(x, y, reach, power, stun) {
       let n = 0;
       for (const e of allEnemies()) {
-        if (e.dead || !e.moving) continue;
+        if (e.dead || !(e.moving || e.kind === 'cannon')) continue;
         let dx = e.x - x, dy = e.y - y;
         const d = Math.hypot(dx, dy);
         if (d > reach) continue;
         if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
         const f = (1 - d / reach) * power;
-        e.kvx = dx * f; e.kvy = e.kind === 'crab' ? 0 : dy * f;
-        e.stun = stun; e.path = null;
+        const fixed = !e.moving; // a cannon is bolted down: stunned, not thrown
+        e.kvx = fixed ? 0 : dx * f; e.kvy = fixed || e.kind === 'crab' ? 0 : dy * f;
+        if (e.kind === 'crab' && Math.abs(e.kvx) < 0.5) e.kvx = (dx >= 0 ? 1 : -1) * f * 0.7;
+        e.stun = stun; e.path = null; e.tell = 0; e.hitFlash = 0.3;
         n++;
+      }
+      return n;
+    },
+
+    /** Remove (silently: no kill, no drop) every enemy within `r` of (x, y); used to keep a quest objective clear. */
+    despawnNear(x, y, r) {
+      let n = 0;
+      for (const e of allEnemies()) if (!e.dead && dist(e.x, e.y, x, y) < r) { e.dead = true; n++; }
+      for (const [ci, list] of byChunk) {
+        const filtered = list.filter((e) => !e.dead);
+        if (filtered.length !== list.length) byChunk.set(ci, filtered);
       }
       return n;
     },
@@ -668,7 +946,7 @@ export function createEnemies() {
       if (kind === 'beholder') {
         beholder = {
           id: nextId++, kind: 'beholder', x, y, prevX: x, prevY: y, vx: 0, vy: 0,
-          radius: BEHOLDER_RADIUS, dead: false, spawnedAt: 0, moving: true,
+          radius: BEHOLDER_RADIUS, wallR: BEHOLDER_WALL_R, dead: false, spawnedAt: 0, moving: true,
         };
         return beholder;
       }

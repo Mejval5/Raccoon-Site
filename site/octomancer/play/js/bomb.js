@@ -19,7 +19,9 @@ export const OCTO_BLAST_IMPULSE = 7;   // u/s at the centre of the blast, fallin
 export const ENEMY_BLAST_IMPULSE = 12;
 export const ENEMY_STUN = 0.9;         // s
 export const RUBBLE_MIN = 4, RUBBLE_MAX = 8;
-const SOFT_TOSS = 0.35;                // fraction of the throw when there is no aim direction
+// no aim direction (Space / X with no move key, the Bomb button with no stick): a short toss forward and a little
+// down, along the last swim direction, never up onto the octopus's own head
+export const IDLE_TOSS_X = 0.25, IDLE_TOSS_Y = 0.2;
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -30,13 +32,12 @@ export function spawnRubble(props, tiles, nTiles, bx, by, rand = Math.random) {
   let made = 0;
   for (let k = 0; k < n; k++) {
     const t = Math.floor((k + rand() * 0.999) * nTiles / n) % nTiles;
-    const x = tiles[t * 2] + 0.5, y = tiles[t * 2 + 1] + 0.5;
-    let dx = x - bx, dy = y - by;
-    const d = Math.hypot(dx, dy) || 1;
-    dx /= d; dy /= d;
-    const sp = 2 + rand() * 3;
+    // each chip starts at its own spot inside the removed tile (+-0.35) and leaves at its own angle and speed
+    const x = tiles[t * 2] + 0.5 + (rand() - 0.5) * 0.7, y = tiles[t * 2 + 1] + 0.5 + (rand() - 0.5) * 0.7;
+    const a = Math.atan2(y - by, x - bx) + (rand() - 0.5) * 1.3;
+    const sp = 1.5 + rand() * 4.5;
     const r = 0.1 + rand() * 0.08;
-    if (props.add(PK_RUBBLE, x, y, dx * sp, dy * sp - 1, { radius: r }) >= 0) made++;
+    if (props.add(PK_RUBBLE, x, y, Math.cos(a) * sp, Math.sin(a) * sp - 1, { radius: r }) >= 0) made++;
   }
   return made;
 }
@@ -89,21 +90,21 @@ export function createBombs(props = null) {
 
     /**
      * Place a bomb if the octopus has one in stock. v2: it starts at (x, y) with the octopus's velocity plus
-     * THROW_SPEED along `aim` ({x, y}, unit length; a short vector throws proportionally less), or a soft toss
-     * along the octopus's facing when `aim` is null. `opts.pinned` keeps a bomb in place (tests).
+     * THROW_SPEED along `aim` ({x, y}, unit length; a short vector throws proportionally less), or a short toss
+     * forward (octo.throwDir, the last swim direction) and a little down when `aim` is null. `opts.pinned` keeps a bomb in place (tests).
      */
     place(octo, x, y, aim = null, opts = null) {
       if (!tryUseBomb(octo)) return false;
       const b = { x, y, fuse: fuse0, fuse0, exploded: false, age: 0, pid: -1, rot: 0 };
       if (props) {
-        let ax = 0, ay = 0, power = 1;
-        if (aim && (aim.x || aim.y)) { ax = aim.x; ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } power = 1; }
-        else if (octo.angle !== undefined) {
-          const a = octo.angle * Math.PI / 180;
-          ax = Math.sin(a); ay = -Math.cos(a); power = SOFT_TOSS;
+        let ax = 0, ay = 0;
+        if (aim && (aim.x || aim.y)) { ax = aim.x; ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } } // a short vector throws proportionally less
+        else {
+          const f = octo.throwDir || 1;
+          ax = f * IDLE_TOSS_X; ay = IDLE_TOSS_Y;
         }
         const ovx = octo.vx || 0, ovy = octo.vy || 0;
-        b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED * power, ovy + ay * THROW_SPEED * power, { timer: fuse0, grace: 0.35 });
+        b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: fuse0, grace: 0.35 });
         if (b.pid < 0) { octo.bombs++; return false; }
         if (opts && opts.pinned) props.hold(b.pid, -1, -1);
       }

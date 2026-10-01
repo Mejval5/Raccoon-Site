@@ -23,7 +23,7 @@ import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
-import { createBombs } from './bomb.js';
+import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
 import { createProps, PROP_NAMES } from './props.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
@@ -116,7 +116,7 @@ window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 
 const input = createInput(canvas);
-const touchUI = createTouchUI(touchRoot, input);
+const touchUI = createTouchUI(touchRoot, input, canvas); // the canvas takes the touches (#touch-ui ignores them), so the stick listens there
 // Round-8 item 4: the on-screen keyboard/mouse controls hint (ui.js) only
 // makes sense on a desktop-style input; hide it on the first touch, show it
 // again if the player switches back to keyboard/mouse.
@@ -143,6 +143,7 @@ let autoDiveOn = false;
 let godMode = false; // test hook only (__octo.god): scripted playthroughs ignore enemy contact
 let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
 let trailTimer = 0; // M7-1: bubble-trail spawn accumulator, rate scaled by speed
+let hitStop = 0; // s left of the dash-kill freeze
 let dreadLevel = 0; // M7-1/M7-2: Beholder proximity in [0,1], shared by render's dread overlay and audio's drone
 
 // --- Track S: music and code-synth SFX (OVERNIGHT.md §4 S-1) ---
@@ -151,6 +152,8 @@ const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
+let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed after the level's first enemy update
+const QUEST_CLEAR_R = 3;
 let shopSt = null;
 let tutState = createTutorialState();
 let hubQuestPlan = null;
@@ -292,8 +295,14 @@ function step(dt) {
     }
     return;
   }
+  // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
+  if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
   if (godMode && !octo.dead) octo.invulnTimer = Math.max(octo.invulnTimer, 0.5);
   if (V2 && run.state === S_BIOME && !octo.dead) run.dive.time += dt; // the run summary's clock
+  if (V2) { // the way a no-direction bomb throw goes: the last swim direction
+    if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
+    else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
+  }
   stepOctopus(octo, snap, dt, world);
   if (octo.dashedThisStep) {
     sfx.dash();
@@ -323,8 +332,12 @@ function step(dt) {
   prevHearts = octo.hearts;
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
-  enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident);
-  if (V2) props.step(dt, world, octo); // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null);
+  if (questClear) { // enemies spawn on the first update: keep the quest objective clear of them (silently)
+    enemies.despawnNear(questClear.x, questClear.y, QUEST_CLEAR_R);
+    questClear = null;
+  }
+  if (V2) props.step(dt, world, octo, enemies.all()); // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -343,10 +356,11 @@ function step(dt) {
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
-    particles.bombDebris(ev.x, ev.y); sfx.bomb();
-    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); }
+    particles.blastBurst(ev.x, ev.y, Math.hypot(ev.x - octo.x, ev.y - octo.y)); sfx.bomb();
+    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); }
   }
   for (const ev of enemies.events) {
+    if (ev.type === 'hitStop') { hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
     if (V2 && !isSafeState(run)) {
@@ -360,7 +374,10 @@ function step(dt) {
   if (snap.bomb.pressed) {
     const aim = V2 ? bombAim(snap) : null;
     let bx = octo.x, by = octo.y;
-    if (aim && !world.isSolid(octo.x + aim.x * 0.5, octo.y + aim.y * 0.5)) { bx += aim.x * 0.5; by += aim.y * 0.5; }
+    if (aim) { // starts half a tile out along the throw, unless that is rock
+      const al = Math.hypot(aim.x, aim.y) || 1, ux = aim.x / al, uy = aim.y / al;
+      if (!world.isSolid(octo.x + ux * 0.5, octo.y + uy * 0.5)) { bx += ux * 0.5; by += uy * 0.5; }
+    }
     if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); tutorialActed(tutState); }
   }
 
@@ -375,8 +392,8 @@ function step(dt) {
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
 }
-/** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys; else
- * null (a soft toss along the octopus's facing). Unit vector. */
+/** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys (unit
+ * vector); with no direction a short toss forward (the last swim direction) and a little down, never up. */
 function bombAim(snap) {
   if (snap.mode === 'mouse' && input.mouse.seen) {
     const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
@@ -385,7 +402,7 @@ function bombAim(snap) {
   }
   const m = snap.move, l = Math.hypot(m.x, m.y);
   if (l > 0.25) return { x: m.x / l, y: m.y / l };
-  return null;
+  return { x: (octo.throwDir || 1) * IDLE_TOSS_X, y: IDLE_TOSS_Y };
 }
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -505,6 +522,7 @@ function resetWorld(newSeed) {
   runKills = 0;
   liveScore = 0;
   trailTimer = 0;
+  hitStop = 0;
   dreadLevel = 0;
   prevHearts = octo.hearts;
   ui.hideGameOver();
@@ -754,6 +772,7 @@ function setupLevelExtras() {
     const spec = levelSpec(run);
     const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex);
     quest = createQuestState(plan);
+    if (plan && (plan.kindId === Q_RESCUE || plan.kindId === Q_VAULT)) questClear = { x: plan.pos[0], y: plan.pos[1] };
     if (plan && plan.kindId === Q_PEST) for (let i = 0; i < plan.pos.length; i += 2) enemies.spawnAt('piranha', plan.pos[i], plan.pos[i + 1], 'open', 0);
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
   } else if (run.state === S_HUB) {
@@ -857,6 +876,11 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) if (d.alive[i]) out.push({ i, kind: PROP_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx: d.vx[i], vy: d.vy[i], r: d.radius[i], state: d.state[i], timer: d.timer[i] });
     return out;
   },
+  /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
+  enemies() {
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
+  },
+  shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
   autoDive(on) {
     autoDiveOn = !!on;

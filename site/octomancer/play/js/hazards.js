@@ -29,7 +29,7 @@ export const ROCK_RADIUS = 0.5;
 export const ROCK_TRIGGER_HALF = 1.0; // the octopus is "under it" within this sideways distance
 export const EEL_SPEED = 1.5;
 export const EEL_PERIOD = 3.6;      // s between shocks
-export const EEL_CHARGE_AT = 1.3;   // the body glows from here...
+export const EEL_CHARGE_AT = 1.4;   // the body crackles from here (0.5 s)...
 export const EEL_FIRE_AT = 1.9;     // ...until the ring is released
 export const EEL_RING_SPEED = 6;
 export const EEL_RING_MAX = 3.0;
@@ -107,6 +107,7 @@ export function createHazards(props = null) {
     t: new Float32Array(CAP), v: new Float32Array(CAP), r: new Float32Array(CAP), // timer, velocity (rock fall, eel direction), eel ring radius
     x0: new Float32Array(CAP), y0: new Float32Array(CAP), // rest position (rock)
     pid: new Int32Array(CAP).fill(-1), // prop index (rock, v2)
+    hit: new Uint8Array(CAP), // rock: it has already hurt the octopus this drop (one hit per rock)
   };
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
@@ -121,7 +122,7 @@ export function createHazards(props = null) {
     d.t[i] = rec.hk === HZ_EEL ? (i * 0.7) % EEL_PERIOD : 0;
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
-    d.pid[i] = -1;
+    d.pid[i] = -1; d.hit[i] = 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -130,7 +131,20 @@ export function createHazards(props = null) {
   }
 
   function hurt(octo, i, fx, fy) {
-    if (hurtOctopus(octo, fx, fy, HZ_CAUSE[d.kind[i]])) events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy });
+    if (hurtOctopus(octo, fx, fy, HZ_CAUSE[d.kind[i]])) { events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }); return true; }
+    return false;
+  }
+  /** A falling rock knocks the octopus sideways, out from under it, never along its own fall line (it used to ride
+   * the rock down and get hit again as it settled). The side with open water wins; else away from the rock. */
+  function hurtByRock(octo, i, world) {
+    if (d.hit[i]) return;
+    const rx = d.x[i];
+    let side = octo.x >= rx ? 1 : -1;
+    if (Math.abs(octo.x - rx) < 0.25 && world && world.isSolid) {
+      const l = world.isSolid(octo.x - 1, octo.y), r = world.isSolid(octo.x + 1, octo.y);
+      if (l && !r) side = 1; else if (r && !l) side = -1;
+    }
+    if (hurt(octo, i, octo.x - side, octo.y)) d.hit[i] = 1;
   }
 
   function updateJet(i, dt, octo) {
@@ -148,7 +162,7 @@ export function createHazards(props = null) {
     const fx = d.x[i] - dx * 0.5, fy = d.y[i] - dy * 0.5; // centre of the face
     const rx = octo.x - fx, ry = octo.y - fy;
     const n = rx * dx + ry * dy, tt = rx * tx + ry * ty;
-    if (n > SPIKE_REACH + octo.radius * 0.7 || n < -0.2 || Math.abs(tt) > SPIKE_HALF_LEN + octo.radius * 0.3) return;
+    if (n > SPIKE_REACH + octo.radius * 0.85 || n < -0.2 || Math.abs(tt) > SPIKE_HALF_LEN + octo.radius * 0.3) return;
     const c = Math.max(-SPIKE_HALF_LEN, Math.min(SPIKE_HALF_LEN, tt));
     hurt(octo, i, fx + tx * c, fy + ty * c);
   }
@@ -178,7 +192,7 @@ export function createHazards(props = null) {
     if (st !== 2 && st !== 4) return;
     d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
     const sp = Math.hypot(pd.vx[pid], pd.vy[pid]);
-    if (st === 2 && !octo.dead && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurt(octo, i, d.x[i], d.y[i]);
+    if (st === 2 && !octo.dead && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
     const landed = (pd.grounded[pid] && sp < 1.5) || pd.state[pid] !== PS_FREE;
     if (!landed) return;
     // never settle on top of the octopus: wait (state 4) until it swims clear
@@ -208,7 +222,7 @@ export function createHazards(props = null) {
       if (st === 2) {
         d.v[i] = Math.min(ROCK_MAX_FALL, d.v[i] + ROCK_GRAVITY * dt);
         d.y[i] = Math.min(d.a[i], d.y[i] + d.v[i] * dt);
-        if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurt(octo, i, d.x[i], d.y[i]);
+        if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
       }
       if (d.y[i] >= d.a[i]) {
         // never settle on top of the octopus: wait (state 4) until it swims clear
@@ -275,6 +289,18 @@ export function createHazards(props = null) {
           default: break;
         }
       }
+    },
+    /** A blast at (x, y): hanging rocks within `reach` (main.js passes the blast's knock reach, 2 radii: the shock, not only
+     * their ceiling tile going) come loose. */
+    blast(x, y, reach) {
+      let n = 0;
+      if (!props) return 0;
+      for (let i = 0; i < d.n; i++) {
+        if (d.kind[i] !== HZ_ROCK || d.pid[i] < 0 || d.state[i] > 1) continue;
+        if (Math.hypot(d.x[i] - x, d.y[i] - y) > reach) continue;
+        if (props.data.state[d.pid[i]] === PS_HELD) { props.release(d.pid[i]); n++; }
+      }
+      return n;
     },
     /** Hazard codes within `range` of (x,y) with a clear line (journal sightings). */
     seen(x, y, range, isSolid) {

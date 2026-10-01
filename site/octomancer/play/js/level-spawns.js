@@ -26,7 +26,12 @@ export const ENEMY_START_KEEP_OUT = 9; // every enemy (a piranha notices at 6 an
 // A patroller walks its whole row (piranha, crab: wall to wall; manta: 5 tiles either side), so what counts is how
 // near that stretch comes to the start: never inside its notice range (piranha 6, manta 8), plus a margin.
 const PATROL_CLEAR = { piranha: 7.6, crab: 3, manta: 9 };
-const PATROL_REACH = { piranha: 99, crab: 99, manta: 5 };
+const PATROL_REACH = { piranha: 5, crab: 99, manta: 5 }; // piranha: enemies.js PIRANHA_PATROL_RANGE
+// r35: how close a patrol stretch may come to the shop room and to the exit ring (a piranha that notices from 6 tiles,
+// a manta that dives), and the least gap between two enemies' spawn cells
+const PATROL_SHOP_CLEAR = { piranha: 6.5, crab: 3, manta: 6 };
+const PATROL_EXIT_CLEAR = { piranha: 5, crab: 2, manta: 5 };
+export const ENEMY_MIN_GAP = 2.5;
 
 function idx(x, y) { return y * W + x; }
 
@@ -78,6 +83,22 @@ function patrolDistance(t, tx, ty, reach, sx, sy) {
   while (xr - tx < reach && xr + 1 < W && t[idx(xr + 1, ty)] === 0) xr++;
   const nx = Math.max(xl, Math.min(xr + 1, sx));
   return Math.hypot(nx - sx, ty + 0.5 - sy);
+}
+
+/** Distance from the stretch of water cells a patroller on row `ty` can walk (`reach` tiles either side of `tx`) to the point (px, py). */
+function stretchToPoint(t, tx, ty, reach, px, py) {
+  let xl = tx, xr = tx;
+  while (tx - xl < reach && xl - 1 >= 0 && t[idx(xl - 1, ty)] === 0) xl--;
+  while (xr - tx < reach && xr + 1 < W && t[idx(xr + 1, ty)] === 0) xr++;
+  return Math.hypot(Math.max(xl, Math.min(xr + 1, px)) - px, ty + 0.5 - py);
+}
+/** Distance from that stretch to the rectangle [x0, x1) x [y0, y1). */
+function stretchToBox(t, tx, ty, reach, x0, y0, x1, y1) {
+  let xl = tx, xr = tx;
+  while (tx - xl < reach && xl - 1 >= 0 && t[idx(xl - 1, ty)] === 0) xl--;
+  while (xr - tx < reach && xr + 1 < W && t[idx(xr + 1, ty)] === 0) xr++;
+  const dx = Math.max(x0 - (xr + 1), xl - x1, 0), dy = Math.max(y0 - (ty + 1), ty - y1, 0);
+  return Math.hypot(dx, dy);
 }
 
 /**
@@ -190,6 +211,8 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       }
       if (fromStart < ((name === 'cannon' || name === 'manta') ? RANGED_START_KEEP_OUT : ENEMY_START_KEEP_OUT)) return null;
       if (PATROL_CLEAR[name] && patrolDistance(t, tx, ty, PATROL_REACH[name], sx, sy) < PATROL_CLEAR[name]) return null;
+      if (PATROL_SHOP_CLEAR[name] && shop && stretchToBox(t, tx, ty, PATROL_REACH[name], shop.x0, shop.y0, shop.x1, shop.y1) < PATROL_SHOP_CLEAR[name]) return null;
+      if (PATROL_EXIT_CLEAR[name] && level.exitX !== undefined && stretchToPoint(t, tx, ty, PATROL_REACH[name], level.exitX + 0.5, level.exitY + 0.5) < PATROL_EXIT_CLEAR[name]) return null;
       return makeEnemySlot(t, name, tx, ty, dx, dy);
     };
     const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied);
@@ -203,7 +226,13 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       if (k < 0) break;
       placed.splice(k, 1);
     }
-    for (const r of placed) spawns.push(r);
+    // no two enemies spawn on top of each other (or hug each other): drop the later one of a too-close pair
+    const kept = [];
+    for (const r of placed) {
+      if (r.type === 'enemy-slot' && kept.some((k) => k.type === 'enemy-slot' && Math.hypot(k.x - r.x, k.y - r.y) < ENEMY_MIN_GAP)) continue;
+      kept.push(r);
+    }
+    for (const r of kept) spawns.push(r);
   }
   return { spawns, openCells: openCells.length };
 }
