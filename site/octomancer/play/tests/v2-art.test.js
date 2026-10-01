@@ -2,7 +2,7 @@
 // the rock tile is seamless, the counter slices add up, the draw code runs with the art and without it,
 // the banner title card shows, and endless mode does not fetch any of it.
 import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS } from '../js/v2-art.js';
-import { drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
+import { DIVER_SCALE, drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
 import { drawV2Marks } from '../js/v2-draw.js';
 
 function pixels(img) {
@@ -67,6 +67,19 @@ export async function runV2ArtTests(assert) {
     drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, boardX: -1, boardY: -1, label: '', tileAt }, 1);
   } catch (e) { threw = e; }
   assert('v2 art: shop, diver, caged critter, wall crack, pocket crack, ring and board draw without throwing' + (threw ? ' (' + threw + ')' : ''), threw === null);
+  {
+    // r40: Marlo is one size everywhere: sealed, freed or in the hub, from his feet to the top of his helmet, about a tile (1.0-1.1)
+    const bounds = (sealed, freed) => {
+      const c = document.createElement('canvas'); c.width = 400; c.height = 400; const g = c.getContext('2d');
+      drawDiver(g, { x: 0, y: 0, pxPerUnit: 100 }, 400, 400, 0, 1, 1, freed, sealed); // feet at the lower middle; no bubbles in the way: only count the body
+      const d = g.getImageData(0, 0, 400, 400).data;
+      let top = 400, bot = 0;
+      for (let y = 0; y < 400; y++) { let n = 0; for (let x = 100; x < 300; x++) if (d[(y * 400 + x) * 4 + 3] > 200) n++; if (n >= 20) { if (y < top) top = y; if (y > bot) bot = y; } } // rows wide enough to be the body: a bubble is only a few pixels
+      return (bot - top) / 100;
+    };
+    const hs = [bounds(true, false), bounds(false, true), bounds(false, false)];
+    assert('v2 art (r40): the diver is about 1-1.1 tiles tall sealed, freed and standing (' + hs.map((h) => h.toFixed(2)).join(' / ') + ')', hs.every((h) => h >= 0.95 && h <= 1.2) && Math.max(...hs) - Math.min(...hs) < 0.15 && DIVER_SCALE > 0.85);
+  }
   const shot = ctx.getImageData(0, 0, 640, 480).data;
   let painted = 0; for (let i = 3; i < shot.length; i += 4) if (shot[i] > 0) painted++;
   assert('v2 art: the shop and props actually painted pixels', painted > 4000);

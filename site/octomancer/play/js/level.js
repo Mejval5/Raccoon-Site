@@ -341,6 +341,41 @@ function floodWater(tiles, sx, sy) {
   return seen;
 }
 
+/** Largest sealed water cavity (tiles) that fillSealedHoles turns back into rock. */
+export const MAX_SEALED_HOLE = 3;
+
+/**
+ * r40: water components of MAX_SEALED_HOLE tiles or fewer that the start's water cannot reach are filled with rock.
+ * They read as teal holes with a glowing rim in the wall (like the removed 'hole' sprite). The vault pockets
+ * (carvePockets, 2x2) are kept. Rock only gets added, and only inside water the start cannot reach, so the
+ * route, the shop and the pattern anchors (all reachable water) never change.
+ */
+export function fillSealedHoles(tiles, sx, sy, pockets, nPockets) {
+  const W = LEVEL_W, H = LEVEL_H;
+  const reached = floodWater(tiles, sx, sy);
+  const seen = new Uint8Array(W * H);
+  const comp = new Int32Array(MAX_SEALED_HOLE + 1);
+  const stack = new Int32Array(W * H);
+  let filled = 0;
+  for (let i0 = 0; i0 < W * H; i0++) {
+    if (tiles[i0] !== 0 || reached[i0] || seen[i0]) continue;
+    let n = 0, sp = 0, keep = false;
+    stack[sp++] = i0; seen[i0] = 1;
+    while (sp > 0) {
+      const i = stack[--sp], x = i % W, y = (i / W) | 0;
+      if (n <= MAX_SEALED_HOLE) comp[n] = i;
+      n++;
+      for (let k = 0; k < (nPockets || 0); k++) if (x >= pockets[k * 3] && x < pockets[k * 3] + 2 && y >= pockets[k * 3 + 1] && y < pockets[k * 3 + 1] + 2) keep = true;
+      if (y > 0 && !seen[i - W] && tiles[i - W] === 0) { seen[i - W] = 1; stack[sp++] = i - W; }
+      if (y + 1 < H && !seen[i + W] && tiles[i + W] === 0) { seen[i + W] = 1; stack[sp++] = i + W; }
+      if (x > 0 && !seen[i - 1] && tiles[i - 1] === 0) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+      if (x + 1 < W && !seen[i + 1] && tiles[i + 1] === 0) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+    }
+    if (n <= MAX_SEALED_HOLE && !keep) { for (let k = 0; k < n; k++) tiles[comp[k]] = 1; filled += n; }
+  }
+  return filled;
+}
+
 function rockBlock(tiles, x, y) {
   for (let yy = y - 2; yy <= y + 3; yy++) for (let xx = x - 2; xx <= x + 3; xx++) if (tiles[yy * LEVEL_W + xx] === 0) return false;
   return true;
@@ -488,6 +523,9 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     }
     carvePath(tiles, sx, sy, ex, ey);
   }
+
+  // r40: no 1-3 tile water cavities sealed inside the rock (the final tiles are set by now)
+  if (!fallback || havePlan) fillSealedHoles(tiles, sx, sy, pockets, nPockets);
 
   // marker list: every marker in the level; the start and end rooms' markers become S / E
   const marks = new Int16Array(3 * 16);

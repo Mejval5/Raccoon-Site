@@ -42,8 +42,8 @@ import { drawV2Marks } from './v2-draw.js';
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
-import { planPools, createPoolState, poolStep, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
-import { drawPool } from './pool-draw.js';
+import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
+import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast } from './shop.js';
@@ -173,7 +173,7 @@ let story = getStory(); // the stage of Marlo, Pip and Quill, relics handed over
 let diveStory = { ...story }; // the story as the dive began: people move on between dives, never within one
 const diveDone = new Set(); // people whose scene was finished in this dive (nobody appears twice in a dive)
 let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
-const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {} }; // what a hub resident is saying now
+const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [] }; // what a hub resident is saying now
 /** Back in the hub: the Collector moves in after the first dive; Marlo's ring exists once he was freed in three runs. */
 function arriveInHub() {
   const key = collectorArrives(story, getMeta().dives);
@@ -256,7 +256,7 @@ let boardCooldown = false; // after closing the journal, swim away from the boar
 function announceJournal() {
   for (const id of journal.takeNew()) {
     const e = ENTRIES.find((x) => x.id === id);
-    if (e) ui.showToast('Journal: ' + e.name, 2200, true, true); // queued: never replaces a pickup / shop toast
+    if (e) ui.showToast('Journal: ' + e.name.split(',')[0], 2200, true, true); // queued: never replaces a pickup / shop toast
   }
 }
 /** An entry was met: its seen counter goes up once per dive (or hub visit), and a first meeting writes the entry. */
@@ -557,6 +557,8 @@ function render(alpha, frameMs) {
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     dreadLevel,
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
+    postOctoDraw: V2 ? v2People : null,
+    followBias: V2 && run.state === S_BIOME ? poolCameraBias() : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
   ui.updateHud({
@@ -695,15 +697,26 @@ function wallIntact(lv) {
 }
 const solidForSight = (tx, ty) => world.isSolid(tx, ty);
 
+/** r40: in an idle pool's room the camera leans towards the pedestal, so it stays in view whatever the vents do. */
+function poolCameraBias() {
+  for (const ps of poolSts) {
+    if (ps.state !== PL_IDLE || !inPoolRoom(ps.plan, octo.x, octo.y, 2)) continue;
+    return { x: ps.plan.x, y: ps.plan.y - 1.2, k: 0.55 };
+  }
+  return null;
+}
+
 /** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
   if (run.state === S_BIOME) {
     if (questUpdate(quest, octo, world, STEP)) payQuest();
+    if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
     if (ev) onShopEvent(ev);
     if (poolSts.length) {
+      hazards.setPoolGain(poolSts.some((ps) => ps.state === PL_ACTIVE) ? 1 : POOL_IDLE_VENT); // r40: the vents only blow weakly until a wager runs
       const busy = poolSts.some((ps) => ps.state === PL_ACTIVE); // one wager at a time
       for (const ps of poolSts) { if (busy && ps.state === PL_IDLE) continue; for (const pe of poolStep(ps, octo, run.shells, STEP)) onPoolEvent(pe, ps); }
     }
@@ -731,7 +744,9 @@ function stepV2(snap) {
   }
   if (lv.prompts && lv.prompts.length) {
     let best = null, bd = 1e9;
-    for (const p of lv.prompts) {
+    // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
+    const welcomed = run.state === S_HUB && (getMeta().clears | 0) >= 1;
+    for (const p of welcomed ? [] : lv.prompts) {
       const d = Math.hypot(octo.x - p.x, octo.y - p.y);
       if (d < p.r && d < bd) { best = p; bd = d; }
     }
@@ -801,7 +816,6 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
     drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
   }
-  if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
   drawRubble(c, camera, cw, ch, props.data);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
@@ -810,9 +824,15 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
     for (const ps of poolSts) drawPool(c, camera, cw, ch, ps, run.shells, t);
-    if (quest) drawQuestThing(c, camera, cw, ch, t);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+}
+/** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
+function v2People(c, camera, w2s, cw, ch) {
+  const lv = world.level, t = sim.time;
+  if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
+  if (run.state === S_BIOME) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
+  if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
 }
 
 // --- round 31: loot and secrets (js/loot.js) ---
@@ -982,7 +1002,7 @@ function drawQuestThing(c, camera, cw, ch, t) {
   const fade = st.status === ST_ACTIVE ? 1 : Math.max(0, Math.min(1, st.leave / 1.2));
   switch (p.kindId) {
     case Q_VAULT:
-      if (fade > 0) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, p.pos[0], p.pos[1] + 0.22, t, st.collected, true); c.restore(); }
+      if (fade > 0) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, st.cx, st.cy + 0.22, t, st.collected, !st.collected); c.restore(); }
       break;
     case Q_RESCUE:
       if (!st.following) drawCritter(c, camera, cw, ch, st.cx, st.cy, false, t, p.floorY, p.variant);
@@ -999,6 +1019,7 @@ function drawQuestThing(c, camera, cw, ch, t) {
 
 // --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the ledge by the board; each speaks when you come near ---
 const HUB_TALK_R = 3.4;
+const HUB_TALK_CUT = 1.6; // r40: swimming this far beyond HUB_TALK_R cuts a resident's speech
 /** Where a resident is: x, y of the feet (or the centre for the swimmers) and the head height for the bubble. */
 function hubPlace(lv, id, t, which = 0) {
   switch (id) {
@@ -1008,6 +1029,9 @@ function hubPlace(lv, id, t, which = 0) {
   }
 }
 
+/** Octopus to a resident (the feet-resident's chest, the swimmer's centre). */
+function hubDistance(lv, id, t) { const pl = hubPlace(lv, id, t); return Math.hypot(octo.x - pl.x, octo.y - (pl.fly ? pl.y : pl.y - 0.8)); }
+
 function hubStep(lv) {
   if (lv.signX === undefined || lv.signX < 0) return;
   // Quill with a relic in hand to take: whatever he was saying makes way for it as soon as the octopus is beside him
@@ -1015,24 +1039,39 @@ function hubStep(lv) {
     const q = hubPlace(lv, 'quill', sim.time);
     if (Math.hypot(octo.x - q.x, octo.y - (q.y - 0.8)) < HUB_TALK_R && (story.relicsGiven | 0) < RELICS_NEEDED) { hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = ''; hubTalk.who = ''; }
   }
+  // r40: swim away from the one who is talking and they stop (beyond the talk radius plus a margin), so the nearest resident gets the turn
+  if (hubTalk.who && talking(hubTalk.talk) && hubDistance(lv, hubTalk.who, sim.time) > HUB_TALK_R + HUB_TALK_CUT) {
+    const who = hubTalk.who;
+    hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = '';
+    hubTalk.visits[who] = Math.max(0, (hubTalk.visits[who] | 0) - 1); // the cut visit does not count: the thank-you is said next time
+    for (const [k, old] of hubTalk.undo) setStory(k, old);
+    story = getStory();
+    hubTalk.cool[who] = sim.time + 3; hubTalk.who = ''; hubTalk.undo = [];
+  }
   talkStep(hubTalk.talk, STEP);
-  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; }
+  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; hubTalk.undo = []; }
   if (talking(hubTalk.talk)) return;
   const t = sim.time;
+  // the nearest resident in range (off their cool-down) takes the turn
+  let pick = null, pickD = Infinity, pickHand = false;
   for (const r of hubResidents(questTable, story)) {
-    const pl = hubPlace(lv, r.id, t);
     // Quill holding out for a relic is worth a visit at once; anyone else waits out a short cool-down after speaking
     const handOver = r.id === 'quill' && (story.relics | 0) > (story.relicsGiven | 0) && (story.relicsGiven | 0) < RELICS_NEEDED;
     if (!handOver && (hubTalk.cool[r.id] || 0) > t) continue;
-    if (Math.hypot(octo.x - pl.x, octo.y - (pl.fly ? pl.y : pl.y - 0.8)) > HUB_TALK_R) continue;
+    const d = hubDistance(lv, r.id, t);
+    if (d > HUB_TALK_R) continue;
+    if ((handOver && !pickHand) || (handOver === pickHand && d < pickD)) { pick = r; pickD = d; pickHand = handOver; }
+  }
+  if (pick) {
+    const r = pick;
     const visit = hubTalk.visits[r.id] | 0;
     const v = hubVisit(questTable, story, r.id, visit);
     say(hubTalk.talk, v.lines);
     hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id;
+    hubTalk.undo = v.set.filter(([k]) => k.startsWith('said')).map(([k]) => [k, story[k] | 0]);
     for (const [k, n] of v.set) { setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
     story = getStory();
     for (const id of v.discover) discover(id);
-    break;
   }
 }
 
@@ -1200,6 +1239,7 @@ window.__octo = {
       story: { ...story },
       pool: poolSts.map((ps) => ({ state: ps.state, t: ps.t, x: ps.plan.x, y: ps.plan.y, floorY: ps.plan.floorY, x0: ps.plan.x0, y0: ps.plan.y0, seen: ps.seen })),
       pockets: world.level.nPockets ? Array.from(world.level.pockets) : [],
+      hubTalk: { who: hubTalk.who, text: hubTalk.talk.text },
     };
   },
   /** v2: the hazards of this level (kind code, position, state) for tests and review. */

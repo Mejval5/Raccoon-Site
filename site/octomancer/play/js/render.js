@@ -1246,7 +1246,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, lightR = 0,
+      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1263,7 +1263,10 @@ export function createRenderer(ctx, world) {
       // octopus's own.
       const followX = octo.prevX + (octo.x - octo.prevX) * alpha;
       const followY = octo.prevY + (octo.y - octo.prevY) * alpha;
-      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy);
+      // r40: an optional lean of the camera target (the pool keeps its pedestal in view); the octopus's own pull-back clamp still applies
+      const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
+      const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
+      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
       const shakePx = shakePxIn ? shakePxIn : shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
@@ -1311,6 +1314,7 @@ export function createRenderer(ctx, world) {
       if (extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       drawOcto(octo, alpha, canvasW, canvasH, time);
+      if (postOctoDraw) postOctoDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       ctx.restore();
       if (lightR > 0) { const o = worldToScreen(camera, canvasW, canvasH, followX, followY); drawLight(canvasW, canvasH, o.x, o.y, lightR); }
       drawDepthTint(canvasW, canvasH, depth);

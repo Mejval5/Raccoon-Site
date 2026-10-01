@@ -45,6 +45,29 @@ export async function runBiome1Tests(assert, approx) {
   const bank = createRoomBank(rooms);
   bank.fallbackBank = createRoomBank(await loadRoomsJson());
 
+  // --- r40: no 1-3 tile water cavity sealed off from the start's water (outside the 2x2 vault pockets) ---
+  {
+    let bad = 0, seenN = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      for (let lvl = 1; lvl <= 3; lvl++) {
+        const lv = generateLevel(seed * 7 + 3, lvl, bank);
+        const t = lv.tiles, W = LEVEL_W, H = LEVEL_H;
+        const reach = new Uint8Array(W * H), st = [lv.startY * W + lv.startX];
+        reach[st[0]] = 1;
+        while (st.length) { const i = st.pop(), x = i % W; for (const n of [i - W, i + W, x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1]) { if (n < 0 || n >= W * H || reach[n] || t[n] !== 0) continue; reach[n] = 1; st.push(n); } }
+        const seen = new Uint8Array(W * H);
+        for (let i0 = 0; i0 < W * H; i0++) {
+          if (t[i0] !== 0 || reach[i0] || seen[i0]) continue;
+          const comp = [i0]; seen[i0] = 1;
+          for (let k = 0; k < comp.length; k++) { const j = comp[k], x = j % W; for (const n of [j - W, j + W, x > 0 ? j - 1 : -1, x < W - 1 ? j + 1 : -1]) { if (n < 0 || n >= W * H || seen[n] || t[n] !== 0) continue; seen[n] = 1; comp.push(n); } }
+          seenN++;
+          if (comp.length <= 3) bad++;
+        }
+      }
+    }
+    assert('biome1 (r40): no level has a sealed water cavity of 3 tiles or fewer (900 levels, ' + seenN + ' larger sealed caves kept)', bad === 0);
+  }
+
   // --- parsing ---
   assert(`biome1: ${rooms.length} rooms (r36: 30 + 10 new, 36-45) of 10x16`,
     rooms.length >= 36 && rooms.length <= 45 && rooms.every((r) => r.cells.length === ROOM_H && r.cells.every((s) => s.length === ROOM_W)));

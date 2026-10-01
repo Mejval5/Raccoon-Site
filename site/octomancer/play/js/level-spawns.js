@@ -280,8 +280,9 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         // r39 Challenge Pool: two floor vents either side of the plinth (they only push); the pedestal, the rocks and the
         // chest are pool.js. No enemy shares the room.
         pools.push(x0, y0);
-        for (const lx of [2, 7]) {
-          for (const off of [0, 1, -1]) {
+        // r40: the left vent sits at column 2 or 1, the right one at 7 or 8: column 3 beside the plinth is the host's
+        for (const [lx, offs] of [[2, [0, -1]], [7, [0, 1]]]) {
+          for (const off of offs) {
             const tx = x0 + lx + off;
             let ty = -1;
             for (let y = y0 + 5; y <= y0 + ROOM_H - 3; y++) if (open(tx, y) && !open(tx, y + 1)) { ty = y; break; }

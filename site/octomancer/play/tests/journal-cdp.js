@@ -172,6 +172,37 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
       }
       await pg.close();
     }
+    // ---- r40: a complete People entry (every found, every story line the flags can reach) fits the fixed page without scrolling,
+    // on desktop, phone portrait and phone landscape
+    {
+      const ids = require('../data/journal.json').entries.map((e) => e.id);
+      const pg = await browser.newPage();
+      pg.on('pageerror', (e) => errs.push('' + e));
+      await pg.evaluateOnNewDocument("try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:" + JSON.stringify(ids) + "}))}catch(e){}");
+      for (const [w, h, mobile] of [[1440, 900, false], [375, 812, true], [812, 375, true], [1024, 600, false]]) {
+        await pg.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile });
+        await pg.goto(BASE + '?at=1&seed=5', { waitUntil: 'networkidle0', timeout: 60000 });
+        await pg.waitForFunction(() => window.__octo, { timeout: 30000 });
+        await sleep(400);
+        const res = await pg.evaluate(async () => {
+          for (const [k, n] of [['diverFreed', 9], ['critterFreed', 9], ['relicsGiven', 9]]) __octo.setStory(k, n);
+          const out = [];
+          for (const id of ['person-diver', 'person-critter', 'person-keeper', 'person-collector']) {
+            __octo.openJournal('people', id);
+            await new Promise((r) => setTimeout(r, 60));
+            const page = document.querySelector('.octo-bk-right');
+            const box = document.querySelector('.octo-bk-entry');
+            out.push({ id, steps: document.querySelectorAll('.octo-bk-steps li').length, over: page.scrollHeight - page.clientHeight, ch: page.clientHeight, sh: page.scrollHeight, visible: getComputedStyle(page).display !== 'none', story: !!box && box.classList.contains('has-story') });
+          }
+          __octo.closeJournal();
+          return out;
+        });
+        const bad = res.filter((x) => !x.visible || !x.story || x.steps < 1 || x.over > 1);
+        check(w + 'x' + h + ': every People entry at its longest story fits the fixed page (no scrolling)', bad.length === 0, JSON.stringify(res.map((x) => [x.id.slice(7), x.steps, x.sh + '/' + x.ch])));
+        if (w === 375 || w === 1440) { await pg.evaluate(() => __octo.openJournal('people', 'person-diver')); await sleep(300); await pg.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-people-' + w + '.png') }); await pg.evaluate(() => __octo.closeJournal()); }
+      }
+      await pg.close();
+    }
   } catch (e) { check('script ran to the end', false, String(e && e.stack || e)); }
   check('no console errors', errs.length === 0, errs.join(' | '));
   await browser.close();

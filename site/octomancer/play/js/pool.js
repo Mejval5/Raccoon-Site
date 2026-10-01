@@ -13,6 +13,7 @@ import { SET_POOL } from './level.js';
 export const POOL_COST = 5;
 export const POOL_SECONDS = 20;
 export const POOL_PRIZE = 14;
+export const POOL_IDLE_VENT = 0.2; // r40: the room's vents blow at this fraction of a jet's force until a wager runs (an idle octopus used to be pushed to the ceiling)
 export const PAY_R = 0.9;      // octopus centre to the pedestal centre
 export const CHEST_PR = 0.8;   // octopus centre to the chest centre
 export const RISE_S = 1.0;        // s the prize chest takes to rise out of the pedestal before it can be opened

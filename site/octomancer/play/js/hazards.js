@@ -108,7 +108,9 @@ export function createHazards(props = null) {
     x0: new Float32Array(CAP), y0: new Float32Array(CAP), // rest position (rock)
     pid: new Int32Array(CAP).fill(-1), // prop index (rock, v2)
     hit: new Uint8Array(CAP), // rock: it has already hurt the octopus this drop (one hit per rock)
+    pool: new Uint8Array(CAP), // jet: one of the Challenge Pool's vents (its push is scaled by poolGain, weak until a wager runs)
   };
+  let poolGain = 1;
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
 
@@ -122,7 +124,7 @@ export function createHazards(props = null) {
     d.t[i] = rec.hk === HZ_EEL ? (i * 0.7) % EEL_PERIOD : 0;
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
-    d.pid[i] = -1; d.hit[i] = 0;
+    d.pid[i] = -1; d.hit[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -152,7 +154,7 @@ export function createHazards(props = null) {
     const rx = octo.x - d.x[i], ry = octo.y - d.y[i];
     const s = rx * dx + ry * dy, l = -rx * dy + ry * dx;
     if (s < 0 || s > d.len[i] || Math.abs(l) > JET_HALF_WIDTH) return;
-    const f = JET_ACC * (1 - 0.5 * s / d.len[i]);
+    const f = JET_ACC * (d.pool[i] ? poolGain : 1) * (1 - 0.5 * s / d.len[i]);
     octo.vx += dx * f * dt;
     octo.vy += dy * f * dt;
   }
@@ -269,6 +271,8 @@ export function createHazards(props = null) {
     /** Add one record directly (tests, debug). Returns its index, or -1 when full. */
     add,
     count() { return d.n; },
+    /** r40: the Challenge Pool's vents push with this fraction of a jet's force (weak while the pool is idle, full during a wager). */
+    setPoolGain(g) { poolGain = g; },
     /** One fixed step (after the octopus moved). Picks up the hazard records of every resident chunk once. */
     update(dt, time, octo, world, resident) {
       events.length = 0;

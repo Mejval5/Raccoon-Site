@@ -67,16 +67,17 @@ function clampNum(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
  * state) instead of snapping straight to it.
  * @param {number} vx octopus velocity (world units/s), for the round-8 look-ahead offset; omit/0 for no look-ahead.
  * @param {number} vy
+ * @param {number} [aimX] r40: where the camera wants to look (default the octopus); the octopus is still kept within 30% of the centre
  */
-export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt = 1, vx = 0, vy = 0) {
+export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt = 1, vx = 0, vy = 0, aimX = targetX, aimY = targetY) {
   cam.pxPerUnit = computePxPerUnit(canvasW, canvasH);
   const halfViewW = (canvasW / cam.pxPerUnit) / 2;
   const halfViewH = (canvasH / cam.pxPerUnit) / 2;
 
   const aheadX = clampNum(vx * CAMERA_LOOKAHEAD_TIME, -CAMERA_LOOKAHEAD_MAX, CAMERA_LOOKAHEAD_MAX);
   const aheadY = clampNum(vy * CAMERA_LOOKAHEAD_TIME, -CAMERA_LOOKAHEAD_MAX, CAMERA_LOOKAHEAD_MAX);
-  const desiredX = targetX + aheadX;
-  const desiredY = targetY + aheadY;
+  const desiredX = aimX + aheadX; // r40: the aim may lean away from the octopus (the pool's pedestal); the octopus clamp below still uses the octopus
+  const desiredY = aimY + aheadY;
 
   const clampedX = worldW > halfViewW * 2
     ? Math.min(Math.max(desiredX, halfViewW), worldW - halfViewW)

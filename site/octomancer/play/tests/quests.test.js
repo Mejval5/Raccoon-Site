@@ -181,6 +181,19 @@ export async function runQuestTests(assert) {
     assert('quest vault: far from the cache nothing happens, near him he calls out (meet, ask) through the rock', questUpdate(st, { x: 15, y: 20 }, stubWorld) === false && st.talk.text === L.meet && st.status === ST_ACTIVE);
     assert('quest vault: touching the cache completes the quest and he says help, then thank', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected && st.talk.text === L.help && st.talk.q[0] === L.thank && st.leave > 0);
     assert('quest vault: completing it twice is impossible', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === false);
+    // r40: freed when the pocket is open and the octopus is within about 2 tiles (not only at touch range); a sealed pocket never frees him
+    const wall = { isSolid: (x) => x >= 22 && x < 23 };
+    const sa = mk(Q_VAULT, Float32Array.of(20.5, 20.55), { npc: 'marlo' });
+    assert('quest vault (r40): a sealed pocket (rock between) does not free him even 1.8 tiles away', questUpdate(sa, { x: 22.3, y: 20.5 }, wall) === false && !sa.collected);
+    const sb = mk(Q_VAULT, Float32Array.of(20.5, 20.55), { npc: 'marlo' });
+    assert('quest vault (r40): beyond about 2 tiles he stays', questUpdate(sb, { x: 22.8, y: 20.5 }, stubWorld) === false && !sb.collected);
+    assert('quest vault (r40): open pocket, octopus 1.8 tiles away: freed', questUpdate(sb, { x: 22.3, y: 20.5 }, stubWorld) === true && sb.collected);
+    const y0 = sb.cy;
+    const sky = { isSolid: (x, y) => y < 12 };
+    for (let i = 0; i < 100; i++) questUpdate(sb, { x: 22.3, y: 20.5 }, sky);
+    assert('quest vault (r40): after freeing he swims up and out of the pocket (higher than where he sat) and is still around for a few seconds', sb.cy < y0 - 0.8 && sb.leave > 1.2);
+    for (let i = 0; i < 200; i++) questUpdate(sb, { x: 22.3, y: 20.5 }, sky);
+    assert('quest vault (r40): his time runs out after the swim (he has faded)', sb.leave <= 0);
   }
 
   // ---- the hub residents ----

@@ -500,6 +500,21 @@ body {
 .octo-bk-steps { margin: 4px 0 0; padding-left: 20px; font: 600 13px/1.35 'Quicksand', sans-serif; color: #4a3826; text-align: left; }
 .octo-bk-steps li { margin: 0 0 3px; }
 .octo-bk-steps li::marker { color: #8a2f1e; font-weight: 700; }
+/* r40: a People page with its story: compact, so a complete entry fits the fixed page (picture on top on a wide page, beside the text on a phone or a short screen) */
+.octo-bk-bio { display: flex; flex-direction: column; align-items: center; gap: 6px; align-self: stretch; }
+.octo-bk-entry.has-story { gap: 6px; }
+.octo-bk-entry.has-story .octo-bk-plate-big { width: 104px; border-radius: 14px; }
+.octo-bk-entry.has-story .octo-bk-name { font-size: 21px; }
+.octo-bk-entry.has-story .octo-bk-text { font-size: 13px; line-height: 1.3; }
+.octo-bk-entry.has-story .octo-bk-steps { font-size: 12.5px; line-height: 1.3; }
+.octo-bk-entry.has-story .octo-bk-steps li { margin-bottom: 2px; }
+.octo-bk-entry.has-story .octo-bk-sub { margin-top: 2px; }
+.octo-bk-entry.has-story .octo-bk-ledger { margin-top: 2px; padding-top: 5px; gap: 2px; }
+.octo-bk-entry.has-story .octo-bk-lrow { font-size: 13px; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-story .octo-bk-bio { flex-direction: row; align-items: center; gap: 10px; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-story .octo-bk-plate-big { width: 84px; flex: none; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-story .octo-bk-name { font-size: 18px; text-align: left; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-story .octo-bk-text { font-size: 12.5px; }
 .octo-bk-turn, .octo-bk-close { min-width: 44px; min-height: 44px; border-radius: 999px; border: 2px solid #0f3039; background: var(--paper); color: var(--ink); font: 700 22px/1 'Quicksand', sans-serif; cursor: pointer; padding: 0 12px; box-shadow: 0 2px 0 rgba(0,0,0,.35); }
 .octo-bk-close { font-size: 14px; padding: 0 20px; }
 .octo-bk-turn:disabled { opacity: .35; cursor: default; }
@@ -540,6 +555,16 @@ body {
   .octo-bk-name { font-size: 20px; }
   .octo-bk-text { font-size: 13px; line-height: 1.3; }
   .octo-bk-qbig { width: 52px; height: 52px; font-size: 36px; }
+  .octo-bk-entry.has-story .octo-bk-bio { flex-direction: row; align-items: center; gap: 10px; }
+  .octo-bk-right { padding-bottom: 8px; }
+  .octo-bk-entry.has-story { gap: 4px; padding-top: 0; }
+  .octo-bk-entry.has-story .octo-bk-kicker { display: none; }
+  .octo-bk-entry.has-story .octo-bk-plate-big { width: 56px; flex: none; }
+  .octo-bk-entry.has-story .octo-bk-name { font-size: 16px; text-align: left; }
+  .octo-bk-entry.has-story .octo-bk-text { font-size: 12px; line-height: 1.25; max-width: none; }
+  .octo-bk-entry.has-story .octo-bk-steps { font-size: 11.5px; line-height: 1.22; }
+  .octo-bk-entry.has-story .octo-bk-steps li { margin-bottom: 1px; }
+  .octo-bk-entry.has-story .octo-bk-lrow { font-size: 12px; }
   .octo-bk-plate { max-width: 62px; }
   .octo-bk-foot { padding-top: 3px; }
 }

@@ -149,11 +149,18 @@ export function createJournalScreen(root, journal, handlers = {}) {
     const plate = el('div', 'octo-bk-plate octo-bk-plate-big');
     plate.appendChild(artCanvas(e.id, 192, !e.found));
     if (!e.found) plate.appendChild(el('span', 'octo-bk-q octo-bk-qbig', '?'));
-    box.append(plate, el('div', 'octo-bk-name', e.found ? e.name : '???'));
+    // a person's questline so far (Spelunky 2's People pages): what happened, from the save's story flags
+    const lines = e.found && e.story && handlers.getStory ? storyLines(e, handlers.getStory()) : [];
+    if (lines.length) {
+      // r40: a People page with its story is a compact page: a small picture, then (beside it on a phone or a short screen) the name, then the
+      // description, the story and the counters, so a complete entry fits the fixed page without scrolling
+      box.classList.add('has-story');
+      const bio = el('div', 'octo-bk-bio');
+      bio.append(plate, el('div', 'octo-bk-name', e.name));
+      box.append(bio, el('div', 'octo-bk-text', e.text));
+    } else box.append(plate, el('div', 'octo-bk-name', e.found ? e.name : '???'));
     if (e.found) {
-      box.appendChild(el('div', 'octo-bk-text', e.text));
-      // a person's questline so far (Spelunky 2's People pages): what happened, from the save's story flags
-      const lines = e.story && handlers.getStory ? storyLines(e, handlers.getStory()) : [];
+      if (!lines.length) box.appendChild(el('div', 'octo-bk-text', e.text));
       if (lines.length) {
         const story = el('div', 'octo-bk-story');
         story.appendChild(el('div', 'octo-bk-sub', 'Story so far'));

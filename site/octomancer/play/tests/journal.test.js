@@ -1,6 +1,6 @@
 // B1-4 journal tests (journal.js + save.js persistence).
 import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, completion, percent, counterRows, storyLines, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
-import { artList, hasArt, FN } from '../js/journal-art.js';
+import { artList, hasArt, FN, GAME_DRAW } from '../js/journal-art.js';
 import { ITEM_DEFS } from '../js/items.js';
 import { getJournalStats, saveJournalStats, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, _resetForTests } from '../js/save.js';
 
@@ -51,6 +51,7 @@ export async function runJournalTests(assert) {
         if (!checked.has(art.img)) { const r = await fetch(art.img); checked.set(art.img, r.ok); }
         if (!checked.get(art.img)) bad.push(id + ' img');
       } else if (art.item) { if (!ITEM_DEFS[art.item]) bad.push(id + ' item'); }
+      else if (art.game) { if (typeof GAME_DRAW[art.game] !== 'function') bad.push(id + ' game'); }
       else if (art.fn) { if (typeof FN[art.fn] !== 'function') bad.push(id + ' fn'); }
       else bad.push(id + ' empty');
     }

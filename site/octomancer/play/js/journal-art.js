@@ -6,6 +6,7 @@
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { ENTRIES } from './journal.js';
+import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
@@ -115,22 +116,6 @@ export const FN = {
     c.fillStyle = INK; c.beginPath(); c.arc(-0.16, -0.25, 0.08, 0, TAU); c.arc(0.16, -0.25, 0.08, 0, TAU); c.fill();
     c.strokeStyle = INK; c.lineWidth = 0.06; c.beginPath(); c.arc(0, 0.05, 0.2, 0.2, Math.PI - 0.2); c.stroke();
   },
-  diver(c) {
-    stroke(c, '#e0a94a', 0.09); c.beginPath(); c.roundRect(-0.4, 0.0, 0.8, 0.85, 0.2); c.fill(); c.stroke(); // suit
-    stroke(c, '#c7d3dc', 0.09); c.beginPath(); c.arc(0, -0.38, 0.46, 0, TAU); c.fill(); c.stroke(); // helmet
-    c.fillStyle = '#2a4a63'; c.beginPath(); c.ellipse(0.04, -0.38, 0.28, 0.24, 0, 0, TAU); c.fill();
-    c.fillStyle = 'rgba(255,255,255,0.55)'; c.beginPath(); c.arc(-0.06, -0.46, 0.07, 0, TAU); c.fill();
-    c.strokeStyle = INK; c.lineWidth = 0.08; c.beginPath(); c.moveTo(-0.4, 0.2); c.lineTo(-0.7, -0.15); c.stroke();
-    c.strokeStyle = 'rgba(210,240,255,0.85)'; c.lineWidth = 0.05; c.beginPath(); c.arc(0.55, -0.85, 0.08, 0, TAU); c.stroke(); c.beginPath(); c.arc(0.72, -0.6, 0.05, 0, TAU); c.stroke();
-  },
-  critter(c) {
-    stroke(c, '#7ac7e8', 0.08); c.beginPath(); c.ellipse(0, 0.1, 0.42, 0.34, 0, 0, TAU); c.fill(); c.stroke();
-    c.fillStyle = '#fff'; c.beginPath(); c.arc(-0.14, 0.02, 0.1, 0, TAU); c.arc(0.14, 0.02, 0.1, 0, TAU); c.fill();
-    c.fillStyle = INK; c.beginPath(); c.arc(-0.12, 0.04, 0.05, 0, TAU); c.arc(0.16, 0.04, 0.05, 0, TAU); c.fill();
-    c.strokeStyle = '#8a6a3a'; c.lineWidth = 0.08;
-    for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(i * 0.25, -0.62); c.lineTo(i * 0.25, 0.72); c.stroke(); }
-    c.beginPath(); c.moveTo(-0.82, -0.62); c.lineTo(0.82, -0.62); c.moveTo(-0.82, 0.72); c.lineTo(0.82, 0.72); c.stroke();
-  },
   wreck(c) {
     stroke(c, '#6b4a2f', 0.07); c.beginPath(); c.moveTo(-0.05, 0.1); c.lineTo(-0.2, -0.95); c.lineTo(-0.1, -0.95); c.lineTo(0.08, 0.1); c.closePath(); c.fill(); c.stroke();
     c.fillStyle = 'rgba(210,218,205,0.9)'; c.beginPath(); c.moveTo(-0.18, -0.9); c.lineTo(0.6, -0.78); c.lineTo(0.5, -0.35); c.lineTo(0.3, -0.45); c.lineTo(0.15, -0.2); c.lineTo(-0.1, -0.35); c.closePath(); c.fill(); c.stroke();
@@ -161,6 +146,17 @@ export const FN = {
   },
 };
 
+/**
+ * r40: the people on the People pages are drawn by the very functions the game draws them with (v2-props-draw.js), at plate
+ * scale: a camera whose origin is the plate's centre (cw = ch = 0 puts the screen centre at the translated origin).
+ * Each takes the plate's pixel size and paints Marlo, Pip or Quill the way they stand in the hub.
+ */
+export const GAME_DRAW = {
+  diver(c, px) { drawDiver(c, { x: 0, y: 0, pxPerUnit: px * 0.6 }, 0, 0, 0, 0.58, 0.6, true, false); },
+  critter(c, px) { drawCritter(c, { x: 0, y: 0, pxPerUnit: px * 1.5 }, 0, 0, 0, 0.04, true, 0.6, 0, ''); },
+  collector(c, px) { drawCollector(c, { x: 0, y: 0, pxPerUnit: px * 0.58 }, 0, 0, 0, 0.62, 0.6, false); },
+};
+
 const cache = new Map();
 /** The locked silhouette's ink: a warm brown that reads on parchment. */
 const LOCKED_INK = '#5b4636';
@@ -180,6 +176,8 @@ function paint(ctx, id, px) {
     }
   } else if (a.item) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
+  } else if (a.game && GAME_DRAW[a.game]) {
+    GAME_DRAW[a.game](ctx, px);
   } else if (a.fn && FN[a.fn]) {
     ctx.scale(px * 0.46, px * 0.46);
     FN[a.fn](ctx, px * 0.46);

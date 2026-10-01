@@ -346,13 +346,15 @@ export function drawCage(ctx, camera, cw, ch, x, floorY, w, h, open) {
  * arms at his sides and bubbles from his helmet; otherwise he stands on a floor, planted, with an idle bob of the upper body
  * and one arm waving when `freed`.
  */
+/** Marlo's size: his helmet top is 1.14 u above his feet, so about 1.05 tiles tall. */
+export const DIVER_SCALE = 0.92;
 export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed = false) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 3 || cy > ch + ppu * 2) return;
   const lw = Math.max(1.5, ppu * 0.055);
   const bob = Math.sin(time * 1.7) * ppu * 0.02;
-  const u = ppu * (sealed ? 0.74 : 1);
+  const u = ppu * DIVER_SCALE; // r40: one size everywhere (sealed, freed, in the hub)
   ctx.save();
   ctx.translate(cx, cy);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';

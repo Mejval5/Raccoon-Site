@@ -30,7 +30,9 @@ export const CAGE_BLAST_R = 2.6;         // a bomb this close to the cage breaks
 
 const TRAIL = 64;            // octopus positions kept (one per fixed step)
 const CRITTER_LAG = 22;      // steps behind the octopus (about 0.45 s)
-const TOUCH_R = 1.1;         // octopus centre to the thing's centre
+export const FREE_R = 2.0;   // r40: Marlo is freed when his pocket is open (clear water between you) and the octopus is this close to him
+const FREE_SWIM = 3.6;       // seconds he swims up and out of the pocket before he has faded (the last 1.2 s are the fade)
+const SWIM_SPEED = 1.5, RISE_SPEED = 1.1;
 const MEET_R = 8.5;          // an NPC speaks up when the octopus is this close
 const ASK_AGAIN_R = 3.5, ASK_AGAIN_S = 12;
 const MIN_START_DIST = 9;
@@ -183,7 +185,8 @@ export function createQuestState(plan) {
     plan, status: ST_ACTIVE, progress: 0, goal: plan.count,
     following: false,                       // rescue: the cage is broken, the critter trails the octopus
     brokenBy: '',                           // rescue: 'dash' or 'bomb'
-    cx: floor ? plan.pos[0] : 0, cy: floor ? plan.pos[1] : 0,
+    cx: plan.pos[0], cy: plan.pos[1],        // rescue: the critter; vault: the diver (he swims out of the pocket once freed)
+    wx: 0, wy: 0,                           // vault: where he swims to first (beside the octopus when it freed him)
     collected: false,                       // vault: freed
     trail: new Float32Array(TRAIL * 2), head: 0, filled: 0,
     clock: 0, met: false, helped: false, lastAsk: -99, leave: 0,
@@ -196,7 +199,7 @@ function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_
 /** The NPC's position, where the speech bubble hangs: [x, y of the head]. */
 export function questSpeaker(st) {
   const p = st.plan;
-  if (p.kindId === Q_VAULT) return [p.pos[0] + 0.1, p.pos[1] - 1.0];
+  if (p.kindId === Q_VAULT) return [st.cx + 0.1, st.cy - 1.0];
   return [st.cx, st.cy - (p.variant === 'mama' ? 0.95 : 0.7)];
 }
 
@@ -215,10 +218,32 @@ export function questUpdate(st, octo, world, dt = STEP) {
   return done;
 }
 
+/** Clear water along the segment (the pocket is open: nothing solid between the two points). */
+function clearBetween(world, x0, y0, x1, y1) {
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.2));
+  for (let i = 0; i <= n; i++) if (world.isSolid(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n)) return false;
+  return true;
+}
+
+/** r40: the freed diver swims to the octopus, then straight up (round an obstacle when blocked) and fades with the last second of `leave`. */
+function swimOut(st, world, dt) {
+  const dx = st.wx - st.cx, dy = st.wy - st.cy, d = Math.hypot(dx, dy);
+  let nx = st.cx, ny = st.cy;
+  if (d > 0.15) { nx += dx / d * SWIM_SPEED * dt; ny += dy / d * SWIM_SPEED * dt; }
+  else ny -= RISE_SPEED * dt;
+  const free = (x, y) => !world.isSolid(x, y - 0.8) && !world.isSolid(x, y);
+  if (free(nx, ny)) { st.cx = nx; st.cy = ny; } // blocked: slide along one axis
+  else if (free(nx, st.cy)) st.cx = nx;
+  else if (free(st.cx, ny)) st.cy = ny;
+}
+
 function questStep(st, octo, world, dt) {
-  if (st.status !== ST_ACTIVE) { if (st.leave > 0) st.leave -= dt; return false; }
+  if (st.status !== ST_ACTIVE) {
+    if (st.leave > 0) { st.leave -= dt; if (st.plan.kindId === Q_VAULT && st.collected) swimOut(st, world, dt); }
+    return false;
+  }
   const k = st.plan.kindId;
-  const [nx, ny] = k === Q_VAULT ? [st.plan.pos[0], st.plan.pos[1]] : [st.cx, st.cy];
+  const [nx, ny] = [st.cx, st.cy];
   const d = Math.hypot(octo.x - nx, octo.y - ny);
   if (!st.helped) {
     if (!st.met && d < MEET_R) { st.met = true; st.lastAsk = st.clock; speak(st, 'meet'); speak(st, 'ask'); }
@@ -257,7 +282,15 @@ function questStep(st, octo, world, dt) {
       if (!world.isSolid(nx2, ny2)) { st.cx = nx2; st.cy = ny2; }
     }
   } else if (k === Q_VAULT && !st.collected) {
-    if (d < TOUCH_R) { st.collected = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); st.leave = 6; done = finish(st); }
+    // r40: freed only when the pocket is open (clear water from the octopus to him) and the octopus is within about 2 tiles
+    if (d < FREE_R && clearBetween(world, octo.x, octo.y, st.cx, st.cy)) {
+      st.collected = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
+      speak(st, 'help'); speak(st, 'thank');
+      st.leave = FREE_SWIM;
+      // he first swims up beside the octopus (above it, so he is not on top of it), then out through the opening
+      st.wx = octo.x; st.wy = world.isSolid(octo.x, octo.y - 1.1) ? octo.y : octo.y - 1.1;
+      done = finish(st);
+    }
   }
   return done;
 }
