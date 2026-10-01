@@ -21,3 +21,11 @@ node_modules/*
 firebase-debug.log
 # Local Claude Code team definitions (personas are private, never pushed)
 .claude/agents/
+
+# Local dev server port, picked once by run_locally.bat
+.local-port
+# Local preview config, uses the port above
+.claude/launch.json
+
+# Firebase emulator logs
+*-debug.log

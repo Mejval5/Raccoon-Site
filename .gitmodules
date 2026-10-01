@@ -2,3 +2,7 @@
 	path = octomancer-unity
 	url = git@github.com:Mejval5/Octomancer.git
 	branch = main
+[submodule "shadinglanguagex-src"]
+	path = shadinglanguagex-src
+	url = git@github.com:Mejval5/ShadingLanguageX.git
+	branch = main

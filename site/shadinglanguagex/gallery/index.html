@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ShadingLanguageX gallery | Raccoon Website</title>
+<meta name="description" content="Shaders people wrote in ShadingLanguageX, compiled to MaterialX and rendered live in your browser as you scroll.">
+<link rel="icon" href="/racc-light.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/playground.css">
+<link rel="stylesheet" href="../css/gallery.css">
+<link rel="modulepreload" href="../lib/JsMxslc.js">
+<link rel="modulepreload" href="../lib/JsMaterialXGenShader.js">
+</head>
+<body>
+<header>
+  <a class="home" href="/projects/" title="Back to projects">&larr; Projects</a>
+  <h1>ShadingLanguageX <span>gallery</span></h1>
+  <span class="credit">A demo of <a href="https://github.com/jakethorn/ShadingLanguageX" target="_blank" rel="noopener">Jake Thorn&rsquo;s ShadingLanguageX</a></span>
+  <a class="navlink" href="../">Editor</a>
+  <a class="navlink" href="./" aria-current="page">Gallery</a>
+  <span class="api-badge" data-api-badge hidden title="No backend on this server: shared projects stay in this browser">mock gallery</span>
+  <div class="spacer"></div>
+  <label class="check"><input type="checkbox" id="gv-spin" checked> Spin</label>
+  <div class="threads" id="gv-threads" aria-live="off"></div>
+</header>
+
+<section id="gallery-view" aria-label="Gallery">
+  <div class="gv-bar">
+    <div class="tabs" id="gv-source" role="tablist">
+      <button role="tab" data-src="gallery" aria-selected="true">Shared</button>
+      <button role="tab" data-src="mine" aria-selected="false">My projects</button>
+    </div>
+    <input type="search" id="gv-search" placeholder="Search by name or author" aria-label="Search projects">
+    <span class="hint" id="gv-count"></span>
+  </div>
+  <div class="gv-grid" id="gv-grid"></div>
+</section>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="../js/gallery-page.js"></script>
+</body>
+</html>

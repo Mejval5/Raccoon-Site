@@ -1,0 +1,187 @@
+// The project parts of the editor header: the Project dropdown (your projects and the
+// gallery), the name field and state, + New, examples that start a new project, and the
+// read-only view of somebody else's gallery entry with its Remix button.
+import { $, ago } from './util.js';
+import { esc as escHtml } from './highlight.js';
+import { PRESETS } from './presets.js';
+import { local, cur, setCurrent, projState, freshName } from './projects.js';
+import { api } from './api.js';
+import { toast } from './log.js';
+
+const NEW_PROJECT_SRC = '// New project. Declare a material to see it on the preview.\n\nsurfaceshader surface = standard_surface();\nsurface.base_color = color3{0.8, 0.3, 0.2};\n\nmaterial mat = surfacematerial(surface);\n';
+
+let ctx = null;      // { src, doCompile } from app.js
+let viewing = null;  // a gallery entry open read-only, or null
+export const getViewing = () => viewing;
+
+export function initProjectsUI(c) {
+  ctx = c;
+  bindHeader();
+  bindDropdown();
+  // deep links: ?g=<gallery id> opens a shared entry, ?p=<project id> one of yours
+  const q = new URLSearchParams(location.search);
+  if (q.get('g')) openGallery(q.get('g'));
+  else { if (q.get('p')) setCurrent(q.get('p')); openLocal(cur().id, false); }
+}
+
+// ---------------------------------------------------------------- header
+export function syncHeader() {
+  const nameEl = $('proj-name'), share = $('share'), del = $('unshare');
+  $('projs-cur').textContent = viewing ? `${viewing.name} (gallery)` : cur().name;
+  if (viewing) {
+    nameEl.value = viewing.name; nameEl.readOnly = true;
+    $('proj-state').textContent = `v${viewing.version} by ${viewing.author}`;
+    share.hidden = true; del.hidden = true;
+    return;
+  }
+  const p = cur();
+  nameEl.value = p.name; nameEl.readOnly = false;
+  $('proj-state').textContent = projState(p);
+  share.hidden = false;
+  share.textContent = p.galleryId ? 'Update gallery' : 'Share';
+  share.disabled = !!p.galleryId && p.src === p.galleryVersionSrc;
+  del.hidden = !p.galleryId;
+}
+function setViewing(item) {
+  viewing = item;
+  ctx.src.ta.readOnly = !!item;
+  $('viewbar').hidden = !item;
+  if (item) $('viewbar-text').textContent = `Viewing “${item.name}” by ${item.author} from the gallery (read-only)`;
+}
+function setUrl(param, id) {
+  try { history.replaceState(null, '', id ? `${location.pathname}?${param}=${encodeURIComponent(id)}` : location.pathname); } catch { /* sandboxed */ }
+}
+
+export function openLocal(id, compile = true) {
+  setViewing(null);
+  setCurrent(id);
+  ctx.src.value = cur().src;
+  setUrl('p', id);
+  syncHeader(); renderMine();
+  if (!$('list-gal').hidden) renderGalleryList();
+  if (compile) ctx.doCompile(true);
+}
+export async function openGallery(id) {
+  const owned = local.list.find((p) => p.galleryId === id);
+  if (owned) { openLocal(owned.id); return; } // your own entry opens your editable copy
+  try {
+    const item = await api.get(id);
+    setViewing(item);
+    ctx.src.value = item.src;
+    setUrl('g', id);
+    syncHeader(); renderMine(); renderGalleryList();
+    ctx.doCompile(true);
+  } catch (e) {
+    toast(`Could not open it: ${e.message}`, true);
+    if (!cur()) return;
+    openLocal(cur().id, false);
+  }
+}
+export function newProject(name, src) {
+  const p = local.add(freshName(name), src);
+  openLocal(p.id);
+  showSideTab('mine');
+  return p;
+}
+
+function bindHeader() {
+  // edits save to the current project
+  let saveTimer = 0;
+  ctx.src.ta.addEventListener('input', () => {
+    if (viewing) return;
+    const p = cur();
+    p.src = ctx.src.value; p.updated = Date.now();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { local.save(); renderMine(); }, 300);
+    syncHeader();
+  });
+  $('proj-name').addEventListener('change', () => {
+    if (viewing) return;
+    const p = cur();
+    p.name = $('proj-name').value.trim() || 'untitled';
+    p.updated = Date.now(); local.save(); syncHeader(); renderMine();
+  });
+  $('proj-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.currentTarget.blur(); });
+  $('new-proj').addEventListener('click', () => newProject('untitled', NEW_PROJECT_SRC));
+  $('remix').addEventListener('click', () => {
+    if (!viewing) return;
+    newProject(`${viewing.name} remix`, viewing.src);
+    toast('Copied into your projects. Edit away.');
+  });
+  // examples start a new project instead of overwriting the current one
+  const sel = $('preset');
+  for (const [name] of PRESETS) { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o); }
+  sel.value = '';
+  sel.addEventListener('change', () => {
+    const p = PRESETS.find(([n]) => n === sel.value);
+    sel.value = '';
+    if (p) newProject(p[0].replace(/\.mxsl$/, ''), p[1]);
+  });
+}
+
+// ---------------------------------------------------------------- dropdown
+const projs = () => $('projs');
+export function closeProjs() { projs().open = false; }
+function bindDropdown() {
+  const d = projs();
+  d.addEventListener('toggle', () => { if (d.open) { renderMine(); if (!$('list-gal').hidden) renderGalleryList(); } });
+  document.addEventListener('click', (e) => { if (d.open && !d.contains(e.target)) closeProjs(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) { closeProjs(); d.querySelector('summary').focus(); } });
+  $('tab-mine').addEventListener('click', () => showSideTab('mine'));
+  $('tab-gal').addEventListener('click', () => showSideTab('gal'));
+  $('api-reset')?.addEventListener('click', async () => {
+    const { mockServer } = await import('./api.js');
+    await mockServer.reset();
+    for (const p of local.list) if (p.galleryId) { p.galleryId = null; p.galleryVersionSrc = null; }
+    local.save();
+    if (viewing) openLocal(cur().id); else { syncHeader(); renderMine(); }
+    if (!$('list-gal').hidden) renderGalleryList();
+  });
+  api.onRequest(({ method, path, status, ms }) => {
+    const el = $('api-log');
+    if (!el) return;
+    const row = document.createElement('div');
+    row.className = status && status >= 400 ? 's4' : 's2';
+    row.textContent = `${method.padEnd(6)} ${path.replace(/[\w-]{12,}$/, (x) => x.slice(0, 5) + '…')} ${status || ''} ${ms.toFixed(0)}ms`;
+    el.prepend(row);
+    while (el.childElementCount > 30) el.lastElementChild.remove();
+  });
+}
+export function showSideTab(which) {
+  $('tab-mine').setAttribute('aria-selected', String(which === 'mine'));
+  $('tab-gal').setAttribute('aria-selected', String(which === 'gal'));
+  $('list-mine').hidden = which !== 'mine';
+  $('list-gal').hidden = which !== 'gal';
+  if (which === 'gal') renderGalleryList();
+}
+function item(name, metaHtml, current, onClick) {
+  const b = document.createElement('button');
+  b.className = 'pitem';
+  b.setAttribute('aria-current', String(current));
+  b.innerHTML = `<span class="nm">${escHtml(name)}</span><span class="meta">${metaHtml}</span>`;
+  b.addEventListener('click', () => { closeProjs(); onClick(); });
+  return b;
+}
+export function renderMine() {
+  const host = $('list-mine');
+  host.textContent = '';
+  for (const p of local.sorted()) {
+    const st = projState(p);
+    const badge = !p.galleryId ? '' : st.includes('changes') ? '<span class="badge mine">changed</span>' : '<span class="badge pub">shared</span>';
+    host.appendChild(item(p.name, `${ago(p.updated)} ${badge}`, !viewing && p.id === cur().id, () => openLocal(p.id)));
+  }
+}
+export async function renderGalleryList() {
+  const host = $('list-gal');
+  host.innerHTML = '<div class="side-empty">Loading the gallery…</div>';
+  try {
+    const { items } = await api.list();
+    host.textContent = '';
+    if (!items.length) { host.innerHTML = '<div class="side-empty">Nothing shared yet. Be the first: press Share on one of your projects.</div>'; return; }
+    for (const it of items) {
+      const mine = it.mine ? '<span class="badge mine">yours</span>' : '';
+      const current = viewing?.id === it.id || (!viewing && cur().galleryId === it.id);
+      host.appendChild(item(it.name, `${escHtml(it.author)} · ${ago(it.updated)}${it.nodes ? ` · ${it.nodes} nodes` : ''} ${mine}`, current, () => openGallery(it.id)));
+    }
+  } catch (e) { host.innerHTML = `<div class="side-empty">Could not load the gallery: ${escHtml(e.message)}</div>`; }
+}

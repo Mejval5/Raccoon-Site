@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ShadingLanguageX playground | Raccoon Website</title>
+<meta name="description" content="A browser playground for ShadingLanguageX by Jake Thorn: write MXSL, compile it to MaterialX with a WebAssembly build of mxslc, preview the shader live and share it to the gallery.">
+<link rel="icon" href="/racc-light.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/playground.css">
+<link rel="modulepreload" href="lib/JsMxslc.js">
+<link rel="modulepreload" href="lib/JsMaterialXGenShader.js">
+</head>
+<body>
+<div id="boot"><div><strong>Loading the compiler</strong><p id="boot-msg">Fetching the WebAssembly build of mxslc and the MaterialX libraries.</p></div></div>
+
+<header>
+  <a class="home" href="/projects/" title="Back to projects">&larr; Projects</a>
+  <h1>ShadingLanguageX <span>playground</span></h1>
+  <span class="credit">A demo of <a href="https://github.com/jakethorn/ShadingLanguageX" target="_blank" rel="noopener">Jake Thorn&rsquo;s ShadingLanguageX</a></span>
+  <details class="projs" id="projs">
+    <summary><span class="lbl">Project</span><span class="cur" id="projs-cur"></span><span class="chev">&#9660;</span></summary>
+    <div class="drop">
+      <div class="drop-head">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-mine" aria-selected="true">My projects</button>
+          <button role="tab" id="tab-gal" aria-selected="false">Gallery</button>
+        </div>
+      </div>
+      <div class="plist" id="list-mine"></div>
+      <div class="plist" id="list-gal" hidden></div>
+      <div class="api" data-api-badge hidden>
+        <div class="api-top"><span class="dot"></span>Mock gallery <span style="font-weight:400;color:var(--muted)">no backend on this server, data stays in this browser</span><button id="api-reset" title="Wipe the mock gallery and reseed it with the examples">Reset</button></div>
+        <div class="api-log" id="api-log"></div>
+      </div>
+    </div>
+  </details>
+  <button id="new-proj" title="Start a new project">+ New</button>
+  <select id="preset" aria-label="Start a new project from an example"><option value="">New from example…</option></select>
+  <a class="navlink" href="gallery/">Gallery</a>
+  <span class="api-badge" data-api-badge hidden title="No backend on this server: shared projects stay in this browser">mock gallery</span>
+  <div class="spacer"></div>
+  <label class="check"><input type="checkbox" id="auto" checked> Compile as I type</label>
+  <details class="opts">
+    <summary>Options</summary>
+    <div class="menu">
+      <label class="check"><input type="checkbox" id="opt-reduce" checked> Reduce graph</label>
+      <label class="check"><input type="checkbox" id="opt-missing" checked> Error on missing globals</label>
+      <label class="check"><input type="checkbox" id="opt-unused" checked> Error on unused globals</label>
+      <label class="check"><input type="checkbox" id="opt-dark"> Dark theme</label>
+    </div>
+  </details>
+  <button id="roundtrip" title="Compile, decompile the result, compile again and compare">Round trip</button>
+</header>
+
+<main>
+  <section class="pane">
+    <div class="pane-head">
+      <input class="proj-name" id="proj-name" aria-label="Project name" spellcheck="false" maxlength="60">
+      <span class="hint" id="proj-state"></span>
+      <div class="spacer"></div>
+      <button id="unshare" hidden title="Remove this project from the gallery">Unshare</button>
+      <button id="share" title="Compile, then publish this project to the gallery">Share</button>
+      <button class="primary" id="compile">Compile -></button>
+    </div>
+    <div class="viewbar" id="viewbar" hidden>
+      <span id="viewbar-text"></span>
+      <div class="spacer"></div>
+      <button class="primary" id="remix">Remix into my projects</button>
+    </div>
+    <div class="editor" id="ed-src">
+      <div class="gutter"></div>
+      <div class="code"><pre aria-hidden="true"></pre><textarea spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="MXSL source"></textarea></div>
+    </div>
+  </section>
+  <section class="pane">
+    <div class="pane-head">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-preview" aria-selected="true">Preview</button>
+        <button role="tab" id="tab-xml" aria-selected="false">MaterialX</button>
+      </div>
+      <div class="spacer"></div>
+      <span class="xml-only hint" id="mtlx-hint">edit and decompile back</span>
+      <button class="xml-only" id="copy">Copy</button>
+      <button class="xml-only" id="download">Save .mtlx</button>
+      <button class="xml-only" id="decompile"><- Decompile</button>
+    </div>
+    <div class="view" id="view-preview">
+      <canvas id="canvas"></canvas>
+      <div class="pv-msg" id="pv-msg">Loading the MaterialX shader generator</div>
+      <div class="pv-bar">
+        <label class="pv-field">Show <select id="pv-target"></select></label>
+        <div class="seg" role="radiogroup" aria-label="Geometry">
+          <button data-geo="sphere" aria-pressed="true">Sphere</button>
+          <button data-geo="plane" aria-pressed="false">Plane</button>
+          <button data-geo="knot" aria-pressed="false">Knot</button>
+        </div>
+        <label class="check"><input type="checkbox" id="pv-env" checked> Environment</label>
+        <label class="check"><input type="checkbox" id="pv-spin" checked> Spin</label>
+      </div>
+      <div class="pv-status" id="pv-status"></div>
+    </div>
+    <div class="editor" id="ed-out" hidden>
+      <div class="gutter"></div>
+      <div class="code"><pre aria-hidden="true"></pre><textarea spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="MaterialX XML"></textarea></div>
+    </div>
+  </section>
+  <section class="readout">
+    <div class="graph" id="graph"><div class="empty">Compile something to see the node graph it produces.</div></div>
+    <div class="log" id="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<dialog id="dlg-share">
+  <form method="dialog" id="share-form">
+    <h3>Share to the gallery</h3>
+    <p>Anyone can browse the gallery. Only this browser can update the entry afterwards: the key is a cookie for this site, so clearing cookies means sharing again as a new entry.</p>
+    <label>Project name <input id="share-name" required maxlength="60"></label>
+    <label>Your name <input id="share-author" required maxlength="40" placeholder="Shown on the gallery card"></label>
+    <div class="err" id="share-err" hidden></div>
+    <div class="row"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="share-go" value="ok">Share</button></div>
+  </form>
+</dialog>
+<dialog id="dlg-unshare">
+  <form method="dialog">
+    <h3>Remove from the gallery?</h3>
+    <p>The entry disappears for everyone. Your local copy stays.</p>
+    <div class="row"><button value="cancel">Keep it</button><button class="primary" value="ok">Remove</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

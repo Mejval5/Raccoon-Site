@@ -61,9 +61,32 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/shadinglanguagex/lib/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
       }
     ],
     "rewrites": [
+      {
+        "source": "/api/gallery",
+        "function": {
+          "functionId": "gallery",
+          "region": "europe-west1"
+        }
+      },
+      {
+        "source": "/api/gallery/**",
+        "function": {
+          "functionId": "gallery",
+          "region": "europe-west1"
+        }
+      },
       {
         "source": "/api/rsvp",
         "function": {
@@ -96,5 +119,24 @@
     "predeploy": [
       "node \"$PROJECT_DIR/scripts/deploy-guard.js\""
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
   }
 }
