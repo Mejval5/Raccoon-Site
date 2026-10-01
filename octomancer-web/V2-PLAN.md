@@ -540,3 +540,7 @@ Scope of B1 (this replaces the order of M2-M7 until B1 runs):
 Deferred until Daniel's auto-fire verdict: combat (M3/M4). After these five: biome 2 (Kelp Caves) with its own bank, enemies and rules.
 
 Note (2026-09-30, late): rounds 24-28 delivered only item 1 (art pass) plus polish; items 2-5 were never seen by the fixer because the workflow replaced the todo with review issues after round 1. The script now carries one mandatory feature per round. Items 2-5 relaunched as rounds 29-32.
+
+## 12. Vertical slice on biome 1 (Daniel, 2026-10-01; rounds 33-36)
+
+Daniel: it does not feel like Spelunky yet; enemies are buggy, levels lack detail, bombs should have gravity, more physics sim. Scheduled, one per round: physics props (bombs sink, bounce, roll; pots, clams, chests, relic and falling rocks as bodies; explosion impulses; rubble), enemy fixes from Owl's QA-ENEMIES.md plus readable telegraphed patterns, level detail (reworked rooms, more quantum tiles, 10 new rooms with 3 set pieces, 2x props, background detail), game feel (shake, hit-stop, dash recoil, tunable idle sink via ?sink=). The auto-fire verdict and biome 2 wait until the slice feels right.
