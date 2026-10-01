@@ -18,6 +18,7 @@
 
 import { getMuted, setMuted, getSettings } from './save.js';
 
+const SWIM_ON = 0.1; // r41: the whoosh loop is only built once the octopus really swims (a slow sink or drift never starts it)
 const CROSSFADE = 1.0; // seconds, DECISIONS §1 Q7 / OVERNIGHT §2
 
 function pickExt() {
@@ -59,8 +60,65 @@ export function createAudio() {
   // each frame from main.js rather than one-shot like sfx.js's dash/hurt/
   // bomb. Created lazily in start() alongside the AudioContext, so
   // nothing is requested before the first input either.
-  let swimFilter = null, swimGain = null;
+  let swimFilter = null, swimGain = null, swimSrc = null;
   let dreadOsc = null, dreadGain = null;
+  // r41: every synthesised source (one-shot or looping) is registered here, so a level change can stop and disconnect
+  // them all (stopSfx) and a test can list what is still alive. Only the music elements and the master / bus gains outlive a level.
+  /** @type {Map<AudioScheduledSourceNode, {kind:string, loop:boolean, nodes:AudioNode[]}>} */
+  const live = new Map();
+  let noiseBuf = null;
+  const bufCache = new Map(); // duration -> shared white-noise buffer for the bomb thump
+  function untrack(src) {
+    const e = live.get(src);
+    if (!e) return;
+    live.delete(src);
+    try { src.disconnect(); } catch (err) { /* already gone */ }
+    for (const n of e.nodes) { try { n.disconnect(); } catch (err) { /* already gone */ } }
+  }
+  /** Register a started (or about to start) source with the nodes it feeds; they are disconnected when it ends or on stopSfx. */
+  function track(src, kind, nodes, loop = false) {
+    live.set(src, { kind, loop, nodes });
+    src.addEventListener('ended', () => untrack(src), { once: true });
+    return src;
+  }
+  function stopSfx() {
+    for (const src of [...live.keys()]) {
+      try { src.stop(); } catch (err) { /* never started or already stopped */ }
+      untrack(src);
+    }
+    swimSrc = null; swimFilter = null; swimGain = null; dreadOsc = null; dreadGain = null;
+  }
+  /** The swim whoosh loop: at most one, built the first time it is needed (again after a stopSfx). */
+  function ensureSwim() {
+    if (swimSrc || !ctx || !sfxBus) return;
+    if (!noiseBuf) noiseBuf = makeNoiseBuffer(ctx);
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    swimFilter = ctx.createBiquadFilter();
+    swimFilter.type = 'bandpass';
+    swimFilter.frequency.value = 500;
+    swimFilter.Q.value = 0.7;
+    swimGain = ctx.createGain();
+    swimGain.gain.value = 0;
+    src.connect(swimFilter).connect(swimGain).connect(sfxBus);
+    track(src, 'swim', [swimFilter, swimGain], true);
+    src.start();
+    swimSrc = src;
+  }
+  /** The Beholder drone: at most one low sine, built when the Beholder first comes close. */
+  function ensureDread() {
+    if (dreadOsc || !ctx || !sfxBus) return;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = 48;
+    dreadGain = ctx.createGain();
+    dreadGain.gain.value = 0;
+    o.connect(dreadGain).connect(sfxBus);
+    track(o, 'dread', [dreadGain], true);
+    o.start();
+    dreadOsc = o;
+  }
 
   function fadeGain(node, target) {
     if (!ctx) return;
@@ -120,29 +178,7 @@ export function createAudio() {
     // this call is itself inside the first-input handler, so it is one.
     ctx.resume().catch(() => {});
 
-    // M7-2 swim whoosh: a bandpass-filtered noise loop, silent until
-    // setSwimIntensity() opens its gain as the octopus speeds up.
-    const noiseSrc = ctx.createBufferSource();
-    noiseSrc.buffer = makeNoiseBuffer(ctx);
-    noiseSrc.loop = true;
-    swimFilter = ctx.createBiquadFilter();
-    swimFilter.type = 'bandpass';
-    swimFilter.frequency.value = 500;
-    swimFilter.Q.value = 0.7;
-    swimGain = ctx.createGain();
-    swimGain.gain.value = 0;
-    noiseSrc.connect(swimFilter).connect(swimGain).connect(sfxBus);
-    noiseSrc.start();
-
-    // M7-2 Beholder drone: a low sine, silent until setBeholderDread() opens
-    // its gain as the Beholder closes in.
-    dreadOsc = ctx.createOscillator();
-    dreadOsc.type = 'sine';
-    dreadOsc.frequency.value = 48;
-    dreadGain = ctx.createGain();
-    dreadGain.gain.value = 0;
-    dreadOsc.connect(dreadGain).connect(sfxBus);
-    dreadOsc.start();
+    // the swim whoosh and the Beholder drone are built on demand (ensureSwim / ensureDread), not kept running silent
   }
 
   // First input, any modality: keydown, pointerdown (mouse and touch alike)
@@ -192,21 +228,44 @@ export function createAudio() {
     busGains() {
       return { music: musicVol, sfx: sfxVol, musicNow: musicBus ? musicBus.gain.value : null, sfxNow: sfxBus ? sfxBus.gain.value : null, masterNow: master ? master.gain.value : null };
     },
+    /** r41: register a synthesised source (sfx.js) so it is stopped on teardown. */
+    track(src, kind, nodes) { return track(src, kind, nodes || [], false); },
+    /** r41: a shared white-noise buffer of `dur` seconds (the bomb thump), built once per duration. */
+    noiseBuffer(dur) {
+      if (!ctx) return null;
+      let b = bufCache.get(dur);
+      if (!b) { b = makeNoiseBuffer(ctx, dur); bufCache.set(dur, b); }
+      return b;
+    },
+    /** r41: level teardown: stop and disconnect every one-shot and looping synthesised source. Music and the master / bus gains stay. */
+    stopSfx,
+    /** r41 test hook: what is playing now. Synthesised sources (kind, loop) and the two music elements (kind 'music'). */
+    sources() {
+      const out = [];
+      for (const [, e] of live) out.push({ kind: e.kind, loop: e.loop });
+      if (started) {
+        if (flute && !flute.paused) out.push({ kind: 'music', name: 'flute' });
+        if (medles && !medles.paused) out.push({ kind: 'music', name: 'medles' });
+      }
+      return out;
+    },
     /** For `__octo` test hooks: play/gameover-driven state without waiting on real audio playback. */
     currentTrack() { return current; },
     /** M7-2 swim whoosh: `frac` is speed/maxSpeed in [0,1]. A no-op before
      * the first input (swimGain doesn't exist yet). */
     setSwimIntensity(frac) {
-      if (!swimGain) return;
+      if (!ctx) return;
       const f = Math.max(0, Math.min(1, frac));
+      if (!swimSrc) { if (f < SWIM_ON) return; ensureSwim(); }
       swimGain.gain.setTargetAtTime(f * 0.06, ctx.currentTime, 0.1);
       swimFilter.frequency.setTargetAtTime(300 + f * 900, ctx.currentTime, 0.15);
     },
     /** M7-2 Beholder drone: `frac` is dread intensity in [0,1] (0 = Beholder
      * absent or far away, matching render.js's own dread falloff). */
     setBeholderDread(frac) {
-      if (!dreadGain) return;
+      if (!ctx) return;
       const f = Math.max(0, Math.min(1, frac));
+      if (!dreadOsc) { if (f < 0.02) return; ensureDread(); }
       dreadGain.gain.setTargetAtTime(f * 0.16, ctx.currentTime, 0.2);
     },
   };

@@ -66,7 +66,7 @@ import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
 import { wallBandWindow } from './world-v2.js';
-import { ensureV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
+import { ensureV2Art, offV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -106,7 +106,18 @@ function loadImage(src) {
   return img;
 }
 
+/** r41: free a canvas's backing store at once (setting the size to 0 releases the bitmap without waiting for the GC). */
+function freeCanvas(c) { if (c) { c.width = 0; c.height = 0; } }
+/** Empty a Map of baked canvases (the value is a canvas or {canvas}). */
+function releaseCanvases(map) {
+  for (const v of map.values()) freeCanvas(v && v.canvas ? v.canvas : v);
+  map.clear();
+}
+
+let sharedRock = null; // {px, canvas, pattern}: see createRenderer
+
 export function createRenderer(ctx, world) {
+  let disposed = false; // set by dispose(): late image loads then build nothing
   // Wall rendering (round-7 rewrite -- Daniel's screenshot review round 6,
   // item 1/2/6): walls used to be assembled from Milan's per-tile marching-
   // squares tileset (`play/assets/tiles/tile-*.webp`, picked by
@@ -144,6 +155,7 @@ export function createRenderer(ctx, world) {
   // instead of redoing the gradient every frame, keeps this cheap.
   let caveArtFeathered = null;
   caveArt.addEventListener('load', () => {
+    if (disposed) return;
     const fc = document.createElement('canvas');
     fc.width = caveArt.naturalWidth;
     fc.height = caveArt.naturalHeight;
@@ -323,7 +335,8 @@ export function createRenderer(ctx, world) {
     return canvas;
   }
 
-  const noiseField = generateFbmField(NOISE_FIELD_PX, 1337);
+  // r41: the rock grain is the same for every level (fixed seed): built once per page, shared by every renderer
+  const noiseField = sharedRock && sharedRock.px === NOISE_FIELD_PX ? null : generateFbmField(NOISE_FIELD_PX, 1337);
   // Rock: slate-blue variation (darker/lighter than WALL_FILL_COLOR) rather
   // than a contrasting teal speckle -- the promo-video reference frames read
   // as close to flat at this art style's resolution, so a loud grain fought
@@ -333,11 +346,14 @@ export function createRenderer(ctx, world) {
   // texture/cracks"): widened the dark/light endpoints and raised the max
   // alpha (0.14 -> 0.22) so the crevice/speckle contrast actually reads as
   // rock grain/cracks up close instead of a near-flat tint.
-  const rockNoiseCanvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [12, 24, 58], [92, 128, 205], 0.22);
+  if (noiseField) {
+    const canvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [12, 24, 58], [92, 128, 205], 0.22);
+    sharedRock = { px: NOISE_FIELD_PX, canvas, pattern: document.createElement('canvas').getContext('2d').createPattern(canvas, 'repeat') };
+  }
+  const rockNoiseCanvas = sharedRock.canvas;
   // CanvasPattern only needs *a* 2D context to be created from, not the one
   // it will later be drawn into -- build the pattern once, up front.
-  const patternCtx = document.createElement('canvas').getContext('2d');
-  const rockNoisePattern = patternCtx.createPattern(rockNoiseCanvas, 'repeat');
+  const rockNoisePattern = sharedRock.pattern;
 
   // Round-17 fix (Daniel's screenshot review, item 1: the round-15 feathered
   // soft-rock tint -- meant to read as a material patch -- instead showed up
@@ -458,7 +474,8 @@ export function createRenderer(ctx, world) {
   // beyond the ones needed on screen, so no single frame pays for a whole
   // blast crossing several bands.
   const bandCache = new Map(); // band -> {canvas, version}
-  if (world.v2) ensureV2Art((key) => { if (key === 'rock') bandCache.clear(); }); // bake with the texture once it is there
+  const onArt = (key) => { if (key === 'rock') releaseCanvases(bandCache); }; // bake with the texture once it is there
+  if (world.v2) ensureV2Art(onArt);
   let bandBakes = 0; // total bakes, for tests / perf checks
   let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single band bake
   function bandLoopsPx(bi, y0) {
@@ -1243,6 +1260,28 @@ export function createRenderer(ctx, world) {
 
   return {
     camera,
+    /** r41: release every canvas this renderer baked (wall bands and chunks, caps, the deep-rock bake and its tinted plants, ambient silhouettes) and stop listening for art. After this the renderer must not draw again. */
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      offV2Art(onArt);
+      releaseCanvases(wallCache); releaseCanvases(bandCache); releaseCanvases(capCache);
+      freeCanvas(deepCanvas); deepCanvas = null; deepLevel = null; deepPlantList = [];
+      if (deepTint) for (const t of deepTint) freeCanvas(t);
+      deepTint = null;
+      for (const c of ambientSilCache) freeCanvas(c);
+      ambientSilCache.length = 0;
+      freeCanvas(noiseCanvas);
+      freeCanvas(caveArtFeathered); caveArtFeathered = null;
+    },
+    /** r41 test hook: live canvases this renderer holds. */
+    canvasStats() {
+      let n = 0, bytes = 0;
+      const add = (c) => { if (c && c.width * c.height > 0) { n++; bytes += c.width * c.height * 4; } };
+      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) add(v && v.canvas ? v.canvas : v);
+      add(deepCanvas); if (deepTint) deepTint.forEach(add); ambientSilCache.forEach(add); add(noiseCanvas); add(caveArtFeathered);
+      return { n, bytes };
+    },
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {

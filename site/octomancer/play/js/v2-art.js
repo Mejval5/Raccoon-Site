@@ -6,7 +6,6 @@ const FILES = {
   rock: 'shallows-rock.webp',       // tileable rock texture (512 px = ROCK_TILE_UNITS world units)
   far: 'shallows-far.webp',         // backdrop layer 1 (opaque, distant)
   near: 'shallows-near.webp',       // backdrop layer 2 (keyed, nearer silhouettes)
-  ring: 'exit-ring.webp',           // glowing ring on the floor (exit and hub dive well)
   keeper: 'shop-keeper.webp',
   sign: 'shop-sign.webp',
   pedestal: 'shop-pedestal.webp',
@@ -43,6 +42,9 @@ export function ensureV2Art(cb) {
   }
   return art;
 }
+
+/** r41: a renderer that is thrown away must stop listening, or every level's renderer (and its canvases) stays alive for the page's life. */
+export function offV2Art(cb) { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }
 
 /** The image for `key`, or null until it has loaded (draw code falls back to its code-drawn look). */
 export function artImg(key) {

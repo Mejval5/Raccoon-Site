@@ -176,17 +176,17 @@ export async function runPathcheckTests(assert) {
       out.dashed = sim.dashes >= 1;
       if (rep === 1) { sim.octo.bombs = 0; }                // wasted every bomb: the tutorial refills one
       if (rep === 2) { for (let i = 0; i < 4; i++) { sim.octo.bombs = 0; tick(sim, 0, 0); } } // spam-empty it
-      r = follow(sim, 39.5, 12.5, 0.3, 2500);
+      r = follow(sim, 37.5, 11.5, 0.3, 2500);       // into the bomb room, above the floor
       out.atWall = r.ok;
       const bombsAtWall = sim.octo.bombs;
       out.bombsAtWall = bombsAtWall;
       let bombsPlaced = 0;
       for (let attempt = 0; attempt < 3 && wallIntactBlocking(w); attempt++) {
-        r = follow(sim, 39.5, 9.5, 0.3, 1200);       // stand high: a no-aim toss goes forward and down, the bomb then sinks about 5 tiles down the wall
+        r = follow(sim, 37.5, 11.5, 0.3, 1200);      // swim over the floor
         for (let i = 0; i < 35; i++) tick(sim, 0, 0); // let the swim settle: a bomb inherits the octopus velocity
-        tick(sim, 0, 0, { bomb: true }); bombsPlaced++; // no aim: a short toss forward (r35: never up), it sinks beside the wall
-        // swim away from the blast
-        follow(sim, 33.5, 12.5, 0.8, 600);
+        tick(sim, 0, 0, { bomb: true }); bombsPlaced++; // no aim: a short toss, it sinks onto the floor
+        // swim away from the blast, back up the room
+        follow(sim, 33.5, 9.5, 0.8, 600);
         for (let i = 0; i < 260 && sim.bombs.list().length; i++) tick(sim, 0, 0); // fuse 2.5 s
       }
       out.bombsPlaced = bombsPlaced;
@@ -199,6 +199,20 @@ export async function runPathcheckTests(assert) {
       results.every((o) => o.toDash && o.dashed && o.atWall && o.exit && o.bombsPlaced >= 1));
     assert('bot tutorial: also completes after wasting every bomb first (refill: had ' + results.map((o) => o.bombsAtWall).join('/') + ' at the wall)', results[1].exit && results[2].exit && results[1].bombsAtWall >= 1 && results[2].bombsAtWall >= 1);
     assert('bot tutorial: the bot survives the blast (swims clear before it goes off)', results.every((o) => o.hearts === 3));
+  }
+  {
+    // r41: the floor can be broken from the side approach too (thrown right from the room's entrance, thrown with a slight downward lean) and from straight above
+    const out = [];
+    for (const [name, sx, sy, aim] of [['thrown right from the entrance', 32.5, 11.5, { x: 1, y: 0 }], ['thrown right and down from the entrance', 32.5, 10.5, { x: 1, y: 0.6 }], ['dropped straight down', 38.0, 10.5, { x: 0, y: 1 }]]) {
+      const w = createLevelWorld(1, 0, { level: parseAuthoredMap(tutJson) });
+      const sim = createBotSim(w, { tutorial: true, wallIntact: () => true });
+      sim.octo.x = sim.octo.prevX = sx; sim.octo.y = sim.octo.prevY = sy;
+      for (let i = 0; i < 25; i++) tick(sim, 0, 0);
+      tick(sim, 0, 0, { bomb: true, aim });
+      for (let i = 0; i < 300 && (sim.bombs.list().length || i < 5); i++) tick(sim, 0, 0);
+      out.push({ name, open: !wallIntactBlocking(w) });
+    }
+    assert('tutorial floor: a bomb dropped or thrown from the entrance or from above breaks through (' + out.map((o) => o.name + ' ' + (o.open ? 'yes' : 'NO')).join(', ') + ')', out.every((o) => o.open));
   }
   {
     // hub -> tutorial -> Shallows 1-1..1-3, generated levels across 10 seeds

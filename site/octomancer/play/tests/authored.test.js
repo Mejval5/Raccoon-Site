@@ -58,9 +58,18 @@ export async function runAuthoredTests(assert) {
   const cleared = tut.tiles.slice();
   for (let i = 0; i < tut.walls.length; i += 2) cleared[tut.walls[i + 1] * tut.w + tut.walls[i]] = 0;
   assert('authored tutorial: once the wall is gone the exit is reachable', fatReach(cleared, tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
-  assert('authored tutorial: the wall is two tiles thick and spans the passage', (() => {
-    const xs = new Set(); for (let i = 0; i < tut.walls.length; i += 2) xs.add(tut.walls[i]);
-    return xs.size === 2 && tut.walls.length >= 20;
+  assert('authored tutorial: the barrier is a horizontal floor, two rows thick, spanning the shaft (bombs sink, so it is dropped on, not thrown at)', (() => {
+    const ys = new Set(), xs = new Set(); for (let i = 0; i < tut.walls.length; i += 2) { xs.add(tut.walls[i]); ys.add(tut.walls[i + 1]); }
+    return ys.size === 2 && xs.size >= 6 && tut.walls.length / 2 === ys.size * xs.size;
+  })());
+  assert('authored tutorial: the floor has water above it (the bomb room) and water below it (the way on), and rock either side', (() => {
+    let ok = true;
+    const T = (x, y) => tut.tiles[y * tut.w + x] !== 0;
+    const ys = [...new Set(Array.from(tut.walls).filter((_, i) => i % 2))], y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const xs = Array.from(tut.walls).filter((_, i) => i % 2 === 0), x0 = Math.min(...xs), x1 = Math.max(...xs);
+    for (let x = x0; x <= x1; x++) if (T(x, y0 - 1) || T(x, y1 + 1)) ok = false;
+    if (!T(x0 - 1, y0) || !T(x0 - 1, y1) || !T(x1 + 1, y0) || !T(x1 + 1, y1)) ok = false;
+    return ok;
   })());
   assert('authored tutorial: before the wall the start reaches the bomb prompt area', (() => {
     const p = tut.prompts.find((q) => q.title.toLowerCase().includes('bomb'));

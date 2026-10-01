@@ -205,7 +205,11 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   ctx.save();
   ctx.beginPath();
   let any = false;
-  const crackRects = []; // cells that border water sideways: cracks stay on the passage, never on the rock above and below it
+  // r41: the barrier is a floor (wider than tall) or a wall (taller than wide); the cracks run across the water-facing cells either way
+  let wMinX = 1e9, wMaxX = -1e9, wMinY = 1e9, wMaxY = -1e9;
+  for (let i = 0; i < walls.length; i += 2) { wMinX = Math.min(wMinX, walls[i]); wMaxX = Math.max(wMaxX, walls[i]); wMinY = Math.min(wMinY, walls[i + 1]); wMaxY = Math.max(wMaxY, walls[i + 1]); }
+  const horiz = wMaxX - wMinX > wMaxY - wMinY;
+  const crackRects = []; // cells that border water along the passage: cracks stay on the barrier, never on the rock around it
   let cMinY = 1e9, cMaxY = -1e9, cMinX = 1e9, cMaxX = -1e9;
   for (let i = 0; i < walls.length; i += 2) {
     const tx = walls[i], ty = walls[i + 1];
@@ -213,14 +217,14 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
     n++; cx += tx + 0.5; cy += ty + 0.5;
     if (tx < minX) minX = tx; if (tx > maxX) maxX = tx; if (ty < minY) minY = ty; if (ty > maxY) maxY = ty;
     const l = open(tx - 1, ty), r = open(tx + 1, ty), u = open(tx, ty - 1), d = open(tx, ty + 1);
-    if (l || r) { if (ty < cMinY) cMinY = ty; if (ty > cMaxY) cMaxY = ty; if (tx < cMinX) cMinX = tx; if (tx > cMaxX) cMaxX = tx; }
+    if (horiz ? (u || d) : (l || r)) { if (ty < cMinY) cMinY = ty; if (ty > cMaxY) cMaxY = ty; if (tx < cMinX) cMinX = tx; if (tx > cMaxX) cMaxX = tx; }
     const x = sx(tx), y = sy(ty);
     if (x < -ppu || x > cw + ppu || y < -ppu || y > ch + ppu) continue;
     // the rect grows into neighbouring wall cells (no seams) and stays inset from water faces
     const x0 = x + (l ? inset : -1), x1 = x + ppu - (r ? inset : -1);
     const y0 = y + (u ? inset : -1), y1 = y + ppu - (d ? inset : -1);
     ctx.rect(x0, y0, x1 - x0, y1 - y0); any = true;
-    if (l || r) crackRects.push(x0, y0, x1 - x0, y1 - y0);
+    if (horiz ? (u || d) : (l || r)) crackRects.push(x0, y0, x1 - x0, y1 - y0);
   }
   if (any) {
     ctx.clip();
@@ -236,20 +240,34 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
     else if (crackImg) {
       // generated crack sprite, repeated down the wall in 4 tile segments (alternate flips and sway), inside the clip
       const segH = 4, segW = segH * (crackImg.naturalWidth / crackImg.naturalHeight);
-      const mid = (cMinX + cMaxX + 1) / 2;
       ctx.globalAlpha = 0.9;
-      for (let k = 0, y = cMinY; y < cMaxY + 1; y += segH - 0.2, k++) {
-        const flip = k & 1, jx = ((k * 7) % 5 - 2) * 0.18;
-        ctx.save();
-        ctx.translate(sx(mid + jx), sy(y));
-        if (flip) ctx.scale(-1, 1);
-        ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
-        ctx.restore();
+      if (horiz) {
+        // a floor: the (tall) crack sprite lies on its side, repeated along the floor
+        const mid = (cMinY + cMaxY + 1) / 2;
+        for (let k = 0, x = cMinX; x < cMaxX + 1; x += segH - 0.2, k++) {
+          const flip = k & 1, jy = ((k * 7) % 5 - 2) * 0.12;
+          ctx.save();
+          ctx.translate(sx(x), sy(mid + jy));
+          ctx.rotate(-Math.PI / 2);
+          if (flip) ctx.scale(-1, 1);
+          ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
+          ctx.restore();
+        }
+      } else {
+        const mid = (cMinX + cMaxX + 1) / 2;
+        for (let k = 0, y = cMinY; y < cMaxY + 1; y += segH - 0.2, k++) {
+          const flip = k & 1, jx = ((k * 7) % 5 - 2) * 0.18;
+          ctx.save();
+          ctx.translate(sx(mid + jx), sy(y));
+          if (flip) ctx.scale(-1, 1);
+          ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
+          ctx.restore();
+        }
       }
       ctx.globalAlpha = 1;
     } else {
       // a few irregular cracks running through the whole wall (world space, deterministic)
-      strokeCracks(ctx, sx, sy, ppu, makeCracks(cMinX, cMinY, cMaxX - cMinX + 1, cMaxY - cMinY + 1, Math.max(2, Math.round((cMaxY - cMinY + 1) / 3))));
+      strokeCracks(ctx, sx, sy, ppu, makeCracks(cMinX, cMinY, cMaxX - cMinX + 1, cMaxY - cMinY + 1, Math.max(2, Math.round((horiz ? cMaxX - cMinX + 1 : cMaxY - cMinY + 1) / 3)), !horiz));
     }
   }
   ctx.restore();
@@ -259,7 +277,7 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   const p = (time * (0.9 + 0.8 * cue.attention)) % 1;
   ctx.strokeStyle = `rgba(255,214,120,${(1 - p) * (0.75 + 0.25 * cue.attention)})`;
   ctx.lineWidth = Math.max(2, ppu * 0.1);
-  ctx.beginPath(); ctx.arc(mx, my, ppu * (0.4 + 0.4 * p), 0, TAU); ctx.stroke(); // the ring stays inside the 2 tile wide wall
+  ctx.beginPath(); ctx.arc(mx, my, ppu * (0.4 + 0.4 * p), 0, TAU); ctx.stroke(); // the ring stays inside the 2 tile thick barrier
   const s = 1 + 0.08 * Math.sin(time * 5);
   ctx.fillStyle = 'rgba(6,22,34,0.75)';
   ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.fill();

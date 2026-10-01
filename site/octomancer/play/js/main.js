@@ -419,10 +419,12 @@ function step(dt) {
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
-  audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
   const beholder = enemies.beholder();
   dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
-  audio.setBeholderDread(dreadLevel);
+  if (!transitioning) { // r41: nothing new starts while one level is being torn down
+    audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
+    audio.setBeholderDread(dreadLevel);
+  }
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
@@ -579,6 +581,9 @@ loop.start();
 if (V2) showLevelTitle(); // the first level's title card
 
 function resetWorld(newSeed) {
+  // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
+  sfx.stopAll();
+  renderer.dispose();
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = makeWorld(seed);
   octo = createOctopus(world.startX, world.startY);
@@ -640,6 +645,7 @@ function v2Event(ev) {
     return true;
   }
   transitioning = true;
+  audio.setSwimIntensity(0); audio.setBeholderDread(0); sfx.hold(true); // r41: the loops fade out with the screen and no new effect starts; whatever is left is stopped when the level is torn down (resetWorld)
   const fade = ensureFade();
   fade.style.opacity = '1';
   setTimeout(() => {
@@ -651,6 +657,7 @@ function v2Event(ev) {
     if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
     window.dispatchEvent(new CustomEvent('restart'));
     fade.style.opacity = '0';
+    sfx.hold(false);
     setTimeout(() => { transitioning = false; }, FADE_MS);
   }, FADE_MS);
   return true;
@@ -1269,6 +1276,16 @@ window.__octo = {
   settings() { return { open: settingsPanel.isOpen(), values: getSettings(), sink: octo.sink, nextSeed: run ? run.nextSeed : null, bus: audio.busGains(), reduced: prefersReducedMotion() }; },
   openSettings() { settingsPanel.show(); return true; },
   closeSettings() { settingsPanel.hide(); return true; },
+  /** r41: memory of this level (the renderer's baked canvases, the JS heap where the browser reports it) and the live synthesised sources. */
+  memory() {
+    const c = renderer.canvasStats();
+    const pm = typeof performance !== 'undefined' && performance.memory ? performance.memory : null;
+    return { rendererCanvases: c.n, rendererCanvasBytes: c.bytes, heap: pm ? pm.usedJSHeapSize : null, sources: audio.sources().length };
+  },
+  /** r41: the live audio sources: synthesised ones (kind, loop) and the music elements. */
+  audioSources() { return audio.sources(); },
+  /** r41 test hook: play a synthesised effect by name (dash, hurt, chime, bomb). */
+  sfx(name) { if (typeof sfx[name] === 'function' && name !== 'stopAll') sfx[name](); return audio.sources().length; },
   audio() {
     return { started: audio.isStarted(), muted: audio.isMuted(), track: audio.currentTrack() };
   },

@@ -6,7 +6,7 @@
 // matching "nothing audio is requested before the first input".
 
 /** @param {AudioContext} ctx @param {GainNode} dest */
-function tone(ctx, dest, { freq = 440, dur = 0.12, type = 'sine', gain = 0.25, sweep = null }) {
+function tone(audio, ctx, dest, { freq = 440, dur = 0.12, type = 'sine', gain = 0.25, sweep = null }) {
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = type;
@@ -15,18 +15,15 @@ function tone(ctx, dest, { freq = 440, dur = 0.12, type = 'sine', gain = 0.25, s
   g.gain.setValueAtTime(gain, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   osc.connect(g).connect(dest);
+  audio.track(osc, 'tone', [g]);
   osc.start();
   osc.stop(ctx.currentTime + dur + 0.02);
 }
 
 /** Short filtered white-noise burst, for the bomb's percussive thump. */
-function noiseBurst(ctx, dest, { dur = 0.25, gain = 0.4, filterFreq = 800 }) {
-  const bufferSize = Math.floor(ctx.sampleRate * dur);
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+function noiseBurst(audio, ctx, dest, { dur = 0.25, gain = 0.4, filterFreq = 800 }) {
   const src = ctx.createBufferSource();
-  src.buffer = buffer;
+  src.buffer = audio.noiseBuffer(dur); // shared per duration: no new multi-KB buffer on every blast
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(filterFreq, ctx.currentTime);
@@ -35,6 +32,7 @@ function noiseBurst(ctx, dest, { dur = 0.25, gain = 0.4, filterFreq = 800 }) {
   g.gain.setValueAtTime(gain, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   src.connect(filter).connect(g).connect(dest);
+  audio.track(src, 'noise', [filter, g]);
   src.start();
 }
 
@@ -44,26 +42,37 @@ function noiseBurst(ctx, dest, { dur = 0.25, gain = 0.4, filterFreq = 800 }) {
  * lazily on the first input and may not exist yet when sfx calls arrive.
  */
 export function createSfx(audio) {
+  const timers = new Set(); // delayed second notes: cleared on teardown so none rings into the next level
+  function later(fn, ms) {
+    const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
+    timers.add(id);
+  }
+  let held = false; // r41: nothing new sounds while a level is torn down and the next one built
   function play(fn) {
+    if (held) return;
     const ctx = audio.getCtx();
     const dest = audio.getDest();
     if (!ctx || !dest) return; // no input yet: silently skip, never throw
-    try { fn(ctx, dest); } catch (e) { /* never let a bad SFX crash the frame */ }
+    try { fn(ctx, dest, audio); } catch (e) { /* never let a bad SFX crash the frame */ }
   }
   return {
-    dash() { play((ctx, dest) => tone(ctx, dest, { freq: 320, sweep: 720, dur: 0.14, type: 'sawtooth', gain: 0.18 })); },
+    dash() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 320, sweep: 720, dur: 0.14, type: 'sawtooth', gain: 0.18 })); },
     /** v2: a purchase or a finished quest, two rising notes. */
     chime() {
       play((ctx, dest) => {
-        tone(ctx, dest, { freq: 660, dur: 0.12, type: 'triangle', gain: 0.16 });
-        setTimeout(() => play((c, d) => tone(c, d, { freq: 990, dur: 0.18, type: 'triangle', gain: 0.16 })), 90);
+        tone(audio, ctx, dest, { freq: 660, dur: 0.12, type: 'triangle', gain: 0.16 });
+        later(() => play((c, d) => tone(audio, c, d, { freq: 990, dur: 0.18, type: 'triangle', gain: 0.16 })), 90);
       });
     },
-    hurt() { play((ctx, dest) => tone(ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
+    /** r41: while held, every effect is a no-op (the fade between two levels). */
+    hold(on) { held = !!on; },
+    /** r41: level teardown: drop pending notes and stop every live source. */
+    stopAll() { for (const id of timers) clearTimeout(id); timers.clear(); audio.stopSfx(); },
+    hurt() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
     bomb() {
       play((ctx, dest) => {
-        noiseBurst(ctx, dest, { dur: 0.35, gain: 0.35, filterFreq: 1200 });
-        tone(ctx, dest, { freq: 90, sweep: 40, dur: 0.3, type: 'sine', gain: 0.3 });
+        noiseBurst(audio, ctx, dest, { dur: 0.35, gain: 0.35, filterFreq: 1200 });
+        tone(audio, ctx, dest, { freq: 90, sweep: 40, dur: 0.3, type: 'sine', gain: 0.3 });
       });
     },
   };
