@@ -1,5 +1,3 @@
-// JsMxslc.js: Emscripten build, extracted unchanged from the single-file playground page.
-// Fetches JsMxslc.wasm and JsMxslc.data from next to this file.
 var Mxslc = (() => {
   
   return (
