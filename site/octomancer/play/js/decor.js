@@ -58,6 +58,8 @@ const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 // gravity-shaped silhouette now pointing the wrong way, which no filter or
 // flip fixes either; it now only spawns growing up from a floor.
 export const CRITTER_KINDS_WALL = ['rune1', 'rune3', 'rune5', 'bush2'];
+/** r37: fossils embedded in thick rock, drawn procedurally by decor-draw.js (an ammonite, a fish skeleton, a bone). */
+export const FOSSIL_KINDS = ['fossil-shell', 'fossil-fish', 'fossil-bone'];
 // Round-3 fix (Daniel's screenshot review: "the faint open-water 'jelly'
 // critter reads as a UI glyph, a flat teal dot above two dashes, a bit like
 // a person icon -- nothing like it appears in the promo video"). The
@@ -320,12 +322,23 @@ function patternRunes(chunk, yOffset, chunkW) {
   const out = [];
   if (!chunk.spawns) return out;
   for (const s of chunk.spawns) {
-    if (s.type !== 'decor' || s.dk !== 'rune') continue;
+    if (s.type !== 'decor' || (s.dk !== 'rune' && s.dk !== 'fossil')) continue;
     const tx = Math.floor(s.x), ty = Math.floor(s.y);
     if (nearEnemySlot(chunk, tx, ty)) continue;
     const h = hash2(tx * 91 + 7, ty * 53 + 3);
+    // r37: jitter along the wall (runes on a straight wall used to line up in columns); fossils sit anywhere in their tile
+    const j1 = (((h >>> 5) % 100) / 100 - 0.5), j2 = (((h >>> 13) % 100) / 100 - 0.5);
+    if (s.dk === 'fossil') {
+      out.push({
+        kind: FOSSIL_KINDS[h % FOSSIL_KINDS.length], x: s.x + j1 * 0.5, y: s.y + yOffset + j2 * 0.5,
+        support: ty * chunkW + tx, onFloor: false, onCeiling: false, wallDir: 0,
+        phase: (h % 1000) / 1000 * Math.PI * 2, flip: (h >> 3) % 2 === 0,
+      });
+      continue;
+    }
+    const alongX = s.dy !== 0; // a floor or ceiling rune slides sideways, a wall rune up and down
     out.push({
-      kind: CRITTER_KINDS_WALL[h % 3], x: s.x - s.dx * 0.12, y: s.y + yOffset - s.dy * 0.12,
+      kind: CRITTER_KINDS_WALL[h % 3], x: s.x - s.dx * 0.12 + (alongX ? j1 * 0.7 : 0), y: s.y + yOffset - s.dy * 0.12 + (alongX ? 0 : j2 * 0.7),
       support: ty * chunkW + tx, onFloor: s.dy < 0, onCeiling: s.dy > 0, wallDir: -s.dx,
       phase: (h % 1000) / 1000 * Math.PI * 2, flip: (h >> 3) % 2 === 0,
     });
@@ -385,6 +398,24 @@ function nearEnemySlot(chunk, tx, ty) {
   return false;
 }
 
+/**
+ * r37: the same test for a plant that GROWS (floor: up, ceiling: down) from the rock tile (tx, ty): the sprite is up to
+ * PLANT_REACH tiles long, so an enemy, hazard or loot anchor within one tile sideways of that stretch is overlapped
+ * by it (seed 32 level 1: a ceiling plant hung straight down into the anemone below it).
+ */
+const PLANT_REACH = 3;
+export function plantBlockedBySlot(chunk, tx, ty, onCeiling) {
+  if (!chunk.spawns) return false;
+  for (const s of chunk.spawns) {
+    if (s.type !== 'enemy-slot' && s.type !== 'hazard') continue; // (loot sits on the floor and is small: the old one-tile ring is enough)
+    const sx = Math.floor(s.x), sy = Math.floor(s.y);
+    if (Math.abs(sx - tx) > 1) continue;
+    const d = onCeiling ? sy - ty : ty - sy; // tiles from the rock tile towards the plant's tip
+    if (d >= -1 && d <= PLANT_REACH) return true;
+  }
+  return false;
+}
+
 /** Round-12 "fill the cave" pass, density test support: the same anchor
  * cells + hash gate render.js's `drawPlants` uses for floor/ceiling foliage
  * (plant1/plant2.webp), factored out here as a pure function of chunk tile
@@ -422,8 +453,8 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
       // against) so a plant only ever anchors where it actually has room.
       const clearAbove = ty - 2 < 0 || chunk.tiles[(ty - 2) * chunkW + tx] === 0;
       const clearBelow = ty + 2 >= chunkH || chunk.tiles[(ty + 2) * chunkW + tx] === 0;
-      if (openAbove && clearAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
-      else if (openBelow && clearBelow && h % (chunk.v2 ? 5 : 7) === 0) out.push({ tx, ty, onCeiling: true, hash: h });
+      if (openAbove && clearAbove && h % 3 === 0) { if (!chunk.v2 || !plantBlockedBySlot(chunk, tx, ty, false)) out.push({ tx, ty, onCeiling: false, hash: h }); }
+      else if (openBelow && clearBelow && h % (chunk.v2 ? 5 : 7) === 0) { if (!chunk.v2 || !plantBlockedBySlot(chunk, tx, ty, true)) out.push({ tx, ty, onCeiling: true, hash: h }); }
     }
   }
   // r36: foliage clusters the pattern table placed (kind 'decor', spawn 'foliage'): on ledges, platforms and floors,
@@ -439,7 +470,7 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
       if (nf && tx >= nf.x0 && tx < nf.x1 && ty >= nf.y0 && ty < nf.y1) continue;
       const pf = chunk.plantKeepOut;
       if (pf && pf.some((r) => tx >= r.x0 && tx < r.x1 && ty >= r.y0 && ty < r.y1)) continue;
-      if (nearEnemySlot(chunk, tx, ty)) continue;
+      if (nearEnemySlot(chunk, tx, ty) || (chunk.v2 && plantBlockedBySlot(chunk, tx, ty, s.dy > 0))) continue;
       have.add(ty * chunkW + tx);
       out.push({ tx, ty, onCeiling: s.dy > 0, hash: hash2(chunkIndex * 733 + tx * 131 + 17, ty * 977 + chunkIndex) });
     }
@@ -471,6 +502,7 @@ export function findClusterMates(chunk, chunkW, chunkH, tx, ty, onCeiling, ancho
     if (nx < 1 || nx >= chunkW - 1) continue;
     if (chunk.tiles[ty * chunkW + nx] === 0) continue; // no floor cap there
     if (chunk.tiles[(ty - 1) * chunkW + nx] !== 0) continue; // that side isn't open -- would grow into rock
+    if (chunk.v2 && plantBlockedBySlot(chunk, nx, ty, false)) continue; // r37: a cluster mate never grows into an enemy or hazard
     out.push({ dx: mateSlots[i], hash: h2 });
   }
   return out;

@@ -37,6 +37,18 @@ export const DASH_COOLDOWN = 0.6;
 // World / tiles: 1 tile = 1 world unit (OVERNIGHT.md §2 "Physics"/"Camera").
 export const TILE_SIZE = 1;
 
+// Game feel (round 37, v2 only: the octopus carries `feel = true`, endless never sets it).
+/** Slow sink of the octopus while it is NOT swimming, u/s^2 (drag 2 makes the terminal speed half of it). Swimming cancels it. ?sink=<value> overrides. */
+export const OCTO_IDLE_SINK = 0.35;
+export const SHAKE_MAX_PX = 6;      // explosion shake at point blank
+export const SHAKE_HURT_PX = 3;     // shake on taking damage
+export const SHAKE_DURATION = 0.25; // s
+export const HITSTOP_S = 0.06;      // s the sim freezes on damage and on dash kills
+export const DASH_RECOIL = 3;       // u/s kicked back off a wall after a dash hits it
+export const DASH_BOUNCE_MIN = 3.5; // u/s: a dash faster than this that hits a wall bounces (drag 2 slows a dash to ~3 u/s after 3.5 tiles)
+export const DASH_BOUNCE_WINDOW = 0.35; // s after a dash in which a wall hit counts as a dash bounce
+export const LAND_SQUASH_MIN = 0.08; // u/s of landing speed that squashes the body
+
 // Camera: at least 18x24 world units visible, per
 // octomancer-unity/Assets/Scripts/Camera/CameraPos.cs:137-148.
 export const CAMERA_MIN_WIDTH = 18;

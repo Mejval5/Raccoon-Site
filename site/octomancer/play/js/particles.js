@@ -4,7 +4,7 @@
 // array is pre-allocated once; `spawn()` reuses a dead slot instead of
 // pushing, and `update()` mutates in place.
 
-import { prefersReducedMotion } from './config.js';
+import { prefersReducedMotion, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
 
 const POOL_SIZE = 256;
 
@@ -14,7 +14,8 @@ export function createParticles() {
     pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff' };
   }
   let cursor = 0;
-  let shake = 0; // current screen-shake magnitude, world units
+  let shake = 0; // current screen-shake magnitude, world units (endless)
+  let fxAmp = 0, fxT = 0; // v2 feel shake: peak amplitude (px) and time left (s)
 
   function spawnOne(x, y, vx, vy, life, size, color) {
     const p = pool[cursor];
@@ -87,6 +88,40 @@ export function createParticles() {
       if (prefersReducedMotion()) return;
       spawnOne(x, y, (Math.random() - 0.5) * 0.2, -0.4 - Math.random() * 0.3, 0.5 + Math.random() * 0.3, 0.035, 'rgba(210,240,255,0.55)');
     },
+    /** v2 (game feel): a big explosion's debris and bubbles, and a pixel shake scaled by how far the blast is from the octopus (max SHAKE_MAX_PX). */
+    blastFeel(x, y, fromOcto = 0) {
+      for (let i = 0; i < 14; i++) { // heavier rock chips, thrown wider and slower to settle
+        const a = Math.random() * Math.PI * 2, speed = 1.5 + Math.random() * 3.5;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed - 0.8, 0.5 + Math.random() * 0.4, 0.07 + Math.random() * 0.04, i % 3 ? '#8a7a6a' : '#5f5348');
+      }
+      if (!prefersReducedMotion()) {
+        for (let i = 0; i < 16; i++) { // bubbles boiling up from the blast
+          const a = Math.random() * Math.PI * 2, r = Math.random() * 0.6;
+          spawnOne(x + Math.cos(a) * r, y + Math.sin(a) * r, (Math.random() - 0.5) * 1.2, -0.8 - Math.random() * 1.4, 0.7 + Math.random() * 0.7, 0.04 + Math.random() * 0.05, 'rgba(215,240,255,0.6)');
+        }
+      }
+      this.shakeFx(blastShakePx(fromOcto), SHAKE_DURATION);
+    },
+    /** v2: a puff where a dash hit a wall, thrown out along the wall normal. */
+    bouncePuff(x, y, nx, ny) {
+      if (prefersReducedMotion()) return;
+      const base = Math.atan2(ny, nx);
+      for (let i = 0; i < 9; i++) {
+        const a = base + (Math.random() - 0.5) * 1.9, speed = 0.7 + Math.random() * 1.5;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.07 + Math.random() * 0.05, i % 2 ? 'rgba(190,175,150,0.7)' : 'rgba(225,235,245,0.65)');
+      }
+    },
+    /** v2: shake the screen by up to `px` pixels for `dur` s (fades out linearly). Ignored under reduced motion. */
+    shakeFx(px, dur = SHAKE_DURATION) {
+      if (prefersReducedMotion() || px <= 0) return;
+      if (px >= fxAmp * (fxT / SHAKE_DURATION)) { fxAmp = Math.min(px, SHAKE_MAX_PX); fxT = dur; }
+    },
+    /** v2: the current shake offset in screen pixels (|x|, |y| <= SHAKE_MAX_PX). */
+    shakePx() {
+      if (fxT <= 0) return { x: 0, y: 0 };
+      const k = fxAmp * (fxT / SHAKE_DURATION), t = performance.now() * 0.06;
+      return { x: Math.sin(t) * k, y: Math.cos(t * 1.37) * k };
+    },
     /** 0.2s screen shake, skipped entirely under reduced motion (M7 also
      * reads this; wired here since M3 is the first thing that shakes). */
     shakeOffset() {
@@ -96,6 +131,7 @@ export function createParticles() {
     },
     update(dt) {
       if (shake > 0) shake = Math.max(0, shake - dt * 1.8);
+      if (fxT > 0) fxT = Math.max(0, fxT - dt);
       for (let i = 0; i < POOL_SIZE; i++) {
         const p = pool[i];
         if (!p.active) continue;
@@ -112,4 +148,9 @@ export function createParticles() {
   function shakeScreen(mag) {
     if (!prefersReducedMotion()) shake = Math.max(shake, mag);
   }
+}
+
+/** Explosion shake in px for a blast `dist` tiles from the octopus: 6 px point blank, fading to 1 px at 14 tiles. */
+export function blastShakePx(dist) {
+  return SHAKE_MAX_PX * Math.max(1 / SHAKE_MAX_PX, 1 - Math.max(0, dist) / 14);
 }

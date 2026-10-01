@@ -5,7 +5,7 @@
 //
 // Flat state: one small record per shop; the wallet lives in the run (run.shells), passed in and returned.
 
-import { mulberry32, hashSeed } from './rng.js';
+import { mulberry32, hashSeed2 } from './rng.js';
 import { BOMB_MAX, HEART_MAX } from './config.js';
 import { canCarry, giveItem, isItem } from './items.js';
 
@@ -51,7 +51,7 @@ export function createShopState(shop, items, runSeed, levelIndex, owned = []) {
   let order = items.map((_, i) => i).filter((i) => items[i].effect !== 'carry' || canCarry(owned, items[i].item));
   if (order.length < SHOP_SLOTS) order = items.map((_, i) => i);
   if (order.length > SHOP_SLOTS) {
-    const rng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0x5a09));
+    const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5a09));
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const tmp = order[i]; order[i] = order[j]; order[j] = tmp; }
   }
   const stock = new Uint8Array(SHOP_SLOTS);

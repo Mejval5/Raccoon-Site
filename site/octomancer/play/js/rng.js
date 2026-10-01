@@ -25,3 +25,20 @@ export function hashSeed(seed, salt) {
   h ^= h >>> 16;
   return h >>> 0;
 }
+
+function mix32(h) {
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/**
+ * v2 seed derivation (round 36). hashSeed above XORs seed and salt before mixing, so any two pairs with the same
+ * seed ^ salt give the identical stream (seed 1 level 3 == seed 3 level 1). Here seed and salt are each mixed
+ * first and only then combined, so XOR-equal pairs no longer collide. Endless (gen.js) keeps hashSeed unchanged.
+ */
+export function hashSeed2(seed, salt) {
+  const a = mix32((seed + 0x9e3779b9) | 0);
+  const b = mix32((salt + 0x632be5ab) | 0);
+  return mix32((a ^ Math.imul(b, 0x85ebca6b)) | 0) >>> 0;
+}

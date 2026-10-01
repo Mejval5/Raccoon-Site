@@ -35,6 +35,51 @@ const IMAGES = {
 
 function ready(img) { return img.complete && img.naturalWidth > 0; }
 
+/** Kinds drawn in the second pass, on top of the wall bake: rune glyphs and (r37) the procedural fossils. */
+function onWallPass(kind) { return kind === 'rune1' || kind === 'rune3' || kind === 'rune5' || kind.startsWith('fossil'); }
+
+/**
+ * r37: a fossil pressed into the rock, in the pale carving colour with a dark engraved edge: a spiral shell, a fish
+ * skeleton or a bone. Drawn flat on the face (no animation). Size in screen px; rot in radians.
+ */
+function drawFossil(ctx, x, y, size, kind, rot, flip, alpha) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(rot); if (flip) ctx.scale(-1, 1);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const trace = () => {
+    ctx.beginPath();
+    if (kind === 'fossil-shell') { // an ammonite: a spiral with growth ribs
+      for (let t = 0; t <= 11; t += 0.25) {
+        const r = size * (0.03 + 0.036 * t), a = t * 0.62;
+        if (t === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      for (let t = 3.5; t <= 11; t += 1.5) {
+        const a = t * 0.62, r0 = size * (0.03 + 0.036 * t), r1 = size * (0.03 + 0.036 * (t - 2.4));
+        ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+      }
+    } else if (kind === 'fossil-fish') { // a fish skeleton: skull, spine, ribs and a forked tail
+      const L = size * 0.9;
+      ctx.ellipse(-L * 0.42, 0, L * 0.12, L * 0.08, 0, 0, Math.PI * 2);
+      ctx.moveTo(-L * 0.3, 0); ctx.lineTo(L * 0.34, 0);
+      for (let k = 0; k < 5; k++) { const rx = -L * 0.2 + k * L * 0.1, rh = L * (0.1 - Math.abs(k - 1.6) * 0.012); ctx.moveTo(rx, 0); ctx.lineTo(rx + L * 0.03, -rh); ctx.moveTo(rx, 0); ctx.lineTo(rx + L * 0.03, rh); }
+      ctx.moveTo(L * 0.34, 0); ctx.lineTo(L * 0.5, -L * 0.1); ctx.moveTo(L * 0.34, 0); ctx.lineTo(L * 0.5, L * 0.1);
+    } else { // a bone: a shaft with a knob at each end
+      const L = size * 0.78;
+      ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0);
+      for (const sx of [-1, 1]) {
+        ctx.moveTo(sx * L / 2 + size * 0.07, -size * 0.07); ctx.arc(sx * L / 2, -size * 0.07, size * 0.07, 0, Math.PI * 2);
+        ctx.moveTo(sx * L / 2 + size * 0.07, size * 0.07); ctx.arc(sx * L / 2, size * 0.07, size * 0.07, 0, Math.PI * 2);
+      }
+    }
+  };
+  ctx.globalAlpha = alpha;
+  ctx.translate(size * 0.02, size * 0.025); // the engraved shadow edge, down-right of the carving
+  ctx.strokeStyle = 'rgba(16,28,40,0.75)'; ctx.lineWidth = Math.max(1.5, size * 0.07); trace(); ctx.stroke();
+  ctx.translate(-size * 0.02, -size * 0.025);
+  ctx.strokeStyle = 'rgba(222,232,226,0.95)'; ctx.lineWidth = Math.max(1.4, size * 0.06); trace(); ctx.stroke();
+  ctx.restore();
+}
+
 // Round-3 fix (Daniel's screenshot review: "rune glyphs are drawn inside a
 // visible pale-blue rectangle, and float in open water beside the walls
 // instead of sitting on the rock face"). The old tint drew straight onto the
@@ -59,7 +104,7 @@ function getTintedRune(kind) {
   const cctx = c.getContext('2d');
   cctx.drawImage(img, 0, 0);
   cctx.globalCompositeOperation = 'source-atop';
-  cctx.fillStyle = 'rgba(150,205,255,0.75)';
+  cctx.fillStyle = 'rgba(170,222,255,0.9)';
   cctx.fillRect(0, 0, c.width, c.height);
   tintedRuneCache[kind] = c;
   return c;
@@ -70,6 +115,11 @@ function getTintedRune(kind) {
  * and the critter's own fixed `phase`. Motion is skipped (static pose) under
  * prefers-reduced-motion, same convention as every other M7 juice effect. */
 function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced) {
+  if (c.kind.startsWith('fossil')) {
+    const s = worldToScreen(camera, canvasW, canvasH, c.x, c.y);
+    drawFossil(ctx, s.x, s.y, camera.pxPerUnit * 0.85, c.kind, (c.phase - Math.PI) * 0.5, c.flip, 0.5);
+    return;
+  }
   const img = IMAGES[c.kind];
   if (!ready(img)) return;
   let worldSize = 0.6;
@@ -107,7 +157,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     dx = c.onFloor || c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
     dy = !c.onFloor && !c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
   } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
-    worldSize = 0.36;
+    worldSize = 0.4;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;
     // Round-2 fix (Daniel's screenshot review: "the white rune glyphs float
     // in open water beside walls; in the video, rune and cross marks are
@@ -117,7 +167,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // mark on the rock rather than a floating bright glyph, and the pale-
     // blue tint below (drawn after the sprite, `source-atop`) replaces the
     // source art's white with the video's pale-blue rune colour.
-    alpha = 0.3 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase));
+    alpha = 0.5 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase)); // r37: was 0.3-0.5, too faint to read as a carving
   } else if (c.kind === 'bush2') {
     worldSize = 0.55;
     rot = Math.sin(t * 0.8 + c.phase) * 0.1;
@@ -184,8 +234,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
 export function drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, runesOnly = false) {
   const reduced = prefersReducedMotion();
   for (const c of critters) {
-    const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
-    if (isRune !== runesOnly) continue;
+    if (onWallPass(c.kind) !== runesOnly) continue;
     drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced);
   }
 }

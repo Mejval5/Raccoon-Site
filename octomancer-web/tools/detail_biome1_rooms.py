@@ -410,8 +410,8 @@ OFF = set(filter(None, os.environ.get('DETAIL_OFF', '').split(',')))
 
 def process(room, rng, structure):
     g = room['rows']
-    if 'shop' in room['tags']:
-        return
+    if 'shop' in room['tags'] or room['id'].startswith('b1-set-'):
+        return  # shops and the hand-built set pieces (wreck, garden, gauntlet) are used exactly as drawn: no fuzz, no anchors
     chk = Checker(g)
     fx = fixed_mask(g)
     # the shaft rooms keep their clean 3-4 wide walls: the electric-eel pattern needs a straight 3-wide shaft

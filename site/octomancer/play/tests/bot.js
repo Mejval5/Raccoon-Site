@@ -6,6 +6,7 @@ import { createOctopus, stepOctopus } from '../js/octopus.js';
 import { createBombs } from '../js/bomb.js';
 import { createProps } from '../js/props.js';
 import { STEP } from '../js/loop.js';
+import { OCTO_IDLE_SINK } from '../js/config.js';
 import { createPathGrid, findPath, segmentFree } from '../js/pathcheck.js';
 import { createTutorialState, tutorialStep } from '../js/tutorial.js';
 
@@ -15,6 +16,7 @@ const noEnemies = { killInRadius() { return 0; } };
 export function createBotSim(world, opts = {}) {
   const input = createInput();
   const octo = createOctopus(world.startX, world.startY);
+  octo.feel = true; octo.sink = OCTO_IDLE_SINK; // the game's v2 octopus: idle sink, dash recoil, landing squash
   const props = createProps();
   const sim = {
     world, input, octo, props, bombs: createBombs(props), steps: 0, dashes: 0, tutorial: opts.tutorial ? createTutorialState() : null,

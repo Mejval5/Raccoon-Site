@@ -6,9 +6,9 @@
 // Geometry: 3x4 rooms of 10x16 plus a 2-tile border = 34x68 tiles.
 // Tile codes: 0 water, 1 rock. Bombs must call isBedrock(x, y) (never breakable).
 
-import { mulberry32, hashSeed } from './rng.js';
+import { mulberry32, hashSeed2 } from './rng.js';
 import {
-  ROOM_W, ROOM_H, RC, CELL_ROCK, CELL_QUANTUM,
+  ROOM_W, ROOM_H, RC, CELL_ROCK, CELL_QUANTUM, FLAG_H,
   MK_START, MK_EXIT, MK_NONE, KIND_NORMAL,
   TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, TAG_SHOP, PROP_KEEPER, PROP_PEDESTAL,
   ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
@@ -22,6 +22,9 @@ export const NROOMS = ROOMS_X * ROOMS_Y;
 export const MAX_ATTEMPTS = 10;
 export const STOP_ROLL = 0.25;
 export const MAX_ANCHORS = 128;
+/** r37 set-piece room kinds (level.setPieces): the room ids 'b1-set-wreck' / '-garden' / '-gauntlet'. */
+export const SET_WRECK = 1, SET_GARDEN = 2, SET_GAUNTLET = 3;
+const SET_KIND = { wreck: SET_WRECK, garden: SET_GARDEN, gauntlet: SET_GAUNTLET };
 export const MAX_POCKETS = 2;
 export const SHOP_CHANCE = 0.58; // chance a level asks for a shop room (about 1 in 2 get one once placement and the A* check are through)
 
@@ -413,7 +416,7 @@ export function finalPathOk(tiles, sx, sy, ex, ey, shop, blockers) {
  */
 export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   if (!bank) throw new Error('generateLevel: no room bank (call setDefaultBank or pass one)');
-  const base = hashSeed(runSeed >>> 0, levelIndex >>> 0);
+  const base = hashSeed2(runSeed >>> 0, levelIndex >>> 0);
   const tiles = new Uint8Array(LEVEL_W * LEVEL_H);
   const roomVar = new Uint16Array(NROOMS);
   const roomRole = new Uint8Array(NROOMS);
@@ -424,14 +427,14 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   const pockets = new Int16Array(3 * MAX_POCKETS);
   let nPockets = 0, shop = null;
   // a shop in about half the levels of a tagged bank (decided per level, dropped again after 5 failed attempts)
-  const wantShop = !!(bank.tagged && bank.tags.some((t) => t & TAG_SHOP)) && mulberry32(hashSeed(base, 0x5409))() < SHOP_CHANCE;
+  const wantShop = !!(bank.tagged && bank.tags.some((t) => t & TAG_SHOP)) && mulberry32(hashSeed2(base, 0x5409))() < SHOP_CHANCE;
   const mx = bank.markerXY;
   const cellX = (cell) => BORDER + (cell % ROOMS_X) * ROOM_W;
   const cellY = (cell) => BORDER + ((cell / ROOMS_X) | 0) * ROOM_H;
 
   for (let att = 0; att < MAX_ATTEMPTS && !ok; att++) {
     attempts = att + 1;
-    const rng = mulberry32(hashSeed(base, att));
+    const rng = mulberry32(hashSeed2(base, att));
     // 1. plan (cheap, so a few tries per attempt)
     let n = 0;
     for (let t = 0; t < 4 && n === 0; t++) {
@@ -445,7 +448,7 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     for (let i = 0; i < NROOMS; i++) { roomVar[i] = plan[i]; roomRole[i] = planRole[i]; }
     shop = null; nPockets = 0;
     let shopCell = -1;
-    if (wantShop && att < 5) shopCell = placeShop(mulberry32(hashSeed(base, 0x5408 + att)), bank, roomVar, roomRole);
+    if (wantShop && att < 5) shopCell = placeShop(mulberry32(hashSeed2(base, 0x5408 + att)), bank, roomVar, roomRole);
     stampRooms(rng, bank, roomVar, tiles);
     const sCell = path[0], eCell = path[n - 1];
     sx = cellX(sCell) + mx[roomVar[sCell] * 2]; sy = cellY(sCell) + mx[roomVar[sCell] * 2 + 1];
@@ -454,7 +457,7 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     carveClearance(tiles, ex, ey);
     shaveNubsAndSmallIslands(tiles);
     if (shopCell >= 0) shop = readShop(bank, roomVar, shopCell);
-    if (bank.tagged) nPockets = carvePockets(tiles, floodWater(tiles, sx, sy), mulberry32(hashSeed(base, 0x70c4 + att)), pockets, shop);
+    if (bank.tagged) nPockets = carvePockets(tiles, floodWater(tiles, sx, sy), mulberry32(hashSeed2(base, 0x70c4 + att)), pockets, shop);
     // 5. guarantee: exit reachable from start through fat water, no bombs; then the A* check (real octopus
     // radius) on the final tiles, plus the shop's keeper and pedestals when there is a shop
     ok = fatWaterSolvable(tiles, sx, sy, ex, ey) && (shopCell < 0 || shop !== null) && finalPathOk(tiles, sx, sy, ex, ey, shop);
@@ -522,6 +525,25 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
     }
   }
 
+  // r37: set-piece rooms ('b1-set-wreck' / '-garden' / '-gauntlet' in the biome bank): where they ended up, so the spawn
+  // pass can force their content (level-spawns.js). x, y = the room's top-left tile, kind = SET_*, flip bit 0 = mirrored.
+  const setPieces = new Int16Array(4 * 6);
+  let nSetPieces = 0;
+  if (!fallback && bank.ids) {
+    for (let cell = 0; cell < NROOMS && nSetPieces < 6; cell++) {
+      const id = bank.ids[roomVar[cell]];
+      const kind = typeof id === 'string' && id.startsWith('b1-set-') ? SET_KIND[id.slice(7)] : 0;
+      if (!kind) continue;
+      setPieces[nSetPieces * 4] = cellX(cell); setPieces[nSetPieces * 4 + 1] = cellY(cell);
+      setPieces[nSetPieces * 4 + 2] = kind; setPieces[nSetPieces * 4 + 3] = bank.flags[roomVar[cell]] & FLAG_H ? 1 : 0;
+      nSetPieces++;
+    }
+  }
+
+  const inSetPiece = (x, y) => {
+    for (let i = 0; i < nSetPieces; i++) if (x >= setPieces[i * 4] - 1 && x <= setPieces[i * 4] + ROOM_W && y >= setPieces[i * 4 + 1] && y < setPieces[i * 4 + 1] + ROOM_H) return true;
+    return false;
+  };
   // the exit ring lies on the floor: drop the exit cell down the open water column to the first solid tile
   const ey0 = ey;
   while (ey + 1 < LEVEL_H - BORDER && tiles[(ey + 1) * LEVEL_W + ex] === 0) ey++;
@@ -542,6 +564,7 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
           ey = y;
           if (!supported(x)) continue;
           if (shop && x + 2 > shop.x0 && x - 1 < shop.x1 && y + 2 > shop.y0 && y - 1 < shop.y1) continue;
+          if (inSetPiece(x, y)) continue; // r37: the exit ring never slides into a set-piece room (its long flat floor attracts it)
           cands.push([Math.abs(x - ex0) + Math.abs(y - ey1) * 1.5, x, y]);
         }
       }
@@ -560,6 +583,6 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   return {
     w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
     startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
-    shop, pockets, nPockets,
+    shop, pockets, nPockets, setPieces, nSetPieces,
   };
 }

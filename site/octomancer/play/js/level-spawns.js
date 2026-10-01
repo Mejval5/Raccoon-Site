@@ -10,12 +10,12 @@
 //     rock" trick does not apply);
 //   - never in the 2-tile border.
 
-import { mulberry32, hashSeed } from './rng.js';
-import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk } from './level.js';
+import { mulberry32, hashSeed2 } from './rng.js';
+import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk, SET_WRECK, SET_GARDEN, SET_GAUNTLET } from './level.js';
 import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
-import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT } from './rooms.js';
+import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT, ROOM_W, ROOM_H } from './rooms.js';
 
 export const START_SAFE_RADIUS = 7;
 // Things that hurt from a distance stay out of reach of an idle octopus at the start: a cannon shot flies
@@ -32,6 +32,7 @@ const PATROL_REACH = { piranha: 5, crab: 99, manta: 5 }; // piranha: enemies.js 
 // a manta that dives), and the least gap between two enemies' spawn cells
 const PATROL_SHOP_CLEAR = { piranha: 6.5, crab: 3, manta: 6 };
 const PATROL_EXIT_CLEAR = { piranha: 5, crab: 2, manta: 5 };
+export const SET_START_KEEP_OUT = 7.5; // r37: set-piece jets and urchins (static: they only matter when swum into) keep this far from the start
 export const ENEMY_MIN_GAP = 2.5;
 export const DECOR_GAP = 1.4; // r36: tiles decor keeps from any other spawn
 export const POCKET_KEEP_OUT = 3; // r36: tiles around a hidden pocket's entrance with no enemy
@@ -138,7 +139,7 @@ function makeEnemySlot(t, kind, x, y, dx, dy) {
  */
 export function buildLevelSpawns(level, runSeed, levelIndex) {
   const t = level.tiles;
-  const rng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0x5bd1e995));
+  const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5bd1e995));
   const reached = floodReachable(t, level.startX, level.startY);
   const safe = START_SAFE_RADIUS;
   const sx = level.startX + 0.5, sy = level.startY + 0.5;
@@ -191,12 +192,12 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   const table = getPatternTable();
   if (table) {
     const hit = matchPatterns(table, t, W, H);
-    const prng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0xa77e5));
+    const prng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xa77e5));
     const ok = new Uint8Array(W * H);
     for (let i = 0; i < openCells.length; i++) ok[idx(openCells[i][0], openCells[i][1])] = 1;
     const occupied = [];
     for (const s of spawns) if (s.type === 'shell') occupied.push(s.x, s.y, 1.5);
-    const lrng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0x100700));
+    const lrng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x100700));
     const relicOk = lrng() < RELIC_CHANCE; // a relic in 1 in 3 levels
     const build = (p, x, y, dx, dy) => {
       const tx = Math.floor(x), ty = Math.floor(y);
@@ -224,22 +225,103 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       if (PATROL_EXIT_CLEAR[name] && level.exitX !== undefined && stretchToPoint(t, tx, ty, PATROL_REACH[name], level.exitX + 0.5, level.exitY + 0.5) < PATROL_EXIT_CLEAR[name]) return null;
       return makeEnemySlot(t, name, tx, ty, dx, dy);
     };
-    const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied, (p) => table.kind[p] !== 'decor');
+    // r37: the set-piece rooms force their content (a gauntlet always has its jets, a garden its urchins, a wreck its
+    // hull, chest and pots); everything else the table places keeps its distance from it
+    const forced = [];
+    const gardens = [];
+    for (let i = 0; i < (level.nSetPieces || 0); i++) {
+      const x0 = level.setPieces[i * 4], y0 = level.setPieces[i * 4 + 1], kind = level.setPieces[i * 4 + 2], flip = level.setPieces[i * 4 + 3];
+      const usable = (tx, ty) => tx > x0 && tx < x0 + ROOM_W - 1 && ty >= y0 && ty < y0 + ROOM_H && ok[idx(tx, ty)] && !inShop(tx, ty) && !nearExit(tx, ty);
+      // jets and the wreck only need reachable water that is not the shop room itself or the exit ring (enemies keep the full shop calm)
+      const usableH = (tx, ty) => tx > x0 && tx < x0 + ROOM_W - 1 && ty >= y0 && ty < y0 + ROOM_H && reached[idx(tx, ty)] && !nearExit(tx, ty) && !(shop && tx >= shop.x0 - 1 && tx <= shop.x1 && ty >= shop.y0 - 1 && ty <= shop.y1);
+      const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && t[idx(tx, ty)] === 0;
+      const clearOfStart = (tx, ty, keep) => Math.hypot(tx + 0.5 - sx, ty + 0.5 - sy) >= keep;
+      if (kind === SET_GAUNTLET) {
+        // alternating floor / ceiling jets across the tube: floor at 2, ceiling at 5, floor at 8 (mirrored with the room)
+        const lanes = [[2, 0], [5, 1], [8, 0]];
+        for (const [lx, ceil] of lanes) {
+          const cx = flip ? ROOM_W - 1 - lx : lx;
+          let rec = null;
+          for (const off of [0, 1, -1]) {
+            const tx = x0 + cx + off;
+            if (tx <= x0 || tx >= x0 + ROOM_W - 1) continue;
+            // the cell on the surface: lowest water with rock below (floor jet) / highest with rock above (ceiling jet)
+            let ty = -1;
+            for (let y = y0 + 5; y <= y0 + 9; y++) { // the tube rows
+              if (!open(tx, y)) continue;
+              if (ceil ? !open(tx, y - 1) : !open(tx, y + 1)) { ty = y; if (ceil) break; }
+            }
+            if (ty < 0 || !usableH(tx, ty) || !clearOfStart(tx, ty, SET_START_KEEP_OUT)) continue;
+            rec = makeHazardRecord('jet', tx + 0.5, ty + 0.5, 0, ceil ? 1 : -1, t, W, H);
+            if (rec) break;
+          }
+          if (rec) { rec.set = 'gauntlet'; forced.push(rec); occupied.push(rec.x, rec.y, 2); }
+        }
+      } else if (kind === SET_GARDEN) {
+        gardens.push(x0, y0);
+        // beds: floor cells (water over rock) between the walls; up to 5 urchins, 2 tiles apart, in a seeded order
+        const cand = [];
+        for (let ty = y0 + 3; ty < y0 + ROOM_H - 2; ty++) for (let tx = x0 + 1; tx < x0 + ROOM_W - 1; tx++) {
+          if (!usable(tx, ty) || !clearOfStart(tx, ty, SET_START_KEEP_OUT)) continue;
+          if (!open(tx, ty + 1)) cand.push([tx, ty, 0]);        // on the floor
+          else if (!open(tx, ty - 1)) cand.push([tx, ty, 1]);   // hanging from the roof
+        }
+        const grng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x6a4d + i));
+        for (let k = cand.length - 1; k > 0; k--) { const j = Math.floor(grng() * (k + 1)); const tmp = cand[k]; cand[k] = cand[j]; cand[j] = tmp; }
+        const taken = [];
+        for (const [tx, ty, up] of cand) {
+          if (taken.length >= 5) break;
+          if (taken.some((q) => Math.hypot(q[0] - tx, q[1] - ty) < 2)) continue;
+          const rec = makeEnemySlot(t, 'urchin', tx, ty, 0, up ? 1 : -1) || { type: 'enemy-slot', kind: 'urchin', placement: up ? 'ceiling' : 'floor', x: tx + 0.5, y: ty + 0.5, flatRun: true, wallDir: 0, nearSideWall: false, mantaFit: false, narrowShaft: false };
+          rec.set = 'garden'; forced.push(rec); taken.push([tx, ty]); occupied.push(rec.x, rec.y, 1.5);
+        }
+      } else if (kind === SET_WRECK) {
+        // the hull rests on the room's floor (the row above the rock in the middle columns); the hold holds a chest and pots
+        const cx = x0 + 5;
+        let fy = -1;
+        for (let y = y0 + ROOM_H - 2; y > y0 + 4 && fy < 0; y--) if (open(cx, y) && !open(cx, y + 1)) fy = y + 1; // the floor line (top of the rock)
+        if (fy < 0) continue;
+        if (!usableH(cx, fy - 1)) continue;
+        forced.push({ type: 'decor', dk: 'wreck', x: cx, y: fy, dx: flip ? -1 : 1, dy: 0, set: 'wreck' });
+        occupied.push(cx, fy - 1, 3);
+        const lootAt = [[cx - 0.5 + (flip ? 1 : 0), 'chest'], [cx - 3, 'pot'], [cx + 2.5, 'pot']];
+        for (const [lx, name] of lootAt) {
+          const tx = Math.floor(lx), ty = fy - 1;
+          if (!usableH(tx, ty) || open(tx, ty + 1)) continue;
+          const rec = makeLootRecord(name, tx + 0.5, ty + 0.5, 0, -1, lrng, relicOk);
+          if (rec) { rec.set = 'wreck'; forced.push(rec); occupied.push(rec.x, rec.y, 1.2); }
+        }
+      }
+    }
+    const placed = forced.concat(selectSpawns(table, hit, levelIndex, prng, build, occupied, (p) => table.kind[p] !== 'decor'));
     // A*: blocking hazards must leave the exit (and shop) reachable
     const collect = () => { const b = []; for (const r of placed) if (r.type === 'hazard') hazardBlockers(r, b); return b; };
-    for (let guard = 0; guard < 64; guard++) {
+    // r37: the loop used to stop after 64 drops, which a table flooded with blockers could exhaust (unsolvable level);
+    // it now runs until the path is clear, dropping a few at a time when there are many (an A* per drop is slow)
+    for (let guard = 0; guard < 400; guard++) {
       const bl = collect();
       if (!bl.length || finalPathOk(t, level.startX, level.startY, level.exitX, level.exitY, level.shop, bl)) break;
-      let k = placed.length - 1;
-      while (k >= 0 && !(placed[k].type === 'hazard' && hazardBlockers(placed[k]).length)) k--;
-      if (k < 0) break;
-      placed.splice(k, 1);
+      let drop = 0;
+      for (const r of placed) if (r.type === 'hazard' && hazardBlockers(r).length) drop++;
+      drop = Math.max(1, Math.floor(drop / 8));
+      for (let k = placed.length - 1; k >= 0 && drop > 0; k--) {
+        if (placed[k].type === 'hazard' && hazardBlockers(placed[k]).length) { placed.splice(k, 1); drop--; }
+      }
+      if (drop > 0 && !placed.some((r) => r.type === 'hazard' && hazardBlockers(r).length)) break; // nothing left to drop
     }
     // no two enemies spawn on top of each other (or hug each other): drop the later one of a too-close pair
     let kept = [];
     for (const r of placed) {
-      if (r.type === 'enemy-slot' && kept.some((k) => k.type === 'enemy-slot' && Math.hypot(k.x - r.x, k.y - r.y) < ENEMY_MIN_GAP)) continue;
+      if (r.type === 'enemy-slot' && kept.some((k) => k.type === 'enemy-slot' && !(k.set === 'garden' && r.set === 'garden') && Math.hypot(k.x - r.x, k.y - r.y) < ENEMY_MIN_GAP)) continue;
       kept.push(r);
+    }
+    // r37: a garden holds urchins only: no crab, piranha, cannon or horns inside its walls
+    if (gardens.length) {
+      kept = kept.filter((r) => {
+        if (r.type !== 'enemy-slot' || r.kind === 'urchin') return true;
+        for (let g = 0; g < gardens.length; g += 2) if (r.x >= gardens[g] && r.x < gardens[g] + ROOM_W && r.y >= gardens[g + 1] && r.y < gardens[g + 1] + ROOM_H) return false;
+        return true;
+      });
     }
     // r36: a hidden pocket's entrance (the cell its crack leads to) stays clear of enemies, like other objectives
     const keepOut = [];
@@ -279,7 +361,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     // matters is placed: it is not solid (it can never block the swim path or the A* check), keeps out of the shop and
     // the exit ring, and only keeps a small gap from what is already there. decor.js / v2-props-draw.js draw it.
     {
-      const drng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0xdec0a7));
+      const drng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xdec0a7));
       const occ = [];
       for (const r of kept) occ.push(r.x, r.y, DECOR_GAP);
       for (const s of spawns) if (s.type === 'shell') occ.push(s.x, s.y, DECOR_GAP);
@@ -288,6 +370,8 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         if (tx < BORDER || ty < BORDER || tx >= W - BORDER || ty >= H - BORDER || inShop(tx, ty) || nearExit(tx, ty)) return null;
         if (name === 'rune') { // the anchor is the rock tile carrying the carving, water in front of it
           if (t[idx(tx, ty)] === 0 || t[idx(tx + dx, ty + dy)] !== 0) return null;
+        } else if (name === 'fossil') { // r37: a fossil is embedded in thick rock (the whole 3x3 around it is rock)
+          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (t[idx(tx + ox, ty + oy)] === 0) return null;
         } else if (t[idx(tx, ty)] !== 0) return null; // foliage and boulders stand in water on a surface
         return { type: 'decor', dk: name, x, y, dx, dy };
       };

@@ -125,7 +125,7 @@ function drawBaked(ctx, o, bakeData) {
   const half = worldSize / 2;
 
   const justDashed = o.dashCooldown && o.dashCooldown > 0.45;
-  const squash = justDashed ? 0.85 : 1;
+  const squash = Math.min(justDashed ? 0.85 : 1, 1 - 0.18 * (o.squash || 0)); // dash squash, and a soft squash on landing
 
   ctx.save();
   ctx.scale(1 / squash, squash);
@@ -253,7 +253,7 @@ function drawPlaceholder(ctx, o) {
   }
   ctx.restore();
 
-  const squash = o.dashCooldown && o.dashCooldown > 0.45 ? 0.82 : 1;
+  const squash = Math.min(o.dashCooldown && o.dashCooldown > 0.45 ? 0.82 : 1, 1 - 0.18 * (o.squash || 0));
   ctx.save();
   ctx.scale(1 / squash, squash);
   ctx.fillStyle = BODY;

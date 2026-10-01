@@ -6,7 +6,6 @@
 import { artImg, COUNTER_SLICES } from './v2-art.js';
 import { isItem } from './items.js';
 import { drawItemIcon } from './items-draw.js';
-import { drawBoulder } from './hazards-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -570,10 +569,163 @@ export function drawDecorBoulders(ctx, camera, cw, ch, list, tileAt) {
     if (tileAt(Math.floor(x), Math.floor(y) - dy) === 0) continue; // its rock was bombed away
     const R = ppu * (0.3 + 0.05 * ((seed * 7) % 3));
     const rimY = py - dy * 0.5 * ppu;      // the rock face under (over) the cell
-    drawBoulder(ctx, px, rimY + dy * R * 0.62, R, seed);
+    drawDecorRock(ctx, px, rimY, R, seed, dy);
     const side = seed % 2 ? 1 : -1, r2 = R * 0.62;
     if (tileAt(Math.floor(x + side * 0.9), Math.floor(y) - dy) !== 0 && tileAt(Math.floor(x + side * 0.9), Math.floor(y)) === 0) {
-      drawBoulder(ctx, px + side * R * 1.25, rimY + dy * r2 * 0.6, r2, seed + 3);
+      drawDecorRock(ctx, px + side * R * 1.25, rimY, r2, seed + 3, dy);
     }
   }
+}
+
+function hash01(n) { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); }
+
+/**
+ * r37: a harmless decor rock: round, smooth, pale grey-blue with a moss patch and a sand skirt, half buried in the
+ * rock face under it. Deliberately nothing like the dark, faceted, cracked hazard rock (hazards-draw.js drawBoulder).
+ * (x, rimY) is where it meets the rock face; dy -1 stands on a floor, +1 hangs from a ceiling.
+ */
+export function drawDecorRock(ctx, x, rimY, R, seed, dy) {
+  ctx.save();
+  ctx.translate(x, rimY);
+  ctx.scale(1, -dy); // local +y is into the rock
+  // only the part on the water side of the face shows (it is half buried)
+  ctx.beginPath(); ctx.rect(-R * 2.4, -R * 2.4, R * 4.8, R * 2.4 + R * 0.04); ctx.clip();
+  const N = 9, cy = -R * 0.42;
+  const px = new Array(N), py = new Array(N);
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * TAU, r = R * (0.92 + hash01(seed * 7 + k) * 0.16);
+    px[k] = Math.cos(a) * r * 1.12; py[k] = cy + Math.sin(a) * r * 0.86;
+  }
+  const path = () => { // a smooth closed blob through the midpoints
+    ctx.beginPath();
+    ctx.moveTo((px[0] + px[N - 1]) / 2, (py[0] + py[N - 1]) / 2);
+    for (let k = 0; k < N; k++) { const k2 = (k + 1) % N; ctx.quadraticCurveTo(px[k], py[k], (px[k] + px[k2]) / 2, (py[k] + py[k2]) / 2); }
+    ctx.closePath();
+  };
+  const g = ctx.createRadialGradient(-R * 0.35, cy - R * 0.4, R * 0.1, 0, cy, R * 1.25);
+  g.addColorStop(0, '#b3c5cf'); g.addColorStop(0.55, '#7f95a4'); g.addColorStop(1, '#465a6c');
+  path(); ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = Math.max(1, R * 0.07); ctx.strokeStyle = 'rgba(32,48,64,0.55)'; ctx.stroke();
+  // moss on the shoulder (or a barnacle crust, by seed)
+  ctx.save(); path(); ctx.clip();
+  const moss = seed % 3 !== 0;
+  ctx.fillStyle = moss ? 'rgba(96,142,88,0.8)' : 'rgba(214,218,204,0.7)';
+  for (let k = 0; k < 4; k++) {
+    const a = -2.2 + k * 0.55 + hash01(seed + k) * 0.3, rr = R * (0.2 + hash01(seed * 3 + k) * 0.16);
+    ctx.beginPath(); ctx.arc(Math.cos(a) * R * 0.78, cy + Math.sin(a) * R * 0.66, rr, 0, TAU); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(235,245,250,0.3)'; // a soft highlight
+  ctx.beginPath(); ctx.ellipse(-R * 0.35, cy - R * 0.38, R * 0.3, R * 0.16, -0.5, 0, TAU); ctx.fill();
+  ctx.restore();
+  // the sand skirt where it sinks into the rock
+  ctx.fillStyle = 'rgba(196,178,128,0.92)'; ctx.strokeStyle = 'rgba(120,104,70,0.6)'; ctx.lineWidth = Math.max(1, R * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(-R * 1.35, R * 0.05);
+  ctx.quadraticCurveTo(-R * 0.95, -R * 0.2, -R * 0.45, -R * 0.12);
+  ctx.quadraticCurveTo(0, -R * 0.2, R * 0.5, -R * 0.1);
+  ctx.quadraticCurveTo(R * 1.0, -R * 0.22, R * 1.4, R * 0.05);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * r37: the sunken wreck of the wreck set-piece room: a ship lying on the floor with a broken hold (the chest sits in
+ * it), a leaning mast with a tattered sail and loose planks. Scenery, drawn behind the enemies and the octopus.
+ * @param {Float32Array} list x, y (the floor line under the middle of the room), flip (+1 bow right, -1 bow left) per wreck
+ */
+export function drawWrecks(ctx, camera, cw, ch, list, time) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  for (let i = 0; i < list.length; i += 3) {
+    const px = sx(list[i]), py = sy(list[i + 1]), flip = list[i + 2] < 0 ? -1 : 1;
+    if (px < -ppu * 6 || px > cw + ppu * 6 || py < -ppu * 3 || py > ch + ppu * 8) continue;
+    drawWreck(ctx, px, py, ppu, flip, time);
+  }
+}
+
+function drawWreck(ctx, px, py, u, flip, time) {
+  ctx.save();
+  ctx.translate(px, py + u * 0.1);
+  ctx.scale(flip * u, u);
+  const lw = 0.06;
+  // floor shadow
+  ctx.fillStyle = 'rgba(6,12,20,0.35)';
+  ctx.beginPath(); ctx.ellipse(0, 0, 3.6, 0.22, 0, 0, TAU); ctx.fill();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // loose planks on the seabed
+  ctx.fillStyle = '#5a3e27'; ctx.strokeStyle = '#26180e'; ctx.lineWidth = lw;
+  for (const [x, y, w, a] of [[-4.3, -0.08, 1.3, 0.12], [3.9, -0.1, 1.1, -0.1], [-3.0, -0.05, 0.8, -0.2]]) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.beginPath(); ctx.rect(-w / 2, -0.07, w, 0.14); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  // mast (leans a little), behind the hull
+  ctx.strokeStyle = '#26180e'; ctx.fillStyle = '#6b4a2f';
+  ctx.beginPath(); ctx.moveTo(-0.12, -1.5); ctx.lineTo(-0.5, -5.1); ctx.lineTo(-0.34, -5.12); ctx.lineTo(0.1, -1.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // yard and the tattered sail
+  ctx.save(); ctx.translate(-0.42, -4.5); ctx.rotate(-0.09);
+  ctx.fillStyle = 'rgba(186,196,186,0.72)'; ctx.strokeStyle = 'rgba(60,70,64,0.8)'; ctx.lineWidth = lw * 0.8;
+  ctx.beginPath();
+  ctx.moveTo(-1.45, 0.03); ctx.lineTo(1.35, 0.03);
+  ctx.lineTo(1.2, 0.55); ctx.lineTo(1.0, 0.4); ctx.lineTo(0.85, 1.05); ctx.lineTo(0.55, 0.75); ctx.lineTo(0.3, 1.3); ctx.lineTo(0.0, 0.85);
+  ctx.lineTo(-0.35, 1.2); ctx.lineTo(-0.7, 0.7); ctx.lineTo(-1.0, 0.95); ctx.lineTo(-1.2, 0.45); ctx.lineTo(-1.45, 0.6);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // two holes and seams
+  ctx.fillStyle = 'rgba(20,40,50,0.55)';
+  ctx.beginPath(); ctx.ellipse(0.55, 0.3, 0.14, 0.1, 0.4, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-0.7, 0.28, 0.1, 0.13, -0.3, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(70,80,74,0.5)'; ctx.beginPath(); ctx.moveTo(-0.3, 0.05); ctx.lineTo(-0.35, 1.05); ctx.moveTo(0.3, 0.05); ctx.lineTo(0.28, 1.1); ctx.stroke();
+  // the yard itself
+  ctx.fillStyle = '#6b4a2f'; ctx.strokeStyle = '#26180e'; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.rect(-1.55, -0.07, 3.0, 0.14); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  // rigging
+  ctx.strokeStyle = 'rgba(40,28,18,0.7)'; ctx.lineWidth = lw * 0.5;
+  ctx.beginPath(); ctx.moveTo(-0.48, -5.0); ctx.lineTo(3.3, -1.95); ctx.moveTo(-0.48, -5.0); ctx.lineTo(-3.2, -2.2); ctx.stroke();
+  // hull: stern castle, bowed belly, high bow with a bowsprit
+  const hullPath = () => {
+  ctx.beginPath();
+  ctx.moveTo(-3.7, -2.45);                  // stern top
+  ctx.lineTo(-2.7, -2.45); ctx.lineTo(-2.55, -1.85); // castle step
+  ctx.lineTo(-1.2, -1.75);
+  ctx.lineTo(-0.7, -1.45); ctx.lineTo(-0.2, -1.8); ctx.lineTo(0.5, -1.35); ctx.lineTo(1.1, -1.75); // broken deck edge
+  ctx.lineTo(3.2, -1.95); ctx.lineTo(4.7, -2.35);          // bow and bowsprit
+  ctx.lineTo(3.4, -1.0);
+  ctx.quadraticCurveTo(2.4, -0.05, 0.6, 0);                // bow to keel
+  ctx.lineTo(-1.8, 0);
+  ctx.quadraticCurveTo(-3.3, -0.1, -3.85, -1.2);           // keel up to the stern
+  ctx.closePath();
+  };
+  hullPath();
+  const g = ctx.createLinearGradient(0, -2.5, 0, 0);
+  g.addColorStop(0, '#7a5636'); g.addColorStop(1, '#43301f');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = '#26180e'; ctx.lineWidth = lw * 1.4; ctx.stroke();
+  // plank lines following the belly
+  ctx.strokeStyle = 'rgba(30,20,12,0.6)'; ctx.lineWidth = lw * 0.7;
+  for (const k of [0.3, 0.62]) {
+    ctx.beginPath(); ctx.moveTo(-3.75 + k * 0.5, -2.2 + k * 1.6);
+    ctx.quadraticCurveTo(0, k * 0.2 + 0.05, 3.9 - k * 0.8, -1.7 + k * 1.2); ctx.stroke();
+  }
+  // the hold: a dark gash in the deck, with ribs (the chest sits here)
+  ctx.fillStyle = 'rgba(12,8,6,0.82)';
+  ctx.beginPath(); ctx.moveTo(-1.6, -1.74); ctx.lineTo(-0.7, -1.45); ctx.lineTo(-0.2, -1.8); ctx.lineTo(0.5, -1.35); ctx.lineTo(1.1, -1.75);
+  ctx.lineTo(1.6, -0.5); ctx.lineTo(0.9, -0.2); ctx.lineTo(-0.8, -0.2); ctx.lineTo(-1.5, -0.6); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#5b3f27'; ctx.lineWidth = lw * 1.6;
+  for (const x of [-1.2, -0.4, 0.4, 1.2]) { ctx.beginPath(); ctx.moveTo(x, -1.6 + Math.abs(x) * 0.1); ctx.lineTo(x * 0.9, -0.25); ctx.stroke(); }
+  // portholes
+  for (const [x, y] of [[-2.8, -1.1], [-2.0, -0.9], [2.1, -0.95], [2.9, -1.15]]) {
+    ctx.fillStyle = '#1a110b'; ctx.strokeStyle = '#8a6a43'; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.arc(x, y, 0.15, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+  // water tint, barnacles and a few weed strands
+  ctx.save(); hullPath(); ctx.clip();
+  ctx.fillStyle = 'rgba(20,80,86,0.22)';
+  ctx.fillRect(-3.9, -2.5, 8.7, 2.5);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(200,215,200,0.55)';
+  for (const [x, y] of [[-3.2, -0.5], [-1.5, -0.12], [0.8, -0.1], [2.6, -0.45], [3.3, -0.8]]) { ctx.beginPath(); ctx.arc(x, y, 0.06, 0, TAU); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(70,150,100,0.8)'; ctx.lineWidth = lw * 1.3;
+  for (const [x, y, h] of [[-3.0, -2.4, 0.9], [3.1, -1.95, 0.8], [-1.9, -1.8, 0.7]]) {
+    const sw = Math.sin(time * 1.6 + x) * 0.12;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sw, y - h / 2, x + sw * 1.6, y - h); ctx.stroke();
+  }
+  ctx.restore();
 }

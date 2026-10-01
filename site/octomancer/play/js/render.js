@@ -716,8 +716,8 @@ export function createRenderer(ctx, world) {
   // (and again when the plant art finishes loading); one drawImage per frame. The opaque walls cover it, so it only
   // shows in the open water, where it gives the cave depth the flat gradient lacked.
   const DEEP_PARALLAX = 0.7, DEEP_SCALE = 0.86, DEEP_PX = 12;
-  const DEEP_ROCK = 'rgba(20,64,88,0.72)', DEEP_FOLIAGE = 'rgba(24,78,98,0.85)';
-  let deepLevel = null, deepCanvas = null, deepPlants = false;
+  const DEEP_ROCK = 'rgba(18,58,80,0.9)', DEEP_FOLIAGE = 'rgba(24,78,98,0.85)';
+  let deepLevel = null, deepCanvas = null, deepPlants = false, deepPlantList = [], deepTint = null;
   const deepHash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263 + 1013, 1274126177); h ^= h >>> 13; return (Math.imul(h, 1103515245) >>> 0); };
   function bakeDeepRock() {
     const W = world.width, H = world.height;
@@ -749,10 +749,13 @@ export function createRenderer(ctx, world) {
     g.fillStyle = DEEP_ROCK;
     g.fillRect(0, 0, c.width, c.height);
     g.globalCompositeOperation = 'source-over';
-    // foliage silhouettes on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark)
+    // foliage on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark). r37: these are drawn
+    // live at screen resolution (drawDeepRock), not baked into the low-res canvas, which made them blocky; the list
+    // keeps only plants that stand on THICK deep rock (rock behind and beside the base), so none hangs in open water.
     deepPlants = !!(plants[0].complete && plants[0].naturalWidth && plants[1].complete && plants[1].naturalWidth);
+    deepPlantList = [];
     if (deepPlants) {
-      const tint = plants.map((img) => {
+      deepTint = plants.map((img) => {
         const t = document.createElement('canvas'); t.width = img.naturalWidth; t.height = img.naturalHeight;
         const tg = t.getContext('2d'); tg.drawImage(img, 0, 0);
         tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = DEEP_FOLIAGE; tg.fillRect(0, 0, t.width, t.height);
@@ -764,12 +767,10 @@ export function createRenderer(ctx, world) {
           const h = deepHash(x * 3 + 1, y * 5 + 2);
           const floor = world.tileAt(x, y - 1) === 0, ceil = world.tileAt(x, y + 1) === 0;
           if (!(floor && h % 5 === 0) && !(ceil && !floor && h % 9 === 0)) continue;
-          const img = tint[(h >>> 8) & 1], ph = DEEP_PX * (1.5 + ((h >>> 12) % 10) / 10), pw = ph * (img.width / img.height);
-          g.save();
-          g.translate((x + 0.5) * DEEP_PX, (floor ? y + 0.15 : y + 0.85) * DEEP_PX);
-          if (!floor) g.scale(1, -1);
-          g.drawImage(img, -pw / 2, -ph, pw, ph);
-          g.restore();
+          const dyIn = floor ? 1 : -1; // one tile into the rock, and the neighbours of that tile: the mass under the plant is thick
+          if (!solid(x, y + dyIn) || !solid(x - 1, y) || !solid(x + 1, y) || !solid(x - 1, y + dyIn) || !solid(x + 1, y + dyIn)) continue;
+          const img = (h >>> 8) & 1, ph = 1.5 + ((h >>> 12) % 10) / 10, pw = ph * (deepTint[img].width / deepTint[img].height);
+          deepPlantList.push({ x: x + 0.5, y: floor ? y + 0.15 : y + 0.85, pw, ph, ceil: !floor, img });
         }
       }
     }
@@ -785,7 +786,18 @@ export function createRenderer(ctx, world) {
     if (dx > canvasW || dy > canvasH || dx + dw < 0 || dy + dh < 0) return;
     ctx.save();
     ctx.globalAlpha = 1 - Math.min(0.5, depth / 240);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(deepCanvas, dx, dy, dw, dh);
+    // the plants, live at screen resolution and culled to the view
+    const k = s * ppu;
+    for (let i = 0; i < deepPlantList.length; i++) {
+      const pl = deepPlantList[i];
+      const px = dx + pl.x * k, py = dy + pl.y * k, w = pl.pw * k, h = pl.ph * k;
+      if (px + w < 0 || px - w > canvasW || py + h < 0 || py - h > canvasH) continue;
+      const img = deepTint[pl.img];
+      if (pl.ceil) { ctx.save(); ctx.translate(px, py); ctx.scale(1, -1); ctx.drawImage(img, -w / 2, -h, w, h); ctx.restore(); }
+      else ctx.drawImage(img, px - w / 2, py - h, w, h);
+    }
     ctx.restore();
   }
   function drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced) {
@@ -1214,7 +1226,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0, extraDraw = null, lightR = 0,
+      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, lightR = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1232,7 +1244,7 @@ export function createRenderer(ctx, world) {
       const followX = octo.prevX + (octo.x - octo.prevX) * alpha;
       const followY = octo.prevY + (octo.y - octo.prevY) * alpha;
       updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy);
-      const shakePx = shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
+      const shakePx = shakePxIn ? shakePxIn : shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
       const reduced = prefersReducedMotion();
@@ -1273,6 +1285,7 @@ export function createRenderer(ctx, world) {
       drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
       drawBubbles(canvasW, canvasH, bubbles);
       drawPickups(canvasW, canvasH, pickups, time);
+      if (preEnemyDraw) preEnemyDraw(ctx, camera, canvasW, canvasH);
       drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
       drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
       if (extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);

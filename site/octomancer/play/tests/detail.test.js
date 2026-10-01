@@ -30,7 +30,7 @@ export async function runDetailTests(assert) {
 
   // ---- counts per level ----
   const SEEDS = 30;
-  let levels = 0, props = 0, decorN = 0, boulders = 0, runes = 0, foliage = 0, decorBad = 0, runeCrit = 0, clams = 0, pots = 0;
+  let fossils = 0, levels = 0, props = 0, decorN = 0, boulders = 0, runes = 0, foliage = 0, decorBad = 0, runeCrit = 0, clams = 0, pots = 0;
   const times = [];
   for (let seed = 1; seed <= SEEDS; seed++) for (let lvl = 0; lvl < 3; lvl++) {
     const t0 = performance.now();
@@ -43,8 +43,14 @@ export async function runDetailTests(assert) {
       if (s.type === 'loot' && s.lk >= 1 && s.lk <= 3) { props++; if (s.lk === 1) clams++; if (s.lk === 2) pots++; }
       if (s.type !== 'decor') continue;
       const tx = Math.floor(s.x), ty = Math.floor(s.y);
+      if (s.dk === 'wreck') continue; // r37: the wreck set piece stands on the floor line (checked in setpieces.test.js)
       if (s.dk === 'boulder') boulders++;
       if (s.dk === 'foliage') foliage++;
+      if (s.dk === 'fossil') { // r37: embedded in thick rock
+        fossils++;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (L.tiles[(ty + oy) * L.w + tx + ox] === 0) decorBad++;
+        continue;
+      }
       if (s.dk === 'rune') {
         runes++;
         if (L.tiles[ty * L.w + tx] === 0 || L.tiles[(ty + s.dy) * L.w + tx + s.dx] !== 0) decorBad++; // on rock, water in front

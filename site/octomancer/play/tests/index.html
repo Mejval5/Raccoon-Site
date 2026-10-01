@@ -170,6 +170,14 @@ await runEnemyR36Tests(assert);
 import { runDetailTests } from './detail.test.js';
 await runDetailTests(assert);
 
+// --- Round 37: set pieces force their content, seeding fix ---
+import { runSetPieceTests } from './setpieces.test.js';
+await runSetPieceTests(assert);
+
+// --- Round 37: game feel (sink, dash recoil, squash, shake) ---
+import { runFeelTests } from './feel.test.js';
+runFeelTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

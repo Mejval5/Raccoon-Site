@@ -39,7 +39,7 @@ import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop, drawRubble, drawDecorBoulders } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import {
   fetchQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
@@ -47,6 +47,8 @@ import {
 } from './quests.js';
 import { fetchShopItems, createShopState, shopStep } from './shop.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
+import { drawContactShadows } from './feel-draw.js';
+import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, prefersReducedMotion } from './config.js';
 import { HEART_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
@@ -58,7 +60,11 @@ const debugEl = document.getElementById('debug-overlay');
 const hudEl = document.getElementById('hud');
 
 const params = new URLSearchParams(location.search);
-const initialSeed = Number(params.get('seed')) || 1;
+// without ?seed= every page load gets its own run seed, so the first dive of a session is not always the same three levels
+// (v2 only: endless keeps its fixed default seed)
+const initialSeed = Number(params.get('seed')) || (params.get('v2') === '1' ? ((Math.random() * 4294967296) >>> 0) : 0) || 1;
+// v2 feel: ?sink=<u/s^2> tunes the idle sink of the octopus (0 = none); junk or negative falls back to the default
+const SINK = (() => { const v = params.get('sink'); const n = v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) && n >= 0 && n <= 5 ? n : OCTO_IDLE_SINK; })();
 const SEEDED = params.has('seed'); // a seeded run: the level title card shows the seed
 // M1-0 combat spike: ?auto=1 turns on enemy hp and Ink Jet auto-fire (js/autofire.js).
 const AUTO = params.get('auto') === '1';
@@ -129,6 +135,7 @@ input.onModeChange((mode) => {
 let seed = initialSeed;
 let world = makeWorld(seed);
 let octo = createOctopus(world.startX, world.startY);
+if (V2) { octo.feel = true; octo.sink = SINK; }
 if (V2) applyCarried(octo, run.items);
 let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
@@ -328,7 +335,11 @@ function step(dt) {
     particles.pickupSparkle(ev.x, ev.y, color);
     if (V2) { discover(itemId(ev.type)); if (ev.type === 'shell') gainShells(run, 1); }
   }
-  if (octo.hearts < prevHearts) { sfx.hurt(); if (V2) questOnHurt(quest); }
+  if (octo.hearts < prevHearts) {
+    sfx.hurt();
+    if (V2) { questOnHurt(quest); particles.shakeFx(SHAKE_HURT_PX); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); }
+  }
+  if (V2 && octo.bouncedThisStep) { particles.bouncePuff(octo.bounceX, octo.bounceY, octo.bounceNx, octo.bounceNy); particles.shakeFx(1.5, 0.12); }
   prevHearts = octo.hearts;
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
@@ -356,11 +367,13 @@ function step(dt) {
   bombs.update(dt, world, octo, enemies);
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
-    particles.blastBurst(ev.x, ev.y, Math.hypot(ev.x - octo.x, ev.y - octo.y)); sfx.bomb();
+    const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
+    particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
+    if (V2) particles.blastFeel(ev.x, ev.y, bd);
     if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); }
   }
   for (const ev of enemies.events) {
-    if (ev.type === 'hitStop') { hitStop = Math.max(hitStop, ev.dur); continue; }
+    if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
     if (V2 && !isSafeState(run)) {
@@ -480,6 +493,8 @@ function render(alpha, frameMs) {
     bombs: bombs.list(),
     particles: particles.pool,
     shakeOffset: particles.shakeOffset(),
+    shakePx: V2 ? scalePx(particles.shakePx(), dpr) : null,
+    preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     dreadLevel,
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
@@ -507,6 +522,7 @@ function resetWorld(newSeed) {
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = makeWorld(seed);
   octo = createOctopus(world.startX, world.startY);
+  if (V2) { octo.feel = true; octo.sink = SINK; }
   if (V2) applyCarried(octo, run.items);
   renderer = createRenderer(ctx, world);
   pickups = createPickups();
@@ -682,6 +698,20 @@ function decorBoulders(lv) {
   return boulderList;
 }
 
+// r37: the wreck set piece's hull(s): x, y (floor line), flip per wreck
+let wreckLevel = null, wreckList = null;
+function decorWrecks(lv) {
+  if (wreckLevel === lv) return wreckList;
+  wreckLevel = lv;
+  const out = [];
+  const chunk = world.residentChunks()[0] && world.residentChunks()[0].chunk;
+  if (chunk && chunk.spawns) for (const s of chunk.spawns) if (s.type === 'decor' && s.dk === 'wreck') out.push(s.x, s.y, s.dx);
+  wreckList = Float32Array.from(out);
+  return wreckList;
+}
+
+function scalePx(p, k) { return p.x === 0 && p.y === 0 ? p : { x: p.x * k, y: p.y * k }; }
+function shadowPass(c, camera, cw, ch) { drawWrecks(c, camera, cw, ch, decorWrecks(world.level), sim.time); drawContactShadows(c, camera, cw, ch, props.data, enemies.all(), world.isSolid); }
 function v2Extra(c, camera, w2s, cw, ch) {
   const lv = world.level;
   drawV2Marks(c, camera, cw, ch, {
@@ -934,7 +964,7 @@ window.__octo = {
       levelIndex: levelSpec(run).levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
       w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), boardX: world.level.boardX === undefined ? -1 : world.level.boardX, boardY: world.level.boardY === undefined ? -1 : world.level.boardY,
       prompts: world.level.prompts || [], walls: world.level.walls ? Array.from(world.level.walls) : [], transitioning,
-      tiles: Array.from(l.tiles), fallback: l.fallback, bankFallback: l.bankFallback || 0,
+      tiles: Array.from(l.tiles), setPieces: l.setPieces ? Array.from(l.setPieces.subarray(0, (l.nSetPieces || 0) * 4)) : [], fallback: l.fallback, bankFallback: l.bankFallback || 0,
       bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), journalOpen: journalScreen.isOpen(), endShown: ui.isEndShown(),
     };
   },

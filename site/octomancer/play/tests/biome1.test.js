@@ -90,7 +90,7 @@ export async function runBiome1Tests(assert, approx) {
     const interior = (r, f) => { let n = 0; for (let y = 1; y < ROOM_H - 1; y++) for (let x = 1; x < ROOM_W - 1; x++) if (f(r.cells[y][x])) n++; return n; };
     const qFrac = plain.reduce((a, r) => a + interior(r, (c) => c === '?'), 0) / (plain.length * (ROOM_W - 2) * (ROOM_H - 2));
     assert(`biome1 r36: about 15% of the interior cells are quantum '?' (${(qFrac * 100).toFixed(1)}%, 11-20%), so no two levels repeat`, qFrac > 0.11 && qFrac < 0.2);
-    assert('biome1 r36: every non-shop room has quantum cells and at least one pattern anchor', plain.every((r) => interior(r, (c) => c === '?') >= 2 && /[\^v<>]/.test(r.cells.join(''))));
+    assert('biome1 r36: every non-shop room has quantum cells and at least one pattern anchor (the hand-built set pieces are used as drawn)', plain.filter((r) => !r.id.startsWith('b1-set-')).every((r) => interior(r, (c) => c === '?') >= 2 && /[\^v<>]/.test(r.cells.join(''))));
     const ids = rooms.map((r) => r.id);
     assert('biome1 r36: the three set pieces (sunken wreck, urchin garden, current-jet gauntlet) are in the bank', ['b1-set-wreck', 'b1-set-garden', 'b1-set-gauntlet'].every((i) => ids.includes(i)));
     const detailed = plain.filter((r) => !/shaft|chimney|set-/.test(r.id)); // the set pieces are drawn by hand; the clean-walled shaft rooms keep the 3-wide shafts the eel pattern needs

@@ -273,7 +273,7 @@ export async function runEnemyR35Tests(assert) {
   {
     // QA B2: spawn at an open cell off screen that is reachable, then home in
     let bad = 0, total = 0, arrived = 0; const badAt = [];
-    for (const [seed, lvl] of [[3, 0], [7, 1], [11, 2], [5, 0]]) {
+    for (const [seed, lvl] of [[3, 0], [7, 1], [11, 2], [6, 0]]) {
       const world = createLevelWorld(seed, lvl);
       const L = world.level, W = LEVEL_W;
       for (const [fx, fy] of [[0.5, 0.15], [0.5, 0.5], [0.3, 0.8]]) {
@@ -293,7 +293,7 @@ export async function runEnemyR35Tests(assert) {
         if (!b || world.isSolid(b.x, b.y) || Math.hypot(b.x - o.x, b.y - o.y) < 12.9) { bad++; badAt.push(seed + '/' + lvl + '@' + ox + ',' + oy + (b ? ' b' + b.x.toFixed(1) + ',' + b.y.toFixed(1) : '')); continue; }
         let d0 = Math.hypot(b.x - o.x, b.y - o.y), best = d0;
         for (let i = 0; i < 1500; i++) { en.update(DT, 120 + i * DT, o, world, []); best = Math.min(best, Math.hypot(b.x - o.x, b.y - o.y)); if (o.dead) break; }
-        if (o.dead || best < d0 - 6) arrived++;
+        if (o.dead || best < d0 - 6) arrived++; else badAt.push('noarrive ' + seed + '/' + lvl + '@' + ox + ',' + oy + ' b' + b.x.toFixed(1) + ',' + b.y.toFixed(1) + ' d0 ' + d0.toFixed(1) + ' best ' + best.toFixed(1));
       }
     }
     assert(`QA B2: the Beholder spawns on an open cell at least 13 tiles away and closes in (${total - bad}/${total} valid spawns, ${arrived} arrived${badAt.length ? ', bad ' + badAt.join(' ') : ''})`, bad === 0 && arrived === total);

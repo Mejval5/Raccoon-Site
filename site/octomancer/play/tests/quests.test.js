@@ -79,7 +79,7 @@ export async function runQuestTests(assert) {
       if (!lv.shop) continue;
       checked++;
       for (const s of buildLevelSpawns(lv, 1 + i * 13, i % 3).spawns) {
-        if (s.type === 'shell') continue;
+        if (s.type === 'shell' || s.set) continue; // r37: a set piece next to the shop room keeps its jets, chest and wreck (scenery and static hazards; its enemies still keep the calm)
         if (s.x >= lv.shop.x0 - 4.5 && s.x < lv.shop.x1 + 4.5 && s.y >= lv.shop.y0 - 4.5 && s.y < lv.shop.y1 + 4.5) bad++;
       }
     }

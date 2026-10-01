@@ -18,10 +18,11 @@ import {
   SWIM_PUSH_FORCE, SWIM_MAX_SPEED, SWIM_TURN_DELAY, SWIM_TURN_SPEED,
   SWIM_REST_ROTATE_CONST, SWIM_JOYSTICK_POWER, SWIM_JOYSTICK_DIVISOR,
   SWIM_ACCEL_CAP_EXP, DASH_IMPULSE, DASH_COOLDOWN,
+  DASH_RECOIL, DASH_BOUNCE_MIN, DASH_BOUNCE_WINDOW, LAND_SQUASH_MIN,
   HEART_MAX, HURT_INVULN, HURT_KNOCKBACK, HURT_RAGDOLL, DEATH_DURATION,
   BOMB_START, BOMB_MAX,
 } from './config.js';
-import { applyImpulse, applyDrag, integrateWithCollision, len, clamp } from './physics.js';
+import { applyImpulse, applyDrag, integrateWithCollision, len, clamp, contact } from './physics.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -52,6 +53,14 @@ export function createOctopus(x, y) {
     swimMul: 1,   // flippers: 1.2
     lightR: 0,    // tiles of clear sight in the dim Shallows (0 = no dimming), set by the level
     magnetR: 0,   // shell magnet: pulls shells this close (tiles)
+    // --- game feel (v2 only: main.js sets feel = true and sink) ---
+    feel: false,  // turns on the idle sink, the dash recoil and the landing squash
+    sink: 0,      // u/s^2 pulling down while not swimming (config OCTO_IDLE_SINK)
+    dashT: 0,     // s left in which a wall hit counts as a dash bounce
+    airT: 0,      // s since the body last touched a floor
+    squash: 0,    // 0..1 landing squash, decays
+    landedThisStep: false, bouncedThisStep: false,
+    bounceX: 0, bounceY: 0, bounceNx: 0, bounceNy: 0, bounceSpeed: 0, // the last dash bounce: where, wall normal, impact speed
   };
 }
 
@@ -186,6 +195,7 @@ export function tryDash(o) {
   applyImpulse(o, DASH_IMPULSE * dir.x, DASH_IMPULSE * dir.y);
   o.dashCooldown = DASH_COOLDOWN;
   o.dashedThisStep = true;
+  o.dashT = DASH_BOUNCE_WINDOW;
   return true;
 }
 
@@ -200,6 +210,9 @@ export function tryDash(o) {
 export function stepOctopus(o, input, dt, grid) {
   o.prevX = o.x; o.prevY = o.y;
   o.dashedThisStep = false;
+  o.landedThisStep = false; o.bouncedThisStep = false;
+  if (o.dashT > 0) o.dashT = Math.max(0, o.dashT - dt);
+  if (o.squash > 0) o.squash = Math.max(0, o.squash - dt * 5);
 
   if (o.invulnTimer > 0) o.invulnTimer = Math.max(0, o.invulnTimer - dt);
   if (o.hurtTimer > 0) { o.hurtTimer = Math.max(0, o.hurtTimer - dt); if (o.hurtTimer === 0) o.hurting = false; }
@@ -224,8 +237,32 @@ export function stepOctopus(o, input, dt, grid) {
   // Gravity (negligible at scale 0.01, kept for fidelity: MainGame.unity octopus
   // rigidbody gravityScale). y-down world: gravity pulls toward +y.
   o.vy += UNITY_GRAVITY * OCTO_GRAVITY_SCALE * dt;
+  // v2: a slow sink while not swimming, so ledges matter; any swim input cancels it
+  if (o.feel && !o.swimming && o.sink) o.vy += o.sink * dt;
 
   applyDrag(o, OCTO_LINEAR_DRAG, dt);
 
+  if (!o.feel) { integrateWithCollision(o, dt, grid); return; }
+  const pvx = o.vx, pvy = o.vy, pspeed = len(pvx, pvy);
+  contact.hit = 0;
   integrateWithCollision(o, dt, grid);
+  // dash bounce: a fast dash that is stopped by a wall kicks back a little off it
+  if (o.dashT > 0 && pspeed > DASH_BOUNCE_MIN) {
+    const lost = len(pvx - o.vx, pvy - o.vy); // the velocity the wall took away, along its normal
+    if (lost > pspeed * 0.45) {
+      const nx = (o.vx - pvx) / lost, ny = (o.vy - pvy) / lost; // wall normal (points out of the wall)
+      const rc = Math.min(DASH_RECOIL, pspeed * 0.4);
+      o.vx += nx * rc; o.vy += ny * rc;
+      o.bouncedThisStep = true; o.bounceNx = nx; o.bounceNy = ny; o.bounceSpeed = pspeed;
+      o.bounceX = o.x - nx * o.radius; o.bounceY = o.y - ny * o.radius;
+      o.dashT = 0;
+    }
+  }
+  // landing: touching a floor after being off the ground squashes the body softly
+  const onFloor = contact.hit && contact.ny < -0.5;
+  if (onFloor) {
+    const impact = Math.max(0, pvy);
+    if (o.airT > 0.2 && impact > LAND_SQUASH_MIN) { o.squash = clamp(impact / 1.5, 0.35, 1); o.landedThisStep = true; }
+    o.airT = 0;
+  } else o.airT += dt;
 }

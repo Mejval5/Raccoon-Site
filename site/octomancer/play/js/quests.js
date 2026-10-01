@@ -10,7 +10,7 @@
 // exactly. Object placement uses the A* lattice (pathcheck.js): only spots the octopus can really swim to.
 // Data-oriented: quest rows are plain data, the runtime state is one flat record.
 
-import { mulberry32, hashSeed } from './rng.js';
+import { mulberry32, hashSeed2 } from './rng.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 
 export const Q_RESCUE = 1, Q_VAULT = 2, Q_UNTOUCHED = 3, Q_PEST = 4;
@@ -48,7 +48,7 @@ function inRect(x, y, r, m = 4) { return !!r && x >= r.x0 - m && x < r.x1 + m &&
  */
 export function planQuest(level, table, runSeed, levelIndex) {
   if (!table || !table.rows.length) return null;
-  const rng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0x9e57));
+  const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x9e57));
   const w = level.w, h = level.h, t = level.tiles;
   let grid = null, reached = null, route = null;
   const ensure = () => {

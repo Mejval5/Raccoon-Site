@@ -95,11 +95,14 @@
     { "id": "foliage-ledge", "kind": "decor", "spawn": "foliage", "anchor": [2, 2], "flips": "h", "dir": [0, -1], "sep": 1.1,
       "chance": [0.9, 0.9, 0.9], "cap": [10, 12, 14],
       "rows": ["?????", "??...", "??...", "?##..", "?????"] },
-    { "id": "rune-wall", "kind": "decor", "spawn": "rune", "anchor": [2, 2], "flips": "h", "dir": [1, 0], "sep": 1.1,
-      "chance": [0.9, 0.9, 0.9], "cap": [30, 36, 40],
+    { "id": "rune-wall", "kind": "decor", "spawn": "rune", "anchor": [2, 2], "flips": "h", "dir": [1, 0], "sep": 1.9,
+      "chance": [0.9, 0.9, 0.9], "cap": [28, 32, 34],
       "rows": ["?##..", "?##..", "?##..", "?##..", "?##.."] },
-    { "id": "rune-floor", "kind": "decor", "spawn": "rune", "anchor": [2, 3], "flips": "v", "dir": [0, -1], "sep": 1.1,
-      "chance": [0.85, 0.85, 0.85], "cap": [16, 18, 20],
-      "rows": ["?????", "?...?", "?...?", "?###?", "?###?"] }
+    { "id": "rune-floor", "kind": "decor", "spawn": "rune", "anchor": [2, 3], "flips": "v", "dir": [0, -1], "sep": 2.6,
+      "chance": [0.85, 0.85, 0.85], "cap": [12, 14, 16],
+      "rows": ["?????", "?...?", "?...?", "?###?", "?###?"] },
+    { "id": "fossil-rock", "kind": "decor", "spawn": "fossil", "anchor": [2, 2], "flips": "", "dir": [0, 0], "sep": 2.1,
+      "chance": [0.9, 0.9, 0.9], "cap": [24, 30, 34],
+      "rows": ["#####", "#####", "#####", "#####", "#####"] }
   ]
 }

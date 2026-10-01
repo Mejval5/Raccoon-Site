@@ -6,7 +6,7 @@
 // The tutorial is played once (the save remembers it); after that the hub entrance goes
 // straight to Shallows 1-1. main.js owns the fade and loads whatever levelSpec() asks for.
 
-import { hashSeed } from './rng.js';
+import { hashSeed2 } from './rng.js';
 
 export const S_HUB = 0, S_TUTORIAL = 1, S_BIOME = 2, S_END = 3;
 export const STATE_NAMES = ['hub', 'tutorial', 'biome1', 'end'];
@@ -84,7 +84,7 @@ export function endDive(run, cleared, cause) {
 }
 
 function startDive(run, level = 1) {
-  run.diveSeed = hashSeed(run.seed, run.dives++);
+  run.diveSeed = hashSeed2(run.seed, run.dives++);
   run.state = S_BIOME;
   run.level = level;
   run.levelsCleared = 0;
@@ -141,7 +141,7 @@ export function runEvent(run, ev, cause) {
 }
 
 /** The seed the NEXT dive will use (the hub sign previews that dive's first quest with it). */
-export function nextDiveSeed(run) { return hashSeed(run.seed, run.dives); }
+export function nextDiveSeed(run) { return hashSeed2(run.seed, run.dives); }
 
 /** What to load for the current state: {kind:'hub'|'tutorial'|'generated'|'end', seed, levelIndex}. */
 export function levelSpec(run) {
