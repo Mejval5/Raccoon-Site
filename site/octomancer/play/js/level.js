@@ -23,8 +23,8 @@ export const MAX_ATTEMPTS = 10;
 export const STOP_ROLL = 0.25;
 export const MAX_ANCHORS = 128;
 /** r37 set-piece room kinds (level.setPieces): the room ids 'b1-set-wreck' / '-garden' / '-gauntlet'. */
-export const SET_WRECK = 1, SET_GARDEN = 2, SET_GAUNTLET = 3;
-const SET_KIND = { wreck: SET_WRECK, garden: SET_GARDEN, gauntlet: SET_GAUNTLET };
+export const SET_WRECK = 1, SET_GARDEN = 2, SET_GAUNTLET = 3, SET_POOL = 4; // r39: 'b1-set-pool' is the Challenge Pool's room (pool.js)
+const SET_KIND = { wreck: SET_WRECK, garden: SET_GARDEN, gauntlet: SET_GAUNTLET, pool: SET_POOL };
 export const MAX_POCKETS = 2;
 export const SHOP_CHANCE = 0.58; // chance a level asks for a shop room (about 1 in 2 get one once placement and the A* check are through)
 

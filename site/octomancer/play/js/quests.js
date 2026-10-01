@@ -1,13 +1,15 @@
-// NPC questlines (round 38, the Spelunky 2 way). People, not objectives: Marlo the stranded diver, Pip the caged critter
-// and Quill the collector appear on specific levels, speak when you come near (meet, ask), react when you help
-// (help, thank) and move their story forward one stage at a time across levels and runs (save.js story flags:
-// `story[npc]` is the stage). The hub changes with the stages (main.js). Nothing is announced or listed: no HUD line.
-// data/quests.json holds the people (hub lines per stage) and the encounter rows (npc, stage needed, stage set, levels,
-// chance, kind, lines).
-//   vault   (Marlo)   sealed in a rock pocket (level.js carvePockets): bomb it open and swim in
-//   fetch   (Marlo)   his lost air tank lies on the floor: pick it up and carry it to the exit
-//   rescue  (Pip)     a cage on the floor: touch it, the creature follows you, bring it to the exit
-//   meet    (Quill)   he stands on the floor: swim up to him
+// NPC questlines (round 39, the Spelunky 2 way). People, not objectives: Marlo the stranded diver, Pip the caged critter
+// and Quill the collector (plus the Challenge Pool, pool.js). They are found in the levels, speak when you come near
+// (meet, ask), react when you help (help, thank) and move their story forward one stage at a time across levels and runs
+// (save.js story flags: `story[npc]` is the stage). Nothing is announced or listed: no HUD line, the only words are an NPC's
+// speech bubble and the journal's People pages.
+// data/quests.json holds the people (hub lines per stage) and the encounter rows (npc, stage range, levels, chance, kind, lines).
+//   vault   (Marlo)   sealed in a rock pocket (level.js carvePockets): bomb it open and swim in. Free him in three different
+//                     runs (stage 1, 2, 3) and he opens the hub shortcut to Shallows 1-3.
+//   rescue  (Pip)     a cage on the floor: break it with a dash or a bomb, the critter follows your trail, bring it to the
+//                     exit (8 shells); it then lives in the hub.
+//   Quill   (hub)     moves in after your first dive; each relic carried out through an exit and handed over unlocks a
+//                     journal entry, three give the lantern. No level row: hubVisit() is his whole scene.
 // planQuest is a pure function of the final level + seed + story. Spots use the A* lattice (pathcheck.js): only places
 // the octopus can really swim to, never inside a set-piece room or the shop, and clear of the level's other spawns.
 // Data-oriented: rows are plain data, the runtime state is one flat record.
@@ -16,11 +18,15 @@ import { mulberry32, hashSeed2 } from './rng.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { createTalk, say, talkStep } from './speech.js';
+import { DASH_KILL_SPEED } from './config.js';
 
-export const Q_RESCUE = 1, Q_VAULT = 2, Q_FETCH = 3, Q_MEET = 4;
-const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT, fetch: Q_FETCH, meet: Q_MEET };
+export const Q_RESCUE = 1, Q_VAULT = 2;
+const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT };
 export const ST_ACTIVE = 0, ST_DONE = 1;
 export const RELICS_NEEDED = 3;           // relics Quill wants (story.relics counts the ones carried out through an exit)
+export const DIVER_RUNS = 3;              // runs in which Marlo must be freed before he opens the hub shortcut to 1-3
+export const CAGE_BREAK_R = 1.3;         // octopus centre to the cage centre for a dash to break it
+export const CAGE_BLAST_R = 2.6;         // a bomb this close to the cage breaks it
 
 const TRAIL = 64;            // octopus positions kept (one per fixed step)
 const CRITTER_LAG = 22;      // steps behind the octopus (about 0.45 s)
@@ -39,7 +45,7 @@ export function parseQuests(json) {
     if (!KINDS[q.kind]) throw new Error('quest ' + q.id + ': unknown kind ' + q.kind);
     if (!npcById.has(q.npc)) throw new Error('quest ' + q.id + ': unknown npc ' + q.npc);
     return {
-      ...q, kindId: KINDS[q.kind], weight: 1, reward: q.reward | 0, count: 1, need: q.need | 0, set: q.set | 0,
+      ...q, kindId: KINDS[q.kind], weight: 1, reward: q.reward | 0, count: 1, need: q.need | 0, max: q.max === undefined ? q.need | 0 : q.max | 0,
       levels: (q.levels || [0, 1, 2]).slice(), chance: q.chance === undefined ? 0.35 : q.chance, lines: q.lines || {}, variant: q.variant || '',
     };
   });
@@ -61,14 +67,14 @@ function inSetPiece(level, x, y) {
   return false;
 }
 
-/** Rows that can happen on this level for this story: the person is at the stage the row needs and the level is listed. */
+/** Rows that can happen on this level for this story: the person's stage is within the row's range and the level is listed. */
 export function eligibleRows(table, story, levelIndex) {
-  return table.rows.filter((r) => ((story && story[r.npc]) | 0) === r.need && r.levels.includes(levelIndex));
+  return table.rows.filter((r) => { const st = story && story[r.npc] !== undefined ? story[r.npc] | 0 : 0; return st >= r.need && st <= r.max && r.levels.includes(levelIndex); });
 }
 
 /**
  * Pick and place this level's encounter. Returns a plan
- *   {qi, kindId, id, npc, name, title, reward, count, set, lines, done, journal, variant, floorY, pos: Float32Array [x, y]}
+ *   {qi, kindId, id, npc, name, title, reward, count, need, max, lines, done, journal, variant, floorY, pos: Float32Array [x, y]}
  * (pos: the centre of the cage / tank / person / pocket cache, in world units; floorY: the floor line it rests on,
  * 0 for the vault) or null: nothing eligible, the roll failed or no spot fits.
  * @param {{tiles:Uint8Array,w?:number,h?:number,startX:number,startY:number,exitX:number,exitY:number,shop?:any,pockets?:Int16Array,nPockets?:number,setPieces?:Int16Array,nSetPieces?:number}} level
@@ -141,7 +147,7 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
             for (let i = 0; i < all.length; i += 2) if (distToRoute(all[i] + 0.5, all[i + 1] + 0.5) >= minRoute) cand.push(all[i], all[i + 1]);
             if (cand.length) {
               const k = Math.floor(rng() * (cand.length / 2)) * 2;
-              const floorY = cand[k + 1] + 1, off = row.kindId === Q_FETCH ? 0.36 : row.kindId === Q_MEET ? 0.6 : row.variant === 'mama' ? 0.62 : 0.55;
+              const floorY = cand[k + 1] + 1, off = 0.55;
               return Float32Array.of(cand[k] + 0.5, floorY - off, floorY);
             }
           }
@@ -162,7 +168,7 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
     const npc = table.npcById.get(row.npc);
     return {
       qi: table.byId.get(row.id), kindId: row.kindId, id: row.id, npc: row.npc, name: npc.name, title: npc.title, reward: row.reward, count: 1,
-      set: row.set, lines: row.lines, done: row.done || '', journal: row.journal || npc.journal || '', variant: row.variant,
+      need: row.need, max: row.max, lines: row.lines, done: row.done || '', journal: row.journal || npc.journal || '', variant: row.variant,
       floorY: found[2], pos: Float32Array.of(found[0], found[1]),
     };
   }
@@ -172,10 +178,11 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
 /** Fresh runtime state for a plan (null plan gives null). */
 export function createQuestState(plan) {
   if (!plan) return null;
-  const floor = plan.kindId === Q_RESCUE || plan.kindId === Q_FETCH || plan.kindId === Q_MEET;
+  const floor = plan.kindId === Q_RESCUE;
   return {
     plan, status: ST_ACTIVE, progress: 0, goal: plan.count,
-    following: false,                       // rescue / fetch: touched, now trailing the octopus
+    following: false,                       // rescue: the cage is broken, the critter trails the octopus
+    brokenBy: '',                           // rescue: 'dash' or 'bomb'
     cx: floor ? plan.pos[0] : 0, cy: floor ? plan.pos[1] : 0,
     collected: false,                       // vault: freed
     trail: new Float32Array(TRAIL * 2), head: 0, filled: 0,
@@ -190,7 +197,6 @@ function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_
 export function questSpeaker(st) {
   const p = st.plan;
   if (p.kindId === Q_VAULT) return [p.pos[0] + 0.1, p.pos[1] - 1.0];
-  if (p.kindId === Q_MEET) return [st.cx, p.floorY - 1.3];
   return [st.cx, st.cy - (p.variant === 'mama' ? 0.95 : 0.7)];
 }
 
@@ -214,18 +220,18 @@ function questStep(st, octo, world, dt) {
   const k = st.plan.kindId;
   const [nx, ny] = k === Q_VAULT ? [st.plan.pos[0], st.plan.pos[1]] : [st.cx, st.cy];
   const d = Math.hypot(octo.x - nx, octo.y - ny);
-  const speaker = k !== Q_FETCH; // a lost tank says nothing
-  if (speaker && !st.helped) {
+  if (!st.helped) {
     if (!st.met && d < MEET_R) { st.met = true; st.lastAsk = st.clock; speak(st, 'meet'); speak(st, 'ask'); }
     else if (st.met && d < ASK_AGAIN_R && !st.talk.text && !st.talk.q.length && st.clock - st.lastAsk > ASK_AGAIN_S) { st.lastAsk = st.clock; speak(st, 'ask'); }
   }
   let done = false;
-  if (k === Q_RESCUE || k === Q_FETCH) {
+  if (k === Q_RESCUE) {
     st.trail[st.head * 2] = octo.x; st.trail[st.head * 2 + 1] = octo.y;
     st.head = (st.head + 1) % TRAIL;
     if (st.filled < TRAIL) st.filled++;
     if (!st.following) {
-      if (d < TOUCH_R) { st.following = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); }
+      // the cage is shut: only a dash into it breaks it (a bomb: questBlast). Swimming against it does nothing.
+      if (d < CAGE_BREAK_R && Math.hypot(octo.vx || 0, octo.vy || 0) >= DASH_KILL_SPEED) breakCage(st, 'dash');
     } else {
       const lag = Math.min(CRITTER_LAG, st.filled);
       const i = (st.head - lag + TRAIL * 2) % TRAIL;
@@ -252,8 +258,6 @@ function questStep(st, octo, world, dt) {
     }
   } else if (k === Q_VAULT && !st.collected) {
     if (d < TOUCH_R) { st.collected = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); st.leave = 6; done = finish(st); }
-  } else if (k === Q_MEET) {
-    if (d < 1.7) { st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); st.leave = 6; done = finish(st); }
   }
   return done;
 }
@@ -261,18 +265,33 @@ function questStep(st, octo, world, dt) {
 /** The octopus reached the exit. Returns true when this completed the encounter (the follower came along). */
 export function questOnExit(st) {
   if (!st || st.status !== ST_ACTIVE) return false;
-  if (st.plan.kindId === Q_RESCUE || st.plan.kindId === Q_FETCH) return st.following ? finish(st) : false;
+  if (st.plan.kindId === Q_RESCUE) return st.following ? finish(st) : false;
   return false;
 }
 
-/** Stage of a person after an encounter row completes (never goes backwards). */
-export function nextStage(current, row) { return Math.max(current | 0, row.set | 0); }
+function breakCage(st, how) {
+  st.following = true; st.helped = true; st.brokenBy = how;
+  st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
+  speak(st, 'help'); speak(st, 'thank');
+}
+
+/** A bomb went off at (x, y) with radius r: a shut cage within CAGE_BLAST_R of it breaks. Returns true when it did. */
+export function questBlast(st, x, y, r = 0) {
+  if (!st || st.status !== ST_ACTIVE || st.plan.kindId !== Q_RESCUE || st.following) return false;
+  if (Math.hypot(st.cx - x, st.cy - y) > Math.max(CAGE_BLAST_R, r)) return false;
+  breakCage(st, 'bomb');
+  talkStep(st.talk, 0); // the first line shows at once
+  return true;
+}
+
+/** Stage of a person after an encounter row completes: one up, never past the row's last eligible stage + 1, never back. */
+export function nextStage(current, row) { return Math.max(current | 0, Math.min((current | 0) + 1, (row.max | 0) + 1)); }
 
 // ---- the hub: who stands where, and what they say --------------------------------------------------------------
 
 /**
- * The hub residents for this story: [{id, stage, slot}] in table order, only people who have been met (stage >= 1).
- * Slots are spots of the hub (main.js maps a slot to a position).
+ * The hub residents for this story: [{id, stage, name}] in table order, only people who have been met (stage >= 1).
+ * Slots are spots of the hub (main.js maps an id to a position).
  */
 export function hubResidents(table, story) {
   const out = [];
@@ -280,16 +299,44 @@ export function hubResidents(table, story) {
   return out;
 }
 
-/** The lines a resident says on a visit: the thank line first when the stage was reached since they last spoke, then the stage's lines. */
-export function hubLines(npc, stage, relics, thankPending, visit) {
-  const fill = (s) => s.replace('{n}', String(Math.min(relics, RELICS_NEEDED))).replace('{left}', String(Math.max(0, RELICS_NEEDED - relics)));
-  const lines = [];
-  if (thankPending && npc.thanks[stage]) lines.push(fill(npc.thanks[stage]));
+/** Quill moves into the hub after the player's first dive. Returns the story key to set (or '' when nothing changes). */
+export function collectorArrives(story, dives) { return (story.quill | 0) === 0 && dives >= 1 ? 'quill' : ''; }
+
+function capName(id) { return id.charAt(0).toUpperCase() + id.slice(1); }
+
+/**
+ * What a resident says when the octopus swims up to them, as data: {lines, set:[[key, value]...], discover:[ids]}.
+ *  - Quill with a relic in hand (story.relics > story.relicsGiven): he takes it, says the line for that relic, the journal
+ *    gets that relic's entry (loot-relic-N); the third relic moves him to stage 2 (the lantern).
+ *  - the first visit after a stage was reached (story['said<Name>'] < stage): the thank-you, then the stage's lines;
+ *  - later visits: one line at a time, rotating.
+ * Hub lines may use {n} (relics handed over) and {left}.
+ */
+export function hubVisit(table, story, id, visit = 0) {
+  const npc = table.npcById.get(id);
+  const out = { lines: [], set: [], discover: [] };
+  if (!npc) return out;
+  let stage = story[id] | 0;
+  const given = story.relicsGiven | 0;
+  const fill = (str) => str.replace('{n}', String(Math.min(given, RELICS_NEEDED))).replace('{left}', String(Math.max(0, RELICS_NEEDED - given)));
+  if (npc.journal) out.discover.push(npc.journal);
+  if (id === 'quill' && (story.relics | 0) > given && given < RELICS_NEEDED) {
+    const n = given + 1;
+    out.lines.push((npc.relics && npc.relics[n - 1]) || 'A relic. Thank you.');
+    out.set.push(['relicsGiven', n]);
+    out.discover.push('loot-relic-' + n);
+    if (n >= RELICS_NEEDED) { stage = 2; out.set.push(['quill', 2]); }
+    return out;
+  }
+  const key = 'said' + capName(id);
+  const pending = (story[key] | 0) < stage;
+  if (pending && npc.thanks[stage]) out.lines.push(fill(npc.thanks[stage]));
   const pool = npc.hub[stage] || [];
   if (pool.length) {
     // the first visit tells the whole stage; later visits one line at a time, rotating
-    if (thankPending || visit === 0) for (const l of pool) lines.push(fill(l));
-    else lines.push(fill(pool[visit % pool.length]));
+    if (pending || visit === 0) for (const l of pool) out.lines.push(fill(l));
+    else out.lines.push(fill(pool[visit % pool.length]));
   }
-  return lines;
+  if (pending) out.set.push([key, stage]);
+  return out;
 }

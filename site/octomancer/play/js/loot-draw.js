@@ -142,7 +142,7 @@ function drawPot(ctx, x, y, ppu, seed) {
 }
 
 // ---- chest: the generated sprite (code fallback), shaking while a spike trap rattles, spikes when it bursts ----
-function drawChest(ctx, x, y, ppu, time, seed, st, t, trap) {
+export function drawChest(ctx, x, y, ppu, time, seed, st, t, trap) {
   const open = st !== ST_INTACT;
   const img = artImg(open ? 'chestOpen' : 'chestClosed');
   const foot = y + 0.5 * ppu - 0.08 * ppu;

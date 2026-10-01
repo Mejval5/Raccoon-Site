@@ -32,16 +32,18 @@ import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBe
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
   createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, BIOME_LEVELS, BIOME_NAME,
-  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL, EV_ENTER_SHORTCUT3, SHORTCUT3_LEVEL,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
 import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawTank, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
-import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questSpeaker, hubResidents, hubLines, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_FETCH, Q_MEET, ST_ACTIVE } from './quests.js';
+import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
+import { planPools, createPoolState, poolStep, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
+import { drawPool } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast } from './shop.js';
@@ -86,7 +88,7 @@ if (V2) {
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   shopItems = await fetchShopItems();
-  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut() || getStory().marlo >= 2 });
+  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut(), shortcut3: getStory().marlo >= DIVER_RUNS });
   run.nextSeed = seedFromText(getSettings().seed); // the seed typed in the settings menu for the next dive (null = random)
   const at = params.get('at');
   if (at === 'tutorial') run.state = S_TUTORIAL;
@@ -165,12 +167,20 @@ let quest = null;
 let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed after the level's first enemy update
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
+let poolSts = []; // r39: this level's Challenge Pools (pool.js), one per pool room
 let tutState = createTutorialState();
-let story = getStory(); // the stage of Marlo, Pip and Quill, relics delivered (save.js): who waits in the hub
+let story = getStory(); // the stage of Marlo, Pip and Quill, relics handed over, pool wagers (save.js): who waits in the hub
 let diveStory = { ...story }; // the story as the dive began: people move on between dives, never within one
 const diveDone = new Set(); // people whose scene was finished in this dive (nobody appears twice in a dive)
 let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
 const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {} }; // what a hub resident is saying now
+/** Back in the hub: the Collector moves in after the first dive; Marlo's ring exists once he was freed in three runs. */
+function arriveInHub() {
+  const key = collectorArrives(story, getMeta().dives);
+  if (key) { setStory(key, 1); story = getStory(); }
+  run.shortcut3 = story.marlo >= DIVER_RUNS;
+}
+if (V2 && run.state === S_HUB) arriveInHub();
 
 const sim = {
   time: 0,
@@ -214,6 +224,7 @@ const journalScreen = createJournalScreen(hudEl, journal, {
   onClose() { boardCooldown = true; syncModal(); },
   onOpen() { ui.setPrompt(null); journal.flush(); syncModal(); },
   getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; },
+  getStory() { return getStory(); },
   reducedMotion: prefersReducedMotion,
 });
 /** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
@@ -419,7 +430,7 @@ function step(dt) {
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
     if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS);
-    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); }
+    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS); }
   }
   for (const ev of enemies.events) {
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
@@ -555,8 +566,6 @@ function render(alpha, frameMs) {
     stage: V2 ? stageLabel(run) : undefined,
     shells: V2 ? run.shells : undefined,
     items: V2 ? run.items : undefined,
-    quest: V2 && loot.chaseLeft() > 0 ? 'Run! The ceiling is falling: ' + Math.ceil(loot.chaseLeft()) + 's' : '',
-    questState: V2 && loot.chaseLeft() > 0 ? 'failed' : '',
   });
   debug.tick();
 }
@@ -633,10 +642,11 @@ function v2Event(ev) {
   fade.style.opacity = '1';
   setTimeout(() => {
     if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
+    if (run.state === S_HUB) arriveInHub();
     resetWorld(0);
     if (run.state === S_BIOME && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     discoverStatePlace();
-    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) ui.showToast('Quill\'s lantern lights the way', 2600, true);
+    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
     window.dispatchEvent(new CustomEvent('restart'));
     fade.style.opacity = '0';
     setTimeout(() => { transitioning = false; }, FADE_MS);
@@ -693,16 +703,24 @@ function stepV2(snap) {
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
     if (ev) onShopEvent(ev);
-    if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) discover('place-shop');
+    if (poolSts.length) {
+      const busy = poolSts.some((ps) => ps.state === PL_ACTIVE); // one wager at a time
+      for (const ps of poolSts) { if (busy && ps.state === PL_IDLE) continue; for (const pe of poolStep(ps, octo, run.shells, STEP)) onPoolEvent(pe, ps); }
+    }
+    if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
   }
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
-    if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); ui.showToast('Relic safe. Quill will want to hear about it.', 3000, true); }
+    if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
     v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT);
     return;
   }
   if (run.state === S_HUB && run.shortcut && lv.shortcutX >= 0 && Math.hypot(octo.x - (lv.shortcutX + 0.5), octo.y - (lv.shortcutY + 0.5)) < 1.2) {
     v2Event(EV_ENTER_SHORTCUT);
+    return;
+  }
+  if (run.state === S_HUB && run.shortcut3 && lv.shortcut3X >= 0 && Math.hypot(octo.x - (lv.shortcut3X + 0.5), octo.y - (lv.shortcut3Y + 0.5)) < 1.2) {
+    v2Event(EV_ENTER_SHORTCUT3);
     return;
   }
   if (run.state === S_HUB) hubStep(lv);
@@ -776,6 +794,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
     label: run.state === S_HUB ? 'Dive' : '',
     shortcutX: run.state === S_HUB && run.shortcut && lv.shortcutX !== undefined ? lv.shortcutX : -1, shortcutY: lv.shortcutY,
     shortcutLabel: BIOME_NAME + ' 1-' + SHORTCUT_LEVEL,
+    shortcut3X: run.state === S_HUB && run.shortcut3 && lv.shortcut3X !== undefined ? lv.shortcut3X : -1, shortcut3Y: lv.shortcut3Y,
+    shortcut3Label: BIOME_NAME + ' 1-' + SHORTCUT3_LEVEL,
   }, sim.time);
   const t = sim.time;
   if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
@@ -789,6 +809,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
+    for (const ps of poolSts) drawPool(c, camera, cw, ch, ps, run.shells, t);
     if (quest) drawQuestThing(c, camera, cw, ch, t);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
@@ -866,7 +887,7 @@ function killDropRoll(n) {
 
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; tutState = createTutorialState(); relicHeld = false;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false;
   if (run.state === S_BIOME) {
     const spec = levelSpec(run);
     const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
@@ -874,23 +895,47 @@ function setupLevelExtras() {
     quest = createQuestState(plan);
     if (plan) questClear = { x: plan.pos[0], y: plan.pos[1] };
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
+    poolSts = planPools(world.level).map(createPoolState);
   }
 }
 
-/** An encounter ended well: shells, a quiet line, the People entry, and the person's story moves to the next stage. */
+/** An encounter ended well: shells, a quiet line, the People entry, and the person's story moves up one stage. */
 function payQuest() {
   const p = quest.plan;
   gainShells(run, p.reward);
   run.dive.quests++;
-  if (p.done) ui.showToast(p.done);
   sfx.chime();
   particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
   if (p.journal) { discover(p.journal); journal.bump(p.journal, STAT_COLLECTED); }
-  setStory(p.npc, p.set);
+  setStory(p.npc, nextStage(diveStory[p.npc] | 0, p));
   diveDone.add(p.npc);
-  if (p.id === 'marlo-1') addStory('diverFreed'); else if (p.id === 'pip-1') addStory('critterFreed');
-  if (p.id === 'marlo-2' && !run.shortcut) { run.shortcut = true; setShortcut(true); ui.showToast('Marlo opened a shortcut in the hub', 3200, true); }
+  if (p.id === 'marlo-1') {
+    addStory('diverFreed');
+  } else if (p.id === 'pip-1') addStory('critterFreed');
   story = getStory();
+}
+
+/** The Challenge Pool: the wager starts the falling rocks, a won wager raises the chest, a lost one stops the rocks. */
+function onPoolEvent(ev, poolSt) {
+  switch (ev.type) {
+    case 'paid':
+      run.shells -= ev.cost;
+      loot.startChase(POOL_SECONDS);
+      enemies.despawnNear(poolSt.plan.x, poolSt.plan.y, 9); // the wager is rocks and vents only: whatever swam in is gone
+      addStory('poolPaid'); story = getStory();
+      discover('place-pool'); journal.bump('place-pool', STAT_KILLED);
+      sfx.chime(); particles.pickupSparkle(poolSt.plan.x, poolSt.plan.y - 0.6, '#ffe38a');
+      break;
+    case 'lost': loot.stopChase(); break;
+    case 'won': sfx.chime(); particles.pickupSparkle(poolSt.plan.x, poolSt.plan.y - 0.6, '#ffe38a'); break;
+    case 'prize':
+      dropShells(ev.shells, ev.x, ev.y);
+      addStory('poolWon'); story = getStory();
+      journal.bump('place-pool', STAT_COLLECTED);
+      particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
+      break;
+    default: break;
+  }
 }
 
 /** x, y of the level's other spawns (enemies, hazards, loot, boulders): an encounter keeps clear of them. */
@@ -905,7 +950,7 @@ function levelSpawns() {
 }
 
 const DECOR_JOURNAL = { foliage: 'prop-weed', boulder: 'prop-boulder', rune: 'prop-rune', fossil: 'prop-fossil', wreck: 'place-wreck' };
-const SET_JOURNAL = ['', 'place-wreck', 'place-garden', 'place-gauntlet'];
+const SET_JOURNAL = ['', 'place-wreck', 'place-garden', 'place-gauntlet', 'place-pool'];
 function critterJournal(kind) {
   if (kind === 'fish') return 'creature-fish';
   if (kind.startsWith('rune')) return 'prop-rune';
@@ -931,11 +976,10 @@ function discoverScenery() {
   }
 }
 
-/** What is lying on the level: the sealed diver, the caged critter (resting on the floor), the tank, the collector; and the speech bubble. */
+/** What is lying on the level: the sealed diver, the caged critter (resting on the floor); and the speech bubble. */
 function drawQuestThing(c, camera, cw, ch, t) {
   const st = quest, p = st.plan;
   const fade = st.status === ST_ACTIVE ? 1 : Math.max(0, Math.min(1, st.leave / 1.2));
-  const mama = p.variant === 'mama';
   switch (p.kindId) {
     case Q_VAULT:
       if (fade > 0) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, p.pos[0], p.pos[1] + 0.22, t, st.collected, true); c.restore(); }
@@ -943,19 +987,14 @@ function drawQuestThing(c, camera, cw, ch, t) {
     case Q_RESCUE:
       if (!st.following) drawCritter(c, camera, cw, ch, st.cx, st.cy, false, t, p.floorY, p.variant);
       else {
-        drawCage(c, camera, cw, ch, p.pos[0], p.floorY, mama ? 1.7 : 1.25, mama ? 1.55 : 1.15, true); // the open cage stays behind
+        drawCage(c, camera, cw, ch, p.pos[0], p.floorY, 1.25, 1.15, true); // the broken cage stays behind, open
         if (st.status === ST_ACTIVE) drawCritter(c, camera, cw, ch, st.cx, st.cy, true, t, 0, p.variant);
       }
       break;
-    case Q_FETCH:
-      if (st.status === ST_ACTIVE) drawTank(c, camera, cw, ch, st.cx, st.cy, t, !st.following);
-      break;
-    case Q_MEET:
-      if (fade > 0) { c.save(); c.globalAlpha = fade; drawCollector(c, camera, cw, ch, p.pos[0], p.floorY, t, false); c.restore(); }
-      break;
     default: break;
   }
-  if (p.kindId !== Q_FETCH) { const sp = questSpeaker(st); drawSpeech(c, camera, cw, ch, sp[0], sp[1], st.talk.text, talkAlpha(st.talk), p.name); }
+  const sp = questSpeaker(st);
+  drawSpeech(c, camera, cw, ch, sp[0], sp[1], st.talk.text, talkAlpha(st.talk), p.name);
 }
 
 // --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the ledge by the board; each speaks when you come near ---
@@ -968,27 +1007,31 @@ function hubPlace(lv, id, t, which = 0) {
     default: return { x: lv.signX - 1.4 - which * 2.2 + Math.sin(t * 0.7 + which) * 0.8, y: lv.signY - 0.7 + Math.sin(t * 1.3 + which * 2) * 0.22, head: which ? 0.95 : 0.7, fly: true };
   }
 }
-function capName(id) { return id.charAt(0).toUpperCase() + id.slice(1); }
 
 function hubStep(lv) {
   if (lv.signX === undefined || lv.signX < 0) return;
+  // Quill with a relic in hand to take: whatever he was saying makes way for it as soon as the octopus is beside him
+  if ((story.relics | 0) > (story.relicsGiven | 0) && hubTalk.who === 'quill' && talking(hubTalk.talk)) {
+    const q = hubPlace(lv, 'quill', sim.time);
+    if (Math.hypot(octo.x - q.x, octo.y - (q.y - 0.8)) < HUB_TALK_R && (story.relicsGiven | 0) < RELICS_NEEDED) { hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = ''; hubTalk.who = ''; }
+  }
   talkStep(hubTalk.talk, STEP);
   if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; }
   if (talking(hubTalk.talk)) return;
   const t = sim.time;
   for (const r of hubResidents(questTable, story)) {
-    if ((hubTalk.cool[r.id] || 0) > t) continue;
     const pl = hubPlace(lv, r.id, t);
+    // Quill holding out for a relic is worth a visit at once; anyone else waits out a short cool-down after speaking
+    const handOver = r.id === 'quill' && (story.relics | 0) > (story.relicsGiven | 0) && (story.relicsGiven | 0) < RELICS_NEEDED;
+    if (!handOver && (hubTalk.cool[r.id] || 0) > t) continue;
     if (Math.hypot(octo.x - pl.x, octo.y - (pl.fly ? pl.y : pl.y - 0.8)) > HUB_TALK_R) continue;
-    let stage = r.stage;
-    if (r.id === 'quill' && stage === 1 && story.relics >= RELICS_NEEDED) { setStory('quill', 2); story = getStory(); stage = 2; }
-    const npc = questTable.npcById.get(r.id), key = 'said' + capName(r.id);
-    const pending = (story[key] | 0) < stage;
     const visit = hubTalk.visits[r.id] | 0;
-    say(hubTalk.talk, hubLines(npc, stage, story.relics | 0, pending, visit));
+    const v = hubVisit(questTable, story, r.id, visit);
+    say(hubTalk.talk, v.lines);
     hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id;
-    if (pending) { setStory(key, stage); story = getStory(); }
-    if (npc.journal) discover(npc.journal);
+    for (const [k, n] of v.set) { setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
+    story = getStory();
+    for (const id of v.discover) discover(id);
     break;
   }
 }
@@ -996,14 +1039,9 @@ function hubStep(lv) {
 function drawHubPeople(c, camera, cw, ch, lv, t) {
   for (const r of hubResidents(questTable, story)) {
     const pl = hubPlace(lv, r.id, t);
-    if (r.id === 'marlo') {
-      drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
-      if (r.stage >= 2) drawTank(c, camera, cw, ch, pl.x + 0.85, pl.y - 0.36, t, true);
-    } else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
-    else {
-      drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
-      if (r.stage >= 2) { const m = hubPlace(lv, r.id, t, 1); drawCritter(c, camera, cw, ch, m.x, m.y, true, t, 0, 'mama'); }
-    }
+    if (r.id === 'marlo') drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
+    else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
+    else drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
   }
   if (hubTalk.who && hubTalk.talk.text) {
     const pl = hubPlace(lv, hubTalk.who, t);
@@ -1017,6 +1055,7 @@ function onShopEvent(ev) {
     ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells' + (ev.item.effect === 'carry' ? ', ' + ev.item.blurb : ''));
     sfx.chime();
     particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
+    journal.bump('person-keeper', STAT_COLLECTED);
     if (ev.item.journal) discover(ev.item.journal); // after the toast: the journal line queues behind 'Bought ...'
   } else if (ev.type === 'poor') {
     ui.showToast(ev.item.name + ' costs ' + ev.price + ' shells, you have ' + ev.shells);
@@ -1159,6 +1198,7 @@ window.__octo = {
       quest: quest ? { id: quest.plan.id, status: quest.status, progress: quest.progress, goal: quest.goal, following: quest.following, pos: Array.from(quest.plan.pos) } : null,
       shop: shopSt ? { keeper: [shopSt.keeperX, shopSt.keeperY], px: Array.from(shopSt.px), stock: Array.from(shopSt.stock, (i) => shopSt.items[i].id), sold: Array.from(shopSt.sold) } : null,
       story: { ...story },
+      pool: poolSts.map((ps) => ({ state: ps.state, t: ps.t, x: ps.plan.x, y: ps.plan.y, floorY: ps.plan.floorY, x0: ps.plan.x0, y0: ps.plan.y0, seen: ps.seen })),
       pockets: world.level.nPockets ? Array.from(world.level.pockets) : [],
     };
   },
@@ -1176,11 +1216,13 @@ window.__octo = {
   },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
+  /** Test hook: set a story flag (save.js STORY_KEYS) as if it had happened; returns the story. */
+  setStory(k, n) { if (k) { setStory(k, n); story = getStory(); if (run && run.state === S_HUB) arriveInHub(); } return { ...story }; },
   /** Test hook: carry an item as if it had been found (items.js). */
   giveItem(id) { return run ? giveItem(run.items, octo, id) : false; },
   giveShells(n) { if (run) gainShells(run, n | 0); return run ? run.shells : 0; },
   runEvent(name) {
-    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT }[name];
+    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT, shortcut3: EV_ENTER_SHORTCUT3 }[name];
     return v2Event(ev);
   },
   /** Settings menu: open / close / read (tests, review). */

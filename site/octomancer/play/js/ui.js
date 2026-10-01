@@ -70,7 +70,7 @@ export function createUI(root, handlers) {
   // v2 only: the run state and level ("Shallows 1-2"); it replaces depth and best.
   const stageEl = el('span', 'octo-hud-stat octo-hud-stage');
   stageEl.style.display = 'none';
-  // v2 only: the shell currency (icon + count) and the level's quest line
+  // v2 only: the shell currency (icon + count). There is no quest line: questlines are told in the world (speech bubbles, journal).
   const shellsEl = el('span', 'octo-hud-stat octo-hud-shells');
   const shellsIcon = el('img', 'octo-hud-shell-icon');
   shellsIcon.src = new URL('../assets/shell-blue.webp', import.meta.url).href;
@@ -78,14 +78,12 @@ export function createUI(root, handlers) {
   const shellsNum = el('span', 'octo-hud-shell-num', '0');
   shellsEl.append(shellsIcon, shellsNum);
   shellsEl.style.display = 'none';
-  const questEl = el('div', 'octo-hud-quest');
-  questEl.style.display = 'none';
   // v2 only: carried items (items.js) as small icons right after the shell counter
   const itemsEl = el('div', 'octo-hud-items'); // its own row under the stats (never runs under the pause button)
   itemsEl.style.display = 'none';
   let itemsKey = '';
   stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
-  bar.append(heartsRow, stats, itemsEl, questEl);
+  bar.append(heartsRow, stats, itemsEl);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
   pauseBtn.type = 'button';
@@ -203,10 +201,6 @@ export function createUI(root, handlers) {
       }
       itemsEl.style.display = key ? '' : 'none';
     }
-    const qt = state.quest || '';
-    questEl.style.display = qt ? '' : 'none';
-    if (questEl.textContent !== qt) questEl.textContent = qt;
-    questEl.dataset.state = state.questState || '';
     depthEl.textContent = `Depth ${state.depth}m`;
     scoreEl.textContent = `Score ${state.score}`;
     bestEl.textContent = `Best ${state.best}`;

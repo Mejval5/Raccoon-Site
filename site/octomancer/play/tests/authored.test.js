@@ -1,6 +1,6 @@
 // B1-3 authored maps (hub.json, tutorial.json): parsing, solvability, the bomb wall, and the
 // single-level world built from an authored level.
-import { parseAuthoredMap, MK_BOARD, MK_SIGN, MK_SHORTCUT } from '../js/authored.js';
+import { parseAuthoredMap, MK_BOARD, MK_SIGN, MK_SHORTCUT, MK_SHORTCUT3 } from '../js/authored.js';
 import { createLevelWorld } from '../js/world-v2.js';
 
 /** Generic 4-neighbour BFS over "fat" water (2x2 blocks) on a w x h grid. */
@@ -34,12 +34,13 @@ export async function runAuthoredTests(assert) {
   assert(`authored hub: ${hub.w}x${hub.h}, one or two screens (34 wide, at most 2x24 tall)`, hub.w === 34 && hub.h >= 20 && hub.h <= 48);
   assert('authored hub: has a start, a dive entrance (E) and a journal board (J)', hub.startX >= 0 && hub.exitX >= 0 && hub.boardX >= 0);
   assert('authored hub: the dive entrance is below the start, at the bottom of a shaft (swim down into it)', hub.exitY > hub.startY + 4);
-  assert('authored hub: marks list holds start, exit, board, quest sign and the shortcut ring', (() => {
+  assert('authored hub: marks list holds start, exit, board, the resident anchor (Q: no sign is drawn) and the two shortcut rings (R, and the T of Marlo)', (() => {
     const kinds = []; for (let k = 0; k < hub.nMarks; k++) kinds.push(hub.marks[k * 3 + 2]);
-    return kinds.length === 5 && kinds.includes(MK_BOARD) && kinds.includes(MK_SIGN) && kinds.includes(MK_SHORTCUT);
+    return kinds.length === 6 && kinds.includes(MK_BOARD) && kinds.includes(MK_SIGN) && kinds.includes(MK_SHORTCUT) && kinds.includes(MK_SHORTCUT3);
   })());
   assert('authored hub: start reaches the dive entrance without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.exitX, hub.exitY));
   assert('authored hub: start reaches the journal board without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.boardX, hub.boardY));
+  assert('authored hub: start reaches both shortcut rings (R and the T of Marlo) without bombs, three tiles or more apart', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcutX, hub.shortcutY) && fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcut3X, hub.shortcut3Y) && Math.abs(hub.shortcut3X - hub.exitX) >= 3 && Math.abs(hub.shortcutX - hub.exitX) >= 3);
   assert('authored hub: no wall tiles, no enemies (safe state)', hub.walls.length === 0 && !hub.spawns.some((s) => s.type === 'enemy-slot'));
   assert('authored hub: has a welcome prompt', hub.prompts.length >= 1 && hub.prompts.every((p) => p.title && p.desktop && p.touch && p.r > 0));
 

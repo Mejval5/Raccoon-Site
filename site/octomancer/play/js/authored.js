@@ -3,13 +3,13 @@
 // returns (tiles + start / exit + marks), at any size. Behind ?v2=1.
 //
 // Rows: '#' rock, '.' water, 'S' start, 'E' exit (in the hub: the dive entrance),
-// 'J' journal board, 'Q' quest sign (hub), 'R' shortcut ring to Shallows 1-2 (hub; drawn once unlocked), 'W' a bomb-breakable wall tile (rock like any other interior rock).
+// 'J' journal board, 'Q' the hub residents' anchor (no sign is drawn any more: Marlo stands there, Pip swims beside it), 'R' shortcut ring to Shallows 1-2 (hub; drawn once unlocked), 'T' Marlo's shortcut ring to Shallows 1-3 (hub; r39), 'W' a bomb-breakable wall tile (rock like any other interior rock).
 // The 2-tile border is bedrock (the world treats it as unbreakable).
 
 import { MK_START, MK_EXIT } from './rooms.js';
 import { createPathGrid, findPath } from './pathcheck.js';
 
-export const MK_BOARD = 9, MK_SIGN = 10, MK_SHORTCUT = 11;
+export const MK_BOARD = 9, MK_SIGN = 10, MK_SHORTCUT = 11, MK_SHORTCUT3 = 12;
 export const AUTHORED_BORDER = 2;
 
 /**
@@ -21,7 +21,7 @@ export function parseAuthoredMap(json) {
   const tiles = new Uint8Array(w * h);
   const marks = new Int16Array(3 * 16);
   const walls = [];
-  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1, qx = -1, qy = -1, rx = -1, ry = -1;
+  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1, qx = -1, qy = -1, rx = -1, ry = -1, tx3 = -1, ty3 = -1;
   for (let y = 0; y < h; y++) {
     if (rows[y].length !== w) throw new Error('map ' + json.id + ' row ' + y + ' has width ' + rows[y].length + ', expected ' + w);
     for (let x = 0; x < w; x++) {
@@ -34,6 +34,7 @@ export function parseAuthoredMap(json) {
       else if (ch === 'J') { bx = x; by = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_BOARD; nMarks++; }
       else if (ch === 'Q') { qx = x; qy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SIGN; nMarks++; }
       else if (ch === 'R') { rx = x; ry = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SHORTCUT; nMarks++; }
+      else if (ch === 'T') { tx3 = x; ty3 = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SHORTCUT3; nMarks++; }
       else if (ch !== '.') throw new Error('map ' + json.id + ': unknown character ' + ch);
       tiles[y * w + x] = t;
     }
@@ -47,7 +48,7 @@ export function parseAuthoredMap(json) {
   }
   return {
     authored: true, id: json.id, name: json.name || json.id, w, h, tiles, marks, nMarks,
-    startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by, signX: qx, signY: qy, shortcutX: rx, shortcutY: ry,
+    startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by, signX: qx, signY: qy, shortcutX: rx, shortcutY: ry, shortcut3X: tx3, shortcut3Y: ty3,
     walls: Int16Array.from(walls), // x,y pairs of the bomb wall tiles
     prompts: json.prompts || [], spawns: json.spawns || [],
     nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0,

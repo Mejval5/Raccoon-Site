@@ -17,7 +17,8 @@ export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard:
  * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
  * (a real sprite, generated art, an item icon or a code drawing: journal-art.js) and which counters apply. Ids are
  * stable: saves store them. Fetched once when the module loads (every importer is a browser module).
- * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][]}[]}
+ * A People row also has `story`: {key, lines:[[stage, text]...]}: the questline so far, read from the save's story flags (storyLines).
+ * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][], story:any}[]}
  */
 export const ENTRIES = [];
 const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED };
@@ -29,7 +30,7 @@ const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_
   for (const t of json.tabs) TABS.push({ id: t.id, title: t.title, cats: t.categories.slice() });
   for (const r of json.entries) {
     const counters = (r.counters || []).filter((c) => STAT_KEYS[c[0]] !== undefined).map((c) => [c[0], String(c[1])]);
-    ENTRIES.push({ id: r.id, cat: r.category, name: r.name, text: r.text, art: r.art || null, counters });
+    ENTRIES.push({ id: r.id, cat: r.category, name: r.name, text: r.text, art: r.art || null, counters, story: r.story || null });
   }
 }
 
@@ -153,6 +154,16 @@ export function percent(found, total) { return total > 0 ? Math.floor((100 * fou
 /** Counter rows of an entry as [label, value] pairs, the ones its data row lists (`e.stats` from journal.list). */
 export function counterRows(e) {
   return e.counters.map(([key, label]) => [label, e.stats[STAT_KEYS[key]] || 0]);
+}
+
+/**
+ * The lines of a person's questline reached so far, in order ("story so far", like Spelunky 2's People pages): every line whose
+ * stage is at or below the person's counter in the story flags (`flags[story.key]`, 0 when the key is empty or missing).
+ */
+export function storyLines(e, flags) {
+  if (!e || !e.story) return [];
+  const n = e.story.key ? Math.max(0, Math.floor(Number(flags && flags[e.story.key]) || 0)) : 0;
+  return e.story.lines.filter((l) => n >= l[0]).map((l) => l[1]);
 }
 
 /** Completion: overall and per tab, from the journal's found counts. {found, total, pct, tabs:[{id, title, found, total, pct}]} */

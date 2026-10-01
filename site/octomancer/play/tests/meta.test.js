@@ -170,7 +170,7 @@ export async function runMetaTests(assert) {
     const dead = { cleared: false, level: 3, depth: 3, time: 125, shells: 18, kills: 4, quests: 1, cause: 'piranha', seed: 77 };
     const rows = summaryRows(dead);
     assert('runstats: the summary lists levels, time, shells, kills, quests and the cause of death',
-      rows.map((x) => x[0]).join() === 'Levels reached,Time,Shells,Kills,Quests done,Cause of death' && rows[0][1] === '3 of 3' && rows[1][1] === '2:05' && rows[5][1] === 'a piranha');
+      rows.map((x) => x[0]).join() === 'Levels reached,Time,Shells,Kills,People helped,Cause of death' && rows[0][1] === '3 of 3' && rows[1][1] === '2:05' && rows[5][1] === 'a piranha');
     assert('runstats: a seeded summary adds the seed', summaryRows(dead, true).at(-1).join() === 'Seed,77');
     assert('runstats: headline names the killer and the level', summaryHeadline(dead) === 'Taken by a piranha in Shallows 1-3');
     assert('runstats: a cleared summary says Cleared', summaryRows({ ...dead, cleared: true, depth: 4, cause: '' }).at(-1).join() === 'Result,Cleared');
@@ -208,7 +208,7 @@ export async function runMetaTests(assert) {
     const ov = root.querySelector('.octo-gameover-overlay');
     const txt = ov.textContent;
     assert('death screen: shown with title, headline and every stat row', ui.isGameOverShown() && txt.includes('The dark took you') && txt.includes('Taken by a crab in Shallows 1-2')
-      && txt.includes('Levels reached') && txt.includes('1:23') && txt.includes('Shells') && txt.includes('Kills') && txt.includes('Quests done') && txt.includes('Cause of death') && txt.includes('a crab'));
+      && txt.includes('Levels reached') && txt.includes('1:23') && txt.includes('Shells') && txt.includes('Kills') && txt.includes('People helped') && txt.includes('Cause of death') && txt.includes('a crab'));
     assert('death screen: uses the generated banner art', /title-banner\.webp/.test(ov.querySelector('.octo-banner').style.backgroundImage));
     const lis = ov.querySelectorAll('.octo-summary-bestrun');
     assert('death screen: lists the best runs and marks this one', lis.length === 2 && lis[1].classList.contains('is-new') && !lis[0].classList.contains('is-new'));
@@ -263,8 +263,8 @@ export async function runMetaTests(assert) {
     assert('journal book: a found creature shows its name, an unfound one is a silhouette with ???', !!known && !!locked && known.textContent.includes('Urchin') && !known.classList.contains('is-locked') && locked.classList.contains('is-locked') && locked.textContent.includes('???') && !locked.textContent.includes('Crab'));
     known.click();
     const page = root.querySelector('.octo-bk-entry');
-    assert('journal book: picking a card shows the entry on the right page: art, name, text and the counters (Seen 3, Killed 2, Killed by 1)',
-      !!page && scr.entry() === 'creature-urchin' && page.textContent.includes('Urchin') && page.textContent.includes('Seen3') && page.textContent.includes('Killed2') && page.textContent.includes('Killed by1') && page.querySelector('canvas') !== null);
+    assert('journal book: picking a card shows the entry on the right page: art, name, text and the counters (Dives met in 3, Killed 2, Killed by 1)',
+      !!page && scr.entry() === 'creature-urchin' && page.textContent.includes('Urchin') && page.textContent.includes('Dives met in3') && page.textContent.includes('Killed2') && page.textContent.includes('Killed by1') && page.querySelector('canvas') !== null);
     document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown' }));
     assert('journal book: the down arrow selects the next entry, a locked one shows ??? and no description', scr.entry() === 'creature-piranha' && root.querySelector('.octo-bk-entry').textContent.includes('???') && root.querySelector('.octo-bk-entry').classList.contains('is-locked') && !root.querySelector('.octo-bk-entry .octo-bk-ledger'));
     scr.showEntry('place-hub');
@@ -280,6 +280,11 @@ export async function runMetaTests(assert) {
     const t = root.querySelector('.octo-bk-spread').textContent;
     assert('journal book: Progress has completion %, deaths, best depth, play time, shells collected, runs', t.includes('Completion') && /\d+%/.test(t) && t.includes('Deaths5') && t.includes('Best depthCleared') && t.includes('Play time12:34') && t.includes('Shells collected77') && t.includes('Runs6'));
     assert('journal book: Progress lists deaths by cause (most first, as nouns) and the best runs', t.indexOf('Electric eel') > 0 && t.indexOf('Electric eel') < t.indexOf('Crab') && !/an? (crab|electric eel|piranha)/i.test(t) && t.includes('1. Cleared, 30 shells, 3:20'));
+    {
+      const pp = scr.page(), nextB = root.querySelector('.octo-bk-turn[aria-label="Next page"]'), lab = root.querySelector('.octo-bk-pagelabel').textContent;
+      assert('journal book (r39): in the two-page spread Progress is one spread (the next arrow is disabled, the label has no 1/2); one page at a time it is two pages',
+        pp.mode === 'spread' ? (pp.pages === 1 && nextB.disabled && !/\d\/\d/.test(lab) && scr.turn(1) === false && scr.page().tab === 'progress') : pp.pages === 2);
+    }
     scr.hide();
     const root2 = document.createElement('div');
     document.body.appendChild(root2);

@@ -31,7 +31,7 @@ export function onArtReady(fn) { listeners.push(fn); }
 
 function stroke(ctx, fill, lw) { ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; }
 
-/** Code drawings: each fills roughly the box [-1, 1] x [-1, 1] around the origin (unit = half the picture). */
+/** Code drawings: each fills roughly the box [-1, 1] x [-1, 1] around the origin (unit = half the picture). `u` is the pixel size of one unit. */
 export const FN = {
   bomb(c) {
     stroke(c, '#2c3946', 0.1); c.beginPath(); c.arc(0, 0.12, 0.62, 0, TAU); c.fill(); c.stroke();
@@ -60,7 +60,25 @@ export const FN = {
     stroke(c, '#d7dfe6', 0.08);
     for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(i * 0.24 - 0.11, 0.38); c.lineTo(i * 0.24, -0.38); c.lineTo(i * 0.24 + 0.11, 0.38); c.closePath(); c.fill(); c.stroke(); }
   },
-  rock(c) { drawBoulder(c, 0, 0, 0.78, 7, 0.3); },
+  // the in-game boulder, drawn at pixel scale (drawBoulder's outline widths are in pixels: in unit space they were 80 px thick, a black blob)
+  rock(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawBoulder(c, 0, 0, 0.78 * u, 7, 0.3); c.restore(); },
+  fish(c) {
+    stroke(c, '#f0a45a', 0.08);
+    c.beginPath(); c.moveTo(-0.85, 0.02); c.bezierCurveTo(-0.55, -0.62, 0.3, -0.62, 0.55, 0.02); c.bezierCurveTo(0.3, 0.6, -0.55, 0.6, -0.85, 0.02); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#e07a4a'; c.beginPath(); c.moveTo(0.5, 0.02); c.lineTo(0.98, -0.42); c.lineTo(0.84, 0.02); c.lineTo(0.98, 0.46); c.closePath(); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(-0.3, -0.42); c.quadraticCurveTo(-0.05, -0.85, 0.22, -0.42); c.closePath(); c.fill(); c.stroke();
+    c.strokeStyle = 'rgba(255,240,200,0.8)'; c.lineWidth = 0.07; c.beginPath(); c.moveTo(0.05, -0.38); c.quadraticCurveTo(0.18, 0.02, 0.05, 0.4); c.stroke();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(-0.5, -0.1, 0.13, 0, TAU); c.fill(); c.strokeStyle = INK; c.lineWidth = 0.04; c.stroke();
+    c.fillStyle = INK; c.beginPath(); c.arc(-0.53, -0.09, 0.06, 0, TAU); c.fill();
+  },
+  pool(c) {
+    // a stone pedestal with a golden glint, and rocks coming down over it
+    stroke(c, '#8a93a0', 0.08); c.beginPath(); c.moveTo(-0.4, 0.8); c.lineTo(-0.28, 0.15); c.lineTo(0.28, 0.15); c.lineTo(0.4, 0.8); c.closePath(); c.fill(); c.stroke();
+    stroke(c, '#b9c1cc', 0.07); c.beginPath(); c.ellipse(0, 0.13, 0.46, 0.12, 0, 0, TAU); c.fill(); c.stroke();
+    c.fillStyle = '#ffe38a'; c.beginPath(); c.ellipse(0, 0.1, 0.24, 0.06, 0, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(200,240,255,0.8)'; c.lineWidth = 0.05; c.beginPath(); c.moveTo(-0.7, -0.15); c.lineTo(-0.7, -0.5); c.moveTo(0.72, -0.05); c.lineTo(0.72, -0.4); c.stroke();
+    for (const [x, y, r] of [[-0.45, -0.62, 0.2], [0.3, -0.78, 0.17], [0.0, -0.3, 0.13]]) { stroke(c, '#8d7c6a', 0.06); c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.stroke(); }
+  },
   eel(c) {
     c.strokeStyle = INK; c.lineWidth = 0.34; c.lineCap = 'round'; c.beginPath(); c.moveTo(-0.8, 0.3); c.bezierCurveTo(-0.4, -0.5, -0.1, 0.9, 0.3, 0.1); c.bezierCurveTo(0.5, -0.3, 0.7, -0.3, 0.8, -0.1); c.stroke();
     c.strokeStyle = '#6fb7a0'; c.lineWidth = 0.24; c.stroke();
@@ -121,8 +139,9 @@ export const FN = {
   },
   fossil(c) {
     stroke(c, '#d9cdb4', 0.08); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.2); c.fill(); c.stroke();
+    // the spiral stays inside the stone (it used to run to radius 1.3 and out of the plate)
     c.strokeStyle = '#8c7e63'; c.lineWidth = 0.09; c.lineCap = 'round'; c.beginPath();
-    for (let a = 0; a < TAU * 2.4; a += 0.2) { const r = 0.07 + a * 0.085; const x = Math.cos(a) * r, y = Math.sin(a) * r; if (a === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    for (let a = 0; a < TAU * 2.1; a += 0.2) { const r = 0.06 + a * 0.037; const x = Math.cos(a) * r, y = Math.sin(a) * r; if (a === 0) c.moveTo(x, y); else c.lineTo(x, y); }
     c.stroke();
   },
   decorrock(c) {
@@ -163,7 +182,7 @@ function paint(ctx, id, px) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
   } else if (a.fn && FN[a.fn]) {
     ctx.scale(px * 0.46, px * 0.46);
-    FN[a.fn](ctx);
+    FN[a.fn](ctx, px * 0.46);
   }
   ctx.restore();
 }

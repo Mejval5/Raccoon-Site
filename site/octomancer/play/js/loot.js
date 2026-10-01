@@ -179,9 +179,9 @@ export function createLoot(props = null) {
     d.ikind[i] = kind; d.iid[i] = id; d.ix[i] = x; d.iy[i] = y; d.itaken[i] = 0;
   }
 
-  function startChase() {
-    d.chase = CHASE_SECONDS; d.chaseSpawn = 0.5; d.rockSeq = 0;
-    events.push({ type: 'chaseStart', seconds: CHASE_SECONDS });
+  function startChase(seconds = CHASE_SECONDS) {
+    d.chase = seconds; d.chaseSpawn = 0.5; d.rockSeq = 0;
+    events.push({ type: 'chaseStart', seconds });
   }
 
   function hashf(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
@@ -268,6 +268,9 @@ export function createLoot(props = null) {
     add,
     count() { return d.n; },
     chaseLeft() { return d.chase; },
+    /** r39: the Challenge Pool's wager runs the relic's falling rocks for `seconds`; stopChase ends it (the wager was lost). */
+    startChase(seconds) { startChase(seconds); },
+    stopChase() { d.chase = 0; },
     /** Events since the last call (main.js reacts to them), cleared. */
     takeEvents() { return events.splice(0, events.length); },
 

@@ -6,7 +6,7 @@
 // Plain HTML over the canvas; opened from the hub board, the pause menu and the settings panel. The book has a fixed
 // size, so the tabs never move: the pages scroll inside.
 
-import { TABS, counterRows, completion } from './journal.js';
+import { TABS, counterRows, completion, storyLines } from './journal.js';
 import { entryArt, onArtReady, preloadArt } from './journal-art.js';
 import { statsRows, bestRunLines, formatTime, depthLabel } from './runstats.js';
 import { artUrl } from './v2-art.js';
@@ -28,7 +28,7 @@ function el(tag, className, text) {
 /**
  * @param {HTMLElement} root the #hud element
  * @param {ReturnType<import('./journal.js').createJournal>} journal
- * @param {{onClose?:()=>void, onOpen?:()=>void, getStats?:()=>{meta:any, bestRuns:any[]}, reducedMotion?:()=>boolean}} handlers
+ * @param {{onClose?:()=>void, onOpen?:()=>void, getStats?:()=>{meta:any, bestRuns:any[]}, getStory?:()=>Record<string, number>, reducedMotion?:()=>boolean}} handlers
  */
 export function createJournalScreen(root, journal, handlers = {}) {
   const overlay = el('div', 'octo-overlay octo-journal-overlay');
@@ -77,7 +77,8 @@ export function createJournalScreen(root, journal, handlers = {}) {
   let flipTimer = 0, suppressClick = 0;
 
   const list = () => journal.tabList(tab);
-  const pagesOf = (t) => (t === 'progress' ? 2 : Math.max(1, Math.ceil(journal.tabList(t).length / perPage)));
+  // Progress is two pages, both on screen in the spread; one at a time on a phone
+  const pagesOf = (t) => (t === 'progress' ? (mode === 'spread' ? 1 : 2) : Math.max(1, Math.ceil(journal.tabList(t).length / perPage)));
 
   function measure() {
     mode = frame.clientWidth >= 600 ? 'spread' : 'single';
@@ -151,6 +152,16 @@ export function createJournalScreen(root, journal, handlers = {}) {
     box.append(plate, el('div', 'octo-bk-name', e.found ? e.name : '???'));
     if (e.found) {
       box.appendChild(el('div', 'octo-bk-text', e.text));
+      // a person's questline so far (Spelunky 2's People pages): what happened, from the save's story flags
+      const lines = e.story && handlers.getStory ? storyLines(e, handlers.getStory()) : [];
+      if (lines.length) {
+        const story = el('div', 'octo-bk-story');
+        story.appendChild(el('div', 'octo-bk-sub', 'Story so far'));
+        const ul = el('ol', 'octo-bk-steps');
+        for (const l of lines) ul.appendChild(el('li', '', l));
+        story.appendChild(ul);
+        box.appendChild(story);
+      }
       const ledger = el('div', 'octo-bk-ledger');
       for (const [k, v] of counterRows(e)) {
         const r = el('div', 'octo-bk-lrow');
@@ -208,6 +219,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
       tabBtns[t.id].setAttribute('aria-selected', t.id === tab ? 'true' : 'false');
     }
     if (tab === 'progress') {
+      if (mode === 'spread') gpage = 0;
       if (handlers.getStats) renderProgress();
       view = mode === 'single' ? (gpage === 1 ? 'entry' : 'grid') : 'grid';
     } else {

@@ -30,7 +30,7 @@ export function summaryRows(s, seeded = false) {
     ['Time', formatTime(s.time)],
     ['Shells', String(s.shells)],
     ['Kills', String(s.kills)],
-    ['Quests done', String(s.quests)],
+    ['People helped', String(s.quests)],
     [s.cleared ? 'Result' : 'Cause of death', s.cleared ? 'Cleared' : causeText(s.cause)],
   ];
   if (seeded) rows.push(['Seed', String(s.seed)]);

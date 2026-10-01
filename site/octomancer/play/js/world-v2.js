@@ -60,6 +60,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     plantKeepOut: [
       ...(level.exitX >= 0 && level.exitX !== undefined ? [{ x0: level.exitX - 2, x1: level.exitX + 3, y0: level.exitY - 1, y1: level.exitY + 2 }] : []),
       ...(level.shortcutX >= 0 && level.shortcutX !== undefined ? [{ x0: level.shortcutX - 2, x1: level.shortcutX + 3, y0: level.shortcutY - 2, y1: level.shortcutY + 2 }] : []),
+      ...(level.shortcut3X >= 0 && level.shortcut3X !== undefined ? [{ x0: level.shortcut3X - 2, x1: level.shortcut3X + 3, y0: level.shortcut3Y - 2, y1: level.shortcut3Y + 2 }] : []),
       ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
     ],
     plantFree: level.shop ? {

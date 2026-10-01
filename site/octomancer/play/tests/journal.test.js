@@ -1,5 +1,5 @@
 // B1-4 journal tests (journal.js + save.js persistence).
-import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, completion, percent, counterRows, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
+import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, completion, percent, counterRows, storyLines, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
 import { artList, hasArt, FN } from '../js/journal-art.js';
 import { ITEM_DEFS } from '../js/items.js';
 import { getJournalStats, saveJournalStats, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, _resetForTests } from '../js/save.js';
@@ -33,6 +33,13 @@ export async function runJournalTests(assert) {
 
   // --- round 38: tabs, art, counters ---
   assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
+  assert('journal tabs (r39): Items holds only things you pick up, buy or open (items and loot); scenery props (rune, fossil, bush, weed, boulder) sit in Places beside the places',
+    TABS.find((t) => t.id === 'items').cats.join() === 'item,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 5 &&
+    ENTRIES.filter((e) => TABS.find((t) => t.id === 'items').cats.includes(e.cat)).every((e) => !e.id.startsWith('prop-')));
+  assert('journal data (r39): descriptions match the game (no manta spit, no piranha chase, no ceiling-only horns, no score for shells)',
+    !/spits/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) && /dives/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) &&
+    !/chase/.test(ENTRIES.find((e) => e.id === 'creature-piranha').text) && /lunge/.test(ENTRIES.find((e) => e.id === 'creature-piranha').text) &&
+    !/ceiling/.test(ENTRIES.find((e) => e.id === 'creature-horns').text.replace('floors and ceilings alike', '')) && !ENTRIES.some((e) => /for score/.test(e.text)));
   assert('journal tabs: every entry is on exactly one tab and tabOfCat agrees', ENTRIES.every((e) => TABS.filter((t) => t.cats.includes(e.cat)).length === 1 && TABS.find((t) => t.id === tabOfCat(e.cat)).cats.includes(e.cat)));
   assert('journal art: every entry has a picture (sprite, generated art, item icon or code drawing)', ENTRIES.every((e) => hasArt(e.id)));
   {
@@ -49,10 +56,20 @@ export async function runJournalTests(assert) {
     }
     assert('journal art: every sprite referenced by journal.json exists (files load, item icons and code drawings are defined)' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0 && checked.size >= 15);
   }
-  assert('journal data: every row has id, category, name, a short text (two lines) and counters from the known set', ENTRIES.every((e) => e.id && e.cat && e.name && e.text.length > 20 && e.text.length <= 130 && e.counters.length >= 1 && e.counters.every(([k, l]) => ['seen', 'killed', 'killedBy', 'collected'].includes(k) && l)));
+  assert('journal data: every row has id, category, name, a short text (two lines) and counters from the known set', ENTRIES.every((e) => e.id && e.cat && e.name && e.text.length > 20 && e.text.length <= 80 && (e.counters.length >= 1 || e.id.startsWith('loot-relic-')) && e.counters.every(([k, l]) => ['seen', 'killed', 'killedBy', 'collected'].includes(k) && l)));
   assert('journal data: seeded with every place (hub, training cave, Shallows, stall, wreck, garden, gauntlet), enemy, trap, item, prop and the four people',
-    ['place-hub', 'place-tutorial', 'place-shallows', 'place-shop', 'place-wreck', 'place-garden', 'place-gauntlet', 'creature-fish', 'hazard-anemone', 'item-heartcontainer', 'loot-relic', 'prop-rune', 'prop-fossil', 'prop-weed', 'prop-boulder', 'person-diver', 'person-critter', 'person-keeper', 'person-collector'].every((i) => ids.includes(i)));
+    ['place-hub', 'place-tutorial', 'place-shallows', 'place-shop', 'place-wreck', 'place-garden', 'place-gauntlet', 'place-pool', 'creature-fish', 'hazard-anemone', 'item-heartcontainer', 'loot-relic', 'prop-rune', 'prop-fossil', 'prop-weed', 'prop-boulder', 'person-diver', 'person-critter', 'person-keeper', 'person-collector'].every((i) => ids.includes(i)));
   assert('journal: the old quest entries are gone, four people took their place', !ENTRIES.some((e) => e.id.startsWith('quest-')) && ENTRIES.filter((e) => e.cat === 'person').length === 4);
+  {
+    // People pages tell the questline so far (Spelunky 2 style), from the save's story flags
+    const diver = ENTRIES.find((e) => e.id === 'person-diver'), quill = ENTRIES.find((e) => e.id === 'person-collector'), pip = ENTRIES.find((e) => e.id === 'person-critter');
+    assert('journal people: every named person has a story (lines at stage 0 and later); the shopkeeper a single line',
+      ['person-diver', 'person-critter', 'person-collector'].every((id) => ENTRIES.find((e) => e.id === id).story && ENTRIES.find((e) => e.id === id).story.lines.length >= 2) && ENTRIES.find((e) => e.id === 'person-keeper').story.lines.length === 1);
+    assert('journal people: Marlo shows the lines his freed count has reached, in order, and the last one names the shortcut to 1-3',
+      storyLines(diver, {}).length === 1 && storyLines(diver, { diverFreed: 1 }).length === 2 && storyLines(diver, { diverFreed: 3 }).length === 4 && /1-3/.test(storyLines(diver, { diverFreed: 3 })[3]) && storyLines(diver, { diverFreed: 9 }).length === 4);
+    assert('journal people: Pip and Quill follow their own flags (critterFreed, relicsGiven), a missing flag is stage 0',
+      storyLines(pip, { critterFreed: 1 }).length === 2 && storyLines(pip, null).length === 1 && storyLines(quill, { relicsGiven: 2 }).length === 3 && storyLines(quill, { relicsGiven: 3 })[3].includes('lantern') && storyLines({ story: null }, {}).length === 0);
+  }
   {
     // lock / unlock: everything starts locked, the first encounter unlocks exactly that entry and no other
     const jl = createJournal({ load: () => [], save() {} });
@@ -60,9 +77,14 @@ export async function runJournalTests(assert) {
     jl.discover('creature-crab');
     assert('journal lock: meeting the crab unlocks the crab only', jl.has('creature-crab') && jl.count() === 1 && !jl.has('creature-piranha') && jl.list('creature').filter((e) => e.found).length === 1);
     const crab = jl.list('creature').find((e) => e.id === 'creature-crab');
-    assert('journal counters: a creature shows Seen / Killed / Killed by, a hazard Seen / Killed by, a place Visited, a person Met / Helped',
-      counterRows(crab).map((r) => r[0]).join() === 'Seen,Killed,Killed by' && counterRows(jl.list('hazard')[0]).map((r) => r[0]).join() === 'Seen,Killed by' &&
-      counterRows(jl.list('place')[0]).map((r) => r[0]).join() === 'Visited' && counterRows(jl.list('person')[0]).map((r) => r[0]).join() === 'Met,Helped');
+    assert('journal counters: a creature shows Dives met in / Killed / Killed by, a hazard Dives met in / Killed by, a place Visited, a person Met / Freed',
+      counterRows(crab).map((r) => r[0]).join() === 'Dives met in,Killed,Killed by' && counterRows(jl.list('hazard')[0]).map((r) => r[0]).join() === 'Dives met in,Killed by' &&
+      counterRows(jl.list('place')[0]).map((r) => r[0]).join() === 'Visited' && counterRows(jl.list('person')[0]).map((r) => r[0]).join() === 'Met,Freed');
+    // r39: a collectable shows only the counter that means something (no per-dive Seen next to a per-event Collected); the keeper has Bought, not Helped
+    const labelsOf = (id) => counterRows(jl.list().find((e) => e.id === id)).map((r) => r[0]).join();
+    assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought',
+      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought' && labelsOf('person-collector') === 'Met,Relics given');
+    assert('journal counters: nothing labelled Seen anywhere (it counts dives, so it says so)', !ENTRIES.some((e) => e.counters.some(([k, l]) => l === 'Seen')) && ENTRIES.filter((e) => e.counters.some(([k]) => k === 'seen') && ['item', 'loot'].includes(e.cat)).length === 0);
     // completion math: percentages per tab and overall are floor(100 * found / total); 100% only when everything is found
     const c0 = completion(jl);
     assert('journal completion: one of N entries found is floor(100/N)% overall, the Bestiary tab shows its share', c0.found === 1 && c0.total === ENTRIES.length && c0.pct === Math.floor(100 / ENTRIES.length) && c0.tabs.find((t) => t.id === 'bestiary').pct === Math.floor(100 / jl.tabList('bestiary').length));

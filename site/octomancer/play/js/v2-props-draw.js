@@ -323,6 +323,16 @@ export function drawCage(ctx, camera, cw, ch, x, floorY, w, h, open) {
     ctx.strokeStyle = '#7e5c30'; ctx.lineWidth = lw; // the open cage: two posts and the lid, the door swung aside
     ctx.beginPath(); ctx.moveTo(cx - hw, top); ctx.lineTo(cx - hw, fy - feet); ctx.moveTo(cx + hw, top); ctx.lineTo(cx + hw, fy - feet); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx + hw, top + hh * 0.15); ctx.lineTo(cx + hw + ppu * 0.28, top + hh * 0.45); ctx.stroke();
+    // the broken bars: stubs standing from the base and hanging from the lid, with jagged tips (a dash or a blast snapped them)
+    ctx.strokeStyle = '#7e5c30'; ctx.lineWidth = Math.max(1, lw * 0.8);
+    ctx.beginPath();
+    const nb = Math.max(3, Math.round(w * 2.4));
+    for (let i = 1; i < nb; i++) {
+      const bx = cx - hw + (2 * hw) * i / nb, up = hh * (0.18 + 0.1 * ((i * 7) % 3)), dn = hh * (0.12 + 0.08 * ((i * 5) % 3));
+      ctx.moveTo(bx, fy - feet); ctx.lineTo(bx, fy - feet - up); ctx.lineTo(bx + ppu * 0.03, fy - feet - up - ppu * 0.05);
+      ctx.moveTo(bx + ppu * 0.04, top); ctx.lineTo(bx + ppu * 0.04, top + dn); ctx.lineTo(bx - ppu * 0.02, top + dn + ppu * 0.04);
+    }
+    ctx.stroke();
   }
   // lid and base plank
   ctx.fillStyle = '#5a4020'; ctx.strokeStyle = '#2a1808'; ctx.lineWidth = Math.max(1, lw * 0.7);
@@ -431,8 +441,12 @@ export function drawSpeech(ctx, camera, cw, ch, x, y, text, alpha, name = '') {
   if (!text || alpha <= 0.01) return;
   const { ppu, sx, sy } = view(camera, cw, ch);
   const ax = sx(x), ay = sy(y);
-  if (ay < -40 || ay > ch + 40 || ax < -ppu * 6 || ax > cw + ppu * 6) return;
   const k = ctx.canvas && ctx.canvas.clientWidth ? ctx.canvas.width / ctx.canvas.clientWidth : 1; // device px per css px: the type stays readable on a phone
+  // the safe area keeps a bubble clear of the HUD row (hearts / stats) and of the pause, mute and gear buttons in the top right
+  const safeT = 64 * k, safeR = 62 * k, btnB = 172 * k, edge = 8 * k;
+  if (ax < -ppu * 12 || ax > cw + ppu * 12 || ay < -ppu * 12 || ay > ch + ppu * 12) return;
+  // a speaker outside the safe area (off screen, or under the HUD): a small edge arrow towards them instead of a clamped bubble
+  if (ax < edge || ax > cw - edge || ay < safeT || ay > ch - edge) { drawSpeechArrow(ctx, cw, ch, ax, ay, alpha, k, safeT, safeR, btnB); return; }
   const px = Math.round(k * Math.max(13, Math.min(17, ppu / k * 0.26))), pad = Math.round(px * 0.6);
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -443,8 +457,8 @@ export function drawSpeech(ctx, camera, cw, ch, x, y, text, alpha, name = '') {
   for (const r of rows) wMax = Math.max(wMax, ctx.measureText(r).width);
   const bw = Math.max(wMax, name ? ctx.measureText(name).width * 0.85 : 0) + pad * 2, lh = Math.round(px * 1.25), bh = rows.length * lh + pad * 2 + nameH;
   const tail = Math.round(px * 0.7);
-  let bx = ax - bw / 2; bx = Math.max(8, Math.min(cw - 8 - bw, bx));
-  const by = Math.max(8, ay - ppu * 0.1 - tail - bh);
+  const by = Math.max(safeT, ay - ppu * 0.1 - tail - bh);
+  let bx = ax - bw / 2; bx = Math.max(edge, Math.min((by < btnB ? cw - safeR : cw - edge) - bw, bx));
   ctx.lineJoin = 'round'; ctx.lineWidth = 2 * k;
   ctx.fillStyle = 'rgba(252,246,226,0.97)'; ctx.strokeStyle = '#3a2a1b';
   ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10 * k);
@@ -458,6 +472,30 @@ export function drawSpeech(ctx, camera, cw, ch, x, y, text, alpha, name = '') {
   if (name) { ctx.font = `700 ${Math.round(px * 0.85)}px Quicksand, sans-serif`; ctx.fillStyle = '#a8412c'; ctx.fillText(name, bx + bw / 2, ty + nameH / 2); ty += nameH; ctx.font = `700 ${px}px Quicksand, sans-serif`; }
   ctx.fillStyle = '#2a1d12';
   for (const r of rows) { ctx.fillText(r, bx + bw / 2, ty + lh / 2); ty += lh; }
+  ctx.restore();
+}
+
+/** A small speech-bubble badge on the edge of the safe area, with a pointer towards a speaker that is off screen. */
+function drawSpeechArrow(ctx, cw, ch, ax, ay, alpha, k, safeT, safeR, btnB) {
+  const r = 13 * k, m = r + 10 * k;
+  const minX = m, maxX = cw - safeR - r, minY = safeT + r, maxY = ch - m;
+  // clamp to the safe rect; the right edge column sits below the buttons
+  let ex = Math.max(minX, Math.min(maxX, ax)), ey = Math.max(minY, Math.min(maxY, ay));
+  if (ax > cw - safeR && ey < btnB + r) ey = Math.min(maxY, btnB + r);
+  const ang = Math.atan2(ay - ey, ax - ex);
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.95;
+  ctx.lineJoin = 'round'; ctx.lineWidth = 2 * k; ctx.strokeStyle = '#3a2a1b'; ctx.fillStyle = 'rgba(252,246,226,0.97)';
+  ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#2a1d12';
+  for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.arc(ex + i * 5 * k, ey, 1.8 * k, 0, TAU); ctx.fill(); }
+  // the pointer
+  ctx.fillStyle = 'rgba(252,246,226,0.97)';
+  ctx.beginPath();
+  ctx.moveTo(ex + Math.cos(ang - 0.45) * r * 1.05, ey + Math.sin(ang - 0.45) * r * 1.05);
+  ctx.lineTo(ex + Math.cos(ang) * (r + 9 * k), ey + Math.sin(ang) * (r + 9 * k));
+  ctx.lineTo(ex + Math.cos(ang + 0.45) * r * 1.05, ey + Math.sin(ang + 0.45) * r * 1.05);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.restore();
 }
 

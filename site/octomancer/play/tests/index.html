@@ -173,6 +173,8 @@ await runDetailTests(assert);
 // --- Round 37: set pieces force their content, seeding fix ---
 import { runSetPieceTests } from './setpieces.test.js';
 await runSetPieceTests(assert);
+import { runPoolTests } from './pool.test.js';
+await runPoolTests(assert);
 
 // --- Round 37: game feel (sink, dash recoil, squash, shake) ---
 import { runFeelTests } from './feel.test.js';

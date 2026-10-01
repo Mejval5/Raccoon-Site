@@ -60,6 +60,20 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     check('the HUD row is hidden while the book is open', await page.evaluate(() => getComputedStyle(document.querySelector('.octo-hud-bar')).visibility === 'hidden'));
     await page.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-desktop-progress.png') });
 
+    // ---- r39: Progress is one spread on desktop (no dead next arrow, no '1/2'), the footer label is centred under the book
+    await page.click('.octo-bk-tab[data-tab="progress"]'); await sleep(450);
+    const prog = await page.evaluate(() => ({ next: document.querySelector('.octo-bk-turn[aria-label="Next page"]').disabled, prev: document.querySelector('.octo-bk-turn[aria-label="Previous page"]').disabled, label: document.querySelector('.octo-bk-pagelabel').textContent, page: __octo.journalPage() }));
+    check('Progress (desktop): the next arrow is disabled and the label says just Progress', prog.next === true && prog.prev === false && prog.label.trim() === 'Progress' && prog.page.pages === 1, JSON.stringify(prog));
+    const mid = await page.evaluate(() => { const l = document.querySelector('.octo-bk-pagelabel').getBoundingClientRect(), f = document.querySelector('.octo-bk-spread').getBoundingClientRect(); return { dx: (l.left + l.right) / 2 - (f.left + f.right) / 2 }; });
+    check('the desktop footer label is centred under the book (within 4 px)', Math.abs(mid.dx) <= 4, JSON.stringify(mid));
+    await page.click('.octo-bk-tab[data-tab="people"]'); await sleep(450);
+    await page.evaluate(() => __octo.setStory('diverFreed', 2));
+    await page.evaluate(() => __octo.openJournal('people', 'person-diver')); await sleep(400);
+    const ptxt = await page.evaluate(() => { const e = document.querySelector('.octo-bk-entry'); return e ? e.textContent : ''; });
+    const found = (await J()).found;
+    check('a People page tells the story so far (found people only)', !found.includes('person-diver') || /Story so far/.test(ptxt), ptxt.slice(0, 160));
+
+
     // ---- page turning: arrows, keys, swipe
     await page.evaluate(() => __octo.openJournal('items')); await sleep(300);
     let st = await page.evaluate(() => __octo.journalPage());
@@ -83,7 +97,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     check('the down arrow selects the next entry', (await J()).entry === 'creature-piranha' || (await J()).entry === 'creature-crab', (await J()).entry);
     await page.click('.octo-bk-card[data-id="creature-urchin"]'); await sleep(300);
     const entry = await page.evaluate(() => document.querySelector('.octo-bk-entry').textContent);
-    check('a found entry shows name, text and its counters on the right page', /Urchin/.test(entry) && /Seen\s*12/.test(entry) && /Killed\s*4/.test(entry) && /Killed by\s*1/.test(entry), entry.slice(0, 120));
+    check('a found entry shows name, text and its counters on the right page', /Urchin/.test(entry) && /Dives met in\s*12/.test(entry) && /Killed\s*4/.test(entry) && /Killed by\s*1/.test(entry), entry.slice(0, 120));
 
     // ---- locked silhouettes read clearly against the page
     const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
@@ -98,6 +112,8 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     });
     const ratio = sil.ink && sil.plate ? (Math.max(lum(sil.ink), lum(sil.plate)) + 0.05) / (Math.min(lum(sil.ink), lum(sil.plate)) + 0.05) : 0;
     check('a locked silhouette is a solid shape (not almost invisible) and its contrast against the page is at least 4.5:1', sil.n > 400 && sil.area > 0.08 && ratio >= 4.5, JSON.stringify({ n: sil.n, area: sil.area, ratio }));
+    // r39: the '?' sits on a dark disc (it read as white on pale parchment on thin silhouettes)
+    check('locked cards: the ? has a dark disc behind it (readable on the silhouette and on bare parchment)', await page.evaluate(() => { const q = document.querySelector('.octo-bk-card.is-locked .octo-bk-q'); const cs = getComputedStyle(q); const m = /rgba?\((\d+), (\d+), (\d+)/.exec(cs.backgroundColor); return !!m && Number(m[1]) < 90 && Number(m[2]) < 70 && parseFloat(cs.width) >= 28 && cs.borderRadius !== '0px'; }));
     check('locked cards say ???', await page.evaluate(() => [...document.querySelectorAll('.octo-bk-card.is-locked')].every((c) => c.textContent.includes('???') && c.querySelector('.octo-bk-q'))));
     await page.evaluate(() => __octo.closeJournal());
 
@@ -126,6 +142,36 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     check('phone landscape: two pages, the book fits the screen and every tab is at least 40 px tall', r.left.vis && r.right.vis && r.book.b <= r.vh && r.book.t >= 0 && r.book.r <= Math.min(r.pause.l, r.mute.l, r.gear.l) + 1 &&
       (await page.evaluate(() => [...document.querySelectorAll('.octo-bk-tab')].every((t) => t.getBoundingClientRect().height >= 39.5))), JSON.stringify(r.book));
     await page.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-phoneL.png') });
+    // ---- r39: every description fits the specified two lines on desktop (three on a phone), with every entry found
+    {
+      const ids = require('../data/journal.json').entries.map((e) => e.id);
+      const pg = await browser.newPage();
+      pg.on('pageerror', (e) => errs.push('' + e));
+      await pg.evaluateOnNewDocument("try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:" + JSON.stringify(ids) + "}))}catch(e){}");
+      for (const [w, h, mobile, maxLines] of [[1440, 900, false, 2], [375, 812, true, 3]]) {
+        await pg.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile });
+        await pg.goto(BASE + '?at=1&seed=5', { waitUntil: 'networkidle0', timeout: 60000 });
+        await pg.waitForFunction(() => window.__octo, { timeout: 30000 });
+        await sleep(400);
+        const over = await pg.evaluate(async (ids) => {
+          const out = [];
+          for (const id of ids) {
+            __octo.openJournal(null, id);
+            await new Promise((r) => setTimeout(r, 25));
+            const t = document.querySelector('.octo-bk-entry .octo-bk-text');
+            if (!t) { out.push(id + ' (no text)'); continue; }
+            const lh = parseFloat(getComputedStyle(t).lineHeight) || 19;
+            const lines = Math.round(t.getBoundingClientRect().height / lh);
+            out.push([id, lines]);
+          }
+          __octo.closeJournal();
+          return out;
+        }, ids);
+        const bad = over.filter((x) => typeof x === 'string' || x[1] > maxLines);
+        check(w + 'px: every description wraps to at most ' + maxLines + ' lines (' + over.length + ' entries)', bad.length === 0, JSON.stringify(bad));
+      }
+      await pg.close();
+    }
   } catch (e) { check('script ran to the end', false, String(e && e.stack || e)); }
   check('no console errors', errs.length === 0, errs.join(' | '));
   await browser.close();

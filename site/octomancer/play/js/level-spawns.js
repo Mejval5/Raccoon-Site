@@ -11,7 +11,7 @@
 //   - never in the 2-tile border.
 
 import { mulberry32, hashSeed2 } from './rng.js';
-import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk, SET_WRECK, SET_GARDEN, SET_GAUNTLET } from './level.js';
+import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk, SET_WRECK, SET_GARDEN, SET_GAUNTLET, SET_POOL } from './level.js';
 import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
@@ -229,6 +229,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
     // hull, chest and pots); everything else the table places keeps its distance from it
     const forced = [];
     const gardens = [];
+    const pools = [];
     for (let i = 0; i < (level.nSetPieces || 0); i++) {
       const x0 = level.setPieces[i * 4], y0 = level.setPieces[i * 4 + 1], kind = level.setPieces[i * 4 + 2], flip = level.setPieces[i * 4 + 3];
       const usable = (tx, ty) => tx > x0 && tx < x0 + ROOM_W - 1 && ty >= y0 && ty < y0 + ROOM_H && ok[idx(tx, ty)] && !inShop(tx, ty) && !nearExit(tx, ty);
@@ -275,6 +276,20 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
           const rec = makeEnemySlot(t, 'urchin', tx, ty, 0, up ? 1 : -1) || { type: 'enemy-slot', kind: 'urchin', placement: up ? 'ceiling' : 'floor', x: tx + 0.5, y: ty + 0.5, flatRun: true, wallDir: 0, nearSideWall: false, mantaFit: false, narrowShaft: false };
           rec.set = 'garden'; forced.push(rec); taken.push([tx, ty]); occupied.push(rec.x, rec.y, 1.5);
         }
+      } else if (kind === SET_POOL) {
+        // r39 Challenge Pool: two floor vents either side of the plinth (they only push); the pedestal, the rocks and the
+        // chest are pool.js. No enemy shares the room.
+        pools.push(x0, y0);
+        for (const lx of [2, 7]) {
+          for (const off of [0, 1, -1]) {
+            const tx = x0 + lx + off;
+            let ty = -1;
+            for (let y = y0 + 5; y <= y0 + ROOM_H - 3; y++) if (open(tx, y) && !open(tx, y + 1)) { ty = y; break; }
+            if (ty < 0 || !usableH(tx, ty) || !clearOfStart(tx, ty, SET_START_KEEP_OUT)) continue;
+            const rec = makeHazardRecord('jet', tx + 0.5, ty + 0.5, 0, -1, t, W, H);
+            if (rec) { rec.set = 'pool'; forced.push(rec); occupied.push(rec.x, rec.y, 2); break; }
+          }
+        }
       } else if (kind === SET_WRECK) {
         // the hull rests on the room's floor (the row above the rock in the middle columns); the hold holds a chest and pots
         const cx = x0 + 5;
@@ -320,6 +335,14 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       kept = kept.filter((r) => {
         if (r.type !== 'enemy-slot' || r.kind === 'urchin') return true;
         for (let g = 0; g < gardens.length; g += 2) if (r.x >= gardens[g] && r.x < gardens[g] + ROOM_W && r.y >= gardens[g + 1] && r.y < gardens[g + 1] + ROOM_H) return false;
+        return true;
+      });
+    }
+    // r39: the Challenge Pool's room holds no enemy, trap or loot of its own (only its two vents)
+    if (pools.length) {
+      kept = kept.filter((r) => {
+        if ((r.type !== 'enemy-slot' && r.type !== 'hazard' && r.type !== 'loot') || r.set) return true;
+        for (let g = 0; g < pools.length; g += 2) if (r.x >= pools[g] && r.x < pools[g] + ROOM_W && r.y >= pools[g + 1] && r.y < pools[g + 1] + ROOM_H) return false;
         return true;
       });
     }

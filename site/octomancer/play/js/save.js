@@ -11,11 +11,13 @@ export const BEST_RUNS_MAX = 5;
 
 function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, time: 0, deaths: {} }; }
 /**
- * Story flags, all flat counters: marlo / pip / quill are the stage of each person (0 = not met), relics = relics carried
- * out through an exit for Quill, said<Name> = the highest stage whose thank-you was spoken in the hub, diverFreed /
- * critterFreed = how many times they were freed (stats).
+ * Story flags, all flat counters. marlo / pip / quill are the stage of each person (0 = not met): Marlo's stage is the number
+ * of runs he was freed in (3 opens the hub shortcut to 1-3), Pip's 1 = freed and living in the hub, Quill's 1 = moved into
+ * the hub, 2 = three relics handed over (the lantern). relics = relics carried out through an exit, relicsGiven = handed over
+ * to Quill in the hub; said<Name> = the highest stage whose thank-you was spoken in the hub; diverFreed / critterFreed = how
+ * many times they were freed (stats); poolPaid / poolWon = Challenge Pool wagers paid and won.
  */
-const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'saidMarlo', 'saidPip', 'saidQuill'];
+const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'relicsGiven', 'saidMarlo', 'saidPip', 'saidQuill', 'poolPaid', 'poolWon'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
@@ -234,7 +236,7 @@ function cleanStory(raw) {
   const out = freshStory();
   if (raw && typeof raw === 'object') for (const k of STORY_KEYS) out[k] = Math.floor(num(raw[k]));
   // a save from before the questlines: someone freed earlier is a person met (stage 1), already thanked
-  if (out.diverFreed > 0 && !out.marlo) { out.marlo = 1; out.saidMarlo = 1; }
+  if (out.diverFreed > 0 && !out.marlo) { out.marlo = Math.min(3, out.diverFreed); out.saidMarlo = out.marlo; }
   if (out.critterFreed > 0 && !out.pip) { out.pip = 1; out.saidPip = 1; }
   return out;
 }
@@ -247,7 +249,7 @@ export function saveJournalStats(stats) {
   writeToStorage();
 }
 
-/** Story flags of the questlines (see STORY_KEYS): stages of Marlo, Pip and Quill, relics delivered, thank-yous spoken. */
+/** Story flags of the questlines (see STORY_KEYS): stages of Marlo, Pip and Quill, relics delivered, thank-yous spoken, pool wagers. */
 export function getStory() { return { ...loadBest().story }; }
 /** Add one to a story counter (a key of STORY_KEYS); returns the new value (0 for an unknown key). */
 export function addStory(key) {

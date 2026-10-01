@@ -17,6 +17,9 @@ export const EV_ENTER_DIVE = 1, EV_EXIT = 2, EV_DEATH = 3, EV_CONTINUE = 4;
 /** Hub shortcut ring (unlocked by clearing the biome once): the dive starts at Shallows 1-2. */
 export const EV_ENTER_SHORTCUT = 5;
 export const SHORTCUT_LEVEL = 2;
+/** r39: Marlo's ring in the hub (he was freed in three runs): the dive starts at Shallows 1-3. */
+export const EV_ENTER_SHORTCUT3 = 6;
+export const SHORTCUT3_LEVEL = 3;
 
 /** Why the octopus died: what hurtOctopus / killOctopus were told (octopus.js `cause`) -> text for the death screen. */
 export const CAUSE_TEXT = {
@@ -37,7 +40,7 @@ function newDive(level) {
   return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, cause: '', over: false };
 }
 
-/** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean}} [opts] */
+/** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean, shortcut3?:boolean}} [opts] */
 export function createRun(seed, opts = {}) {
   return {
     state: S_HUB,
@@ -51,6 +54,7 @@ export function createRun(seed, opts = {}) {
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
     deaths: 0,
+    shortcut3: !!opts.shortcut3, // Marlo's hub ring to Shallows 1-3 (story.marlo >= 3 in save.js)
     shortcut: !!opts.shortcut, // the hub ring to Shallows 1-2: unlocked by finishing the biome once (persisted by save.js)
     dive: newDive(1),    // stats of the current dive
     last: null,          // summary of the dive that just ended (death or biome clear), until the next dive starts
@@ -112,6 +116,11 @@ export function runEvent(run, ev, cause) {
       if (ev === EV_ENTER_SHORTCUT) {
         if (!run.shortcut || !run.tutorialDone) return false;
         startDive(run, SHORTCUT_LEVEL);
+        return true;
+      }
+      if (ev === EV_ENTER_SHORTCUT3) {
+        if (!run.shortcut3 || !run.tutorialDone) return false;
+        startDive(run, SHORTCUT3_LEVEL);
         return true;
       }
       if (ev !== EV_ENTER_DIVE) return false;

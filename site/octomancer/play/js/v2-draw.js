@@ -118,6 +118,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
 
   ring(m.exitX, m.exitY, m.label, m.label === 'Dive', false);
   if (m.shortcutX >= 0) ring(m.shortcutX, m.shortcutY, m.shortcutLabel || '', false, true);
+  if (m.shortcut3X >= 0) ring(m.shortcut3X, m.shortcut3Y, m.shortcut3Label || '', false, true);
 
   // --- journal board: a wooden plank hung on the rock face, outlined like the sprites ---
   if (m.boardX >= 0) {
