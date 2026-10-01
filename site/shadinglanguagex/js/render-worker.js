@@ -3,11 +3,12 @@
 // without touching the main thread. The page only draws the bitmaps it gets back.
 //
 //   { op: 'init', args: { size } }                     -> { op: 'ready', ok, error? }
-//   { id, op: 'render', args: { src, opts, frames } }  -> { id, ok: true, frames: ImageBitmap[], nodes, label, ms }
+//   { id, op: 'render', args: { src, opts, frames, files? } } -> { id, ok: true, frames: ImageBitmap[], nodes, label, ms }
+//   files: [{ name, blob }], the project's images for image("name.png")
 //                                                      |  { id, ok: false, stage, error, nodes?, ms? }
 import Mxslc from '../lib/JsMxslc.js';
 import MaterialX from '../lib/JsMaterialXGenShader.js';
-import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors } from './mx-shader.js';
+import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver } from './mx-shader.js';
 import { countNodes } from './graph.js';
 
 const libFile = (name) => new URL('../lib/' + name, import.meta.url).href;
@@ -52,7 +53,13 @@ function initGpu() {
   scene.add(mesh);
 }
 
-async function render(id, { src, opts, frames: n }) {
+async function render(id, args) {
+  const textures = await makeTextures(args.files);
+  try { return await renderWith(id, args, textureResolver(textures)); }
+  finally { disposeTextures(textures); }
+}
+
+async function renderWith(id, { src, opts, frames: n }, resolve) {
   const ms = {};
   let t = performance.now();
 
@@ -78,7 +85,7 @@ async function render(id, { src, opts, frames: n }) {
     const target = listTargets(mx, doc)[0];
     if (!target) return { ok: false, stage: 'empty', nodes, ms };
     label = target.label;
-    shader = generateShader(mx, g, target.el, checker);
+    shader = generateShader(mx, g, target.el, checker, resolve);
   } catch (e) {
     return { ok: false, stage: 'shader', error: mxMsg(mx, e), nodes, ms };
   }

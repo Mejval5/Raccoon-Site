@@ -7,6 +7,7 @@ import { api } from './api.js';
 import { toast } from './log.js';
 import { syncHeader, renderMine, renderGalleryList, showSideTab } from './projects-ui.js';
 import { renderPreviewSprite } from './preview-sprite.js';
+import { listFiles, filesSignature } from './files.js';
 
 let ctx = null; // { src, engine, currentOptions }
 
@@ -25,6 +26,29 @@ export function initShare(c) {
 
 function refresh() { syncHeader(); renderMine(); if (!$('list-gal').hidden) renderGalleryList(); }
 
+// Makes the gallery entry's images match the project's. The server never overwrites an image,
+// so a removed or replaced one is deleted there first, then the new one uploaded.
+async function syncFiles(p) {
+  const id = p.galleryId;
+  const item = await api.get(id);
+  const mine = await listFiles(p.id);
+  const uploaded = { ...(p.galleryFileAdded || {}) };
+  for (const r of item.files || []) {
+    const k = r.name.toLowerCase();
+    const l = mine.find((f) => f.name.toLowerCase() === k);
+    if (!l || uploaded[k] !== l.added) { await api.deleteFile(id, r.name); delete uploaded[k]; }
+  }
+  for (const l of mine) {
+    const k = l.name.toLowerCase();
+    if (uploaded[k] === l.added && (item.files || []).some((r) => r.name.toLowerCase() === k)) continue;
+    await api.uploadFile(id, l.name, l.blob);
+    uploaded[k] = l.added;
+  }
+  p.galleryFileAdded = uploaded;
+  p.galleryFilesSig = filesSignature(mine);
+  local.save();
+}
+
 // Renders and uploads the preview for p's gallery entry. Sharing has already succeeded at this
 // point, so a failure here only costs the preview (the gallery then offers to render it live).
 async function attachPreview(p) {
@@ -32,7 +56,7 @@ async function attachPreview(p) {
   const src = p.src;
   $('proj-state').textContent = 'rendering the gallery preview…';
   try {
-    const { blob, frames } = await renderPreviewSprite(src, ctx.currentOptions());
+    const { blob, frames } = await renderPreviewSprite(src, ctx.currentOptions(), { files: await listFiles(p.id) });
     await api.uploadThumb(id, blob, frames);
     if (p.galleryId === id && p.galleryVersionSrc === src) { p.galleryThumb = true; local.save(); }
     toast(`Gallery preview uploaded (${Math.round(blob.size / 1024)} KB).`);
@@ -55,13 +79,15 @@ async function onShare() {
   }
   if (p.galleryId) {
     const srcChanged = p.src !== p.galleryVersionSrc;
-    btn.textContent = srcChanged ? 'Updating…' : 'Rendering…';
+    const filesChanged = (p.filesSig || '') !== (p.galleryFilesSig || '');
+    btn.textContent = srcChanged || filesChanged ? 'Updating…' : 'Rendering…';
     try {
       if (srcChanged) {
         await api.update(p.galleryId, { name: p.name, src: p.src, opts: ctx.currentOptions() });
         p.galleryVersionSrc = p.src; p.galleryThumb = false; local.save();
-        toast('Gallery entry updated. Rendering its preview…');
       }
+      if (filesChanged) { await syncFiles(p); p.galleryThumb = false; local.save(); }
+      if (srcChanged || filesChanged) toast('Gallery entry updated. Rendering its preview…');
       await attachPreview(p);
     } catch (e) {
       if (e.status === 404) { p.galleryId = null; p.galleryVersionSrc = null; local.save(); toast('That entry is gone from the gallery. Share it again to republish.', true); }
@@ -89,9 +115,11 @@ async function onSubmit(e) {
     const name = $('share-name').value.trim(), author = $('share-author').value.trim();
     const { item } = await api.create({ name, author, src: p.src, opts: ctx.currentOptions() });
     storeSet('mxsl-author', author);
-    Object.assign(p, { name, galleryId: item.id, galleryVersionSrc: p.src });
+    Object.assign(p, { name, galleryId: item.id, galleryVersionSrc: p.src, galleryFileAdded: {}, galleryFilesSig: '' });
     local.save();
     $('dlg-share').close();
+    try { await syncFiles(p); }
+    catch (err) { toast(`Shared, but its images could not be uploaded: ${err.message}`, true); }
     toast(api.mode === 'mock' ? 'Shared to the mock gallery in this browser. Rendering its preview…' : 'Shared. Rendering its gallery preview…');
     refresh();
     await attachPreview(p);
@@ -123,6 +151,7 @@ async function onUnshare() {
   } catch (e) {
     if (e.status !== 404) { toast(`Could not remove it: ${e.message}`, true); return; }
   }
-  p.galleryId = null; p.galleryVersionSrc = null; p.galleryThumb = false; local.save();
+  Object.assign(p, { galleryId: null, galleryVersionSrc: null, galleryThumb: false, galleryFileAdded: {}, galleryFilesSig: '' });
+  local.save();
   refresh();
 }

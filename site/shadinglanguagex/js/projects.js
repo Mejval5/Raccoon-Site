@@ -34,7 +34,11 @@ export function setCurrent(id) {
 
 export function projState(p) {
   if (!p.galleryId) return 'local only';
-  return p.src === p.galleryVersionSrc ? 'shared, up to date' : 'shared, unpublished changes';
+  return isPublished(p) ? 'shared, up to date' : 'shared, unpublished changes';
+}
+// The gallery copy matches this project: same program and same images as at the last share.
+export function isPublished(p) {
+  return !!p.galleryId && p.src === p.galleryVersionSrc && (p.filesSig || '') === (p.galleryFilesSig || '');
 }
 
 // A name that does not clash with the other projects: "untitled", "untitled 2", ...

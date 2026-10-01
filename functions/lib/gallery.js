@@ -27,7 +27,13 @@ const LIMITS = {
   // at 1 MiB, so the image (stored as bytes, no base64) stays well under that.
   thumbBytes: 600 * 1024,
   thumbFramesMax: 64,
+  // Images a shader samples with image("name.png"): a few per entry, each in its own document.
+  fileBytes: 1000 * 1024,
+  filesMax: 4,
 };
+
+// Image file names: a plain name with an image extension, no paths. Matched case-insensitively.
+const FILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}\.(png|jpe?g|webp)$/i;
 
 const OPTION_KEYS = ["reduceGraph", "errorOnMissingGlobals", "errorOnUnusedGlobals"];
 
@@ -107,7 +113,46 @@ function docToItem(id, doc, callerToken) {
     version: typeof doc.version === "number" ? doc.version : 1,
     mine: isOwner(callerToken, doc),
     thumb: thumbInfo(doc.thumb),
+    files: filesInfo(doc.files),
   };
+}
+
+// [{ name, type, size, v }] of an entry's images; v changes with every upload of that name.
+function filesInfo(files) {
+  if (!Array.isArray(files)) return [];
+  return files
+    .filter((f) => f && typeof f.name === "string" && typeof f.v === "number")
+    .map((f) => ({ name: f.name, type: f.type || "", size: f.size || 0, v: f.v }));
+}
+
+function imageMime(buf) {
+  if (buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  return null;
+}
+
+/**
+ * Checks an uploaded image for an entry: safe name, PNG/JPEG/WebP content (by its bytes, not the
+ * header the browser sent), size limit, at most LIMITS.filesMax images per entry, and no existing
+ * image of the same name: an image is never overwritten, it has to be removed first.
+ * @returns {{ok: true, mime: string} | {ok: false, error: string}}
+ */
+function validateFile(buf, name, existing = []) {
+  if (typeof name !== "string" || !FILE_NAME_RE.test(name)) return { ok: false, error: "file name must be letters, digits, _ . - and end in .png, .jpg or .webp" };
+  if (!Buffer.isBuffer(buf) || buf.length === 0) return { ok: false, error: "empty file" };
+  if (buf.length > LIMITS.fileBytes) return { ok: false, error: `image is over ${Math.round(LIMITS.fileBytes / 1024)} KB` };
+  const mime = imageMime(buf);
+  if (!mime) return { ok: false, error: "image must be PNG, JPEG or WebP" };
+  const files = filesInfo(existing);
+  if (files.some((f) => f.name.toLowerCase() === name.toLowerCase())) return { ok: false, error: `there is already an image called ${name}; remove it first` };
+  if (files.length >= LIMITS.filesMax) return { ok: false, error: `at most ${LIMITS.filesMax} images per project; remove one first` };
+  return { ok: true, mime };
+}
+
+// One Firestore document per image; the name is case-insensitive.
+function fileDocId(entryId, name) {
+  return `${entryId}__${name.toLowerCase()}`;
 }
 
 // { v, frames } of the stored preview, or null. v changes with every upload, so the
@@ -143,14 +188,16 @@ function toMillis(v) {
 }
 
 // The function answers both through the hosting rewrite (/api/gallery/...) and at its own
-// URL (/gallery/...). Returns "/" for the collection, "/<id>" for one entry,
-// "/<id>/thumb" for its preview image, null otherwise.
+// URL (/gallery/...). Returns "/" for the collection, "/<id>" for one entry, "/<id>/thumb"
+// for its preview image, "/<id>/files/<name>" for one of its images, null otherwise.
 function normalizeGalleryPath(p) {
   let s = typeof p === "string" ? p : "/";
   s = s.replace(/^\/api\/gallery(?=\/|$)/, "").replace(/^\/gallery(?=\/|$)/, "");
   if (s === "" || s === "/") return "/";
-  const m = /^\/([A-Za-z0-9_-]{1,64})(\/thumb)?\/?$/.exec(s);
-  return m ? `/${m[1]}${m[2] || ""}` : null;
+  const m = /^\/([A-Za-z0-9_-]{1,64})(?:(\/thumb)|\/files\/([A-Za-z0-9][A-Za-z0-9_.-]{0,63}))?\/?$/.exec(s);
+  if (!m) return null;
+  if (m[3]) return m[3].includes("..") ? null : `/${m[1]}/files/${m[3]}`;
+  return `/${m[1]}${m[2] || ""}`;
 }
 
 // Sliding-window share limit kept on one doc per owner: { count, windowStart }.
@@ -179,4 +226,8 @@ module.exports = {
   rateLimitState,
   thumbInfo,
   validateThumb,
+  filesInfo,
+  validateFile,
+  fileDocId,
+  imageMime,
 };

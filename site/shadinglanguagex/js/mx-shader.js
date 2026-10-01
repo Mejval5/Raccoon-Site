@@ -104,7 +104,40 @@ function matData(m, n) {
   for (let r = 0; r < m.numRows(); r++) for (let c = 0; c < m.numColumns(); c++) out.push(m.getItem(r, c));
   return out;
 }
-function toUniformValue(type, value, checker, usedTextures) {
+// Textures for a project's images, keyed by lower-case file name. Bitmaps are flipped on decode
+// so the image's top row sits at v = 1, as MaterialX texture coordinates expect.
+export async function makeTextures(files) {
+  const map = new Map();
+  for (const f of files || []) {
+    try {
+      const bmp = await createImageBitmap(f.blob, { imageOrientation: 'flipY' });
+      const tex = new THREE.Texture(bmp);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = true;
+      tex.needsUpdate = true;
+      map.set(f.name.toLowerCase(), { name: f.name, tex });
+    } catch { /* unreadable image: the shader falls back to the checker */ }
+  }
+  return map;
+}
+export function disposeTextures(map) {
+  for (const { tex } of map?.values() || []) { tex.image?.close?.(); tex.dispose(); }
+}
+// Looks up image("…") in a texture map: same file name, else same name without extension.
+export function textureResolver(map) {
+  if (!map || !map.size) return null;
+  const stem = (n) => n.replace(/\.[^.]*$/, '');
+  return (requested) => {
+    const want = String(requested).split(/[\\/]/).pop().toLowerCase();
+    if (map.has(want)) return map.get(want).tex;
+    for (const [k, v] of map) if (stem(k) === stem(want)) return v.tex;
+    return null;
+  };
+}
+
+function toUniformValue(type, value, checker, usedTextures, resolve) {
   switch (type) {
     case 'float': case 'integer': case 'boolean': return value;
     case 'vector2': return vecData(value, 2);
@@ -112,25 +145,33 @@ function toUniformValue(type, value, checker, usedTextures) {
     case 'vector4': case 'color4': return vecData(value, 4);
     case 'matrix33': return matData(value, 9);
     case 'matrix44': return matData(value, 16);
-    case 'filename': if (value) usedTextures.push(String(value)); return checker;
+    case 'filename': {
+      // a project image when there is one by that name, else the checker (and say so)
+      const tex = value && resolve ? resolve(String(value)) : null;
+      if (tex) return tex;
+      if (value) usedTextures.push(String(value));
+      return checker;
+    }
     default: return null;
   }
 }
-function stageUniforms(stage, checker, usedTextures) {
+function stageUniforms(stage, checker, usedTextures, resolve) {
   const u = {};
   for (const block of Object.values(stage.getUniformBlocks())) {
     if (block.empty()) continue;
     for (let i = 0; i < block.size(); i++) {
       const v = block.get(i);
       const value = v.getValue() ? v.getValue().getData() : null;
-      u[v.getVariable()] = new THREE.Uniform(toUniformValue(v.getType().getName(), value, checker, usedTextures));
+      u[v.getVariable()] = new THREE.Uniform(toUniformValue(v.getType().getName(), value, checker, usedTextures, resolve));
     }
   }
   return u;
 }
 
 // Generates the GLSL for one element and collects its uniforms. Throws the MaterialX error.
-export function generateShader(mx, g, target, checker) {
+// resolve(name) -> THREE.Texture | null maps image file names to the project's images;
+// usedTextures lists the names it could not find (shown as the checker).
+export function generateShader(mx, g, target, checker, resolve = null) {
   const usedTextures = [];
   const opts = g.ctx.getOptions();
   const transparent = mx.isTransparentSurface(target, g.gen.getTarget());
@@ -139,7 +180,7 @@ export function generateShader(mx, g, target, checker) {
   const shader = g.gen.generate(target.getNamePath(), target, g.ctx);
   const vs = shader.getSourceCode('vertex').replace(/^#version\s+.*\n/, '');
   const fs = shader.getSourceCode('pixel').replace(/^#version\s+.*\n/, '');
-  const uniforms = { ...stageUniforms(shader.getStage('vertex'), checker, usedTextures), ...stageUniforms(shader.getStage('pixel'), checker, usedTextures) };
+  const uniforms = { ...stageUniforms(shader.getStage('vertex'), checker, usedTextures, resolve), ...stageUniforms(shader.getStage('pixel'), checker, usedTextures, resolve) };
   return { vs, fs, uniforms, transparent, usedTextures };
 }
 

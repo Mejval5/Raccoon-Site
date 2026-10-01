@@ -744,6 +744,8 @@ const {
   normalizeGalleryPath,
   rateLimitState,
   validateThumb,
+  validateFile,
+  fileDocId,
 } = require("./lib/gallery");
 const { compileCheck } = require("./lib/slx-compile");
 
@@ -754,6 +756,8 @@ const GALLERY = "slx-gallery";
 const GALLERY_OWNERS = "slx-gallery-owners";
 // Preview images live in their own collection so listing the gallery never reads them.
 const GALLERY_THUMBS = "slx-gallery-thumbs";
+// Images a shared program samples with image("name.png"), one document each.
+const GALLERY_FILES = "slx-gallery-files";
 
 exports.gallery = onRequest(
   {
@@ -836,9 +840,10 @@ exports.gallery = onRequest(
         return;
       }
 
-      // ---- one entry, or its preview image
+      // ---- one entry, its preview image, or one of its images
       const isThumb = path.endsWith("/thumb");
-      const id = path.slice(1).replace(/\/thumb$/, "");
+      const fileName = (/\/files\/(.+)$/.exec(path) || [])[1] || null;
+      const id = path.slice(1).split("/")[0];
       const ref = col.doc(id);
       const thumbRef = database.collection(GALLERY_THUMBS).doc(id);
       const snap = await ref.get();
@@ -854,6 +859,16 @@ exports.gallery = onRequest(
         res.status(200).send(Buffer.from(t.data().data));
         return;
       }
+      if (fileName && req.method === "GET") {
+        const f = await database.collection(GALLERY_FILES).doc(fileDocId(id, fileName)).get();
+        if (!f.exists) { json(404, { error: "no such image" }); return; }
+        // The page asks for ?v=<upload time>; an image is never overwritten in place.
+        res.set("Content-Type", f.data().mime || "application/octet-stream");
+        res.set("Cache-Control", "public, max-age=31536000, immutable");
+        res.set("X-Content-Type-Options", "nosniff");
+        res.status(200).send(Buffer.from(f.data().data));
+        return;
+      }
       if (req.method === "GET") {
         res.set("Cache-Control", "private, max-age=15");
         res.status(200).json(docToItem(id, doc, token));
@@ -861,6 +876,34 @@ exports.gallery = onRequest(
       }
       const isAdmin = timingSafeEqualString(req.get("x-admin-key") || "", GALLERY_ADMIN_KEY.value() || "");
       if (!isOwner(token, doc) && !isAdmin) { json(403, { error: "this browser does not own that entry" }); return; }
+
+      // PUT /api/gallery/<id>/files/<name>  body: the image. Refused if that name exists:
+      // DELETE /api/gallery/<id>/files/<name> first. At most LIMITS.filesMax per entry.
+      if (fileName) {
+        const files = Array.isArray(doc.files) ? doc.files : [];
+        const fileRef = database.collection(GALLERY_FILES).doc(fileDocId(id, fileName));
+        if (req.method === "PUT") {
+          const v = validateFile(req.rawBody, fileName, files);
+          if (!v.ok) { json(v.error.includes("remove") ? 409 : 400, { error: v.error }); return; }
+          const entry = { name: fileName, type: v.mime, size: req.rawBody.length, v: Date.now() };
+          await fileRef.set({ data: req.rawBody, mime: v.mime, name: fileName, entry: id, bytes: req.rawBody.length, updated: entry.v });
+          const next = [...files, entry];
+          await ref.update({ files: next });
+          json(200, { item: docToItem(id, { ...doc, files: next }, token) });
+          return;
+        }
+        if (req.method === "DELETE") {
+          const next = files.filter((f) => f.name.toLowerCase() !== fileName.toLowerCase());
+          if (next.length === files.length) { json(404, { error: "no such image" }); return; }
+          await fileRef.delete();
+          await ref.update({ files: next });
+          json(200, { item: docToItem(id, { ...doc, files: next }, token) });
+          return;
+        }
+        res.set("Allow", "GET, PUT, DELETE, OPTIONS");
+        json(405, { error: "method not allowed" });
+        return;
+      }
 
       // PUT /api/gallery/<id>/thumb?frames=24  body: the sprite strip (image/webp or image/png)
       if (isThumb) {
@@ -891,6 +934,7 @@ exports.gallery = onRequest(
       if (req.method === "DELETE") {
         await ref.delete();
         await thumbRef.delete();
+        for (const f of Array.isArray(doc.files) ? doc.files : []) await database.collection(GALLERY_FILES).doc(fileDocId(id, f.name)).delete();
         res.set("Cache-Control", "no-store");
         res.status(204).end();
         return;

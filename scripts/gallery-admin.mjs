@@ -46,7 +46,7 @@ async function api(method, p, { body, type } = {}) {
 
 async function list() {
   const { items } = await api('GET', '');
-  for (const it of items) console.log(`${it.thumb ? 'preview ' : 'MISSING '} ${it.id}  ${String(it.nodes ?? '?').padStart(5)} nodes  ${it.name} (${it.author})`);
+  for (const it of items) console.log(`${it.thumb ? 'preview ' : 'MISSING '} ${it.id}  ${String(it.nodes ?? '?').padStart(5)} nodes  ${it.name} (${it.author})${it.files?.length ? `  images: ${it.files.map((f) => f.name).join(', ')}` : ''}`);
   return items;
 }
 
@@ -67,7 +67,18 @@ async function previews(ids) {
       if (url.pathname === '/__admin/render.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(renderPage()); return; }
       if (url.pathname === '/__admin/jobs') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ timeoutMs: TIMEOUT_S * 1000, jobs: jobs.map(({ id, name, src, nodes }) => ({ id, name, src, nodes })) }));
+        res.end(JSON.stringify({ timeoutMs: TIMEOUT_S * 1000, jobs: jobs.map(({ id, name, src, nodes, files }) => ({ id, name, src, nodes, files: files || [] })) }));
+        return;
+      }
+      // an entry's images, fetched from the API for the render page (it cannot reach the API itself)
+      const fm = /^\/__admin\/files\/([\w-]+)\/(.+)$/.exec(url.pathname);
+      if (fm) {
+        const job = jobs.find((j) => j.id === fm[1]);
+        const f = job?.files?.find((x) => x.name === decodeURIComponent(fm[2]));
+        if (!f) { res.writeHead(404); res.end(); return; }
+        const r = await fetch(`${API}/api/gallery/${job.id}/files/${encodeURIComponent(f.name)}?v=${f.v}`);
+        res.writeHead(r.status, { 'Content-Type': r.headers.get('content-type') || 'application/octet-stream' });
+        res.end(Buffer.from(await r.arrayBuffer()));
         return;
       }
       const m = /^\/__admin\/(thumb|fail)\/([\w-]+)$/.exec(url.pathname);
@@ -110,7 +121,12 @@ const { jobs, timeoutMs } = await (await fetch('/__admin/jobs')).json();
 for (const job of jobs) {
   const li = log(job.name + ' (' + (job.nodes ?? '?') + ' nodes): rendering…');
   try {
-    const { blob, frames } = await renderPreviewSprite(job.src, { reduceGraph: true }, { timeoutMs });
+    const files = [];
+    for (const f of job.files) {
+      const r = await fetch('/__admin/files/' + job.id + '/' + encodeURIComponent(f.name));
+      if (r.ok) files.push({ name: f.name, blob: await r.blob() });
+    }
+    const { blob, frames } = await renderPreviewSprite(job.src, { reduceGraph: true }, { timeoutMs, files });
     const r = await (await fetch('/__admin/thumb/' + job.id + '?frames=' + frames, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob })).json();
     li.textContent = job.name + ': ' + r.result; li.className = r.result.startsWith('uploaded') ? 'ok' : 'bad';
   } catch (e) {

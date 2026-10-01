@@ -184,3 +184,19 @@ dialog .err { color: var(--err); font: 12px/1.4 var(--mono); white-space: pre-wr
 @media (max-width: 1180px) { header .credit { display: none; } }
 
 button.primary.danger { background: var(--err); border-color: var(--err); color: #fff; }
+
+/* ---- images panel ---- */
+dialog.wide { width: min(560px, calc(100vw - 32px)); }
+dialog code { font: 12px var(--mono); background: var(--sunk); padding: 1px 4px; border-radius: 4px; }
+.img-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.img-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
+.img-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+.img-row img { width: 48px; height: 48px; object-fit: cover; border-radius: 5px; background: #0d1017; }
+.img-name { font: 500 13px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-meta { color: var(--muted); font-size: 12px; }
+.img-meta .ok { color: var(--ok); }
+.img-row button { padding: 3px 9px; font-size: 12px; }
+.img-empty { color: var(--muted); font-size: 13px; padding: 10px 2px; }
+.img-missing { color: var(--accent); font-size: 13px; }
+#dlg-images .err { white-space: pre-wrap; }
+.editor.drop, dialog.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }

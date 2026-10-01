@@ -10,6 +10,9 @@
 //   DELETE /api/gallery/:id                                   -> 204 | 403 | 404
 //   PUT    /api/gallery/:id/thumb?frames=N  body: WebP/PNG strip -> 200 { item } | 400 | 403
 //   GET    /api/gallery/:id/thumb?v=<thumb.v>                    -> the image (cached forever)
+//   PUT    /api/gallery/:id/files/:name   body: PNG/JPEG/WebP    -> 200 { item } | 400 | 403 | 409 (exists / too many)
+//   DELETE /api/gallery/:id/files/:name                          -> 200 { item }
+//   GET    /api/gallery/:id/files/:name?v=<v>                    -> the image (cached forever)
 import { readJson, storeGet, storeSet, uid, lineOf } from './util.js';
 import { countNodes } from './graph.js';
 import { PRESETS } from './presets.js';
@@ -39,6 +42,32 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, data);
     return data;
   },
+  // Images the shader samples with image("name.png"). Never overwritten: delete, then upload.
+  async uploadFile(id, name, blob) {
+    if (mode === 'mock') return req('PUT', `${BASE}/${id}/files/${encodeURIComponent(name)}`, { dataUrl: await blobToDataUrl(blob), type: blob.type, size: blob.size });
+    const t0 = performance.now();
+    const res = await fetch(`${BASE}/${id}/files/${encodeURIComponent(name)}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': blob.type }, body: blob });
+    const data = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
+    notify('PUT', `${BASE}/${id}/files/${name}`, res.status, performance.now() - t0);
+    if (!res.ok) throw new ApiError(res.status, data);
+    return data;
+  },
+  deleteFile(id, name) { return req('DELETE', `${BASE}/${id}/files/${encodeURIComponent(name)}`); },
+  fileUrl(item, file) {
+    if (mode === 'mock') return storeGet(`mxsl-mock-file-${item.id}-${file.name.toLowerCase()}`);
+    return `${BASE}/${encodeURIComponent(item.id)}/files/${encodeURIComponent(file.name)}?v=${file.v}`;
+  },
+  // [{ name, blob, type, size }] of a gallery entry's images, for previews and remixes.
+  async fetchFiles(item) {
+    const out = [];
+    for (const f of item?.files || []) {
+      const url = this.fileUrl(item, f);
+      if (!url) continue;
+      try { const blob = await (await fetch(url)).blob(); out.push({ name: f.name, blob, type: blob.type, size: blob.size }); } catch { /* skip */ }
+    }
+    return out;
+  },
+
   // Where an entry's stored preview lives, or null when it has none.
   thumbUrl(item) {
     if (!item?.thumb) return null;
@@ -73,7 +102,8 @@ async function req(method, path, body) {
     let res;
     try {
       res = await fetch(path, {
-        method, credentials: 'include',
+        // always ask the server: share and image sync decide from what is stored right now
+        method, credentials: 'include', cache: 'no-store',
         headers: body ? { 'Content-Type': 'application/json' } : {},
         body: body ? JSON.stringify(body) : undefined,
       });
@@ -134,9 +164,30 @@ const mock = {
     this.save(db);
     return db;
   },
-  async pub(it) { const { ownerHash, ...rest } = it; return { thumb: null, ...rest, mine: ownerHash === await sha256(this.owner()) }; },
+  async pub(it) { const { ownerHash, ...rest } = it; return { thumb: null, files: [], ...rest, mine: ownerHash === await sha256(this.owner()) }; },
   async handle(method, path, body) {
     const db = this.load() || await this.seed();
+    const fm = /^\/api\/gallery\/([\w-]+)\/files\/(.+)$/.exec(path);
+    if (fm) {
+      const [, fid, rawName] = fm;
+      const name = decodeURIComponent(rawName);
+      const it = db.items[fid];
+      if (!it) return [404, { error: 'not found' }];
+      if (it.ownerHash !== await sha256(this.owner())) return [403, { error: 'this browser does not own that entry' }];
+      const files = it.files || [];
+      const k = `mxsl-mock-file-${fid}-${name.toLowerCase()}`;
+      if (method === 'PUT') {
+        if (files.some((f) => f.name.toLowerCase() === name.toLowerCase())) return [409, { error: `there is already an image called ${name}; remove it first` }];
+        if (files.length >= 4) return [409, { error: 'at most 4 images per project; remove one first' }];
+        storeSet(k, body.dataUrl);
+        it.files = [...files, { name, type: body.type, size: body.size, v: Date.now() }];
+      } else if (method === 'DELETE') {
+        storeSet(k, '');
+        it.files = files.filter((f) => f.name.toLowerCase() !== name.toLowerCase());
+      } else return [405, { error: 'method not allowed' }];
+      this.save(db);
+      return [200, { item: await this.pub(it) }];
+    }
     const m = /^\/api\/gallery(?:\/([\w-]+))?(\/thumb)?$/.exec(path);
     if (!m) return [404, { error: 'not found' }];
     const id = m[1];

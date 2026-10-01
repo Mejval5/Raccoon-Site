@@ -61,6 +61,7 @@
       <input class="proj-name" id="proj-name" aria-label="Project name" spellcheck="false" maxlength="60">
       <span class="hint" id="proj-state"></span>
       <div class="spacer"></div>
+      <button id="images" title="Images this shader samples with image(&quot;name.png&quot;)">Images</button>
       <button id="delete-proj" title="Delete this project from this browser">Delete</button>
       <button id="unshare" hidden title="Remove this project from the gallery">Unshare</button>
       <button id="share" title="Compile, then publish this project to the gallery">Share</button>
@@ -129,6 +130,19 @@
     <h3>Remove from the gallery?</h3>
     <p>The entry disappears for everyone. Your local copy stays.</p>
     <div class="row"><button value="cancel">Keep it</button><button class="primary" value="ok">Remove</button></div>
+  </form>
+</dialog>
+<dialog id="dlg-images" class="wide">
+  <form method="dialog">
+    <h3 id="img-title">Images</h3>
+    <p>Sample them in the shader with <code>image("name.png", texcoord = texcoord())</code>. A path like <code>textures&#92;albedo.tif</code> finds <code>albedo.png</code> too. Shared projects take their images along.</p>
+    <div class="img-bar"><span class="hint" id="img-count"></span><div class="spacer"></div><button type="button" id="img-add">+ Add images</button></div>
+    <input type="file" id="img-input" accept="image/png,image/jpeg,image/webp,image/*" multiple hidden>
+    <ul class="img-list" id="img-list"></ul>
+    <p class="hint" id="img-drop">You can also drop images onto the code editor. Big images are scaled down to fit. To replace an image, remove it first.</p>
+    <div class="err" id="img-err" hidden></div>
+    <p class="img-missing" id="img-missing" hidden></p>
+    <div class="row"><button value="close">Close</button></div>
   </form>
 </dialog>
 <dialog id="dlg-delete">

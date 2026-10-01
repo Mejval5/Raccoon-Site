@@ -9,6 +9,7 @@ import { toast } from './log.js';
 import { api } from './api.js';
 import { local } from './projects.js';
 import { createPool } from './render-pool.js';
+import { listFiles, putFile } from './files.js';
 
 const THUMB = 256, FRAMES = 24, FPS = 16;
 const LIVE_RENDER_LIMIT_MS = 20000;
@@ -66,17 +67,22 @@ function makeCard(item) {
       ${item.local ? '' : '<button class="remix">Remix</button>'}
       ${item.thumb || !supported ? '' : '<button class="render" title="Compile and render this shader here, on a render thread">Render preview</button>'}
     </div>`;
-  const hash = item.thumb ? `thumb:${item.id}:${item.thumb.v}` : hashStr(item.src);
+  // same program with other images renders differently, so the images are part of the key
+  const imagesKey = item.local ? (item.filesSig || '') : JSON.stringify((item.files || []).map((f) => [f.name, f.v]));
+  const hash = item.thumb ? `thumb:${item.id}:${item.thumb.v}` : hashStr(`${item.src}|${imagesKey}`);
   const card = { el, item, key: item.key, canvas: el.querySelector('canvas'), stat: el.querySelector('.tstat'), hash, pending: false, live: false };
   card.ctx = card.canvas.getContext('2d');
-  el.querySelector('.render')?.addEventListener('click', (e) => {
+  el.querySelector('.render')?.addEventListener('click', async (e) => {
     e.currentTarget.disabled = true;
+    card.stat.textContent = 'loading its images…';
+    try { card.files = item.local ? await listFiles(item.id) : await api.fetchFiles(item); } catch { card.files = []; }
     card.live = true;
     pool.start();
     request(card);
   });
-  el.querySelector('.remix')?.addEventListener('click', () => {
+  el.querySelector('.remix')?.addEventListener('click', async () => {
     const p = local.add(`${item.name} remix`, item.src);
+    for (const f of await api.fetchFiles(item)) await putFile(p.id, { ...f, added: Date.now() });
     toast('Copied into your projects. Opening the editor…');
     setTimeout(() => { location.href = `../?p=${encodeURIComponent(p.id)}`; }, 400);
   });
@@ -140,7 +146,7 @@ function request(card) {
   const slow = setTimeout(() => {
     if (card.pending) card.stat.textContent = `still compiling after ${LIVE_RENDER_LIMIT_MS / 1000} s: too heavy to preview here. Open it to see it in the editor.`;
   }, LIVE_RENDER_LIMIT_MS);
-  pool.run(card.hash, { src: card.item.src, opts: { reduceGraph: true }, frames: FRAMES }, priority, onStart).then((res) => {
+  pool.run(card.hash, { src: card.item.src, opts: { reduceGraph: true }, frames: FRAMES, files: (card.files || []).map(({ name, blob }) => ({ name, blob })) }, priority, onStart).then((res) => {
     clearTimeout(slow);
     card.pending = false;
     if (res.cancelled) { card.stat.textContent = 'waiting to scroll into view'; return; }

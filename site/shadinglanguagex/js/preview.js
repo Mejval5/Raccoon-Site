@@ -2,12 +2,12 @@
 // GLSL, three.js draws it on a sphere, plane or knot under the environment light.
 import MaterialX from '../lib/JsMaterialXGenShader.js';
 import { $, libFile } from './util.js';
-import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors } from './mx-shader.js';
+import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver } from './mx-shader.js';
 
 export const pv = {
   mx: null, g: null, env: null, ready: false,
   renderer: null, scene: null, camera: null, mesh: null, geos: {}, geo: 'sphere',
-  checker: null, pendingXml: null, timer: 0, dirty: false,
+  checker: null, pendingXml: null, timer: 0, dirty: false, textures: null, resolve: null,
   yaw: 0.6, pitch: 0.25, dist: 4.0, t0: performance.now(), frame: 0, shaderError: '',
 };
 const pvMsg = (text, isErr = false) => {
@@ -117,6 +117,17 @@ export function schedulePreview(xml, delay = 120) {
 
 let lastTargets = [];
 let lastPreviewXml = null;
+
+// The open project's images: image("name.png") in the shader samples these. Re-renders.
+export async function setPreviewImages(files) {
+  const next = await makeTextures(files);
+  const old = pv.textures;
+  pv.textures = next;
+  pv.resolve = textureResolver(next);
+  lastPreviewXml = null; // same MaterialX, different textures: render again
+  if (pv.ready && pv.pendingXml !== null) await updatePreview(pv.pendingXml);
+  disposeTextures(old);
+}
 async function updatePreview(xml) {
   const m = pv.mx;
   if (xml === lastPreviewXml) return;
@@ -154,14 +165,14 @@ async function renderTarget(target) {
   const t0 = performance.now();
   let shader;
   try {
-    shader = generateShader(pv.mx, pv.g, target.el, pv.checker);
+    shader = generateShader(pv.mx, pv.g, target.el, pv.checker, pv.resolve);
   } catch (e) {
     pvMsg(`Shader generation failed: ${mxMsg(pv.mx, e)}`, true);
     pvStatus('');
     return;
   }
   const genMs = (performance.now() - t0).toFixed(0);
-  const texNote = shader.usedTextures.length ? `. Image files are shown as a checker: ${[...new Set(shader.usedTextures)].join(', ')}` : '';
+  const texNote = shader.usedTextures.length ? `. Missing images, shown as a checker (add them under Images): ${[...new Set(shader.usedTextures)].join(', ')}` : '';
   const label = `${target.el.getCategory()} "${target.el.getName()}"`;
   const cur = pv.mesh.material;
 

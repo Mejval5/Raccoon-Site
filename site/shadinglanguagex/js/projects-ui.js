@@ -4,9 +4,11 @@
 import { $, ago } from './util.js';
 import { esc as escHtml } from './highlight.js';
 import { PRESETS } from './presets.js';
-import { local, cur, setCurrent, projState, freshName } from './projects.js';
+import { local, cur, setCurrent, projState, freshName, isPublished } from './projects.js';
 import { api } from './api.js';
 import { toast } from './log.js';
+import { initImagesUI, loadImagesFor, currentFiles } from './images-ui.js';
+import { putFile, deleteAllFiles } from './files.js';
 
 const NEW_PROJECT_SRC = '// New project. Declare a material to see it on the preview.\n\nsurfaceshader surface = standard_surface();\nsurface.base_color = color3{0.8, 0.3, 0.2};\n\nmaterial mat = surfacematerial(surface);\n';
 
@@ -18,6 +20,7 @@ export function initProjectsUI(c) {
   ctx = c;
   bindHeader();
   bindDropdown();
+  initImagesUI({ src: c.src, onChange: () => { syncHeader(); renderMine(); } });
   // deep links: ?g=<gallery id> opens a shared entry, ?p=<project id> one of yours
   const q = new URLSearchParams(location.search);
   if (q.get('g')) openGallery(q.get('g'));
@@ -38,7 +41,7 @@ export function syncHeader() {
   nameEl.value = p.name; nameEl.readOnly = false;
   $('proj-state').textContent = projState(p);
   share.hidden = false;
-  const upToDate = !!p.galleryId && p.src === p.galleryVersionSrc;
+  const upToDate = isPublished(p);
   share.textContent = !p.galleryId ? 'Share' : upToDate && !p.galleryThumb ? 'Add preview' : 'Update gallery';
   share.title = upToDate && !p.galleryThumb ? "Render this project's gallery preview and upload it" : 'Compile, then publish this project to the gallery';
   share.disabled = upToDate && !!p.galleryThumb;
@@ -63,6 +66,7 @@ export function openLocal(id, compile = true) {
   syncHeader(); renderMine();
   if (!$('list-gal').hidden) renderGalleryList();
   if (compile) ctx.doCompile(true);
+  loadImagesFor({ kind: 'local', id }).then(() => syncHeader());
 }
 export async function openGallery(id) {
   const owned = local.list.find((p) => p.galleryId === id);
@@ -74,6 +78,7 @@ export async function openGallery(id) {
     setUrl('g', id);
     syncHeader(); renderMine(); renderGalleryList();
     ctx.doCompile(true);
+    loadImagesFor({ kind: 'gallery', item });
   } catch (e) {
     toast(`Could not open it: ${e.message}`, true);
     if (!cur()) return;
@@ -107,10 +112,13 @@ function bindHeader() {
   $('proj-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.currentTarget.blur(); });
   $('new-proj').addEventListener('click', () => newProject('untitled', NEW_PROJECT_SRC));
   $('delete-proj').addEventListener('click', deleteCurrent);
-  $('remix').addEventListener('click', () => {
+  $('remix').addEventListener('click', async () => {
     if (!viewing) return;
-    newProject(`${viewing.name} remix`, viewing.src);
-    toast('Copied into your projects. Edit away.');
+    const images = currentFiles(); // the viewed entry's images come along
+    const p = newProject(`${viewing.name} remix`, viewing.src);
+    for (const f of images) await putFile(p.id, { name: f.name, blob: f.blob, type: f.type, size: f.size, added: Date.now() });
+    if (images.length) await loadImagesFor({ kind: 'local', id: p.id });
+    toast(images.length ? `Copied into your projects with its ${images.length} image${images.length > 1 ? 's' : ''}. Edit away.` : 'Copied into your projects. Edit away.');
   });
   // examples start a new project instead of overwriting the current one
   const sel = $('preset');
@@ -139,6 +147,7 @@ async function deleteCurrent() {
     dlg.addEventListener('cancel', () => resolve('cancel'), { once: true });
   });
   if (answer !== 'ok') return;
+  await deleteAllFiles(p.id).catch(() => {});
   local.remove(p.id);
   if (!local.list.length) local.add('untitled', NEW_PROJECT_SRC);
   openLocal(local.sorted()[0].id);

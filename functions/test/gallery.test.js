@@ -16,6 +16,9 @@ const {
   rateLimitState,
   thumbInfo,
   validateThumb,
+  filesInfo,
+  validateFile,
+  fileDocId,
 } = require("../lib/gallery");
 const { compileCheck, countNodes } = require("../lib/slx-compile");
 
@@ -64,7 +67,7 @@ test("docToItem hides the owner hash and marks the caller's own entries", () => 
   const token = newOwnerToken();
   const doc = { name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: { toMillis: () => 2000 }, version: 2, ownerHash: ownerHash(token) };
   const mine = docToItem("id1", doc, token);
-  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true, thumb: null });
+  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true, thumb: null, files: [] });
   assert.deepEqual(docToItem("id1", { ...doc, thumb: { v: 5, frames: 24, extra: 1 } }, null).thumb, { v: 5, frames: 24 });
   assert.equal(docToItem("id1", doc, null).mine, false);
   assert.equal("ownerHash" in mine, false);
@@ -84,6 +87,10 @@ test("normalizeGalleryPath accepts the rewrite and the direct function URL", () 
   assert.equal(normalizeGalleryPath("/api/gallery/abc/thumb"), "/abc/thumb");
   assert.equal(normalizeGalleryPath("/gallery/abc/thumb/"), "/abc/thumb");
   assert.equal(normalizeGalleryPath("/api/gallery/abc/other"), null);
+  assert.equal(normalizeGalleryPath("/api/gallery/abc/files/background.png"), "/abc/files/background.png");
+  assert.equal(normalizeGalleryPath("/gallery/abc/files/Albedo_2.JPG/"), "/abc/files/Albedo_2.JPG");
+  assert.equal(normalizeGalleryPath("/api/gallery/abc/files/../x.png"), null);
+  assert.equal(normalizeGalleryPath("/api/gallery/abc/files/a/b.png"), null);
 });
 
 test("rateLimitState allows a window of shares and then refuses", () => {
@@ -135,4 +142,27 @@ test("validateThumb accepts small WebP sprites only", () => {
   assert.equal(validateThumb("not a buffer", "1").ok, false);
   assert.equal(thumbInfo(null), null);
   assert.deepEqual(thumbInfo({ v: 1 }), { v: 1, frames: 1 });
+});
+
+test("validateFile: image types by content, size, count, and no overwriting", () => {
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100)]);
+  const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(100)]);
+  const webp = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP"), Buffer.alloc(100)]);
+  assert.deepEqual(validateFile(png, "background.png"), { ok: true, mime: "image/png" });
+  assert.deepEqual(validateFile(jpg, "albedo.jpg"), { ok: true, mime: "image/jpeg" });
+  assert.deepEqual(validateFile(webp, "x.webp"), { ok: true, mime: "image/webp" });
+  // the bytes decide the type, not the name
+  assert.deepEqual(validateFile(jpg, "named-png.png"), { ok: true, mime: "image/jpeg" });
+  assert.match(validateFile(Buffer.from("GIF89a....."), "a.png").error, /PNG, JPEG or WebP/);
+  assert.match(validateFile(png, "a.gif").error, /file name/);
+  assert.match(validateFile(png, "../a.png").error, /file name/);
+  assert.match(validateFile(png, "a b.png").error, /file name/);
+  assert.match(validateFile(Buffer.alloc(1001 * 1024, 1), "big.png").error, /over/);
+  const existing = [1, 2, 3].map((i) => ({ name: `t${i}.png`, v: i }));
+  assert.equal(validateFile(png, "t4.png", existing).ok, true);
+  assert.match(validateFile(png, "T1.PNG", existing).error, /already.*remove it first/);
+  existing.push({ name: "t4.png", v: 4 });
+  assert.match(validateFile(png, "t5.png", existing).error, /at most 4.*remove one first/);
+  assert.deepEqual(filesInfo([{ name: "a.png", type: "image/png", size: 3, v: 1, extra: 1 }, { bad: 1 }]), [{ name: "a.png", type: "image/png", size: 3, v: 1 }]);
+  assert.equal(fileDocId("abc", "Back.PNG"), "abc__back.png");
 });
