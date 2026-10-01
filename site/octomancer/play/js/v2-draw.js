@@ -77,23 +77,39 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       // label only while the ring itself is on screen and clear of the bottom-left controls hint
       if (label && ex > 0 && ex < cw && cy > 0 && cy < ch) {
         const dpr = window.devicePixelRatio || 1;
-        const ly = cy - r * 1.9;
-        const inHint = ex < 320 * dpr && ly > ch - 130 * dpr;
-        if (!inHint && ly > 0) {
-          ctx.font = `700 ${Math.max(11, Math.round(ppu * (plank ? 0.32 : 0.4)))}px Quicksand, sans-serif`;
+        if (plank) {
+          // the shortcut ring's name on a small wooden sign (65% of the old size) standing on the floor rim BESIDE the
+          // ring (1.6 tiles to the side, away from a wall), its post running down to the rim, never planted in the ring
+          const S = 0.65;
+          const free = (dx) => !m.tileAt || (m.tileAt(tx + dx, ty) === 0 && m.tileAt(tx + dx + (dx > 0 ? 1 : -1), ty) === 0);
+          const side = free(2) || !free(-2) ? 1 : -1;
+          const px = ex + side * 1.6 * ppu;
+          const rimY = ey + (floorY - ty - 0.5) * ppu; // top edge of the floor under the ring
+          const ph = ppu * 0.56 * S, signY = rimY - ppu * 1.7;
+          ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.32 * S))}px Quicksand, sans-serif`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          if (plank) {
-            // a small wooden sign on a post: the shortcut ring's name
-            const tw = ctx.measureText(label).width, pw = tw + ppu * 0.5, ph = ppu * 0.56;
-            ctx.fillStyle = '#6b4a22'; ctx.fillRect(ex - ppu * 0.05, ly + ph / 2 - 1, ppu * 0.1, Math.max(0, cy - r * 0.5 - (ly + ph / 2)));
-            ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, ppu * 0.07); ctx.strokeStyle = '#3a2410'; ctx.fillStyle = '#c99a5a';
-            ctx.beginPath(); ctx.roundRect(ex - pw / 2, ly - ph / 2, pw, ph, ppu * 0.1); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#3a2410'; ctx.fillText(label, ex, ly + 1);
-          } else {
-          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(4,20,34,0.8)';
-          ctx.strokeText(label, ex, ly);
-          ctx.fillStyle = '#ffe9a8';
-          ctx.fillText(label, ex, ly);
+          const tw = ctx.measureText(label).width, pw = tw + ppu * 0.5 * S;
+          const inHint = px < 320 * dpr && signY > ch - 130 * dpr;
+          if (!inHint && signY > 0 && px > -pw && px < cw + pw) {
+            ctx.lineJoin = 'round';
+            const postW = Math.max(2, ppu * 0.1 * S);
+            ctx.fillStyle = '#6b4a22'; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = Math.max(1, ppu * 0.04);
+            ctx.fillRect(px - postW / 2, signY + ph / 2 - 1, postW, rimY - (signY + ph / 2) + 1);
+            ctx.strokeRect(px - postW / 2, signY + ph / 2 - 1, postW, rimY - (signY + ph / 2) + 1);
+            ctx.lineWidth = Math.max(2, ppu * 0.07 * S); ctx.fillStyle = '#c99a5a';
+            ctx.beginPath(); ctx.roundRect(px - pw / 2, signY - ph / 2, pw, ph, ppu * 0.1 * S); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#3a2410'; ctx.fillText(label, px, signY + 1);
+          }
+        } else {
+          const ly = cy - r * 1.9;
+          const inHint = ex < 320 * dpr && ly > ch - 130 * dpr;
+          if (!inHint && ly > 0) {
+            ctx.font = `700 ${Math.max(11, Math.round(ppu * 0.4))}px Quicksand, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(4,20,34,0.8)';
+            ctx.strokeText(label, ex, ly);
+            ctx.fillStyle = '#ffe9a8';
+            ctx.fillText(label, ex, ly);
           }
         }
       }

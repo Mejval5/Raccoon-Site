@@ -24,6 +24,7 @@ import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs } from './bomb.js';
+import { createProps, PROP_NAMES } from './props.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
@@ -38,7 +39,7 @@ import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop, drawRubble } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import {
   fetchQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
@@ -133,9 +134,10 @@ let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
 let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
-let hazards = createHazards();
-let loot = createLoot();
-let bombs = createBombs();
+let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubble); idle in endless mode
+let hazards = createHazards(V2 ? props : null);
+let loot = createLoot(V2 ? props : null);
+let bombs = createBombs(V2 ? props : null);
 let particles = createParticles();
 let autoDiveOn = false;
 let godMode = false; // test hook only (__octo.god): scripted playthroughs ignore enemy contact
@@ -322,6 +324,7 @@ function step(dt) {
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
   enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident);
+  if (V2) props.step(dt, world, octo); // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -354,7 +357,12 @@ function step(dt) {
     }
   }
   particles.update(dt);
-  if (snap.bomb.pressed && bombs.place(octo, octo.x, octo.y) && V2) { discover('item-bomb'); tutorialActed(tutState); }
+  if (snap.bomb.pressed) {
+    const aim = V2 ? bombAim(snap) : null;
+    let bx = octo.x, by = octo.y;
+    if (aim && !world.isSolid(octo.x + aim.x * 0.5, octo.y + aim.y * 0.5)) { bx += aim.x * 0.5; by += aim.y * 0.5; }
+    if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); tutorialActed(tutState); }
+  }
 
   const depth = Math.max(0, world.depth() - world.startY);
   liveScore = computeScore(depth, pickups.totals, runKills);
@@ -366,6 +374,18 @@ function step(dt) {
     ui.showGameOver(liveScore, bestScore, V2 ? deathDetail() : undefined);
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
+}
+/** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys; else
+ * null (a soft toss along the octopus's facing). Unit vector. */
+function bombAim(snap) {
+  if (snap.mode === 'mouse' && input.mouse.seen) {
+    const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
+    const dx = w.x - octo.x, dy = w.y - octo.y, l = Math.hypot(dx, dy);
+    if (l > 0.4) return { x: dx / l, y: dy / l };
+  }
+  const m = snap.move, l = Math.hypot(m.x, m.y);
+  if (l > 0.25) return { x: m.x / l, y: m.y / l };
+  return null;
 }
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -475,10 +495,11 @@ function resetWorld(newSeed) {
   pickups = createPickups();
   decor = createDecor(world.width, world.chunkHeight);
   enemies = createEnemies();
-  hazards = createHazards();
-  loot = createLoot();
+  props = createProps();
+  hazards = createHazards(V2 ? props : null);
+  loot = createLoot(V2 ? props : null);
   if (AUTO) autofire = createAutofire();
-  bombs = createBombs();
+  bombs = createBombs(V2 ? props : null);
   particles = createParticles();
   sim.time = 0;
   runKills = 0;
@@ -645,6 +666,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
   }
   if (lv.signX !== undefined && lv.signX >= 0) drawQuestSign(c, camera, cw, ch, lv.signX, lv.signY, t);
+  drawRubble(c, camera, cw, ch, props.data);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
@@ -826,8 +848,14 @@ window.__octo = {
     const e = enemies.spawnAt(kind, x, y, placement, wallDir);
     return { kind, x, y, spawned: true, id: e.id };
   },
-  placeBomb(x, y) {
-    return bombs.place(octo, x != null ? x : octo.x, y != null ? y : octo.y);
+  placeBomb(x, y, ax, ay) {
+    return bombs.place(octo, x != null ? x : octo.x, y != null ? y : octo.y, ax || ay ? { x: ax || 0, y: ay || 0 } : null);
+  },
+  /** v2: the physics props (kind name, position, velocity, state) for tests and review. */
+  props() {
+    const d = props.data, out = [];
+    for (let i = 0; i < d.n; i++) if (d.alive[i]) out.push({ i, kind: PROP_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx: d.vx[i], vy: d.vy[i], r: d.radius[i], state: d.state[i], timer: d.timer[i] });
+    return out;
   },
   auto() { return autofire ? { ...autofire.stats } : null; },
   autoDive(on) {

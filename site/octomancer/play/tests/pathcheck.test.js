@@ -183,10 +183,11 @@ export async function runPathcheckTests(assert) {
       let bombsPlaced = 0;
       for (let attempt = 0; attempt < 3 && wallIntactBlocking(w); attempt++) {
         r = follow(sim, 39.5, 12.5, 0.3, 1200);
-        tick(sim, 0, 0, { bomb: true }); bombsPlaced++;
+        for (let i = 0; i < 35; i++) tick(sim, 0, 0); // let the swim settle: a bomb inherits the octopus velocity
+        tick(sim, 0, 0, { bomb: true }); bombsPlaced++; // no aim: a soft toss, it sinks beside the wall
         // swim away from the blast
         follow(sim, 33.5, 12.5, 0.8, 600);
-        for (let i = 0; i < 90 && sim.bombs.list().length; i++) tick(sim, 0, 0);
+        for (let i = 0; i < 260 && sim.bombs.list().length; i++) tick(sim, 0, 0); // fuse 2.5 s
       }
       out.bombsPlaced = bombsPlaced;
       r = follow(sim, w.exitX, w.exitY, 1.05, 3500);

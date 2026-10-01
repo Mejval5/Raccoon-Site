@@ -54,7 +54,7 @@ export function createInput(canvas) {
   // whether the left button is currently held. `aim` is written once per
   // fixed step by main.js (`setMouseAim`, see the module comment above) with
   // the already-normalised-and-thrust-scaled direction toward the cursor.
-  const mouse = { x: 0, y: 0, active: false };
+  const mouse = { x: 0, y: 0, active: false, seen: false };
   let mouseAim = { x: 0, y: 0 };
   let mouseDashPressed = false;
   let mouseBombPressed = false;
@@ -120,7 +120,7 @@ export function createInput(canvas) {
         setMode('mouse');
         mouse.active = true;
         const p = toBufferPx(e);
-        mouse.x = p.x; mouse.y = p.y;
+        mouse.x = p.x; mouse.y = p.y; mouse.seen = true;
         e.preventDefault();
       } else if (e.button === 1) {
         setMode('mouse');
@@ -133,9 +133,9 @@ export function createInput(canvas) {
       }
     });
     window.addEventListener('mousemove', (e) => {
-      if (!mouse.active) return;
+      // always tracked (a bomb is thrown toward the cursor even when the swim button is up); `active` still gates swimming
       const p = toBufferPx(e);
-      mouse.x = p.x; mouse.y = p.y;
+      mouse.x = p.x; mouse.y = p.y; mouse.seen = true;
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) mouse.active = false;

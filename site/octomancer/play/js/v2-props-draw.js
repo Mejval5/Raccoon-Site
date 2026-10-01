@@ -26,6 +26,30 @@ function label(ctx, text, x, y, px, fill, stroke = 'rgba(4,20,34,0.85)') {
   ctx.fillStyle = fill; ctx.fillText(text, x, y);
 }
 
+/** Rubble props (props.js): small grey-brown chips that tumble down and fade out over their last 0.8 s. */
+export function drawRubble(ctx, camera, cw, ch, d) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const m = 2 * ppu;
+  for (let i = 0; i < d.n; i++) {
+    if (!d.alive[i] || d.kind[i] !== 7) continue;
+    const x = sx(d.x[i]), y = sy(d.y[i]);
+    if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
+    const a = Math.min(1, d.timer[i] / 0.8);
+    const r = Math.max(1.5, d.radius[i] * ppu * 1.25);
+    const rot = d.x[i] * 3 + i;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = i % 3 === 0 ? '#8d7c6a' : i % 3 === 1 ? '#6f6153' : '#a08e79';
+    ctx.strokeStyle = 'rgba(30,22,16,0.8)'; ctx.lineWidth = Math.max(1, r * 0.2);
+    ctx.beginPath();
+    for (let k = 0; k < 5; k++) {
+      const an = rot + k * (TAU / 5), rr = r * (0.7 + 0.5 * (((i * 7 + k * 13) % 5) / 5));
+      if (k === 0) ctx.moveTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr); else ctx.lineTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
 function bombGlyph(ctx, x, y, r, time) {
   ctx.fillStyle = '#26303a'; ctx.strokeStyle = '#0b1218'; ctx.lineWidth = Math.max(1.5, r * 0.18);
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.stroke();

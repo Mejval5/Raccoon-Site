@@ -9,6 +9,7 @@
 
 import { hurtOctopus } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
+import { PK_ROCK, PS_FREE, PS_HELD } from './props.js';
 
 export const HZ_NONE = 0, HZ_JET = 1, HZ_SPIKES = 2, HZ_ROCK = 3, HZ_EEL = 4, HZ_ANEMONE = 5;
 export const HAZARD_NAMES = ['', 'jet', 'spikes', 'rock', 'eel', 'anemone'];
@@ -92,7 +93,12 @@ export function hazardBlockers(rec, out = []) {
 
 // ---------------------------------------------------------------- runtime
 
-export function createHazards() {
+/**
+ * @param {ReturnType<import('./props.js').createProps>|null} props v2: a falling rock is a rigid body (props.js)
+ *   hanging from its ceiling tile; it drops when the octopus passes under it OR when that tile is bombed away,
+ *   sinks fast, bounces a little and turns into rock where it comes to rest. Null keeps the old scripted fall.
+ */
+export function createHazards(props = null) {
   const d = {
     n: 0,
     kind: new Uint8Array(CAP), state: new Uint8Array(CAP),
@@ -100,6 +106,7 @@ export function createHazards() {
     a: new Float32Array(CAP), b: new Float32Array(CAP), // rock: landing y; eel: patrol range y0..y1
     t: new Float32Array(CAP), v: new Float32Array(CAP), r: new Float32Array(CAP), // timer, velocity (rock fall, eel direction), eel ring radius
     x0: new Float32Array(CAP), y0: new Float32Array(CAP), // rest position (rock)
+    pid: new Int32Array(CAP).fill(-1), // prop index (rock, v2)
   };
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
@@ -114,6 +121,11 @@ export function createHazards() {
     d.t[i] = rec.hk === HZ_EEL ? (i * 0.7) % EEL_PERIOD : 0;
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
+    d.pid[i] = -1;
+    if (props && rec.hk === HZ_ROCK) {
+      const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
+      if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
+    }
     return i;
   }
 
@@ -141,7 +153,45 @@ export function createHazards() {
     hurt(octo, i, fx + tx * c, fy + ty * c);
   }
 
+  function updateRockProp(i, dt, octo, world) {
+    const pid = d.pid[i], pd = props.data, st = d.state[i];
+    if (st === 0 || st === 1) {
+      if (pd.state[pid] !== PS_HELD) { // its ceiling was bombed away: it comes loose now, no warning
+        d.state[i] = 2; pd.state[pid] = PS_FREE;
+        events.push({ type: 'rockFall', x: d.x[i], y: d.y[i] });
+        return;
+      }
+      if (st === 1) {
+        d.t[i] -= dt;
+        if (d.t[i] <= 0) { d.state[i] = 2; props.release(pid); pd.vy[pid] = 0.5; }
+        return;
+      }
+      if (octo.dead) return;
+      const x = d.x[i], y = d.y[i];
+      if (Math.abs(octo.x - x) >= ROCK_TRIGGER_HALF || octo.y <= y + 0.8 || octo.y >= d.a[i] + 1.5) return;
+      const tx = Math.floor(x);
+      for (let ty = Math.floor(y) + 1; ty <= Math.floor(octo.y); ty++) if (world.tileAt(tx, ty) !== 0) return; // not in line
+      d.state[i] = 1; d.t[i] = ROCK_SHAKE;
+      events.push({ type: 'rockFall', x, y });
+      return;
+    }
+    if (st !== 2 && st !== 4) return;
+    d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
+    const sp = Math.hypot(pd.vx[pid], pd.vy[pid]);
+    if (st === 2 && !octo.dead && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurt(octo, i, d.x[i], d.y[i]);
+    const landed = (pd.grounded[pid] && sp < 1.5) || pd.state[pid] !== PS_FREE;
+    if (!landed) return;
+    // never settle on top of the octopus: wait (state 4) until it swims clear
+    if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
+    d.state[i] = 3;
+    const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i]);
+    props.remove(pid); d.pid[i] = -1;
+    if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
+    events.push({ type: 'rockLanded', x: d.x[i], y: d.y[i] });
+  }
+
   function updateRock(i, dt, octo, world) {
+    if (props && d.pid[i] >= 0) { updateRockProp(i, dt, octo, world); return; }
     const st = d.state[i];
     if (st === 0) {
       if (octo.dead) return;

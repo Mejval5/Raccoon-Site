@@ -50,8 +50,8 @@
    "r": 5.6,
    "title": "Bomb the wall",
    "refillBomb": true,
-   "desktop": "This wall is in the way. Swim up to it and place a bomb: Space or X, or middle-click. Then swim away, the blast hurts you too.",
-   "touch": "This wall is in the way. Swim up to it and tap Bomb, then swim away: the blast hurts you too."
+   "desktop": "This wall is in the way. Swim up to it and throw a bomb at it: Space or X throws it the way you swim, middle-click throws it at the cursor. Bombs sink and roll. Then swim away, the blast hurts you too.",
+   "touch": "This wall is in the way. Swim up to it and tap Bomb to throw one the way the stick points (bombs sink and roll), then swim away: the blast hurts you too."
   },
   {
    "x": 52,

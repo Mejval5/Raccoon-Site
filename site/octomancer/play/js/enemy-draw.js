@@ -233,18 +233,40 @@ export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, t
     const s = worldToScreen(camera, canvasW, canvasH, b.x, b.y);
     const r = camera.pxPerUnit * 0.32;
     if (!b.exploded) {
+      // body (rolls: the fuse stub turns with the distance travelled), a lit fuse spark that blinks faster as it burns down
+      const rot = b.rot || 0;
+      const burn = 1 - Math.max(0, b.fuse) / (b.fuse0 || 1.5); // 0 fresh .. 1 about to go
       ctx.save();
+      ctx.translate(s.x, s.y);
       ctx.fillStyle = '#20262c';
-      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#0a0d10';
       ctx.lineWidth = 2;
       ctx.stroke();
-      // Fuse spark: blinks faster as the fuse runs down.
-      const blinkRate = 4 + (1 - b.fuse) * 8;
-      const lit = Math.sin(time * blinkRate * Math.PI) > 0;
-      ctx.fillStyle = lit ? '#ffd94a' : '#a05a1a';
-      ctx.beginPath(); ctx.arc(s.x, s.y - r * 1.1, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.beginPath(); ctx.arc(-r * 0.35, -r * 0.35, r * 0.24, 0, Math.PI * 2); ctx.fill();
+      ctx.rotate(rot);
+      const len = r * (0.75 - 0.35 * burn); // the fuse shortens as it burns
+      ctx.strokeStyle = '#c9a25a'; ctx.lineWidth = Math.max(2, r * 0.2); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.85); ctx.quadraticCurveTo(r * 0.3, -r * 0.85 - len * 0.7, r * 0.15, -r * 0.9 - len); ctx.stroke();
+      const lit = Math.sin(time * (6 + burn * 22) * Math.PI) > -0.3;
+      const sx = r * 0.15, sy = -r * 0.9 - len;
       ctx.restore();
+      // spark (screen space): glow plus a few short rays that flicker
+      const cs = Math.cos(rot), sn = Math.sin(rot);
+      const spx = s.x + sx * cs - sy * sn, spy = s.y + sx * sn + sy * cs;
+      const g = ctx.createRadialGradient(spx, spy, 0, spx, spy, r * 0.9);
+      g.addColorStop(0, lit ? 'rgba(255,230,120,0.95)' : 'rgba(255,150,50,0.6)');
+      g.addColorStop(1, 'rgba(255,150,50,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(spx, spy, r * 0.9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = lit ? '#fff3a8' : '#ff9a3a';
+      ctx.beginPath(); ctx.arc(spx, spy, r * 0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,220,120,0.8)'; ctx.lineWidth = 1.5;
+      for (let k = 0; k < 4; k++) {
+        const a = time * 9 + k * 1.7, l = r * (0.3 + 0.25 * ((time * 13 + k * 0.37) % 1));
+        ctx.beginPath(); ctx.moveTo(spx + Math.cos(a) * r * 0.2, spy + Math.sin(a) * r * 0.2); ctx.lineTo(spx + Math.cos(a) * l, spy + Math.sin(a) * l); ctx.stroke();
+      }
     } else {
       const t = b.age / 0.4; // 0..1 over the lingering window
       ctx.save();

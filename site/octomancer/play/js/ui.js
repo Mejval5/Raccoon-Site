@@ -156,6 +156,7 @@ export function createUI(root, handlers) {
     }
   }
 
+  let helpV2 = false;
   function updateHud(state) {
     ensureHearts(state.heartMax);
     for (let i = 0; i < heartEls.length; i++) {
@@ -165,6 +166,10 @@ export function createUI(root, handlers) {
     }
     bombsEl.textContent = `Bombs ${state.bombs}`;
     const v2 = state.stage !== undefined;
+    if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
+      helpV2 = true;
+      controlsHelp.textContent = 'Swim: WASD/arrows or hold mouse | Dash: Z/Enter/Shift or right-click/double-click | Throw bomb: Space/X (swim direction) or middle-click/wheel (at cursor)';
+    }
     stageEl.style.display = v2 ? '' : 'none';
     depthEl.style.display = v2 ? 'none' : '';
     bestEl.style.display = v2 ? 'none' : '';

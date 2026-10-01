@@ -106,8 +106,13 @@ export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, wo
   // Re-apply the world-bounds clamp in case pulling toward the octopus just
   // pushed the camera back outside the world (only ever matters right at a
   // world edge, where BoundCam's own clamp above still wins).
+  // Round-34 fix (hub at 375x812: "the bottom edge shows as a straight cut with the backdrop below"): when the
+  // world is no bigger than the view on an axis (the 24-row hub on a tall phone) the octopus-offset pull above
+  // used to win and drag the camera past the world edge; there the world stays centred, as the first clamp says.
   if (worldW > halfViewW * 2) cam.x = clampNum(cam.x, halfViewW, worldW - halfViewW);
+  else cam.x = worldW / 2;
   if (worldH > halfViewH * 2) cam.y = clampNum(cam.y, halfViewH, worldH - halfViewH);
+  else cam.y = worldH / 2;
 }
 
 /** World-space (units) -> canvas-space (device px) for the current camera. */

@@ -177,7 +177,7 @@ export async function runMetaTests(assert) {
     assert('runstats: best run lines', bestRunLines([runOf(4, 40, 300), runOf(2, 5, 61)]).join('|') === '1. Cleared, 40 shells, 5:00|2. Shallows 1-2, 5 shells, 1:01');
     const st = statsRows({ dives: 5, clears: 1, bestDepth: 4, shells: 120, kills: 33, deaths: { eel: 1, crab: 3, bomb: 3 } });
     assert('runstats: stats page rows (runs, best depth, total shells) and deaths most first',
-      st.rows[0].join() === 'Runs,5' && st.rows[2].join() === 'Best depth,Cleared' && st.rows[3].join() === 'Total shells,120' && st.deaths.map((x) => x.join(':')).join() === 'its own bomb:3,a crab:3,an electric eel:1');
+      st.rows[0].join() === 'Runs,5' && st.rows[2].join() === 'Best depth,Cleared' && st.rows[3].join() === 'Total shells,120' && st.deaths.map((x) => x.join(':')).join() === 'Own bomb:3,Crab:3,Electric eel:1');
   }
 
   // --- cause of death comes from the thing that hurt the octopus ---
@@ -255,7 +255,7 @@ export async function runMetaTests(assert) {
     scr.setTab('stats');
     const t = root.querySelector('.octo-journal-body').textContent;
     assert('journal stats: runs, best depth and total shells', t.includes('Runs') && t.includes('Best depth') && t.includes('Cleared') && t.includes('Total shells') && t.includes('77') && t.includes('Biomes cleared'));
-    assert('journal stats: deaths by cause, most first', t.indexOf('an electric eel') > 0 && t.indexOf('an electric eel') < t.indexOf('a crab'));
+    assert('journal stats: deaths by cause, most first', t.indexOf('Electric eel') > 0 && t.indexOf('Electric eel') < t.indexOf('Crab') && !/an? (crab|electric eel|piranha)/i.test(t));
     assert('journal stats: best runs listed', t.includes('1. Cleared, 30 shells, 3:20'));
     scr.hide();
     const root2 = document.createElement('div');

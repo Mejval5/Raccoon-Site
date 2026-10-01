@@ -4,6 +4,7 @@
 import { createInput } from '../js/input.js';
 import { createOctopus, stepOctopus } from '../js/octopus.js';
 import { createBombs } from '../js/bomb.js';
+import { createProps } from '../js/props.js';
 import { STEP } from '../js/loop.js';
 import { createPathGrid, findPath, segmentFree } from '../js/pathcheck.js';
 import { createTutorialState, tutorialStep } from '../js/tutorial.js';
@@ -14,8 +15,9 @@ const noEnemies = { killInRadius() { return 0; } };
 export function createBotSim(world, opts = {}) {
   const input = createInput();
   const octo = createOctopus(world.startX, world.startY);
+  const props = createProps();
   const sim = {
-    world, input, octo, bombs: createBombs(), steps: 0, dashes: 0, tutorial: opts.tutorial ? createTutorialState() : null,
+    world, input, octo, props, bombs: createBombs(props), steps: 0, dashes: 0, tutorial: opts.tutorial ? createTutorialState() : null,
     minHearts: octo.hearts, wallIntact: opts.wallIntact || null,
   };
   return sim;
@@ -30,8 +32,9 @@ export function tick(sim, mx, my, act = {}) {
   if (octo.dashedThisStep) sim.dashes++;
   world.update(octo.y);
   if (sim.tutorial) tutorialStep(sim.tutorial, octo, sim.wallIntact ? sim.wallIntact() : true, STEP);
+  sim.props.step(STEP, world, octo);
   sim.bombs.update(STEP, world, octo, noEnemies);
-  if (snap.bomb.pressed) sim.bombs.place(octo, octo.x, octo.y);
+  if (snap.bomb.pressed) sim.bombs.place(octo, octo.x, octo.y, act.aim || null); // thrown along act.aim, else a soft toss
   sim.steps++;
   if (octo.hearts < sim.minHearts) sim.minHearts = octo.hearts;
 }

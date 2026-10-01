@@ -8,6 +8,13 @@ import { SUBSTEP_RADIUS_FACTOR, MAX_SUBSTEPS, TILE_SIZE } from './config.js';
 
 /** @typedef {{x:number,y:number}} Vec2 */
 
+/**
+ * Scratch written by the two resolvers below on every call (no allocation): whether the circle touched
+ * anything, the combined contact normal (pointing out of the wall) and the most negative velocity along it
+ * BEFORE it was cancelled. props.js reads it to apply restitution / friction after a resolve.
+ */
+export const contact = { hit: 0, nx: 0, ny: 0, vn: 0 };
+
 export function len(x, y) { return Math.sqrt(x * x + y * y); }
 export function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -57,6 +64,7 @@ export function applyDrag(body, drag, dt) {
 export function resolveCircleVsGrid(body, grid) {
   const r = body.radius;
   const MAX_PASSES = 4;
+  contact.hit = 0; contact.nx = 0; contact.ny = 0; contact.vn = 0;
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     const minTx = Math.floor(body.x - r);
     const maxTx = Math.floor(body.x + r);
@@ -114,6 +122,8 @@ export function resolveCircleVsGrid(body, grid) {
     // diagonal) is left untouched, so a wedged octopus always keeps
     // whatever push it had along the way out.
     const vn = body.vx * nx + body.vy * ny;
+    contact.hit = 1; contact.nx = nx; contact.ny = ny;
+    if (vn < contact.vn) contact.vn = vn;
     if (vn < 0) {
       body.vx -= vn * nx;
       body.vy -= vn * ny;
@@ -145,6 +155,7 @@ export function resolveCircleVsSegments(body, segments) {
   if (!segments || segments.length === 0) return;
   const r = body.radius;
   const MAX_PASSES = 4;
+  contact.hit = 0; contact.nx = 0; contact.ny = 0; contact.vn = 0;
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     let sumNx = 0, sumNy = 0, maxPen = 0, anyContact = false;
     for (const seg of segments) {
@@ -169,6 +180,8 @@ export function resolveCircleVsSegments(body, segments) {
     body.x += nx * maxPen;
     body.y += ny * maxPen;
     const vn = body.vx * nx + body.vy * ny;
+    contact.hit = 1; contact.nx = nx; contact.ny = ny;
+    if (vn < contact.vn) contact.vn = vn;
     if (vn < 0) {
       body.vx -= vn * nx;
       body.vy -= vn * ny;

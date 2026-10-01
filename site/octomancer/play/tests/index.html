@@ -154,6 +154,10 @@ await runItemTests(assert);
 import { runMetaTests } from './meta.test.js';
 await runMetaTests(assert);
 
+// --- Round 34: physics props (bombs, loot, falling rocks and rubble as rigid bodies) ---
+import { runPropsTests } from './props.test.js';
+await runPropsTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

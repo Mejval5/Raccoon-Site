@@ -18,6 +18,9 @@ import { hurtOctopus, addBomb } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
 import { DASH_KILL_SPEED, HEART_MAX, BOMB_RADIUS } from './config.js';
 import { ITEM_IDS, itemFromCode } from './items.js';
+import { PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PS_FREE, PS_HELD, PROP_RADIUS } from './props.js';
+
+const PROP_KIND = [0, PK_CLAM, PK_POT, PK_CHEST, 0, PK_RELIC]; // loot kind -> props.js kind (pockets are rock tiles)
 
 export const LK_NONE = 0, LK_CLAM = 1, LK_POT = 2, LK_CHEST = 3, LK_POCKET = 4, LK_RELIC = 5;
 export const LOOT_NAMES = ['', 'clam', 'pot', 'chest', 'pocket', 'relic'];
@@ -120,17 +123,23 @@ export function findSwarmSpots(isSolid, x, y, n) {
   return out;
 }
 
-export function createLoot() {
+/**
+ * @param {ReturnType<import('./props.js').createProps>|null} props v2: clams, pots, chests, the relic and the chase
+ *   rocks are rigid bodies in the props system (sink, settle, roll, get pushed by blasts). They start attached to the
+ *   rock they sit on and let go when it is bombed away. Null keeps the old static behaviour (tests, endless).
+ */
+export function createLoot(props = null) {
   const d = {
     n: 0,
     kind: new Uint8Array(CAP), state: new Uint8Array(CAP),
     x: new Float32Array(CAP), y: new Float32Array(CAP), dx: new Float32Array(CAP), dy: new Float32Array(CAP),
     count: new Uint8Array(CAP), aux: new Uint8Array(CAP), item: new Uint8Array(CAP), t: new Float32Array(CAP),
+    pid: new Int32Array(CAP).fill(-1), chk: new Uint8Array(CAP), // prop index (props.js), support not yet checked
     // items out of hidden pockets (bomb / heart)
     ni: 0, ikind: new Uint8Array(ITEM_CAP), iid: new Uint8Array(ITEM_CAP), ix: new Float32Array(ITEM_CAP), iy: new Float32Array(ITEM_CAP), itaken: new Uint8Array(ITEM_CAP),
     // chase rocks
     nr: 0, rstate: new Uint8Array(ROCK_CAP), rx: new Float32Array(ROCK_CAP), ry: new Float32Array(ROCK_CAP),
-    rt: new Float32Array(ROCK_CAP), rv: new Float32Array(ROCK_CAP),
+    rt: new Float32Array(ROCK_CAP), rv: new Float32Array(ROCK_CAP), rpid: new Int32Array(ROCK_CAP).fill(-1),
     chase: 0, chaseSpawn: 0, rockSeq: 0,
   };
   const events = [];
@@ -142,11 +151,25 @@ export function createLoot() {
     d.kind[i] = rec.lk; d.state[i] = ST_INTACT;
     d.x[i] = rec.x; d.y[i] = rec.y; d.dx[i] = rec.dx || 0; d.dy[i] = rec.dy || 0;
     d.count[i] = rec.n || 0; d.aux[i] = rec.aux || 0; d.item[i] = rec.item || 0; d.t[i] = 0;
+    d.pid[i] = -1; d.chk[i] = 0;
+    if (props && PROP_KIND[rec.lk]) {
+      const k = PROP_KIND[rec.lk];
+      const pid = props.add(k, rec.x, rec.y, 0, 0, { radius: PROP_RADIUS[k], ref: i });
+      if (pid >= 0) {
+        d.pid[i] = pid; d.chk[i] = 1;
+        // attached to the rock it sits on (the cell behind it); a record with no facing sits on the floor
+        const fx = rec.dx || 0, fy = rec.dx || rec.dy ? rec.dy || 0 : -1;
+        props.hold(pid, Math.floor(rec.x) - fx, Math.floor(rec.y) - fy);
+      }
+    }
     return i;
   }
 
+  function dropProp(i) { if (props && d.pid[i] >= 0) { props.remove(d.pid[i]); d.pid[i] = -1; } }
+
   function breakObject(i, how) {
     d.state[i] = ST_DONE;
+    if (d.kind[i] === LK_CLAM || d.kind[i] === LK_POT) dropProp(i);
     events.push({ type: 'break', lk: d.kind[i], x: d.x[i], y: d.y[i], shells: d.count[i], how });
   }
 
@@ -163,6 +186,21 @@ export function createLoot() {
 
   function hashf(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
 
+  /** Props are the truth for where clams, pots, chests and the relic are: copy it in (and stand a let-go prop upright). */
+  function syncProps(world) {
+    const pd = props.data;
+    for (let i = 0; i < d.n; i++) {
+      const pid = d.pid[i];
+      if (pid < 0) continue;
+      if (d.chk[i]) { // first look at the support: a record whose rock is already gone starts falling
+        d.chk[i] = 0;
+        if (pd.state[pid] === PS_HELD && world.tileAt(pd.sx[pid], pd.sy[pid]) === 0) props.release(pid);
+      }
+      d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
+      if (pd.state[pid] !== PS_HELD && (d.dx[i] !== 0 || d.dy[i] !== -1)) { d.dx[i] = 0; d.dy[i] = -1; }
+    }
+  }
+
   function updateChase(dt, octo, world) {
     if (d.chase > 0) {
       d.chase = Math.max(0, d.chase - dt);
@@ -177,7 +215,7 @@ export function createLoot() {
         for (let n = 0; n < 12 && ty >= 0; n++, ty--) if (world.tileAt(tx, ty) !== 0) { top = ty; break; }
         if (top >= 0 && d.nr < ROCK_CAP) {
           const i = d.nr++;
-          d.rstate[i] = 1; d.rx[i] = tx + 0.5; d.ry[i] = top + 1.5; d.rt[i] = ROCK_WARN; d.rv[i] = 0;
+          d.rstate[i] = 1; d.rx[i] = tx + 0.5; d.ry[i] = top + 1.5; d.rt[i] = ROCK_WARN; d.rv[i] = 0; d.rpid[i] = -1;
         }
       }
       if (d.chase === 0) events.push({ type: 'chaseEnd' });
@@ -186,7 +224,23 @@ export function createLoot() {
     for (let i = 0; i < d.nr; i++) {
       if (d.rstate[i] === 1) {
         d.rt[i] -= dt;
-        if (d.rt[i] <= 0) d.rstate[i] = 2;
+        if (d.rt[i] <= 0) {
+          d.rstate[i] = 2;
+          if (props) { d.rpid[i] = props.add(PK_ROCK, d.rx[i], d.ry[i], 0, 0.5, { radius: ROCK_RADIUS }); d.rt[i] = 5; }
+        }
+      } else if (d.rstate[i] === 2 && props) {
+        // a rigid body: sinks fast, may bounce and get shoved; lands when it rests on something
+        const pid = d.rpid[i];
+        if (pid < 0) { d.rstate[i] = 3; continue; }
+        const pd = props.data;
+        d.rx[i] = pd.x[pid]; d.ry[i] = pd.y[pid]; d.rt[i] -= dt;
+        if (!octo.dead && Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85 && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
+          if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+        }
+        if ((pd.grounded[pid] && Math.hypot(pd.vx[pid], pd.vy[pid]) < 1.5) || pd.state[pid] !== PS_FREE || d.rt[i] <= 0) {
+          events.push({ type: 'rockLanded', x: d.rx[i], y: d.ry[i] + ROCK_RADIUS });
+          props.remove(pid); d.rpid[i] = -1; d.rstate[i] = 3;
+        }
       } else if (d.rstate[i] === 2) {
         d.rv[i] = Math.min(ROCK_MAXV, d.rv[i] + ROCK_GRAV * dt);
         d.ry[i] += d.rv[i] * dt;
@@ -202,7 +256,7 @@ export function createLoot() {
     let w = 0;
     for (let i = 0; i < d.nr; i++) {
       if (d.rstate[i] === 3) continue;
-      if (w !== i) { d.rstate[w] = d.rstate[i]; d.rx[w] = d.rx[i]; d.ry[w] = d.ry[i]; d.rt[w] = d.rt[i]; d.rv[w] = d.rv[i]; }
+      if (w !== i) { d.rstate[w] = d.rstate[i]; d.rx[w] = d.rx[i]; d.ry[w] = d.ry[i]; d.rt[w] = d.rt[i]; d.rv[w] = d.rv[i]; d.rpid[w] = d.rpid[i]; }
       w++;
     }
     d.nr = w;
@@ -234,6 +288,7 @@ export function createLoot() {
           for (const s of chunk.spawns) if (s.type === 'loot') add(s);
         }
       }
+      if (props) syncProps(world);
       const speed = Math.hypot(octo.vx, octo.vy);
       for (let i = 0; i < d.n; i++) {
         const k = d.kind[i], st = d.state[i];
@@ -258,7 +313,7 @@ export function createLoot() {
           }
         } else if (k === LK_RELIC) {
           if (st === ST_INTACT && near < RELIC_R + octo.radius * 0.5) {
-            d.state[i] = ST_DONE;
+            d.state[i] = ST_DONE; dropProp(i);
             events.push({ type: 'relic', x: d.x[i], y: d.y[i], shells: d.count[i] });
             startChase();
           }

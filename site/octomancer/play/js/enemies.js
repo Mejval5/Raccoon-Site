@@ -313,7 +313,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   // were: anchored by decor.js/gen.js's own surface placement, no physics.
   const base = {
     id: nextId++, kind, x, y, prevX: x, prevY: y, vx: 0, vy: 0, dead: false,
-    chunkIndex, placement, wallDir, hitFlash: 0, moving: false,
+    chunkIndex, placement, wallDir, hitFlash: 0, moving: false, stun: 0, kvx: 0, kvy: 0,
   };
   if (hpMode && ENEMY_HP[kind]) { base.hp = ENEMY_HP[kind]; base.maxHp = base.hp; }
   if (kind === 'urchin') {
@@ -386,6 +386,16 @@ export function createEnemies() {
     if (e.dead) return;
     e.dead = true;
     events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason });
+  }
+
+  /** A stunned enemy drifts on its knockback velocity (drag, walls) until the stun runs out. */
+  function stepKnock(e, dt, world) {
+    e.stun = Math.max(0, e.stun - dt);
+    e.x += e.kvx * dt; e.y += e.kvy * dt;
+    const f = 1 / (1 + dt * 3.5);
+    e.kvx *= f; e.kvy *= f;
+    e.vx = e.kvx; e.vy = e.kvy;
+    if (e.moving) collideWithWalls(e, world);
   }
 
   function updatePiranha(e, dt, octo, world) {
@@ -560,6 +570,7 @@ export function createEnemies() {
       for (const e of allEnemies()) {
         if (e.dead) continue;
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
+        if (e.stun > 0) { stepKnock(e, dt, world); continue; } // knocked about by a blast: no AI, no contact damage
         if (e.kind === 'piranha') updatePiranha(e, dt, octo, world);
         else if (e.kind === 'cannon') updateCannon(e, dt, octo, world);
         else if (e.kind === 'crab') updateCrab(e, dt, world);
@@ -629,6 +640,24 @@ export function createEnemies() {
       for (const [ci, list] of byChunk) {
         const filtered = list.filter((e) => !e.dead);
         if (filtered.length !== list.length) byChunk.set(ci, filtered);
+      }
+      return n;
+    },
+
+    /** A blast at (x, y): every live moving enemy within `reach` is knocked away (radial, linear falloff) and
+     * stunned for `stun` s. Returns the count. (Kills are bomb.js's killInRadius; this moves what survived.) */
+    knockInRadius(x, y, reach, power, stun) {
+      let n = 0;
+      for (const e of allEnemies()) {
+        if (e.dead || !e.moving) continue;
+        let dx = e.x - x, dy = e.y - y;
+        const d = Math.hypot(dx, dy);
+        if (d > reach) continue;
+        if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
+        const f = (1 - d / reach) * power;
+        e.kvx = dx * f; e.kvy = e.kind === 'crab' ? 0 : dy * f;
+        e.stun = stun; e.path = null;
+        n++;
       }
       return n;
     },

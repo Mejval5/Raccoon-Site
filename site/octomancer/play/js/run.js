@@ -25,6 +25,13 @@ export const CAUSE_TEXT = {
   eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', unknown: 'the dark',
 };
 
+/** The same causes as capitalised nouns, for list rows (the journal stats page: 'Piranha', 'Spike wall'). */
+export const CAUSE_NAME = {
+  piranha: 'Piranha', crab: 'Crab', urchin: 'Urchin', horns: 'Horned growth', manta: 'Manta',
+  shot: 'Stray shot', bomb: 'Own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
+  eel: 'Electric eel', anemone: 'Anemone', jet: 'Current jet', chest: 'Trapped chest', unknown: 'The dark',
+};
+
 /** The per-dive stats the run summary reports (reset by every dive). */
 function newDive(level) {
   return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, cause: '', over: false };

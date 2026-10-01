@@ -1,9 +1,11 @@
 // Text for the run summary screens (death, biome clear), the best-runs list and the journal stats page.
 // No DOM: ui.js and journal-ui.js lay the rows out, tests read them directly.
 
-import { BIOME_LEVELS, BIOME_NAME, CAUSE_TEXT } from './run.js';
+import { BIOME_LEVELS, BIOME_NAME, CAUSE_TEXT, CAUSE_NAME } from './run.js';
 
 export function causeText(id) { return CAUSE_TEXT[id] || CAUSE_TEXT.unknown; }
+/** The cause as a capitalised noun for a list row ('Piranha'), not a sentence part ('a piranha'). */
+export function causeName(id) { return CAUSE_NAME[id] || CAUSE_NAME.unknown; }
 
 /** 75.4 -> "1:15" */
 export function formatTime(sec) {
@@ -50,5 +52,5 @@ export function statsRows(meta) {
     ['Total kills', String(meta.kills)],
   ];
   const deaths = Object.keys(meta.deaths).sort((a, b) => meta.deaths[b] - meta.deaths[a] || (a < b ? -1 : 1));
-  return { rows, deaths: deaths.map((k) => [causeText(k), String(meta.deaths[k])]) };
+  return { rows, deaths: deaths.map((k) => [causeName(k), String(meta.deaths[k])]) };
 }

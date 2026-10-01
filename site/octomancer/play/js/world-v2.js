@@ -74,6 +74,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   /** @type {Map<number, {loops:any[], segments:any[], version:number}>} */
   const outlineCache = new Map();
   const bandVersion = new Map(); // band -> version, bumped when its outline may change
+  let tileVer = 0; // bumped on every tile change (bomb break, landed rock): props wake and re-check their support
   let retraceCount = 0; // bands traced so far (tests: a bomb retraces only nearby bands)
 
   function bandCount() { return Math.ceil(H / bandRows); }
@@ -119,6 +120,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   function setTile(tx, ty, v) {
     tiles[ty * W + tx] = v;
     chunk.dirty = true;
+    tileVer++;
     // The trace of band b reads OUTLINE_PAD rows beyond it, and smoothing
     // moves points by up to about a tile, so a tile near a band edge also
     // changes the neighbour's outline; anything farther cannot.
@@ -194,6 +196,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       if (r === bandRows) return;
       bandRows = r; outlineCache.clear(); bandVersion.clear();
     },
+    get tileVersion() { return tileVer; },
     get bandRows() { return bandRows; },
     bandCount,
     bandVersion(bi) { return bandVersion.get(bi) || 0; },
