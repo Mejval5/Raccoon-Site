@@ -182,3 +182,5 @@ dialog .err { color: var(--err); font: 12px/1.4 var(--mono); white-space: pre-wr
 }
 
 @media (max-width: 1180px) { header .credit { display: none; } }
+
+button.primary.danger { background: var(--err); border-color: var(--err); color: #fff; }

@@ -1,10 +1,12 @@
 // Share / Update gallery / Remove from gallery. A project has to compile before it goes up,
-// and the server compiles it again before storing it.
+// and the server compiles it again before storing it. After a share or an update this browser
+// renders the gallery preview (a turntable sprite) and uploads it with the entry.
 import { $, lineOf, storeGet, storeSet } from './util.js';
 import { local, cur } from './projects.js';
 import { api } from './api.js';
 import { toast } from './log.js';
 import { syncHeader, renderMine, renderGalleryList, showSideTab } from './projects-ui.js';
+import { renderPreviewSprite } from './preview-sprite.js';
 
 let ctx = null; // { src, engine, currentOptions }
 
@@ -23,6 +25,23 @@ export function initShare(c) {
 
 function refresh() { syncHeader(); renderMine(); if (!$('list-gal').hidden) renderGalleryList(); }
 
+// Renders and uploads the preview for p's gallery entry. Sharing has already succeeded at this
+// point, so a failure here only costs the preview (the gallery then offers to render it live).
+async function attachPreview(p) {
+  const id = p.galleryId;
+  const src = p.src;
+  $('proj-state').textContent = 'rendering the gallery preview…';
+  try {
+    const { blob, frames } = await renderPreviewSprite(src, ctx.currentOptions());
+    await api.uploadThumb(id, blob, frames);
+    if (p.galleryId === id && p.galleryVersionSrc === src) { p.galleryThumb = true; local.save(); }
+    toast(`Gallery preview uploaded (${Math.round(blob.size / 1024)} KB).`);
+  } catch (e) {
+    toast(`Shared, but the preview could not be made: ${e.message}`, true);
+  }
+  refresh();
+}
+
 async function onShare() {
   const p = cur();
   const btn = $('share');
@@ -35,11 +54,15 @@ async function onShare() {
     return;
   }
   if (p.galleryId) {
-    btn.textContent = 'Updating…';
+    const srcChanged = p.src !== p.galleryVersionSrc;
+    btn.textContent = srcChanged ? 'Updating…' : 'Rendering…';
     try {
-      await api.update(p.galleryId, { name: p.name, src: p.src, opts: ctx.currentOptions() });
-      p.galleryVersionSrc = p.src; local.save();
-      toast('Gallery entry updated.');
+      if (srcChanged) {
+        await api.update(p.galleryId, { name: p.name, src: p.src, opts: ctx.currentOptions() });
+        p.galleryVersionSrc = p.src; p.galleryThumb = false; local.save();
+        toast('Gallery entry updated. Rendering its preview…');
+      }
+      await attachPreview(p);
     } catch (e) {
       if (e.status === 404) { p.galleryId = null; p.galleryVersionSrc = null; local.save(); toast('That entry is gone from the gallery. Share it again to republish.', true); }
       else if (e.status === 403) { p.galleryId = null; p.galleryVersionSrc = null; local.save(); toast('This browser no longer owns that entry (the cookie is gone). Share it again as a new one.', true); }
@@ -69,8 +92,9 @@ async function onSubmit(e) {
     Object.assign(p, { name, galleryId: item.id, galleryVersionSrc: p.src });
     local.save();
     $('dlg-share').close();
-    toast(api.mode === 'mock' ? 'Shared to the mock gallery in this browser.' : 'Shared. This browser can update it later; the key lives in a cookie.');
+    toast(api.mode === 'mock' ? 'Shared to the mock gallery in this browser. Rendering its preview…' : 'Shared. Rendering its gallery preview…');
     refresh();
+    await attachPreview(p);
     showSideTab('gal');
     $('projs').open = true;
   } catch (err) {
@@ -99,6 +123,6 @@ async function onUnshare() {
   } catch (e) {
     if (e.status !== 404) { toast(`Could not remove it: ${e.message}`, true); return; }
   }
-  p.galleryId = null; p.galleryVersionSrc = null; local.save();
+  p.galleryId = null; p.galleryVersionSrc = null; p.galleryThumb = false; local.save();
   refresh();
 }

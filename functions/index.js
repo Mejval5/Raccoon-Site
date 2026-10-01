@@ -743,11 +743,14 @@ const {
   docToItem,
   normalizeGalleryPath,
   rateLimitState,
+  validateThumb,
 } = require("./lib/gallery");
 const { compileCheck } = require("./lib/slx-compile");
 
 const GALLERY = "slx-gallery";
 const GALLERY_OWNERS = "slx-gallery-owners";
+// Preview images live in their own collection so listing the gallery never reads them.
+const GALLERY_THUMBS = "slx-gallery-thumbs";
 
 exports.gallery = onRequest(
   {
@@ -829,13 +832,24 @@ exports.gallery = onRequest(
         return;
       }
 
-      // ---- one entry
-      const id = path.slice(1);
+      // ---- one entry, or its preview image
+      const isThumb = path.endsWith("/thumb");
+      const id = path.slice(1).replace(/\/thumb$/, "");
       const ref = col.doc(id);
+      const thumbRef = database.collection(GALLERY_THUMBS).doc(id);
       const snap = await ref.get();
       if (!snap.exists) { json(404, { error: "not found" }); return; }
       const doc = snap.data();
 
+      if (isThumb && req.method === "GET") {
+        const t = await thumbRef.get();
+        if (!t.exists) { json(404, { error: "no preview" }); return; }
+        // The page asks for ?v=<upload time>, so a given URL never changes: cache it everywhere.
+        res.set("Content-Type", t.data().mime || "image/webp");
+        res.set("Cache-Control", "public, max-age=31536000, immutable");
+        res.status(200).send(Buffer.from(t.data().data));
+        return;
+      }
       if (req.method === "GET") {
         res.set("Cache-Control", "private, max-age=15");
         res.status(200).json(docToItem(id, doc, token));
@@ -843,18 +857,35 @@ exports.gallery = onRequest(
       }
       if (!isOwner(token, doc)) { json(403, { error: "this browser does not own that entry" }); return; }
 
+      // PUT /api/gallery/<id>/thumb?frames=24  body: the sprite strip (image/webp or image/png)
+      if (isThumb) {
+        if (req.method !== "PUT") { res.set("Allow", "GET, PUT, OPTIONS"); json(405, { error: "method not allowed" }); return; }
+        const v = validateThumb(req.rawBody, req.query.frames);
+        if (!v.ok) { json(400, { error: v.error }); return; }
+        const thumb = { v: Date.now(), frames: v.frames };
+        await thumbRef.set({ data: req.rawBody, mime: v.mime, bytes: req.rawBody.length, frames: v.frames, updated: thumb.v });
+        await ref.update({ thumb });
+        json(200, { item: docToItem(id, { ...doc, thumb }, token) });
+        return;
+      }
+
       if (req.method === "PUT") {
         const v = validateSubmission(body, { update: true });
         if (!v.ok) { json(400, { error: v.error }); return; }
         const c = await compileCheck(v.data.src, v.data.opts);
         if (!c.ok) { json(422, { error: c.error, line: c.line }); return; }
+        // A new program makes the old preview wrong: drop it until the page uploads a new one.
+        const srcChanged = v.data.src !== doc.src;
         const patch = { name: v.data.name, src: v.data.src, opts: v.data.opts, nodes: c.nodes, updated: Date.now(), version: (doc.version || 1) + 1 };
+        if (srcChanged) patch.thumb = null;
         await ref.update(patch);
+        if (srcChanged) await thumbRef.delete();
         json(200, { item: docToItem(id, { ...doc, ...patch }, token) });
         return;
       }
       if (req.method === "DELETE") {
         await ref.delete();
+        await thumbRef.delete();
         res.set("Cache-Control", "no-store");
         res.status(204).end();
         return;

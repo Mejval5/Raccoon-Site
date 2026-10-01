@@ -61,6 +61,7 @@
       <input class="proj-name" id="proj-name" aria-label="Project name" spellcheck="false" maxlength="60">
       <span class="hint" id="proj-state"></span>
       <div class="spacer"></div>
+      <button id="delete-proj" title="Delete this project from this browser">Delete</button>
       <button id="unshare" hidden title="Remove this project from the gallery">Unshare</button>
       <button id="share" title="Compile, then publish this project to the gallery">Share</button>
       <button class="primary" id="compile">Compile -></button>
@@ -128,6 +129,13 @@
     <h3>Remove from the gallery?</h3>
     <p>The entry disappears for everyone. Your local copy stays.</p>
     <div class="row"><button value="cancel">Keep it</button><button class="primary" value="ok">Remove</button></div>
+  </form>
+</dialog>
+<dialog id="dlg-delete">
+  <form method="dialog">
+    <h3 id="delete-title">Delete this project?</h3>
+    <p id="delete-text">It is removed from this browser and cannot be brought back.</p>
+    <div class="row"><button value="cancel">Keep it</button><button class="primary danger" value="ok">Delete</button></div>
   </form>
 </dialog>
 <div class="toast" id="toast" hidden></div>

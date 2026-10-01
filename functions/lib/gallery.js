@@ -23,6 +23,10 @@ const LIMITS = {
   src: 50000,
   listMax: 200,
   sharesPerHour: 20,
+  // A preview is one WebP (or PNG, for Safari) sprite strip, frames side by side. Firestore documents top out
+  // at 1 MiB, so the image (stored as bytes, no base64) stays well under that.
+  thumbBytes: 600 * 1024,
+  thumbFramesMax: 64,
 };
 
 const OPTION_KEYS = ["reduceGraph", "errorOnMissingGlobals", "errorOnUnusedGlobals"];
@@ -102,7 +106,33 @@ function docToItem(id, doc, callerToken) {
     updated: toMillis(doc.updated),
     version: typeof doc.version === "number" ? doc.version : 1,
     mine: isOwner(callerToken, doc),
+    thumb: thumbInfo(doc.thumb),
   };
+}
+
+// { v, frames } of the stored preview, or null. v changes with every upload, so the
+// image URL /api/gallery/<id>/thumb?v=<v> can be cached forever.
+function thumbInfo(t) {
+  if (!t || typeof t !== "object" || typeof t.v !== "number") return null;
+  const frames = Number.isInteger(t.frames) ? t.frames : 1;
+  return { v: t.v, frames };
+}
+
+/**
+ * Checks an uploaded preview: a WebP (RIFF....WEBP) or PNG file within the size limit, and a
+ * sane frame count. @returns {{ok: true, frames: number, mime: string} | {ok: false, error: string}}
+ */
+function validateThumb(buf, framesParam) {
+  if (!Buffer.isBuffer(buf) || buf.length === 0) return { ok: false, error: "empty image" };
+  if (buf.length > LIMITS.thumbBytes) return { ok: false, error: `preview is over ${Math.round(LIMITS.thumbBytes / 1024)} KB` };
+  const isWebp = buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+  const isPng = buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (!isWebp && !isPng) return { ok: false, error: "preview must be a WebP or PNG image" };
+  const frames = Number(framesParam);
+  if (!Number.isInteger(frames) || frames < 1 || frames > LIMITS.thumbFramesMax) {
+    return { ok: false, error: `frames must be 1-${LIMITS.thumbFramesMax}` };
+  }
+  return { ok: true, frames, mime: isWebp ? "image/webp" : "image/png" };
 }
 
 function toMillis(v) {
@@ -113,13 +143,14 @@ function toMillis(v) {
 }
 
 // The function answers both through the hosting rewrite (/api/gallery/...) and at its own
-// URL (/gallery/...). Returns "/" for the collection or "/<id>" for one entry, null otherwise.
+// URL (/gallery/...). Returns "/" for the collection, "/<id>" for one entry,
+// "/<id>/thumb" for its preview image, null otherwise.
 function normalizeGalleryPath(p) {
   let s = typeof p === "string" ? p : "/";
   s = s.replace(/^\/api\/gallery(?=\/|$)/, "").replace(/^\/gallery(?=\/|$)/, "");
   if (s === "" || s === "/") return "/";
-  const m = /^\/([A-Za-z0-9_-]{1,64})\/?$/.exec(s);
-  return m ? `/${m[1]}` : null;
+  const m = /^\/([A-Za-z0-9_-]{1,64})(\/thumb)?\/?$/.exec(s);
+  return m ? `/${m[1]}${m[2] || ""}` : null;
 }
 
 // Sliding-window share limit kept on one doc per owner: { count, windowStart }.
@@ -146,4 +177,6 @@ module.exports = {
   docToItem,
   normalizeGalleryPath,
   rateLimitState,
+  thumbInfo,
+  validateThumb,
 };

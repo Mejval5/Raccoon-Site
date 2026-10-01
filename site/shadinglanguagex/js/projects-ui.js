@@ -31,16 +31,19 @@ export function syncHeader() {
   if (viewing) {
     nameEl.value = viewing.name; nameEl.readOnly = true;
     $('proj-state').textContent = `v${viewing.version} by ${viewing.author}`;
-    share.hidden = true; del.hidden = true;
+    share.hidden = true; del.hidden = true; $('delete-proj').hidden = true;
     return;
   }
   const p = cur();
   nameEl.value = p.name; nameEl.readOnly = false;
   $('proj-state').textContent = projState(p);
   share.hidden = false;
-  share.textContent = p.galleryId ? 'Update gallery' : 'Share';
-  share.disabled = !!p.galleryId && p.src === p.galleryVersionSrc;
+  const upToDate = !!p.galleryId && p.src === p.galleryVersionSrc;
+  share.textContent = !p.galleryId ? 'Share' : upToDate && !p.galleryThumb ? 'Add preview' : 'Update gallery';
+  share.title = upToDate && !p.galleryThumb ? "Render this project's gallery preview and upload it" : 'Compile, then publish this project to the gallery';
+  share.disabled = upToDate && !!p.galleryThumb;
   del.hidden = !p.galleryId;
+  $('delete-proj').hidden = false;
 }
 function setViewing(item) {
   viewing = item;
@@ -103,6 +106,7 @@ function bindHeader() {
   });
   $('proj-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.currentTarget.blur(); });
   $('new-proj').addEventListener('click', () => newProject('untitled', NEW_PROJECT_SRC));
+  $('delete-proj').addEventListener('click', deleteCurrent);
   $('remix').addEventListener('click', () => {
     if (!viewing) return;
     newProject(`${viewing.name} remix`, viewing.src);
@@ -117,6 +121,28 @@ function bindHeader() {
     sel.value = '';
     if (p) newProject(p[0].replace(/\.mxsl$/, ''), p[1]);
   });
+}
+
+// Deletes the open project from this browser. A gallery entry it was shared to stays up:
+// the dialog says so, and Unshare is the way to take that down first.
+async function deleteCurrent() {
+  if (viewing) return;
+  const p = cur();
+  const dlg = $('dlg-delete');
+  $('delete-title').textContent = `Delete “${p.name}”?`;
+  $('delete-text').textContent = p.galleryId
+    ? 'It is removed from this browser and cannot be brought back. Its gallery entry stays up, and this browser can no longer update it; press Unshare first to take that down too.'
+    : 'It is removed from this browser and cannot be brought back.';
+  dlg.showModal();
+  const answer = await new Promise((resolve) => {
+    dlg.querySelector('form').addEventListener('submit', (e) => resolve(e.submitter?.value), { once: true });
+    dlg.addEventListener('cancel', () => resolve('cancel'), { once: true });
+  });
+  if (answer !== 'ok') return;
+  local.remove(p.id);
+  if (!local.list.length) local.add('untitled', NEW_PROJECT_SRC);
+  openLocal(local.sorted()[0].id);
+  toast(`Deleted “${p.name}”.`);
 }
 
 // ---------------------------------------------------------------- dropdown
