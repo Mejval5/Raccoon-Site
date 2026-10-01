@@ -150,6 +150,10 @@ await runLootTests(assert);
 import { runItemTests } from './items.test.js';
 await runItemTests(assert);
 
+// --- Round 33: run loop and meta (summary screens, best runs, hub shortcut, stats page) ---
+import { runMetaTests } from './meta.test.js';
+await runMetaTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

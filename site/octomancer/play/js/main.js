@@ -27,10 +27,11 @@ import { createBombs } from './bomb.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { loadBest, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone } from './save.js';
+import { loadBest, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
+import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
-  createRun, runEvent, levelSpec, stageLabel, isSafeState, nextDiveSeed, BIOME_LEVELS, BIOME_NAME,
-  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE,
+  createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, BIOME_LEVELS, BIOME_NAME,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
 import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
@@ -57,6 +58,7 @@ const hudEl = document.getElementById('hud');
 
 const params = new URLSearchParams(location.search);
 const initialSeed = Number(params.get('seed')) || 1;
+const SEEDED = params.has('seed'); // a seeded run: the level title card shows the seed
 // M1-0 combat spike: ?auto=1 turns on enemy hp and Ink Jet auto-fire (js/autofire.js).
 const AUTO = params.get('auto') === '1';
 if (AUTO) setHpMode(true);
@@ -76,7 +78,7 @@ if (V2) {
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   shopItems = await fetchShopItems();
-  run = createRun(initialSeed, { tutorialDone: getTutorialDone() });
+  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut() });
   const at = params.get('at');
   if (at === 'tutorial') run.state = S_TUTORIAL;
   else if (at === 'end') run.state = S_END;
@@ -186,12 +188,12 @@ const ui = createUI(hudEl, {
 
 // v2 journal (B1-4): entries persisted through save.js; the list screen opens from the hub board.
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds });
-const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; }, onOpen() { ui.setPrompt(null); } });
+const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; }, onOpen() { ui.setPrompt(null); }, getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; } });
 let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 function announceJournal() {
   for (const id of journal.takeNew()) {
     const e = ENTRIES.find((x) => x.id === id);
-    if (e) ui.showToast('New journal entry: ' + e.name);
+    if (e) ui.showToast('New journal entry: ' + e.name, 2400, true); // queued: never replaces a pickup / shop toast
   }
 }
 function discover(id) { if (id && journal.discover(id)) announceJournal(); }
@@ -289,6 +291,7 @@ function step(dt) {
     return;
   }
   if (godMode && !octo.dead) octo.invulnTimer = Math.max(octo.invulnTimer, 0.5);
+  if (V2 && run.state === S_BIOME && !octo.dead) run.dive.time += dt; // the run summary's clock
   stepOctopus(octo, snap, dt, world);
   if (octo.dashedThisStep) {
     sfx.dash();
@@ -312,7 +315,7 @@ function step(dt) {
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);
-    if (V2) { discover(itemId(ev.type)); if (ev.type === 'shell') run.shells++; }
+    if (V2) { discover(itemId(ev.type)); if (ev.type === 'shell') gainShells(run, 1); }
   }
   if (octo.hearts < prevHearts) { sfx.hurt(); if (V2) questOnHurt(quest); }
   prevHearts = octo.hearts;
@@ -344,6 +347,7 @@ function step(dt) {
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
     if (V2 && !isSafeState(run)) {
+      run.dive.kills++;
       // kills drop shells (about 2 in 3) and count for the pest-control quest
       if (killDropRoll(runKills) < 0.67) pickups.dropShell(ev.x, ev.y);
       if (questOnKill(quest, ev.kind)) payQuest();
@@ -359,7 +363,7 @@ function step(dt) {
     octo.gameoverEmitted = true;
     const rec = recordRun(liveScore);
     bestScore = rec.best;
-    ui.showGameOver(liveScore, bestScore);
+    ui.showGameOver(liveScore, bestScore, V2 ? deathDetail() : undefined);
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
 }
@@ -460,7 +464,7 @@ const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
 loop.start();
-if (V2 && run.state === S_BIOME) ui.showTitle(stageLabel(run)); // the first level's title card
+if (V2) showLevelTitle(); // the first level's title card
 
 function resetWorld(newSeed) {
   seed = V2 ? levelSpec(run).seed : newSeed;
@@ -486,7 +490,7 @@ function resetWorld(newSeed) {
   ui.hideEnd();
   ui.setPrompt(null);
   if (V2) setupLevelExtras();
-  if (V2 && run.state === S_BIOME) ui.showTitle(stageLabel(run));
+  if (V2) showLevelTitle();
 }
 
 // --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
@@ -510,7 +514,13 @@ function v2Event(ev) {
   const carry = { hearts: octo.hearts, bombs: octo.bombs };
   if (!runEvent(run, ev)) return false;
   if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true);
-  if (run.state === S_END) { showEndScreen(); return true; }
+  if (run.state === S_END) {
+    // the dive is over: record it, unlock the hub shortcut (persisted), show the summary
+    const res = recordDive(run.last);
+    setShortcut(true);
+    showEndScreen(res.rank);
+    return true;
+  }
   transitioning = true;
   const fade = ensureFade();
   fade.style.opacity = '1';
@@ -525,8 +535,35 @@ function v2Event(ev) {
   return true;
 }
 
-function showEndScreen() {
-  ui.showEnd(BIOME_NAME + ' cleared', `${run.levelsCleared} of ${BIOME_LEVELS} levels cleared`);
+/** Level title card at each level start: "Shallows 1-2", plus the seed on a seeded run (?seed=). */
+function showLevelTitle() {
+  const t = levelTitle(run, SEEDED);
+  if (t) ui.showTitle(t.text, t.sub);
+}
+
+/** Run summary shown on the death and biome-clear screens: stats, best runs (this run highlighted), the shortcut note. */
+function summaryDetail(sum, rank) {
+  return {
+    title: sum.cleared ? BIOME_NAME + ' cleared' : 'The dark took you',
+    headline: summaryHeadline(sum),
+    rows: summaryRows(sum, SEEDED),
+    best: bestRunLines(getBestRuns()),
+    rank: rank === undefined ? -1 : rank,
+    note: sum.shortcutNew ? 'Shortcut unlocked: a new ring in the hub leads to ' + BIOME_NAME + ' 1-' + SHORTCUT_LEVEL : '',
+  };
+}
+
+/** The octopus just died in a dive: close the dive (cause from octopus.js), record it, return the death screen's detail. */
+function deathDetail() {
+  if (run.state !== S_BIOME) return undefined;
+  const sum = run.dive.over && run.last ? run.last : endDive(run, false, octo.cause);
+  return summaryDetail(sum, recordDive(sum).rank);
+}
+
+/** The biome-clear screen. `rank` is the finished run's place in the best-runs list (undefined: not recorded here). */
+function showEndScreen(rank) {
+  const sum = run.last || endDive(run, true); // ?at=end has no real dive behind it
+  ui.showEnd(BIOME_NAME + ' cleared', summaryHeadline(sum), summaryDetail(sum, rank));
 }
 
 const SEE_RANGE = 9; // tiles: a creature this close in line of sight counts as seen
@@ -549,6 +586,10 @@ function stepV2(snap) {
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT);
+    return;
+  }
+  if (run.state === S_HUB && run.shortcut && lv.shortcutX >= 0 && Math.hypot(octo.x - (lv.shortcutX + 0.5), octo.y - (lv.shortcutY + 0.5)) < 1.2) {
+    v2Event(EV_ENTER_SHORTCUT);
     return;
   }
   if (lv.signX !== undefined && lv.signX >= 0) {
@@ -596,6 +637,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
     exitX: lv.exitX, exitY: lv.exitY, tileAt: world.tileAt,
     boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
     label: run.state === S_HUB ? 'Dive' : '',
+    shortcutX: run.state === S_HUB && run.shortcut && lv.shortcutX !== undefined ? lv.shortcutX : -1, shortcutY: lv.shortcutY,
+    shortcutLabel: BIOME_NAME + ' 1-' + SHORTCUT_LEVEL,
   }, sim.time);
   const t = sim.time;
   if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
@@ -624,7 +667,7 @@ function takeCarried(id, x, y) {
     discover(itemJournalId(id));
     ui.showToast('Found ' + pickupText(id));
   } else {
-    run.shells += 3;
+    gainShells(run, 3);
     ui.showToast('Already carried: +3 shells');
   }
   particles.pickupSparkle(x, y, '#fff2a0'); sfx.chime();
@@ -662,7 +705,7 @@ function handleLootEvents() {
         discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
         break;
       case 'relic':
-        run.shells += ev.shells;
+        gainShells(run, ev.shells);
         particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
         discover('loot-relic');
         ui.showToast('Relic taken, +' + ev.shells + ' shells. The ceiling is coming down!', 4200);
@@ -700,7 +743,8 @@ function setupLevelExtras() {
 
 function payQuest() {
   const p = quest.plan;
-  run.shells += p.reward;
+  gainShells(run, p.reward);
+  run.dive.quests++;
   ui.showToast('Quest complete: ' + p.name + ', +' + p.reward + ' shells');
   sfx.chime();
   particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
@@ -713,7 +757,7 @@ function onShopEvent(ev) {
     ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells' + (ev.item.effect === 'carry' ? ', ' + ev.item.blurb : ''));
     sfx.chime();
     particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
-    if (ev.item.journal) discover(ev.item.journal);
+    if (ev.item.journal) discover(ev.item.journal); // after the toast: the journal line queues behind 'Bought ...'
   } else if (ev.type === 'poor') {
     ui.showToast(ev.item.name + ' costs ' + ev.price + ' shells, you have ' + ev.shells);
   } else {
@@ -798,10 +842,10 @@ window.__octo = {
     applyPaused();
     return loop.paused;
   },
-  kill() {
+  kill(cause) {
     // Force game over, for scripted checks of the overlay/restart without
     // waiting on an enemy or the Beholder.
-    killOctopus(octo);
+    killOctopus(octo, cause);
     octo.deathTimer = 0; // skip the 1s ink-burst wait for the test
     return true;
   },
@@ -860,9 +904,9 @@ window.__octo = {
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
   /** Test hook: carry an item as if it had been found (items.js). */
   giveItem(id) { return run ? giveItem(run.items, octo, id) : false; },
-  giveShells(n) { if (run) run.shells += n | 0; return run ? run.shells : 0; },
+  giveShells(n) { if (run) gainShells(run, n | 0); return run ? run.shells : 0; },
   runEvent(name) {
-    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE }[name];
+    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT }[name];
     return v2Event(ev);
   },
   audio() {

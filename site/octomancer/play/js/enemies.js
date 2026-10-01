@@ -500,7 +500,7 @@ export function createEnemies() {
       s.y += s.vy * dt;
       if (world.isSolid(s.x, s.y)) { s.dead = true; continue; }
       if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
-        hurtFn(octo, s.x, s.y);
+        hurtFn(octo, s.x, s.y, "shot");
         s.dead = true;
       }
     }
@@ -529,7 +529,7 @@ export function createEnemies() {
     chaseWithPath(beholder, world, octo.x, octo.y, speed, dt);
     collideWithWalls(beholder, world);
     if (!octo.dead && dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) {
-      killOctopus(octo);
+      killOctopus(octo, 'beholder');
     }
   }
 
@@ -570,7 +570,7 @@ export function createEnemies() {
           if (e.dashKillable && octoSpeed >= DASH_KILL_SPEED) {
             killEnemy(e, 'dash');
           } else {
-            hurtOctopus(octo, e.x, e.y);
+            hurtOctopus(octo, e.x, e.y, e.kind);
           }
         }
       }

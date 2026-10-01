@@ -191,7 +191,7 @@ export function createLoot() {
         d.rv[i] = Math.min(ROCK_MAXV, d.rv[i] + ROCK_GRAV * dt);
         d.ry[i] += d.rv[i] * dt;
         if (!octo.dead && Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
-          if (hurtOctopus(octo, d.rx[i], d.ry[i])) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+          if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
         }
         if (world.tileAt(Math.floor(d.rx[i]), Math.floor(d.ry[i] + ROCK_RADIUS)) !== 0) {
           events.push({ type: 'rockLanded', x: d.rx[i], y: d.ry[i] + ROCK_RADIUS });
@@ -273,7 +273,7 @@ export function createLoot() {
             d.state[i] = ST_BURST; d.t[i] = SPIKE_BURST_TIME;
             events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i] });
             if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
-              if (hurtOctopus(octo, d.x[i], d.y[i])) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
+              if (hurtOctopus(octo, d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
             }
           }
         } else if (d.state[i] === ST_BURST) {

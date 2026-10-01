@@ -12,7 +12,7 @@ export function drawItemIcon(ctx, id, x, y, r) {
   ctx.translate(x, y);
   if (id === 'flippers') {
     // a pair of fins: two leaf shapes side by side
-    outline(ctx, r, '#3fc7d9', '#0b3a48');
+    outline(ctx, r, '#f59a2a', '#4a2406'); // orange: cyan vanished against the Shallows water on a pedestal
     for (const s of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(s * r * 0.15, r * 0.85);
@@ -20,7 +20,7 @@ export function drawItemIcon(ctx, id, x, y, r) {
       ctx.bezierCurveTo(s * r * 0.15, -r * 0.55, s * r * 0.05, r * 0.1, s * r * 0.15, r * 0.85);
       ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = Math.max(1, r * 0.09);
+    ctx.strokeStyle = 'rgba(255,240,200,0.7)'; ctx.lineWidth = Math.max(1, r * 0.09);
     ctx.beginPath(); ctx.moveTo(-r * 0.45, -r * 0.6); ctx.lineTo(-r * 0.4, r * 0.35); ctx.moveTo(r * 0.45, -r * 0.6); ctx.lineTo(r * 0.4, r * 0.35); ctx.stroke();
   } else if (id === 'lantern') {
     // a small lantern: ring on top, glass body with a flame
@@ -43,14 +43,33 @@ export function drawItemIcon(ctx, id, x, y, r) {
     ctx.fillStyle = '#e8eef4'; ctx.strokeStyle = '#0b1a2a'; ctx.lineWidth = Math.max(1, r * 0.1);
     for (const s of [-1, 1]) { ctx.beginPath(); ctx.rect(s * r * 0.55 - r * 0.28, r * 0.35, r * 0.56, r * 0.4); ctx.fill(); ctx.stroke(); }
   } else if (id === 'bombbag') {
-    // a drawstring pouch with a small bomb in front
-    outline(ctx, r, '#b88a52', '#3a2410');
-    ctx.beginPath(); ctx.moveTo(-r * 0.3, -r * 0.55); ctx.bezierCurveTo(-r * 1.1, -r * 0.05, -r * 0.95, r * 0.85, 0, r * 0.85);
-    ctx.bezierCurveTo(r * 0.95, r * 0.85, r * 1.1, -r * 0.05, r * 0.3, -r * 0.55); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#8a6030'; ctx.beginPath(); ctx.roundRect(-r * 0.42, -r * 0.78, r * 0.84, r * 0.3, r * 0.1); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#26303a'; ctx.strokeStyle = '#0b1218';
-    ctx.beginPath(); ctx.arc(0, r * 0.28, r * 0.36, 0, TAU); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#ffb03a'; ctx.beginPath(); ctx.arc(r * 0.3, -r * 0.18, r * 0.12, 0, TAU); ctx.fill();
+    // a drawstring sack tied at the neck, a black bomb with a lit fuse poking out of the top (same look as the bomb glyph)
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = '#0b1218'; ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.fillStyle = '#26303a';
+    ctx.beginPath(); ctx.arc(0, -r * 0.5, r * 0.42, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(-r * 0.15, -r * 0.63, r * 0.1, 0, TAU); ctx.fill();
+    // fuse and spark
+    ctx.strokeStyle = '#d9c9a0'; ctx.lineWidth = Math.max(1.2, r * 0.12);
+    ctx.beginPath(); ctx.moveTo(r * 0.14, -r * 0.88); ctx.quadraticCurveTo(r * 0.32, -r * 1.05, r * 0.5, -r * 0.95); ctx.stroke();
+    ctx.fillStyle = '#ffb03a'; ctx.beginPath(); ctx.arc(r * 0.52, -r * 0.96, r * 0.15, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(r * 0.52, -r * 0.96, r * 0.07, 0, TAU); ctx.fill();
+    // the sack: flared lip, pinched neck, round belly
+    outline(ctx, r, '#c99a5a', '#3a2410');
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.46, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.2, -r * 0.18, -r * 0.2, -r * 0.05);
+    ctx.bezierCurveTo(-r * 1.05, r * 0.15, -r * 1.0, r * 0.92, 0, r * 0.92);
+    ctx.bezierCurveTo(r * 1.0, r * 0.92, r * 1.05, r * 0.15, r * 0.2, -r * 0.05);
+    ctx.quadraticCurveTo(r * 0.2, -r * 0.18, r * 0.46, -r * 0.3);
+    ctx.quadraticCurveTo(0, -r * 0.1, -r * 0.46, -r * 0.3);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // belly shading and the drawstring tie with two tails
+    ctx.fillStyle = 'rgba(58,36,16,0.22)'; ctx.beginPath(); ctx.ellipse(r * 0.38, r * 0.5, r * 0.28, r * 0.38, 0.3, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#6b3f16'; ctx.lineWidth = Math.max(1.4, r * 0.15);
+    ctx.beginPath(); ctx.moveTo(-r * 0.24, -r * 0.04); ctx.lineTo(r * 0.24, -r * 0.04); ctx.stroke();
+    ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.beginPath(); ctx.moveTo(r * 0.1, -r * 0.02); ctx.lineTo(r * 0.3, r * 0.2); ctx.moveTo(r * 0.02, -r * 0.02); ctx.lineTo(r * 0.06, r * 0.26); ctx.stroke();
   } else if (id === 'heartcontainer') {
     // a heart in a glass vial
     outline(ctx, r, 'rgba(210,235,255,0.35)', '#9fc4e0');

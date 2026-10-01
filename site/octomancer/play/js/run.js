@@ -14,8 +14,23 @@ export const BIOME_LEVELS = 3;
 export const BIOME_NAME = 'Shallows';
 
 export const EV_ENTER_DIVE = 1, EV_EXIT = 2, EV_DEATH = 3, EV_CONTINUE = 4;
+/** Hub shortcut ring (unlocked by clearing the biome once): the dive starts at Shallows 1-2. */
+export const EV_ENTER_SHORTCUT = 5;
+export const SHORTCUT_LEVEL = 2;
 
-/** @param {number} seed @param {{tutorialDone?:boolean}} [opts] */
+/** Why the octopus died: what hurtOctopus / killOctopus were told (octopus.js `cause`) -> text for the death screen. */
+export const CAUSE_TEXT = {
+  piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'horned growth', manta: 'a manta',
+  shot: 'a stray shot', bomb: 'its own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
+  eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', unknown: 'the dark',
+};
+
+/** The per-dive stats the run summary reports (reset by every dive). */
+function newDive(level) {
+  return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, cause: '', over: false };
+}
+
+/** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean}} [opts] */
 export function createRun(seed, opts = {}) {
   return {
     state: S_HUB,
@@ -28,30 +43,68 @@ export function createRun(seed, opts = {}) {
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
     deaths: 0,
+    shortcut: !!opts.shortcut, // the hub ring to Shallows 1-2: unlocked by finishing the biome once (persisted by save.js)
+    dive: newDive(1),    // stats of the current dive
+    last: null,          // summary of the dive that just ended (death or biome clear), until the next dive starts
   };
 }
 
-function startDive(run) {
+/** Earn shells (pickups, quest rewards, relics): the wallet and this dive's "shells collected" stat. */
+export function gainShells(run, n) {
+  run.shells += n;
+  run.dive.shells += n;
+}
+
+/**
+ * Close the dive and snapshot its stats into run.last (what the death / clear screen shows and save.js records).
+ * `depth` ranks runs: the level number reached, or BIOME_LEVELS + 1 for a cleared biome.
+ */
+export function endDive(run, cleared, cause) {
+  const d = run.dive;
+  d.over = true;
+  if (!cleared) d.cause = cause || 'unknown';
+  run.last = {
+    cleared: !!cleared,
+    level: cleared ? BIOME_LEVELS : run.level || d.reached,
+    depth: cleared ? BIOME_LEVELS + 1 : Math.max(1, run.level || d.reached),
+    levelsCleared: run.levelsCleared,
+    time: d.time, shells: d.shells, kills: d.kills, quests: d.quests,
+    cause: cleared ? '' : d.cause,
+    seed: run.seed,
+    shortcutNew: false,
+  };
+  return run.last;
+}
+
+function startDive(run, level = 1) {
   run.diveSeed = hashSeed(run.seed, run.dives++);
   run.state = S_BIOME;
-  run.level = 1;
+  run.level = level;
   run.levelsCleared = 0;
   run.shells = 0;
   run.items = [];
+  run.dive = newDive(level);
+  run.last = null;
 }
 
 /**
  * Apply an event. Returns true when the state or level changed (the caller then loads
  * levelSpec(run) behind a fade); events that do not apply in the current state return false.
  */
-export function runEvent(run, ev) {
+export function runEvent(run, ev, cause) {
   if (ev === EV_DEATH) {
     run.deaths++;
+    if (run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
     run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
     return true;
   }
   switch (run.state) {
     case S_HUB:
+      if (ev === EV_ENTER_SHORTCUT) {
+        if (!run.shortcut || !run.tutorialDone) return false;
+        startDive(run, SHORTCUT_LEVEL);
+        return true;
+      }
       if (ev !== EV_ENTER_DIVE) return false;
       if (run.tutorialDone) startDive(run); else run.state = S_TUTORIAL;
       return true;
@@ -63,8 +116,13 @@ export function runEvent(run, ev) {
     case S_BIOME:
       if (ev !== EV_EXIT) return false;
       run.levelsCleared++;
-      if (run.level < BIOME_LEVELS) run.level++;
-      else { run.state = S_END; run.level = 0; }
+      if (run.level < BIOME_LEVELS) { run.level++; if (run.level > run.dive.reached) run.dive.reached = run.level; }
+      else {
+        const sum = endDive(run, true);
+        sum.shortcutNew = !run.shortcut; // first clear: the hub ring unlocks
+        run.shortcut = true;
+        run.state = S_END; run.level = 0;
+      }
       return true;
     case S_END:
       if (ev !== EV_CONTINUE) return false;
@@ -86,6 +144,15 @@ export function levelSpec(run) {
     case S_BIOME: return { kind: 'generated', seed: run.diveSeed, levelIndex: run.level - 1 };
     default: return { kind: 'end', seed: run.seed, levelIndex: 0 };
   }
+}
+
+/**
+ * The level title card for the current state: {text, sub} ("Shallows 1-2", plus "Seed 42" for a seeded run),
+ * or null where no card is shown (hub, tutorial, end screen).
+ */
+export function levelTitle(run, seeded = false) {
+  if (run.state !== S_BIOME) return null;
+  return { text: stageLabel(run), sub: seeded ? 'Seed ' + run.seed : '' };
 }
 
 /** HUD text, e.g. "Hub", "Tutorial", "Shallows 1-2". */

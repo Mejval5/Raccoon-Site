@@ -4,7 +4,7 @@
 
 import { artUrl } from './v2-art.js';
 import { drawItemIcon } from './items-draw.js';
-const HEART_SRC = './assets/ui-heart.webp';
+const HEART_SRC = new URL('../assets/ui-heart.webp', import.meta.url).href; // relative to this module, not the page (the test page lives in tests/)
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
 function el(tag, className, text) {
@@ -12,6 +12,46 @@ function el(tag, className, text) {
   if (className) e.className = className;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/**
+ * Run summary block (round 33): the generated title banner carrying the headline, a result line, label / value
+ * rows, the best-runs list and a note. One per overlay (death, biome clear); `set` fills it, `el` is the node.
+ */
+function createSummaryBlock() {
+  const box = el('div', 'octo-summary');
+  const banner = el('div', 'octo-banner');
+  const bannerText = el('div', 'octo-banner-text');
+  banner.appendChild(bannerText);
+  const headline = el('div', 'octo-summary-headline');
+  const rowsEl = el('div', 'octo-summary-rows');
+  const bestHead = el('div', 'octo-summary-besthead', 'Best runs');
+  const bestEl = el('ol', 'octo-summary-best');
+  const note = el('div', 'octo-summary-note');
+  box.append(banner, headline, rowsEl, bestHead, bestEl, note);
+  return {
+    el: box,
+    /** @param {{title:string, headline:string, rows:string[][], best:string[], rank:number, note?:string}} d */
+    set(d) {
+      banner.style.backgroundImage = `url(${artUrl('title-banner.webp')})`;
+      bannerText.textContent = d.title;
+      headline.textContent = d.headline;
+      rowsEl.textContent = '';
+      for (const [k, v] of d.rows) {
+        const row = el('div', 'octo-summary-row');
+        row.append(el('span', 'octo-summary-key', k), el('span', 'octo-summary-val', v));
+        rowsEl.appendChild(row);
+      }
+      bestEl.textContent = '';
+      d.best.forEach((line, i) => {
+        const li = el('li', 'octo-summary-bestrun' + (i === d.rank ? ' is-new' : ''), line);
+        bestEl.appendChild(li);
+      });
+      bestHead.style.display = bestEl.style.display = d.best.length ? '' : 'none';
+      note.textContent = d.note || '';
+      note.style.display = d.note ? '' : 'none';
+    },
+  };
 }
 
 /**
@@ -33,7 +73,7 @@ export function createUI(root, handlers) {
   // v2 only: the shell currency (icon + count) and the level's quest line
   const shellsEl = el('span', 'octo-hud-stat octo-hud-shells');
   const shellsIcon = el('img', 'octo-hud-shell-icon');
-  shellsIcon.src = './assets/shell-blue.webp';
+  shellsIcon.src = new URL('../assets/shell-blue.webp', import.meta.url).href;
   shellsIcon.alt = 'Shells';
   const shellsNum = el('span', 'octo-hud-shell-num', '0');
   shellsEl.append(shellsIcon, shellsNum);
@@ -41,11 +81,11 @@ export function createUI(root, handlers) {
   const questEl = el('div', 'octo-hud-quest');
   questEl.style.display = 'none';
   // v2 only: carried items (items.js) as small icons right after the shell counter
-  const itemsEl = el('span', 'octo-hud-stat octo-hud-items');
+  const itemsEl = el('div', 'octo-hud-items'); // its own row under the stats (never runs under the pause button)
   itemsEl.style.display = 'none';
   let itemsKey = '';
-  stats.append(stageEl, shellsEl, itemsEl, bombsEl, depthEl, scoreEl, bestEl);
-  bar.append(heartsRow, stats, questEl);
+  stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
+  bar.append(heartsRow, stats, itemsEl, questEl);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
   pauseBtn.type = 'button';
@@ -93,6 +133,7 @@ export function createUI(root, handlers) {
   const toastEl = el('div', 'octo-toast');
   toastEl.style.display = 'none';
   let toastTimer = 0;
+  const toastQueue = [];
 
   // v2 level title card: the generated ribbon with the stage name, fades in and out at a level start
   const titleEl = el('div', 'octo-title');
@@ -134,10 +175,19 @@ export function createUI(root, handlers) {
     if (key !== itemsKey) {
       itemsKey = key;
       itemsEl.textContent = '';
-      for (const id of state.items || []) {
+      // a stacked item is drawn once with an 'x2' badge
+      const counts = new Map();
+      for (const id of state.items || []) counts.set(id, (counts.get(id) || 0) + 1);
+      for (const [id, n] of counts) {
         const c = document.createElement('canvas');
-        c.width = 40; c.height = 40; c.className = 'octo-hud-item'; c.dataset.item = id; c.title = id;
-        drawItemIcon(c.getContext('2d'), id, 20, 20, 15);
+        c.width = 40; c.height = 40; c.className = 'octo-hud-item'; c.dataset.item = id; c.title = n > 1 ? id + ' x' + n : id;
+        const cx = c.getContext('2d');
+        drawItemIcon(cx, id, 20, 20, 15);
+        if (n > 1) {
+          cx.font = '700 15px Quicksand, sans-serif'; cx.textAlign = 'right'; cx.textBaseline = 'alphabetic';
+          cx.lineWidth = 4; cx.strokeStyle = '#04121c'; cx.strokeText('x' + n, 40, 39);
+          cx.fillStyle = '#ffe38a'; cx.fillText('x' + n, 40, 39);
+        }
         itemsEl.appendChild(c);
       }
       itemsEl.style.display = key ? '' : 'none';
@@ -184,7 +234,9 @@ export function createUI(root, handlers) {
   const exitBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Exit');
   exitBtn.type = 'button';
   const goCredit = el('div', 'octo-credit', CREDIT_TEXT);
-  gameover.panel.append(goTitle, goScore, goBest, restartBtn, exitBtn, goCredit);
+  const goSummary = createSummaryBlock(); // v2: the run summary replaces the score lines
+  goSummary.el.style.display = 'none';
+  gameover.panel.append(goTitle, goSummary.el, goScore, goBest, restartBtn, exitBtn, goCredit);
   restartBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
   exitBtn.addEventListener('click', () => handlers.onExit && handlers.onExit());
 
@@ -194,10 +246,12 @@ export function createUI(root, handlers) {
   const endSub = el('div', 'octo-overlay-score');
   const endBtn = el('button', 'octo-btn-wide', 'Back to the hub');
   endBtn.type = 'button';
-  endScreen.panel.append(endTitle, endSub, endBtn, el('div', 'octo-credit', CREDIT_TEXT));
+  const endSummary = createSummaryBlock();
+  endSummary.el.style.display = 'none';
+  endScreen.panel.append(endTitle, endSub, endSummary.el, endBtn, el('div', 'octo-credit', CREDIT_TEXT));
   endBtn.addEventListener('click', () => handlers.onEndContinue && handlers.onEndContinue());
 
-  return {
+  const api = {
     updateHud,
     /** Prompt banner: title + text, or null to hide it. */
     setPrompt(title, text) {
@@ -217,14 +271,33 @@ export function createUI(root, handlers) {
       titleTimer2 = setTimeout(() => { titleEl.style.opacity = '1'; }, 30);
       titleTimer = setTimeout(() => { titleEl.style.opacity = '0'; titleTimer = setTimeout(() => { titleEl.style.display = 'none'; }, 700); }, ms);
     },
+    /** Drop the level title card at once (a summary screen opened over it). */
+    hideTitle() { clearTimeout(titleTimer); clearTimeout(titleTimer2); titleEl.style.display = 'none'; },
     titleShown() { return titleEl.style.display !== 'none'; },
-    showToast(text, ms = 3200) {
+    /** Text on the level title card: {text, sub}. */
+    titleContent() { return { text: titleText.textContent, sub: titleSub.textContent }; },
+    /** A toast replaces the one showing; with `queue` it waits for the current one to expire instead (journal announcements). */
+    showToast(text, ms = 3200, queue = false) {
+      if (queue && toastEl.style.display !== 'none') { if (toastQueue.length < 3) toastQueue.push({ text, ms }); return; }
       toastEl.textContent = text;
       toastEl.style.display = '';
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, ms);
+      toastTimer = setTimeout(() => {
+        toastEl.style.display = 'none';
+        const next = toastQueue.shift();
+        if (next) api.showToast(next.text, next.ms);
+      }, ms);
     },
-    showEnd(title, sub) { endTitle.textContent = title; endSub.textContent = sub; endScreen.overlayEl.style.display = 'flex'; },
+    /** Biome-clear screen; with `detail` (see createSummaryBlock) it shows the run summary instead of the plain lines. */
+    showEnd(title, sub, detail) {
+      api.hideTitle();
+      endTitle.textContent = title; endSub.textContent = sub;
+      endTitle.style.display = endSub.style.display = detail ? 'none' : '';
+      endSummary.el.style.display = detail ? '' : 'none';
+      if (detail) endSummary.set(detail);
+      endScreen.overlayEl.style.display = 'flex';
+      endScreen.panel.scrollTop = 0;
+    },
     hideEnd() { endScreen.overlayEl.style.display = 'none'; },
     isEndShown() { return endScreen.overlayEl.style.display !== 'none'; },
     /** v2: the game-over button returns to the hub. */
@@ -234,12 +307,18 @@ export function createUI(root, handlers) {
     showPause() { pause.overlayEl.style.display = 'flex'; },
     hidePause() { pause.overlayEl.style.display = 'none'; },
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none'; },
-    showGameOver(score, best) {
+    showGameOver(score, best, detail) {
+      api.hideTitle();
       goScore.textContent = `Score ${score}`;
       goBest.textContent = `Best ${best}`;
+      goTitle.style.display = goScore.style.display = goBest.style.display = detail ? 'none' : '';
+      goSummary.el.style.display = detail ? '' : 'none';
+      if (detail) goSummary.set(detail);
       gameover.overlayEl.style.display = 'flex';
+      gameover.panel.scrollTop = 0;
     },
     hideGameOver() { gameover.overlayEl.style.display = 'none'; },
     focusRestart() { restartBtn.focus({ preventScroll: true }); },
   };
+  return api;
 }

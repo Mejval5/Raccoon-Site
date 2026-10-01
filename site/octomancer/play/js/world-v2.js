@@ -58,6 +58,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     // decor: no plants inside the shop stall (counter span + 3 tiles each side, from above the sign to below the floor)
     plantKeepOut: [
       ...(level.exitX >= 0 && level.exitX !== undefined ? [{ x0: level.exitX - 2, x1: level.exitX + 3, y0: level.exitY - 1, y1: level.exitY + 2 }] : []),
+      ...(level.shortcutX >= 0 && level.shortcutX !== undefined ? [{ x0: level.shortcutX - 2, x1: level.shortcutX + 3, y0: level.shortcutY - 2, y1: level.shortcutY + 2 }] : []),
       ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
     ],
     plantFree: level.shop ? {

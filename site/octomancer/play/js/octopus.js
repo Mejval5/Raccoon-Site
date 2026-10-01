@@ -58,8 +58,9 @@ export function createOctopus(x, y) {
 /** Hurt the octopus (contact damage): knockback away from (fromX,fromY), 1s
  * invulnerability, 0.4s ragdoll/angry state. A no-op while already
  * invulnerable or dead (OVERNIGHT.md M3-2: "no second loss within 1s"). */
-export function hurtOctopus(o, fromX, fromY) {
+export function hurtOctopus(o, fromX, fromY, cause) {
   if (o.invulnTimer > 0 || o.dead) return false;
+  o.cause = cause || 'unknown'; // what last hurt it: the death screen names the killer (run.js CAUSE_TEXT)
   o.hearts = Math.max(0, o.hearts - 1);
   const dx = o.x - fromX, dy = o.y - fromY;
   const d = len(dx, dy) || 1;
@@ -74,8 +75,9 @@ export function hurtOctopus(o, fromX, fromY) {
 }
 
 /** Instant kill (Beholder touch): bypasses invulnerability entirely. */
-export function killOctopus(o) {
+export function killOctopus(o, cause) {
   if (o.dead) return;
+  if (cause) o.cause = cause;
   o.hearts = 0;
   o.dead = true;
   o.deathTimer = DEATH_DURATION;

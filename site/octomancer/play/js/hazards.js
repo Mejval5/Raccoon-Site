@@ -12,6 +12,7 @@ import { hasLineOfSight } from './pathfind.js';
 
 export const HZ_NONE = 0, HZ_JET = 1, HZ_SPIKES = 2, HZ_ROCK = 3, HZ_EEL = 4, HZ_ANEMONE = 5;
 export const HAZARD_NAMES = ['', 'jet', 'spikes', 'rock', 'eel', 'anemone'];
+export const HZ_CAUSE = ['', 'jet', 'spikes', 'rock', 'eel', 'anemone'];
 export const HAZARD_CODE = { jet: HZ_JET, spikes: HZ_SPIKES, rock: HZ_ROCK, eel: HZ_EEL, anemone: HZ_ANEMONE };
 
 // tuning
@@ -117,7 +118,7 @@ export function createHazards() {
   }
 
   function hurt(octo, i, fx, fy) {
-    if (hurtOctopus(octo, fx, fy)) events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy });
+    if (hurtOctopus(octo, fx, fy, HZ_CAUSE[d.kind[i]])) events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy });
   }
 
   function updateJet(i, dt, octo) {

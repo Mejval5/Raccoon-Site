@@ -43,7 +43,7 @@ export function createBombs() {
         }
         enemies.killInRadius(b.x, b.y, BOMB_RADIUS);
         if (!octo.dead && dist(octo.x, octo.y, b.x, b.y) <= BOMB_RADIUS) {
-          hurtOctopus(octo, b.x, b.y);
+          hurtOctopus(octo, b.x, b.y, 'bomb');
         }
         events.push({ type: 'exploded', x: b.x, y: b.y });
       }
