@@ -20,7 +20,8 @@ import { loadRoomsJson } from './rooms.test.js';
 
 export async function runQuestTests(assert) {
   const table = parseQuests(await (await fetch('../data/quests.json')).json());
-  const items = parseShopItems(await (await fetch('../data/shop-items.json')).json());
+  // the carried-item rows (round 32) have their own tests (items.test.js): the stall tests below use the three consumables
+  const items = parseShopItems(await (await fetch('../data/shop-items.json')).json()).filter((i) => i.effect !== 'carry');
 
   // ---- data ----
   assert('quests data: rescue, vault, untouched and pest control, each with a reward, hud text and journal id',
@@ -217,9 +218,10 @@ export async function runQuestTests(assert) {
     const ok = p.dropShell(w.startX + 3, w.startY);
     const after = p.visible(w.residentChunks()).filter((it) => it.type === 'shell').length;
     o.x = w.startX + 3; o.y = w.startY;
-    p.update(0.02, 0.02, o, w.residentChunks(), w);
+    let gotEvent = false;
+    for (let i = 0; i < 25; i++) { p.update(0.02, 0.02 * (i + 1), o, w.residentChunks(), w); if (p.events.some((e) => e.type === 'shell')) gotEvent = true; }   // a dropped shell waits 0.35 s before it can be collected
     assert('shells: a drop from a defeated creature appears as a shell pickup and is collected on touch',
-      ok && after === before + 1 && p.events.some((e) => e.type === 'shell') && p.totals.shells >= 1);
+      ok && after === before + 1 && gotEvent && p.totals.shells >= 1);
     assert('shells: levels seed shells inside their sealed pockets (2 per pocket)', (() => {
       let pockets = 0, shells = 0;
       for (let i = 0; i < 20; i++) {

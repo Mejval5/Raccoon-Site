@@ -46,6 +46,12 @@ export function createOctopus(x, y) {
     deathTimer: 0,
     gameoverEmitted: false,
     bombs: BOMB_START,
+    // --- carried items (items.js applyCarried sets these; defaults are the plain octopus) ---
+    heartMax: HEART_MAX,
+    bombMax: BOMB_MAX,
+    swimMul: 1,   // flippers: 1.2
+    lightR: 0,    // tiles of clear sight in the dim Shallows (0 = no dimming), set by the level
+    magnetR: 0,   // shell magnet: pulls shells this close (tiles)
   };
 }
 
@@ -84,7 +90,7 @@ export function tryUseBomb(o) {
 }
 
 export function addBomb(o) {
-  o.bombs = Math.min(BOMB_MAX, o.bombs + 1);
+  o.bombs = Math.min(o.bombMax || BOMB_MAX, o.bombs + 1);
 }
 
 export function facingDir(angleDeg) {
@@ -143,10 +149,11 @@ function rotate(o, joy, dt, canMove = true) {
 function move(o, joy, dt) {
   const angleRad = desiredPushAngleDeg(joy) * DEG2RAD;
   const pushDir = { x: Math.sin(angleRad), y: -Math.cos(angleRad) };
-  const moveForce = joy.mag * SWIM_PUSH_FORCE * dt;
+  const mul = o.swimMul || 1;
+  const moveForce = joy.mag * SWIM_PUSH_FORCE * mul * dt;
 
   const speed = len(o.vx, o.vy);
-  const accelPossible = clamp(1 - Math.pow(speed / SWIM_MAX_SPEED, SWIM_ACCEL_CAP_EXP), 0, 1);
+  const accelPossible = clamp(1 - Math.pow(speed / (SWIM_MAX_SPEED * mul), SWIM_ACCEL_CAP_EXP), 0, 1);
 
   const velDir = speed > 1e-6 ? { x: o.vx / speed, y: o.vy / speed } : { x: 0, y: 0 };
   // Vector2.Angle: unsigned angle in [0,180] between the two directions; 0 if

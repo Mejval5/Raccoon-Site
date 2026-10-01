@@ -56,6 +56,17 @@ export const ENTRIES = [
   { id: 'item-bombpack', cat: CAT_ITEM, name: 'Bomb Pack',
     text: 'Sold at the Shell Stall. Three bombs in one bundle, up to the most you can carry.' },
 
+  { id: 'item-flippers', cat: CAT_ITEM, name: 'Flippers',
+    text: 'A pair of fins you keep for the rest of the dive: you swim a fifth faster. Found in chests and hidden pockets, or sold at the Shell Stall. Lost if you fall.' },
+  { id: 'item-lantern', cat: CAT_ITEM, name: 'Lantern',
+    text: 'The Shallows are dim away from your own glow. A lantern widens the light around you so you see more of the cave ahead. Kept for the dive, lost if you fall.' },
+  { id: 'item-magnet', cat: CAT_ITEM, name: 'Shell Magnet',
+    text: 'Shells within three tiles slide towards you. Kept for the dive, lost if you fall.' },
+  { id: 'item-bombbag', cat: CAT_ITEM, name: 'Bomb Bag',
+    text: 'Three bombs now, and room for one more in your stock from here on. You can carry two of these. Lost if you fall.' },
+  { id: 'item-heartcontainer', cat: CAT_ITEM, name: 'Heart Container',
+    text: 'One more heart, and it heals one at once. You can carry two of these. Lost if you fall.' },
+
   { id: 'loot-clam', cat: CAT_LOOT, name: 'Clam',
     text: 'A sleeping clam with something shiny inside. A dash straight through it, or a bomb, cracks it open and sends shells tumbling out.' },
   { id: 'loot-pot', cat: CAT_LOOT, name: 'Clay Pot',

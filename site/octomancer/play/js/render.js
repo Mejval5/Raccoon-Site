@@ -756,6 +756,19 @@ export function createRenderer(ctx, world) {
     ctx.fillRect(0, 0, canvasW, canvasH);
   }
 
+  // Round 32: the dim Shallows. `lightR` is the octopus's light radius in tiles (items.js: 4.5, a lantern 8.5): clear
+  // inside half of it, falling to a soft dark vignette (alpha DIM_MAX) by 1.6 times it. 0 = no dimming.
+  const DIM_MAX = 0.64;
+  function drawLight(canvasW, canvasH, sx, sy, lightR) {
+    const ppu = camera.pxPerUnit;
+    const grad = ctx.createRadialGradient(sx, sy, lightR * 0.5 * ppu, sx, sy, lightR * 1.6 * ppu);
+    grad.addColorStop(0, 'rgba(2,8,18,0)');
+    grad.addColorStop(0.45, 'rgba(2,8,18,' + (DIM_MAX * 0.4).toFixed(3) + ')');
+    grad.addColorStop(1, 'rgba(2,8,18,' + DIM_MAX + ')');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  }
+
   // M7-1: caustic light - one drifting code pattern of soft diagonal streaks
   // (never OverlayNoise.jpg/Stripes.jpg, both excluded by the art rule).
   // Drift is frozen under reduced motion; the streaks themselves still show,
@@ -1083,7 +1096,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0, extraDraw = null,
+      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, dreadLevel = 0, extraDraw = null, lightR = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1147,6 +1160,7 @@ export function createRenderer(ctx, world) {
       if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       drawOcto(octo, alpha, canvasW, canvasH, time);
       ctx.restore();
+      if (lightR > 0) { const o = worldToScreen(camera, canvasW, canvasH, followX, followY); drawLight(canvasW, canvasH, o.x, o.y, lightR); }
       drawDepthTint(canvasW, canvasH, depth);
       drawVignette(canvasW, canvasH);
       const beholder = enemies.find((e) => e.kind === 'beholder' && !e.dead);

@@ -2,6 +2,11 @@
  "items": [
   { "id": "bomb", "name": "Bomb", "price": 3, "effect": "bombs", "amount": 1, "glyph": "bomb", "journal": "item-bomb", "blurb": "+1 bomb" },
   { "id": "heart", "name": "Heart", "price": 5, "effect": "heart", "amount": 1, "glyph": "heart", "journal": "item-heart", "blurb": "+1 heart" },
-  { "id": "bombpack", "name": "Bomb pack", "price": 8, "effect": "bombs", "amount": 3, "glyph": "bombs3", "journal": "item-bombpack", "blurb": "+3 bombs" }
+  { "id": "bombpack", "name": "Bomb pack", "price": 8, "effect": "bombs", "amount": 3, "glyph": "bombs3", "journal": "item-bombpack", "blurb": "+3 bombs" },
+  { "id": "flippers", "name": "Flippers", "price": 8, "effect": "carry", "item": "flippers", "glyph": "flippers", "journal": "item-flippers", "blurb": "+20% swim speed, kept until you fall" },
+  { "id": "lantern", "name": "Lantern", "price": 10, "effect": "carry", "item": "lantern", "glyph": "lantern", "journal": "item-lantern", "blurb": "a larger light radius" },
+  { "id": "magnet", "name": "Shell magnet", "price": 9, "effect": "carry", "item": "magnet", "glyph": "magnet", "journal": "item-magnet", "blurb": "pulls in shells within 3 tiles" },
+  { "id": "bombbag", "name": "Bomb bag", "price": 7, "effect": "carry", "item": "bombbag", "glyph": "bombbag", "journal": "item-bombbag", "blurb": "+3 bombs and +1 max bombs" },
+  { "id": "heartcontainer", "name": "Heart container", "price": 12, "effect": "carry", "item": "heartcontainer", "glyph": "heartcontainer", "journal": "item-heartcontainer", "blurb": "+1 max heart and heals 1" }
  ]
 }

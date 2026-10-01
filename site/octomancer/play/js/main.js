@@ -18,7 +18,8 @@ import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
-import { createLoot, lootJournalId, spreadShells, TRAP_SWARM, LOOT_NAMES } from './loot.js';
+import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
+import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
@@ -125,6 +126,7 @@ input.onModeChange((mode) => {
 let seed = initialSeed;
 let world = makeWorld(seed);
 let octo = createOctopus(world.startX, world.startY);
+if (V2) applyCarried(octo, run.items);
 let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
 let decor = createDecor(world.width, world.chunkHeight);
@@ -439,13 +441,15 @@ function render(alpha, frameMs) {
     shakeOffset: particles.shakeOffset(),
     dreadLevel,
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
+    lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
   ui.updateHud({
-    hearts: octo.hearts, heartMax: HEART_MAX,
+    hearts: octo.hearts, heartMax: octo.heartMax,
     bombs: octo.bombs,
     depth: Math.round(depth), score: liveScore, best: bestScore,
     stage: V2 ? stageLabel(run) : undefined,
     shells: V2 ? run.shells : undefined,
+    items: V2 ? run.items : undefined,
     quest: V2 && loot.chaseLeft() > 0 ? 'Run! The ceiling is falling: ' + Math.ceil(loot.chaseLeft()) + 's' : V2 && quest ? questHudText(quest) : '',
     questState: V2 && loot.chaseLeft() > 0 ? 'failed' : V2 && quest ? (quest.status === ST_DONE ? 'done' : quest.status === ST_FAILED ? 'failed' : '') : '',
   });
@@ -462,6 +466,7 @@ function resetWorld(newSeed) {
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = makeWorld(seed);
   octo = createOctopus(world.startX, world.startY);
+  if (V2) applyCarried(octo, run.items);
   renderer = createRenderer(ctx, world);
   pickups = createPickups();
   decor = createDecor(world.width, world.chunkHeight);
@@ -537,7 +542,7 @@ function stepV2(snap) {
   const lv = world.level;
   if (run.state === S_BIOME) {
     if (questUpdate(quest, octo, world)) payQuest();
-    const ev = shopStep(shopSt, octo, run.shells, STEP);
+    const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
     if (ev) onShopEvent(ev);
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) discover('place-shop');
   }
@@ -610,7 +615,19 @@ function v2Extra(c, camera, w2s, cw, ch) {
 
 // --- round 31: loot and secrets (js/loot.js) ---
 function dropShells(n, x, y) {
-  for (const p of spreadShells(n, x, y)) pickups.dropShell(p.x, p.y);
+  for (const p of spreadShells(n, x, y, solidForSight)) pickups.dropShell(p.x, p.y, p.vx, p.vy);
+}
+/** A carried item found in a chest or pocket: take it (journal, toast); a repeat of a one-of item turns into shells. */
+function takeCarried(id, x, y) {
+  if (!id) return;
+  if (giveItem(run.items, octo, id)) {
+    discover(itemJournalId(id));
+    ui.showToast('Found ' + pickupText(id));
+  } else {
+    run.shells += 3;
+    ui.showToast('Already carried: +3 shells');
+  }
+  particles.pickupSparkle(x, y, '#fff2a0'); sfx.chime();
 }
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
@@ -624,11 +641,14 @@ function handleLootEvents() {
         particles.pickupSparkle(ev.x, ev.y - 0.3, '#ffe38a'); sfx.chime();
         dropShells(ev.shells, ev.x, ev.y - 0.4);
         discover('loot-chest');
+        if (ev.carry) takeCarried(ev.carry, ev.x, ev.y - 0.3);
         if (ev.trap) ui.showToast('It was trapped!');
         break;
       case 'trap':
-        if (ev.trap === TRAP_SWARM) for (let k = 0; k < ev.n; k++) enemies.spawnAt('piranha', ev.x + (k - 1) * 0.6, ev.y - 0.3 - (k % 2) * 0.4, 'open', 0);
-        else { particles.bombDebris(ev.x, ev.y); sfx.hurt(); }
+        if (ev.trap === TRAP_SWARM) {
+          // the swarm bursts out in clear water above the chest, not inside the dip's rock
+          for (const p of findSwarmSpots(solidForSight, ev.x, ev.y + 0.3, ev.n)) enemies.spawnAt('piranha', p.x, p.y, 'open', 0);
+        } else { particles.bombDebris(ev.x, ev.y); sfx.hurt(); }
         break;
       case 'pocket':
         particles.bombDebris(ev.x, ev.y);
@@ -637,6 +657,7 @@ function handleLootEvents() {
         ui.showToast('A hidden pocket!');
         break;
       case 'item':
+        if (ev.carry) { takeCarried(ev.carry, ev.x, ev.y); break; }
         particles.pickupSparkle(ev.x, ev.y, ev.item === 2 ? '#ff8a9a' : '#cfe8ff'); sfx.chime();
         discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
         break;
@@ -669,7 +690,7 @@ function setupLevelExtras() {
     const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex);
     quest = createQuestState(plan);
     if (plan && plan.kindId === Q_PEST) for (let i = 0; i < plan.pos.length; i += 2) enemies.spawnAt('piranha', plan.pos[i], plan.pos[i + 1], 'open', 0);
-    shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex);
+    shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
   } else if (run.state === S_HUB) {
     // the sign shows the quest of the next dive's first level: the same plan that level will roll
     const ns = nextDiveSeed(run);
@@ -689,14 +710,14 @@ function payQuest() {
 function onShopEvent(ev) {
   if (ev.type === 'bought') {
     run.shells = ev.shells;
-    ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells');
+    ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells' + (ev.item.effect === 'carry' ? ', ' + ev.item.blurb : ''));
     sfx.chime();
     particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
     if (ev.item.journal) discover(ev.item.journal);
   } else if (ev.type === 'poor') {
     ui.showToast(ev.item.name + ' costs ' + ev.price + ' shells, you have ' + ev.shells);
   } else {
-    ui.showToast(ev.item.effect === 'heart' ? 'Your hearts are already full' : 'You cannot carry more bombs');
+    ui.showToast(ev.item.effect === 'carry' ? 'You cannot carry more of those' : ev.item.effect === 'heart' ? 'Your hearts are already full' : 'You cannot carry more bombs');
   }
 }
 
@@ -716,6 +737,7 @@ window.__octo = {
       octopus: {
         x: octo.x, y: octo.y, vx: octo.vx, vy: octo.vy, angle: octo.angle, swimming: octo.swimming,
         hearts: octo.hearts, invulnTimer: octo.invulnTimer, dead: octo.dead, bombs: octo.bombs,
+        heartMax: octo.heartMax, bombMax: octo.bombMax, swimMul: octo.swimMul, lightR: octo.lightR, magnetR: octo.magnetR,
       },
       depth: Math.max(0, world.depth() - world.startY),
       residentChunks: world.residentChunkCount(),
@@ -815,6 +837,7 @@ window.__octo = {
   extras() {
     return {
       shells: run ? run.shells : 0,
+      items: run ? run.items.slice() : [],
       quest: quest ? { id: quest.plan.id, status: quest.status, progress: quest.progress, goal: quest.goal, following: quest.following, pos: Array.from(quest.plan.pos), hud: questHudText(quest) } : null,
       shop: shopSt ? { keeper: [shopSt.keeperX, shopSt.keeperY], px: Array.from(shopSt.px), stock: Array.from(shopSt.stock, (i) => shopSt.items[i].id), sold: Array.from(shopSt.sold) } : null,
       signQuest: hubQuestPlan ? hubQuestPlan.id : null,
@@ -835,6 +858,8 @@ window.__octo = {
   },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
+  /** Test hook: carry an item as if it had been found (items.js). */
+  giveItem(id) { return run ? giveItem(run.items, octo, id) : false; },
   giveShells(n) { if (run) run.shells += n | 0; return run ? run.shells : 0; },
   runEvent(name) {
     const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE }[name];

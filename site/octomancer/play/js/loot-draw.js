@@ -2,7 +2,9 @@
 // the trap burst and the chase rocks; chests use the generated chest sprites (img/v2/, js/v2-art.js).
 // Called from main.js's v2 extra draw hook, in device pixels, before the octopus.
 
-import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_RATTLE, ST_BURST, SPIKE_RADIUS, POCKET_BOMB } from './loot.js';
+import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_RATTLE, ST_BURST, SPIKE_RADIUS, POCKET_BOMB, POCKET_ITEM } from './loot.js';
+import { itemFromCode } from './items.js';
+import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { artImg } from './v2-art.js';
 
@@ -36,7 +38,13 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
     if (d.itaken[i]) continue;
     const x = sx(d.ix[i]), y = sy(d.iy[i]) + Math.sin(time * 2.4 + i) * 0.06 * ppu;
     if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
-    if (d.ikind[i] === POCKET_BOMB) drawBombItem(ctx, x, y, ppu); else drawHeartItem(ctx, x, y, ppu);
+    if (d.ikind[i] === POCKET_BOMB) drawBombItem(ctx, x, y, ppu);
+    else if (d.ikind[i] === POCKET_ITEM) {
+      const gl = ctx.createRadialGradient(x, y, 0.05 * ppu, x, y, 0.7 * ppu);
+      gl.addColorStop(0, 'rgba(255,240,170,0.45)'); gl.addColorStop(1, 'rgba(255,240,170,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 0.7 * ppu, 0, TAU); ctx.fill();
+      drawItemIcon(ctx, itemFromCode(d.iid[i]), x, y, 0.3 * ppu);
+    } else drawHeartItem(ctx, x, y, ppu);
   }
   for (let i = 0; i < d.nr; i++) {
     const x = sx(d.rx[i]), y = sy(d.ry[i]);
@@ -81,14 +89,30 @@ function drawClam(ctx, x, y, ppu, time, seed) {
   // upper half, opened a crack
   const lift = (0.06 + 0.03 * Math.sin(time * 1.6 + seed)) * ppu;
   ctx.fillStyle = '#e58ac2';
+  ctx.save();
   ctx.beginPath(); ctx.moveTo(-w, -0.08 * ppu);
   ctx.bezierCurveTo(-w * 0.95, -h * 1.25 - lift, w * 0.95, -h * 1.25 - lift, w, -0.08 * ppu);
   ctx.quadraticCurveTo(0, -0.17 * ppu - lift, -w, -0.08 * ppu); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // ribs
-  ctx.strokeStyle = 'rgba(74,31,76,0.55)'; ctx.lineWidth = Math.max(1, ppu * 0.03);
+  // ribs: fan out from the hinge and stay inside the lid (clipped to its outline), so nothing pokes into the water
+  ctx.clip();
+  const top = 0.9375 * h + 0.75 * lift + 0.02 * ppu;   // height of the dome above the hinge line
+  const hingeY = -0.14 * ppu - lift * 0.4;
+  ctx.strokeStyle = 'rgba(74,31,76,0.5)'; ctx.lineWidth = Math.max(1, ppu * 0.03); ctx.lineCap = 'round';
   ctx.beginPath();
-  for (let k = -2; k <= 2; k++) { ctx.moveTo(k * w * 0.36, -0.15 * ppu - lift); ctx.lineTo(k * w * 0.7, -0.12 * ppu - lift * 0.45); }
+  for (let k = -2; k <= 2; k++) {
+    const fx = k * 0.36 * w * 0.8 * 2 / 2;           // |x| <= 0.58 w at the dome
+    const dome = 1 - (fx / w) * (fx / w);
+    ctx.moveTo(k * w * 0.06, hingeY);
+    ctx.quadraticCurveTo(k * w * 0.3, hingeY - top * 0.45, fx, -0.08 * ppu - top * dome * 0.86 - lift * 0.3);
+  }
   ctx.stroke();
+  // scalloped lid edge: small bumps along the opening
+  ctx.fillStyle = 'rgba(255,214,236,0.55)';
+  for (let k = -3; k <= 3; k++) {
+    const ex = k * w * 0.27, ey = -0.08 * ppu + 0.5 * (1 - (ex / w) * (ex / w)) * (-0.09 * ppu - lift);
+    ctx.beginPath(); ctx.arc(ex, ey, w * 0.12, Math.PI, 2 * Math.PI); ctx.fill();
+  }
+  ctx.restore();
   ctx.restore();
 }
 

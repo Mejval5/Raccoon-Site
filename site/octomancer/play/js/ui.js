@@ -3,6 +3,7 @@
 // OVERNIGHT.md §4 M4-1.
 
 import { artUrl } from './v2-art.js';
+import { drawItemIcon } from './items-draw.js';
 const HEART_SRC = './assets/ui-heart.webp';
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
@@ -39,7 +40,11 @@ export function createUI(root, handlers) {
   shellsEl.style.display = 'none';
   const questEl = el('div', 'octo-hud-quest');
   questEl.style.display = 'none';
-  stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
+  // v2 only: carried items (items.js) as small icons right after the shell counter
+  const itemsEl = el('span', 'octo-hud-stat octo-hud-items');
+  itemsEl.style.display = 'none';
+  let itemsKey = '';
+  stats.append(stageEl, shellsEl, itemsEl, bombsEl, depthEl, scoreEl, bestEl);
   bar.append(heartsRow, stats, questEl);
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
@@ -125,6 +130,18 @@ export function createUI(root, handlers) {
     if (v2 && stageEl.textContent !== state.stage) stageEl.textContent = state.stage;
     shellsEl.style.display = v2 && state.shells !== undefined ? '' : 'none';
     if (state.shells !== undefined && shellsNum.textContent !== String(state.shells)) shellsNum.textContent = String(state.shells);
+    const key = state.items ? state.items.join() : '';
+    if (key !== itemsKey) {
+      itemsKey = key;
+      itemsEl.textContent = '';
+      for (const id of state.items || []) {
+        const c = document.createElement('canvas');
+        c.width = 40; c.height = 40; c.className = 'octo-hud-item'; c.dataset.item = id; c.title = id;
+        drawItemIcon(c.getContext('2d'), id, 20, 20, 15);
+        itemsEl.appendChild(c);
+      }
+      itemsEl.style.display = key ? '' : 'none';
+    }
     const qt = state.quest || '';
     questEl.style.display = qt ? '' : 'none';
     if (questEl.textContent !== qt) questEl.textContent = qt;

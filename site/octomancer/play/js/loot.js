@@ -17,13 +17,14 @@
 import { hurtOctopus, addBomb } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
 import { DASH_KILL_SPEED, HEART_MAX, BOMB_RADIUS } from './config.js';
+import { ITEM_IDS, itemFromCode } from './items.js';
 
 export const LK_NONE = 0, LK_CLAM = 1, LK_POT = 2, LK_CHEST = 3, LK_POCKET = 4, LK_RELIC = 5;
 export const LOOT_NAMES = ['', 'clam', 'pot', 'chest', 'pocket', 'relic'];
 export const LOOT_CODE = { clam: LK_CLAM, pot: LK_POT, chest: LK_CHEST, pocket: LK_POCKET, relic: LK_RELIC };
 
 export const TRAP_NONE = 0, TRAP_SPIKES = 1, TRAP_SWARM = 2;
-export const POCKET_SHELLS = 0, POCKET_BOMB = 1, POCKET_HEART = 2;
+export const POCKET_SHELLS = 0, POCKET_BOMB = 1, POCKET_HEART = 2, POCKET_ITEM = 3;
 
 // states
 export const ST_INTACT = 0, ST_DONE = 1, ST_RATTLE = 2, ST_BURST = 3;
@@ -31,6 +32,8 @@ export const ST_INTACT = 0, ST_DONE = 1, ST_RATTLE = 2, ST_BURST = 3;
 // tuning
 export const TRAP_CHANCE = 0.3;
 export const RELIC_CHANCE = 1 / 3;
+export const CHEST_ITEM_CHANCE = 0.3;   // a chest also holds a carried item (items.js)
+export const POCKET_ITEM_CHANCE = 0.25;  // a hidden pocket holds a carried item instead of shells / a bomb / a heart
 export const RELIC_SHELLS = 25;
 export const CHASE_SECONDS = 10;
 export const CHEST_SHELLS_MIN = 4, CHEST_SHELLS_MAX = 6;
@@ -55,15 +58,17 @@ export function lootJournalId(code) { return 'loot-' + LOOT_NAMES[code]; }
 export function makeLootRecord(name, x, y, dx, dy, rng, relicOk = true) {
   const lk = LOOT_CODE[name];
   if (!lk) return null;
-  const rec = { type: 'loot', lk, x, y, dx, dy, n: 0, aux: 0 };
+  const rec = { type: 'loot', lk, x, y, dx, dy, n: 0, aux: 0, item: 0 };
   if (lk === LK_CLAM || lk === LK_POT) rec.n = 1 + Math.floor(rng() * 3);
   else if (lk === LK_CHEST) {
     rec.n = CHEST_SHELLS_MIN + Math.floor(rng() * (CHEST_SHELLS_MAX - CHEST_SHELLS_MIN + 1));
     if (rng() < TRAP_CHANCE) rec.aux = rng() < 0.5 ? TRAP_SPIKES : TRAP_SWARM;
+    if (rng() < CHEST_ITEM_CHANCE) rec.item = 1 + Math.floor(rng() * ITEM_IDS.length);
   } else if (lk === LK_POCKET) {
     const r = rng();
     if (r < 0.6) { rec.aux = POCKET_SHELLS; rec.n = 2 + Math.floor(rng() * 2); }
     else rec.aux = r < 0.85 ? POCKET_BOMB : POCKET_HEART;
+    if (rng() < POCKET_ITEM_CHANCE) { rec.aux = POCKET_ITEM; rec.n = 0; rec.item = 1 + Math.floor(rng() * ITEM_IDS.length); }
   } else if (lk === LK_RELIC) {
     if (!relicOk) return null;
     rec.n = RELIC_SHELLS;
@@ -71,10 +76,47 @@ export function makeLootRecord(name, x, y, dx, dy, rng, relicOk = true) {
   return rec;
 }
 
-/** Positions for n dropped shells around (x, y): a small arc so they do not stack. */
-export function spreadShells(n, x, y) {
+/**
+ * Where n dropped shells start and how they pop: a small arc around (x, y), each with an upward-and-outward
+ * velocity (vx, vy in u/s) so they scatter ~0.6 tile before they settle, and are not collected the same frame.
+ * `isSolid(x, y)` (optional) keeps them out of rock: a spot in rock falls back to just above the break point.
+ */
+export function spreadShells(n, x, y, isSolid = null) {
   const out = [];
-  for (let i = 0; i < n; i++) out.push({ x: x + (i - (n - 1) / 2) * 0.38, y: y - 0.1 - (i % 2) * 0.14 });
+  for (let i = 0; i < n; i++) {
+    const side = i - (n - 1) / 2;
+    let px = x + side * 0.3, py = y - 0.15 - (i % 2) * 0.12;
+    if (isSolid && isSolid(px, py)) { px = x; py = y - 0.3; }
+    if (isSolid && isSolid(px, py)) { px = x; py = y; }
+    out.push({ x: px, y: py, vx: side * 1.5 + (i % 2 ? 0.3 : -0.3) * (n === 1 ? 2 : 1), vy: -2.3 - (i % 2) * 0.7 });
+  }
+  return out;
+}
+
+/**
+ * Spots in clear water above a chest for its swarm: each spot has the sprite's whole length (about +-1.2 tiles)
+ * in open water, the spots are at least 0.9 tile apart vertically (or 1.4 sideways) and as close to the chest as
+ * possible. Passes relax the half length (1.2, 0.8, 0.4) when the chest sits in a narrow dip; whatever is left
+ * over goes straight above the chest. Returns [{x, y}] (n of them).
+ */
+export function findSwarmSpots(isSolid, x, y, n) {
+  const out = [];
+  const clearRow = (cx, cy, half) => {
+    for (let dx = -half; dx <= half + 1e-6; dx += 0.4) if (isSolid(cx + dx, cy) || isSolid(cx + dx, cy - 0.4) || isSolid(cx + dx, cy + 0.4)) return false;
+    return true;
+  };
+  const apart = (cx, cy) => { for (const p of out) if (Math.abs(p.y - cy) < 0.9 && Math.abs(p.x - cx) < 1.4) return false; return true; };
+  for (const half of [1.2, 0.8, 0.4]) {
+    for (let up = 1.5; up <= 7 && out.length < n; up += 0.45) {
+      for (const off of [0, -0.7, 0.7, -1.4, 1.4]) {
+        if (out.length >= n) break;
+        const cx = x + off, cy = y - up;
+        if (clearRow(cx, cy, half) && apart(cx, cy)) out.push({ x: cx, y: cy });
+      }
+    }
+    if (out.length >= n) break;
+  }
+  for (let k = out.length; k < n; k++) out.push({ x, y: y - 1.2 - 0.9 * k });
   return out;
 }
 
@@ -83,9 +125,9 @@ export function createLoot() {
     n: 0,
     kind: new Uint8Array(CAP), state: new Uint8Array(CAP),
     x: new Float32Array(CAP), y: new Float32Array(CAP), dx: new Float32Array(CAP), dy: new Float32Array(CAP),
-    count: new Uint8Array(CAP), aux: new Uint8Array(CAP), t: new Float32Array(CAP),
+    count: new Uint8Array(CAP), aux: new Uint8Array(CAP), item: new Uint8Array(CAP), t: new Float32Array(CAP),
     // items out of hidden pockets (bomb / heart)
-    ni: 0, ikind: new Uint8Array(ITEM_CAP), ix: new Float32Array(ITEM_CAP), iy: new Float32Array(ITEM_CAP), itaken: new Uint8Array(ITEM_CAP),
+    ni: 0, ikind: new Uint8Array(ITEM_CAP), iid: new Uint8Array(ITEM_CAP), ix: new Float32Array(ITEM_CAP), iy: new Float32Array(ITEM_CAP), itaken: new Uint8Array(ITEM_CAP),
     // chase rocks
     nr: 0, rstate: new Uint8Array(ROCK_CAP), rx: new Float32Array(ROCK_CAP), ry: new Float32Array(ROCK_CAP),
     rt: new Float32Array(ROCK_CAP), rv: new Float32Array(ROCK_CAP),
@@ -99,7 +141,7 @@ export function createLoot() {
     const i = d.n++;
     d.kind[i] = rec.lk; d.state[i] = ST_INTACT;
     d.x[i] = rec.x; d.y[i] = rec.y; d.dx[i] = rec.dx || 0; d.dy[i] = rec.dy || 0;
-    d.count[i] = rec.n || 0; d.aux[i] = rec.aux || 0; d.t[i] = 0;
+    d.count[i] = rec.n || 0; d.aux[i] = rec.aux || 0; d.item[i] = rec.item || 0; d.t[i] = 0;
     return i;
   }
 
@@ -108,10 +150,10 @@ export function createLoot() {
     events.push({ type: 'break', lk: d.kind[i], x: d.x[i], y: d.y[i], shells: d.count[i], how });
   }
 
-  function addItem(kind, x, y) {
+  function addItem(kind, x, y, id = 0) {
     if (d.ni >= ITEM_CAP) return;
     const i = d.ni++;
-    d.ikind[i] = kind; d.ix[i] = x; d.iy[i] = y; d.itaken[i] = 0;
+    d.ikind[i] = kind; d.iid[i] = id; d.ix[i] = x; d.iy[i] = y; d.itaken[i] = 0;
   }
 
   function startChase() {
@@ -199,7 +241,7 @@ export function createLoot() {
           if (st === ST_INTACT && world.tileAt(Math.floor(d.x[i]), Math.floor(d.y[i])) === 0) {
             d.state[i] = ST_DONE;
             if (d.aux[i] === POCKET_SHELLS) events.push({ type: 'pocket', x: d.x[i], y: d.y[i], shells: d.count[i], item: 0 });
-            else { addItem(d.aux[i], d.x[i], d.y[i]); events.push({ type: 'pocket', x: d.x[i], y: d.y[i], shells: 0, item: d.aux[i] }); }
+            else { addItem(d.aux[i], d.x[i], d.y[i], d.item[i]); events.push({ type: 'pocket', x: d.x[i], y: d.y[i], shells: 0, item: d.aux[i] }); }
           }
           continue;
         }
@@ -210,7 +252,7 @@ export function createLoot() {
         } else if (k === LK_CHEST) {
           if (st === ST_INTACT && near < CHEST_R + octo.radius * 0.5) {
             d.state[i] = ST_DONE;
-            events.push({ type: 'chest', x: d.x[i], y: d.y[i], shells: d.count[i], trap: d.aux[i] });
+            events.push({ type: 'chest', x: d.x[i], y: d.y[i], shells: d.count[i], trap: d.aux[i], carry: itemFromCode(d.item[i]) });
             if (d.aux[i] === TRAP_SPIKES) { d.state[i] = ST_RATTLE; d.t[i] = SPIKE_RATTLE; }
             else if (d.aux[i] === TRAP_SWARM) events.push({ type: 'trap', trap: TRAP_SWARM, x: d.x[i], y: d.y[i] - 0.3, n: SWARM_SIZE });
           }
@@ -243,10 +285,10 @@ export function createLoot() {
       for (let i = 0; i < d.ni; i++) {
         if (d.itaken[i] || octo.dead) continue;
         if (Math.hypot(d.ix[i] - octo.x, d.iy[i] - octo.y) >= ITEM_R + octo.radius * 0.6) continue;
-        if (d.ikind[i] === POCKET_HEART) { if (octo.hearts >= HEART_MAX) continue; octo.hearts++; }
-        else addBomb(octo);
+        if (d.ikind[i] === POCKET_HEART) { if (octo.hearts >= (octo.heartMax || HEART_MAX)) continue; octo.hearts++; }
+        else if (d.ikind[i] === POCKET_BOMB) addBomb(octo);
         d.itaken[i] = 1;
-        events.push({ type: 'item', item: d.ikind[i], x: d.ix[i], y: d.iy[i] });
+        events.push({ type: 'item', item: d.ikind[i], x: d.ix[i], y: d.iy[i], carry: d.ikind[i] === POCKET_ITEM ? itemFromCode(d.iid[i]) : '' });
       }
       updateChase(dt, octo, world);
     },

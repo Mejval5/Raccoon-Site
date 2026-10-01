@@ -26,6 +26,7 @@ export function createRun(seed, opts = {}) {
     tutorialDone: !!opts.tutorialDone,
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
+    items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
     deaths: 0,
   };
 }
@@ -36,6 +37,7 @@ function startDive(run) {
   run.level = 1;
   run.levelsCleared = 0;
   run.shells = 0;
+  run.items = [];
 }
 
 /**
@@ -45,7 +47,7 @@ function startDive(run) {
 export function runEvent(run, ev) {
   if (ev === EV_DEATH) {
     run.deaths++;
-    run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0;
+    run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
     return true;
   }
   switch (run.state) {

@@ -10,6 +10,9 @@
 
 const COLLECT_RADIUS = 0.55; // world units, added to the octopus's own radius
 const PLANKTON_PULL_RADIUS = 1.0; // "pulled in within 1 unit" (OVERNIGHT.md M2-3)
+const MAGNET_PULL_SPEED = 6.0; // u/s, shell magnet pull (items.js)
+export const SHELL_PICKUP_DELAY = 0.35; // s a dropped shell cannot be collected, so its pop is seen
+const SHELL_DRAG = 4; // 1/s, slows the pop
 const PLANKTON_PULL_SPEED = 3.0; // u/s, drift-toward speed once inside the pull radius
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
@@ -114,7 +117,33 @@ export function createPickups() {
         const items = ensureChunk(index, chunk, yOffset);
         for (const it of items) {
           if (it.collected) continue;
-          if (it.type === 'shell') {
+          if (it.type === 'shell' && it.dropped) {
+            // a dropped shell pops out with a short velocity (drag settles it) and cannot be collected for
+            // SHELL_PICKUP_DELAY, so the player sees it before it is picked up
+            if (it.delay > 0) {
+              it.delay = Math.max(0, it.delay - dt);
+              const nx = it.x + it.vx * dt, ny = it.y + it.vy * dt;
+              if (!(world && world.isSolid(nx, ny))) { it.x = nx; it.y = ny; } else { it.vx = 0; it.vy = 0; }
+              const k = Math.exp(-SHELL_DRAG * dt);
+              it.vx *= k; it.vy *= k;
+              continue;
+            }
+            // shell magnet: loose shells within the octopus's magnet radius drift towards it
+            const md = dist(octo.x, octo.y, it.x, it.y);
+            if (octo.magnetR > 0 && md < octo.magnetR && md > 1e-4) {
+              const t = Math.min(1, (MAGNET_PULL_SPEED * dt) / md);
+              const mx = it.x + (octo.x - it.x) * t, my = it.y + (octo.y - it.y) * t;
+              if (!(world && world.isSolid(mx, my))) { it.x = mx; it.y = my; }
+            }
+          } else if (it.type === 'shell' && octo.magnetR > 0 && !it.hidden) {
+            const md = dist(octo.x, octo.y, it.x, it.y);
+            if (md < octo.magnetR && md > 1e-4) {
+              const t = Math.min(1, (MAGNET_PULL_SPEED * dt) / md);
+              const mx = it.x + (octo.x - it.x) * t, my = it.y + (octo.y - it.y) * t;
+              if (!(world && world.isSolid(mx, my))) { it.x = mx; it.y = my; }
+            }
+          }
+          if (it.type === 'shell' && !it.dropped) {
             // Live re-check (not baked in at spawn):
             // a shell's own tile starts as soft rock (gen.test.js asserts
             // this) and only turns to water once bombed, so `hidden` can
@@ -159,10 +188,10 @@ export function createPickups() {
     },
     events,
     /** v2: a shell dropped by a defeated creature, in the single level chunk (index 0). False before that chunk exists. */
-    dropShell(x, y) {
+    dropShell(x, y, vx = 0, vy = 0) {
       const items = byChunk.get(0);
       if (!items) return false;
-      items.push({ type: 'shell', x, y, hidden: false, collected: false, dropped: true });
+      items.push({ type: 'shell', x, y, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY });
       return true;
     },
     /** Visible, uncollected pickups in world space, for render.js. */

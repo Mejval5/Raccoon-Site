@@ -146,6 +146,10 @@ await runHazardTests(assert);
 import { runLootTests } from './loot.test.js';
 await runLootTests(assert);
 
+// --- Round 32: carried items and the round-31 review fixes ---
+import { runItemTests } from './items.test.js';
+await runItemTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

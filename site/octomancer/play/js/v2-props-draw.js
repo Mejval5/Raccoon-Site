@@ -4,6 +4,8 @@
 // cache. Called from main.js's extraDraw hook after enemies and bombs, before the octopus. Device pixels.
 
 import { artImg, COUNTER_SLICES } from './v2-art.js';
+import { isItem } from './items.js';
+import { drawItemIcon } from './items-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -53,7 +55,8 @@ function shellIcon(ctx, x, y, size) {
 }
 
 function itemGlyph(ctx, glyph, x, y, r, time) {
-  if (glyph === 'heart') heartGlyph(ctx, x, y, r);
+  if (isItem(glyph)) drawItemIcon(ctx, glyph, x, y, r * 1.15);
+  else if (glyph === 'heart') heartGlyph(ctx, x, y, r);
   else if (glyph === 'bombs3') {
     bombGlyph(ctx, x - r * 0.95, y + r * 0.2, r * 0.62, time);
     bombGlyph(ctx, x + r * 0.95, y + r * 0.2, r * 0.62, time + 1);
@@ -62,7 +65,7 @@ function itemGlyph(ctx, glyph, x, y, r, time) {
 }
 
 /** Deterministic irregular crack polylines through the tile box (x0,y0,w,h): downward wanderers with side branches. */
-function makeCracks(x0, y0, w, hgt, count, vertical = true) {
+function makeCracks(x0, y0, w, hgt, count, vertical = true, branchChance = 0.45) {
   let seed = (x0 * 374761393 + y0 * 668265263) >>> 0;
   const rnd = () => { seed = (Math.imul(seed ^ (seed >>> 15), 2246822519) + 0x9e3779b9) >>> 0; return (seed >>> 8) / 16777216; };
   const cracks = [];
@@ -78,16 +81,20 @@ function makeCracks(x0, y0, w, hgt, count, vertical = true) {
       pa = Math.min(A - 0.05, Math.max(0.05, pa + (rnd() - 0.5) * 0.9));
       pb += 0.35 + rnd() * 0.75;
       pts.push(...put(pa, pb));
-      if (rnd() < 0.45) branches.push([...put(pa, pb), ...put(pa + (rnd() < 0.5 ? -1 : 1) * (0.3 + rnd() * 0.5), pb + 0.2 + rnd() * 0.5)]);
+      if (rnd() < branchChance) branches.push([...put(pa, pb), ...put(pa + (rnd() < 0.5 ? -1 : 1) * (0.3 + rnd() * 0.5), pb + 0.2 + rnd() * 0.5)]);
     }
     cracks.push({ pts, branches });
   }
   return cracks;
 }
 
-function strokeCracks(ctx, sx, sy, ppu, cracks) {
+function strokeCracks(ctx, sx, sy, ppu, cracks, soft = false) {
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  for (const [lw, style] of [[Math.max(2, ppu * 0.06), 'rgba(12,6,20,0.45)'], [Math.max(1, ppu * 0.022), 'rgba(255,238,205,0.5)']]) {
+  // soft: a thin crack in a darker shade of the rock, no bright edge (the vault wall: cracked rock, not a shatter mark)
+  const passes = soft
+    ? [[Math.max(1.2, ppu * 0.035), 'rgba(18,40,50,0.55)']]
+    : [[Math.max(2, ppu * 0.06), 'rgba(12,6,20,0.45)'], [Math.max(1, ppu * 0.022), 'rgba(255,238,205,0.5)']];
+  for (const [lw, style] of passes) {
     ctx.strokeStyle = style; ctx.lineWidth = lw;
     ctx.beginPath();
     for (const c of cracks) {
@@ -129,13 +136,8 @@ export function drawPocketCracks(ctx, camera, cw, ch, pockets, n, tileAt) {
     }
     ctx.clip();
     // cracks run along the line from the entrance towards the pocket
-    const crack = artImg('crackVault');
-    if (crack) {
-      const cw2 = ppu * 2.1, ch2 = cw2 * (crack.naturalHeight / crack.naturalWidth);
-      ctx.globalAlpha = 0.92;
-      ctx.drawImage(crack, sx(bx + 1) - cw2 / 2, sy(by + 1) - ch2 / 2, cw2, ch2);
-      ctx.globalAlpha = 1;
-    } else strokeCracks(ctx, sx, sy, ppu, makeCracks(bx, by, bw, bh, 2, side === 1 || side === 2));
+    // one thin crack, one short branch, in a darker shade of the rock at about half strength
+    strokeCracks(ctx, sx, sy, ppu, makeCracks(bx, by, bw, bh, 1, side === 1 || side === 2, 0.18), true);
     ctx.restore();
   }
 }
