@@ -6,6 +6,7 @@
 import { artImg, COUNTER_SLICES } from './v2-art.js';
 import { isItem } from './items.js';
 import { drawItemIcon } from './items-draw.js';
+import { drawBoulder } from './hazards-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -112,6 +113,24 @@ function makeCracks(x0, y0, w, hgt, count, vertical = true, branchChance = 0.45)
   return cracks;
 }
 
+/** r36: one short zig-zag crack (4-5 hard turns, a side branch) inside the tile box, along its long axis; never reaches the box edge. */
+export function makeZigCrack(x0, y0, w, hgt, vertical) {
+  let seed = (x0 * 374761393 + y0 * 668265263 + 17) >>> 0;
+  const rnd = () => { seed = (Math.imul(seed ^ (seed >>> 15), 2246822519) + 0x9e3779b9) >>> 0; return (seed >>> 8) / 16777216; };
+  const A = vertical ? w : hgt, B = vertical ? hgt : w;   // across, along
+  const put = (a, b) => (vertical ? [x0 + a, y0 + b] : [x0 + b, y0 + a]);
+  let pa = A * (0.35 + rnd() * 0.3), pb = B * 0.2;
+  const pts = [...put(pa, pb)], branches = [];
+  const turns = 4 + Math.floor(rnd() * 2);
+  for (let j = 0; j < turns; j++) {
+    pa = Math.min(A * 0.9, Math.max(A * 0.1, pa + (j % 2 ? 1 : -1) * (0.22 + rnd() * 0.2)));
+    pb += B * (0.45 / turns) + rnd() * 0.06;
+    pts.push(...put(pa, pb));
+    if (j === 1) branches.push([...put(pa, pb), ...put(pa + (rnd() < 0.5 ? -1 : 1) * (0.22 + rnd() * 0.12), pb + 0.14 + rnd() * 0.1)]);
+  }
+  return [{ pts, branches }];
+}
+
 function strokeCracks(ctx, sx, sy, ppu, cracks, soft = false) {
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   // soft: a thin crack in a darker shade of the rock, no bright edge (the vault wall: cracked rock, not a shatter mark)
@@ -159,9 +178,13 @@ export function drawPocketCracks(ctx, camera, cw, ch, pockets, n, tileAt) {
       ctx.rect(x0, y0, x1 - x0, y1 - y0);
     }
     ctx.clip();
-    // cracks run along the line from the entrance towards the pocket
-    // one thin crack, one short branch, in a darker shade of the rock at about half strength
-    strokeCracks(ctx, sx, sy, ppu, makeCracks(bx, by, bw, bh, 1, side === 1 || side === 2, 0.18), true);
+    // r36: a short jagged crack with a branch, kept inside the tile NEXT TO the pocket (the far end of the two-tile
+    // box). It used to run the whole box and end on the ground the entrance stands on, so over a hanging urchin or
+    // horns it read as a rope holding it. The crack box is the tile beside the pocket; the entrance tile stays clean.
+    let cx0 = bx, cy0 = by, cw0 = bw, ch0 = bh;
+    if (side === 3) { cx0 = bx + 1; cw0 = 1; } else if (side === 4) { cx0 = bx; cw0 = 1; }
+    else if (side === 1) { cy0 = by + 1; ch0 = 1; } else { cy0 = by; ch0 = 1; }
+    strokeCracks(ctx, sx, sy, ppu, makeZigCrack(cx0, cy0, cw0, ch0, side === 1 || side === 2), true);
     ctx.restore();
   }
 }
@@ -529,5 +552,28 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
     ctx.fillStyle = afford ? '#ffe38a' : '#ff8a80';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(text, px + ppu * 0.2, ty + ppu * 0.02);
+  }
+}
+
+/**
+ * r36: decor boulders from the pattern table (a small boulder with a smaller one beside it, each sunk about a third into
+ * the rock under it). They are scenery, not solid, and not a hazard: smaller and rounder than the falling rock, and
+ * gone when the tile under them is bombed away.
+ * @param {Float32Array} list x, y (anchor cell centre), dy (-1 floor, +1 ceiling), seed per boulder
+ */
+export function drawDecorBoulders(ctx, camera, cw, ch, list, tileAt) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  for (let i = 0; i < list.length; i += 4) {
+    const x = list[i], y = list[i + 1], dy = list[i + 2], seed = list[i + 3];
+    const px = sx(x), py = sy(y);
+    if (px < -ppu * 2 || px > cw + ppu * 2 || py < -ppu * 2 || py > ch + ppu * 2) continue;
+    if (tileAt(Math.floor(x), Math.floor(y) - dy) === 0) continue; // its rock was bombed away
+    const R = ppu * (0.3 + 0.05 * ((seed * 7) % 3));
+    const rimY = py - dy * 0.5 * ppu;      // the rock face under (over) the cell
+    drawBoulder(ctx, px, rimY + dy * R * 0.62, R, seed);
+    const side = seed % 2 ? 1 : -1, r2 = R * 0.62;
+    if (tileAt(Math.floor(x + side * 0.9), Math.floor(y) - dy) !== 0 && tileAt(Math.floor(x + side * 0.9), Math.floor(y)) === 0) {
+      drawBoulder(ctx, px + side * R * 1.25, rimY + dy * r2 * 0.6, r2, seed + 3);
+    }
   }
 }

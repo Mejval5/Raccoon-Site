@@ -83,6 +83,7 @@ function resolveWallsAt(e, world) {
 // without needing a full capsule-vs-segments resolver.
 const PIRANHA_BODY_HALF_LEN = 0.85; // tiles, nose-to-tail half length (image aspect 204/128 * 1.15 worldSize / 2 ~= 0.92, kept slightly inside the art edge)
 const PIRANHA_BODY_HALF_HEIGHT = 0.52; // tiles, perpendicular (top/bottom) half-extent
+const PIRANHA_TURN_PROBE = PIRANHA_BODY_HALF_LEN + 0.55; // r36: how far ahead of its centre a patrolling piranha looks for rock: where the wall collision (nose circle) starts to push, so it turns just before it touches rock
 function collidePiranhaWithWalls(e, world) {
   const origRadius = e.radius;
   e.radius = PIRANHA_BODY_HALF_HEIGHT;
@@ -183,6 +184,9 @@ function sepExtent(kind) {
  * line. A static enemy (urchin, horns, cannon) never moves itself, but
  * still pushes a moving enemy off of it. */
 function separateEnemies(list) {
+  for (let pass = 0; pass < 3; pass++) separatePass(list, pass);
+}
+function separatePass(list, pass) {
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
     if (a.dead) continue;
@@ -192,9 +196,10 @@ function separateEnemies(list) {
       if (!a.moving && !b.moving) continue; // two static emplacements: nothing to resolve
       const ea = sepExtent(a.kind), eb = sepExtent(b.kind);
       const dx = b.x - a.x, dy = b.y - a.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 1e-6) continue;
-      const nx = dx / d, ny = dy / d;
+      let d = Math.hypot(dx, dy);
+      let nx, ny;
+      if (d < 1e-6) { nx = (a.id & 1) ? 1 : -1; ny = 0; d = 0; } // exactly on top of each other: split sideways (r36)
+      else { nx = dx / d; ny = dy / d; }
       // Box half-extent sum projected onto the connecting direction --
       // cheap stand-in for a proper ellipse/box-vs-box test, but (unlike a
       // single circle) scales down on the short axis and up on the long
@@ -394,7 +399,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
     const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
       ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true, moving: true,
-      dir, face: dir, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW, variant: fast ? 'fast' : 'slow', cool: 0, snapHit: false, st: CS_WALK,
+      dir, face: dir, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW, variant: fast ? 'fast' : 'slow', cool: 0, snapHit: false, st: CS_WALK, stuck: 0, flipCd: 0,
     };
   }
   if (kind === 'horns') {
@@ -519,7 +524,8 @@ export function createEnemies() {
     events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason });
     if (reason === 'dash') {
       // hit-stop: a white ghost of the enemy stays for 60 ms and main.js freezes the sim for as long
-      ghosts.push({ ...e, dead: false, ghost: true, t: HIT_STOP, hitFlash: 1.2, stun: 0, prevX: e.x, prevY: e.y });
+      // r36: the ghost is only a white silhouette: no wind-up cue, '!' or glow (the enemy it copies is dead)
+      ghosts.push({ ...e, dead: false, ghost: true, t: HIT_STOP, hitFlash: 1.2, stun: 0, tell: 0, st: 0, prevX: e.x, prevY: e.y });
       events.push({ type: 'hitStop', dur: HIT_STOP });
     }
   }
@@ -540,6 +546,22 @@ export function createEnemies() {
     else if (e.kind === 'crab') { e.st = CS_WALK; e.cool = 0.5; }
     else if (e.kind === 'cannon') { e.st = CN_RELOAD; e.t = 1.0; }
     else if (e.kind === 'manta') { e.st = MA_GLIDE; e.cool = 1.5; }
+  }
+
+  /** r36: is another live enemy's hull in the way ahead of `e` (direction `dir`, within `margin` tiles of touching)?
+   * A patroller that only turned at rock used to keep swimming into an urchin or horns while separateEnemies pushed it
+   * back, hovering motionless against the spike; every patroller now treats any other enemy as an obstacle. */
+  function enemyAhead(e, dir, margin) {
+    const ea = sepExtent(e.kind);
+    for (let i = 0; i < stepList.length; i++) {
+      const o = stepList[i];
+      if (o === e || o.dead) continue;
+      const eo = sepExtent(o.kind);
+      const dx = (o.x - e.x) * dir;
+      if (dx < -0.1 || dx > ea.hx + eo.hx + margin) continue;
+      if (Math.abs(o.y - e.y) < ea.hy + eo.hy) return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------------------------------ piranha
@@ -564,9 +586,9 @@ export function createEnemies() {
         // turn at the end of its range, or when the hull would meet rock (probe = nose + body radius, not a tile centre);
         // a piranha that is not getting anywhere turns too (smoothed rims bulge a little past the tile edge)
         const moved = Math.abs(e.x - px);
-        e.stuck = moved < 0.3 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0;
+        e.stuck = moved < 0.55 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0; // r36: 0.3 let one hovering at 0.01 per step through
         const far = (e.x - e.baseX) * e.dir > PIRANHA_PATROL_RANGE;
-        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_BODY_HALF_LEN + PIRANHA_BODY_HALF_HEIGHT + 0.15, 0.45))) {
+        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_TURN_PROBE, 0.45) || enemyAhead(e, e.dir, 0.4))) {
           e.dir = -e.dir; e.flipCd = 0.6; e.stuck = 0;
         }
         e.face = e.dir;
@@ -651,21 +673,26 @@ export function createEnemies() {
   function updateCrab(e, dt, octo, world, props) {
     const groundDy = e.placement === 'ceiling' ? -1 : 1;
     e.cool = Math.max(0, e.cool - dt);
+    e.flipCd = Math.max(0, e.flipCd - dt);
     const near = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3;
     switch (e.st) {
       case CS_WALK: {
         // sinks if the floor under it was bombed away
         if (groundDy === 1 && !world.isSolid(e.x, e.y + 0.6)) { e.y += 2.5 * dt; e.vy = 2.5; } else e.vy = 0;
         const step = e.dir * e.speed * dt;
+        const cx0 = e.x;
         e.x += step;
         const aheadX = e.x + e.dir * (e.radius + 0.15);
-        if (world.isSolid(aheadX, e.y) || bombAhead(e, props)) {
-          e.x -= step; e.dir *= -1; // wall (or a resting bomb) ahead: undo the step and turn around
+        if (world.isSolid(aheadX, e.y) || bombAhead(e, props) || (e.flipCd <= 0 && enemyAhead(e, e.dir, 0.3))) {
+          e.x -= step; e.dir *= -1; e.flipCd = 0.5; // wall, resting bomb or another enemy ahead: undo the step and turn around
         } else if (!world.isSolid(aheadX, e.y + groundDy)) {
           e.dir *= -1; // no ledge ahead: turn around before walking off it
         }
         e.vx = e.dir * e.speed; e.face = e.dir;
         collideWithWalls(e, world);
+        // r36 stuck detector (as the piranha and manta have): a crab that is not getting anywhere turns round
+        e.stuck = Math.abs(e.x - cx0) < 0.55 * e.speed * dt ? e.stuck + dt : 0;
+        if (e.stuck > 0.4) { e.dir = -e.dir; e.face = e.dir; e.stuck = 0; e.flipCd = 0.5; }
         if (e.cool <= 0 && near) { e.st = CS_PAUSE; e.t = CRAB_PAUSE; e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; e.vx = 0; e.tell = 0; }
         break;
       }
@@ -699,6 +726,7 @@ export function createEnemies() {
     const px = e.x, py = e.y;
     e.ph += dt * MANTA_SINE_FREQ;
     e.cool = Math.max(0, e.cool - dt);
+    e.flipCd = Math.max(0, e.flipCd - dt);
     const glideY = e.baseY + Math.sin(e.ph) * MANTA_SINE_AMPLITUDE;
     switch (e.st) {
       case MA_GLIDE: {
@@ -706,14 +734,14 @@ export function createEnemies() {
         let nx = e.x + e.vx * dt;
         // wide back-and-forth around its spawn point; it turns while a wingtip (plus margin) is still clear of rock
         if (Math.abs(nx - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
-        if (!mantaFits(world, nx, e.y)) { e.dir = -e.dir; nx = e.x; }
+        if (!mantaFits(world, nx, e.y) || (e.flipCd <= 0 && enemyAhead(e, e.dir, 0.3))) { e.dir = -e.dir; nx = e.x; e.flipCd = 0.6; }
         e.x = nx;
         const ny = e.y + Math.max(-3 * dt, Math.min(3 * dt, glideY - e.y));
         if (mantaFits(world, e.x, ny)) e.y = ny;
         e.vy = (e.y - py) / dt;
         collideMantaWithWalls(e, world);
         const moved = Math.abs(e.x - px);
-        e.stuck = moved < 0.3 * MANTA_SPEED * dt ? e.stuck + dt : 0;
+        e.stuck = moved < 0.55 * MANTA_SPEED * dt ? e.stuck + dt : 0;
         if (e.stuck > 0.3) { e.dir = -e.dir; e.stuck = 0; }
         e.face = e.dir;
         // octopus below it, in line, with a clear drop: tell, then dive

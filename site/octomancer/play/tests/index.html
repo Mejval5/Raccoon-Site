@@ -162,6 +162,14 @@ await runPropsTests(assert);
 import { runEnemyR35Tests } from './enemies-r35.test.js';
 await runEnemyR35Tests(assert);
 
+// --- Round 36: round-35 review fixes (patrol pins, pocket crack, boulder, ghost, lunge overlap) ---
+import { runEnemyR36Tests } from './enemies-r36.test.js';
+await runEnemyR36Tests(assert);
+
+// --- Round 36: level detail (dense rooms, 2x props and decor, set pieces) ---
+import { runDetailTests } from './detail.test.js';
+await runDetailTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

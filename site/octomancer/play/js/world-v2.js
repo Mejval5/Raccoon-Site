@@ -53,6 +53,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     exclude: authored ? undefined : { x: startX, y: startY, r: START_SAFE_RADIUS },
     depthBias: 40 + levelIndex * 15,
     noDepthGate: true, // enemies.js: no "first 40 units enemy-free" rule in a whole-level chunk
+    v2: true,
     salt: hashSalt(runSeed, levelIndex),
     exitCol: level.exitX,
     // decor: no plants inside the shop stall (counter span + 3 tiles each side, from above the sign to below the floor)

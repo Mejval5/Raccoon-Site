@@ -14,7 +14,8 @@ import { mulberry32, hashSeed } from './rng.js';
 import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk } from './level.js';
 import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
-import { makeLootRecord, RELIC_CHANCE } from './loot.js';
+import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
+import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT } from './rooms.js';
 
 export const START_SAFE_RADIUS = 7;
 // Things that hurt from a distance stay out of reach of an idle octopus at the start: a cannon shot flies
@@ -32,6 +33,14 @@ const PATROL_REACH = { piranha: 5, crab: 99, manta: 5 }; // piranha: enemies.js 
 const PATROL_SHOP_CLEAR = { piranha: 6.5, crab: 3, manta: 6 };
 const PATROL_EXIT_CLEAR = { piranha: 5, crab: 2, manta: 5 };
 export const ENEMY_MIN_GAP = 2.5;
+export const DECOR_GAP = 1.4; // r36: tiles decor keeps from any other spawn
+export const POCKET_KEEP_OUT = 3; // r36: tiles around a hidden pocket's entrance with no enemy
+export const PATROL_MIN_TRAVEL = 1.5; // r36: least centre travel a piranha or crab's free stretch must leave it (a manta also swings up and down: 1)
+// half extents of the hulls enemies.js separates (kept in step with ENEMY_SEP_EXTENT there)
+// wx = how close to rock it turns round (its probe: enemies.js blockedAhead / mantaFits)
+const PATROL_HULL = { piranha: { hx: 0.9, hy: 0.55, wx: 1.4, min: 1.5 }, crab: { hx: 0.45, hy: 0.45, wx: 0.55, min: 1.5 }, manta: { hx: 1.4, hy: 0.4, wx: 1.65, min: 1 } };
+const STATIC_HULL = { urchin: { hx: 0.5, hy: 0.5 }, horns: { hx: 0.275, hy: 0.275 }, cannon: { hx: 0.275, hy: 0.275 } };
+const STATIC_KINDS = { urchin: 1, horns: 1, cannon: 1 };
 
 function idx(x, y) { return y * W + x; }
 
@@ -215,7 +224,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       if (PATROL_EXIT_CLEAR[name] && level.exitX !== undefined && stretchToPoint(t, tx, ty, PATROL_REACH[name], level.exitX + 0.5, level.exitY + 0.5) < PATROL_EXIT_CLEAR[name]) return null;
       return makeEnemySlot(t, name, tx, ty, dx, dy);
     };
-    const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied);
+    const placed = selectSpawns(table, hit, levelIndex, prng, build, occupied, (p) => table.kind[p] !== 'decor');
     // A*: blocking hazards must leave the exit (and shop) reachable
     const collect = () => { const b = []; for (const r of placed) if (r.type === 'hazard') hazardBlockers(r, b); return b; };
     for (let guard = 0; guard < 64; guard++) {
@@ -227,10 +236,62 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       placed.splice(k, 1);
     }
     // no two enemies spawn on top of each other (or hug each other): drop the later one of a too-close pair
-    const kept = [];
+    let kept = [];
     for (const r of placed) {
       if (r.type === 'enemy-slot' && kept.some((k) => k.type === 'enemy-slot' && Math.hypot(k.x - r.x, k.y - r.y) < ENEMY_MIN_GAP)) continue;
       kept.push(r);
+    }
+    // r36: a hidden pocket's entrance (the cell its crack leads to) stays clear of enemies, like other objectives
+    const keepOut = [];
+    for (let i = 0; i < (level.nPockets || 0); i++) {
+      const px = level.pockets[i * 3], py = level.pockets[i * 3 + 1], side = level.pockets[i * 3 + 2];
+      keepOut.push(side === ANCH_LEFT ? px - 2.5 : side === ANCH_RIGHT ? px + 4.5 : px + 1, side === ANCH_UP ? py - 2.5 : side === ANCH_DOWN ? py + 4.5 : py + 1);
+    }
+    for (const r of kept) if (r.type === 'loot' && r.lk === LK_POCKET) keepOut.push(r.x + r.dx * 2, r.y + r.dy * 2);
+    if (keepOut.length) {
+      kept = kept.filter((r) => {
+        if (r.type !== 'enemy-slot') return true;
+        for (let i = 0; i < keepOut.length; i += 2) if (Math.hypot(r.x - keepOut[i], r.y - keepOut[i + 1]) < POCKET_KEEP_OUT) return false;
+        return true;
+      });
+    }
+    // r36: a patroller must have room to patrol. Its free stretch (rock on either side, and any static enemy standing
+    // in the row) has to leave its body at least PATROL_MIN_TRAVEL of centre travel, or it would sit pinned against an
+    // urchin / horns / cannon. enemies.js turns at them at run time; this keeps the spawn from starting boxed in.
+    {
+      const statics = kept.filter((r) => r.type === 'enemy-slot' && STATIC_KINDS[r.kind]);
+      kept = kept.filter((r) => {
+        if (r.type !== 'enemy-slot' || !PATROL_HULL[r.kind]) return true;
+        const hull = PATROL_HULL[r.kind], tx = Math.floor(r.x), ty = Math.floor(r.y), reach = PATROL_REACH[r.kind];
+        let xl = tx, xr = tx;
+        while (r.x - (xl) < reach && xl - 1 >= 0 && t[idx(xl - 1, ty)] === 0) xl--;
+        while (xr + 1 - r.x < reach && xr + 1 < W && t[idx(xr + 1, ty)] === 0) xr++;
+        let lo = xl + hull.wx, hi = xr + 1 - hull.wx;
+        for (const s of statics) {
+          const sh = STATIC_HULL[s.kind];
+          if (Math.abs(s.y - r.y) >= hull.hy + sh.hy + 0.3) continue;
+          if (s.x >= r.x) hi = Math.min(hi, s.x - hull.hx - sh.hx - 0.4); else lo = Math.max(lo, s.x + hull.hx + sh.hx + 0.4);
+        }
+        return lo <= r.x && r.x <= hi && hi - lo >= hull.min;
+      });
+    }
+    // r36: decor (foliage clusters, rune carvings, boulders) is its own pass over the same hits, after everything that
+    // matters is placed: it is not solid (it can never block the swim path or the A* check), keeps out of the shop and
+    // the exit ring, and only keeps a small gap from what is already there. decor.js / v2-props-draw.js draw it.
+    {
+      const drng = mulberry32(hashSeed(hashSeed(runSeed >>> 0, levelIndex >>> 0), 0xdec0a7));
+      const occ = [];
+      for (const r of kept) occ.push(r.x, r.y, DECOR_GAP);
+      for (const s of spawns) if (s.type === 'shell') occ.push(s.x, s.y, DECOR_GAP);
+      const buildDecor = (p, x, y, dx, dy) => {
+        const tx = Math.floor(x), ty = Math.floor(y), name = table.spawn[p];
+        if (tx < BORDER || ty < BORDER || tx >= W - BORDER || ty >= H - BORDER || inShop(tx, ty) || nearExit(tx, ty)) return null;
+        if (name === 'rune') { // the anchor is the rock tile carrying the carving, water in front of it
+          if (t[idx(tx, ty)] === 0 || t[idx(tx + dx, ty + dy)] !== 0) return null;
+        } else if (t[idx(tx, ty)] !== 0) return null; // foliage and boulders stand in water on a surface
+        return { type: 'decor', dk: name, x, y, dx, dy };
+      };
+      for (const r of selectSpawns(table, hit, levelIndex, drng, buildDecor, occ, (p) => table.kind[p] === 'decor')) kept.push(r);
     }
     for (const r of kept) spawns.push(r);
   }

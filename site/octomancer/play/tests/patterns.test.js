@@ -73,10 +73,10 @@ export async function runPatternTests(assert) {
   const HAZARD_KINDS = Object.keys(HAZARD_CODE);
   let shapeBad = '';
   for (const p of json.patterns) {
-    if (!p.id || !['enemy', 'hazard', 'loot'].includes(p.kind)) shapeBad += ' kind:' + p.id;
-    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : p.kind === 'hazard' ? !HAZARD_KINDS.includes(p.spawn) : !Object.keys(LOOT_CODE).includes(p.spawn)) shapeBad += ' spawn:' + p.id;
+    if (!p.id || !['enemy', 'hazard', 'loot', 'decor'].includes(p.kind)) shapeBad += ' kind:' + p.id;
+    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : p.kind === 'hazard' ? !HAZARD_KINDS.includes(p.spawn) : p.kind === 'decor' ? !['foliage', 'rune', 'boulder'].includes(p.spawn) : !Object.keys(LOOT_CODE).includes(p.spawn)) shapeBad += ' spawn:' + p.id;
     if (p.rows.length !== 5 || p.rows.some((r) => !/^[#.?]{5}$/.test(r))) shapeBad += ' rows:' + p.id;
-    if (p.rows[p.anchor[1]][p.anchor[0]] !== (p.spawn === 'pocket' ? '#' : '.')) shapeBad += ' anchor:' + p.id; // a hidden pocket's anchor is a rock tile
+    if (p.rows[p.anchor[1]][p.anchor[0]] !== (p.spawn === 'pocket' || p.spawn === 'rune' ? '#' : '.')) shapeBad += ' anchor:' + p.id; // a hidden pocket's and a rune's anchor is a rock tile
     if (p.chance.length !== NLEVELS || p.cap.length !== NLEVELS || p.chance.some((c) => c < 0 || c > 1) || p.cap.some((c) => c < 0 || !Number.isInteger(c))) shapeBad += ' ramp:' + p.id;
   }
   assert('patterns: every entry has a 5x5 kernel, a water anchor, a known spawn and a chance and cap for each of 1-1, 1-2, 1-3' + shapeBad, shapeBad === '');
@@ -178,11 +178,12 @@ export async function runPatternTests(assert) {
     for (let lv = 0; lv < 3; lv++) {
       const seed = 3001 + s * 131;
       const L = generateLevel(seed, lv, bank);
-      const sp = buildLevelSpawns(L, seed, lv).spawns.filter((x) => x.pid);
+      const spAll = buildLevelSpawns(L, seed, lv).spawns.filter((x) => x.pid);
+      const sp = spAll.filter((x) => x.type !== 'decor'); // r36: decor is scenery, it may stand near the start and the shop
       const byId = {};
       let hazards = 0;
+      for (const r of spAll) byId[r.pid] = (byId[r.pid] || 0) + 1;
       for (const r of sp) {
-        byId[r.pid] = (byId[r.pid] || 0) + 1;
         if (r.type === 'hazard') hazards++;
         if (Math.hypot(r.x - (L.startX + 0.5), r.y - (L.startY + 0.5)) < START_SAFE_RADIUS) startBad++;
         if (r.type === 'enemy-slot' && (!r.kind || L.tiles[Math.floor(r.y) * LEVEL_W + Math.floor(r.x)] !== 0)) noKind++;
@@ -194,7 +195,7 @@ export async function runPatternTests(assert) {
       perLevel[lv].push({ total: sp.length, hazards, byId });
       if (s < 5) {
         const again = buildLevelSpawns(L, seed, lv).spawns.filter((x) => x.pid).map((x) => x.pid + x.x + x.y).join();
-        if (again !== sp.map((x) => x.pid + x.x + x.y).join()) detBad++;
+        if (again !== spAll.map((x) => x.pid + x.x + x.y).join()) detBad++;
       }
     }
   }

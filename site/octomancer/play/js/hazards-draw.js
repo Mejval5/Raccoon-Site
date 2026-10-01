@@ -195,14 +195,18 @@ function drawRock(ctx, sx, sy, ppu, state, time, seed, vy, isSolid, wx, wy, land
   if (state < 2 && isSolid) {
     const tx = Math.floor(wx), ty = Math.floor(wy);
     const l = isSolid(tx - 1, ty), r = isSolid(tx + 1, ty);
-    if (l !== r) { R = 0.45 * ppu; lean = (l ? 0.12 : -0.12) * ppu; }
+    // r36: beside a wall it wedges INTO the corner (its side overlaps the wall rim a little) instead of hovering off it
+    if (l !== r) { R = 0.47 * ppu; lean = (l ? -0.05 : 0.05) * ppu; }
   }
   sx += lean;
+  // r36: hanging, it is pressed up into the ceiling rim (top overlaps it by about a tenth of a tile)
+  if (state < 2) sy -= 0.1 * ppu;
   if (state < 2) {
-    // hanging: a dark gap where it meets the ceiling, and a few grains of grit trickling down
+    // hanging: a dark crevice IN the rim where it meets the ceiling (centred on the rim line, so it reads as a shadowed
+    // crack in the rock, not a disc floating in the water), and a few grains of grit trickling down
     const top = sy - 0.5 * ppu;
-    ctx.fillStyle = 'rgba(8,14,24,0.55)';
-    ctx.beginPath(); ctx.ellipse(sx, top + 0.03 * ppu, 0.36 * ppu, 0.07 * ppu, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(8,14,24,0.6)';
+    ctx.beginPath(); ctx.ellipse(sx, top + 0.05 * ppu, 0.38 * ppu, 0.1 * ppu, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(205,195,180,0.6)';
     for (let k = 0; k < 3; k++) {
       const u = (time * (state === 1 ? 1.6 : 0.35) + k * 0.37 + hash(seed + k)) % 1;

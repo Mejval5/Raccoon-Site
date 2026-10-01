@@ -46,8 +46,8 @@ export async function runBiome1Tests(assert, approx) {
   bank.fallbackBank = createRoomBank(await loadRoomsJson());
 
   // --- parsing ---
-  assert(`biome1: ${rooms.length} hand-authored rooms (20-30) of 10x16`,
-    rooms.length >= 20 && rooms.length <= 30 && rooms.every((r) => r.cells.length === ROOM_H && r.cells.every((s) => s.length === ROOM_W)));
+  assert(`biome1: ${rooms.length} rooms (r36: 30 + 10 new, 36-45) of 10x16`,
+    rooms.length >= 36 && rooms.length <= 45 && rooms.every((r) => r.cells.length === ROOM_H && r.cells.every((s) => s.length === ROOM_W)));
   assert('biome1: ids are unique', new Set(rooms.map((r) => r.id)).size === rooms.length);
   assert('biome1: only # . S E ? ^ v < > appear in the ASCII', rooms.every((r) => r.cells.every((s) => [...s].every((c) => ALLOWED.has(c)))));
   assert('biome1: every room has at least one known tag', rooms.every((r) => r.tags && r.tags.length > 0 && r.tags.every((t) => TAGS.includes(t))));
@@ -83,6 +83,29 @@ export async function runBiome1Tests(assert, approx) {
     }
   }
   assert(`biome1: ${anchors} anchors (all flips) sit on water next to the rock they point at`, anchors > 40 && anchorBad === 0);
+
+  // r36 level detail: every non-shop room has interior structure, anchors and quantum cells; three set pieces exist
+  {
+    const plain = rooms.filter((r) => !r.tags.includes('shop'));
+    const interior = (r, f) => { let n = 0; for (let y = 1; y < ROOM_H - 1; y++) for (let x = 1; x < ROOM_W - 1; x++) if (f(r.cells[y][x])) n++; return n; };
+    const qFrac = plain.reduce((a, r) => a + interior(r, (c) => c === '?'), 0) / (plain.length * (ROOM_W - 2) * (ROOM_H - 2));
+    assert(`biome1 r36: about 15% of the interior cells are quantum '?' (${(qFrac * 100).toFixed(1)}%, 11-20%), so no two levels repeat`, qFrac > 0.11 && qFrac < 0.2);
+    assert('biome1 r36: every non-shop room has quantum cells and at least one pattern anchor', plain.every((r) => interior(r, (c) => c === '?') >= 2 && /[\^v<>]/.test(r.cells.join(''))));
+    const ids = rooms.map((r) => r.id);
+    assert('biome1 r36: the three set pieces (sunken wreck, urchin garden, current-jet gauntlet) are in the bank', ['b1-set-wreck', 'b1-set-garden', 'b1-set-gauntlet'].every((i) => ids.includes(i)));
+    const detailed = plain.filter((r) => !/shaft|chimney|set-/.test(r.id)); // the set pieces are drawn by hand; the clean-walled shaft rooms keep the 3-wide shafts the eel pattern needs
+    const withStructure = detailed.filter((r) => {
+      // interior structure: rock cells inside the room that touch water on two or more sides (ledges, pillars, bumps, platforms)
+      let n = 0;
+      for (let y = 2; y < ROOM_H - 2; y++) for (let x = 2; x < ROOM_W - 2; x++) {
+        if (r.cells[y][x] !== '#') continue;
+        let open = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if ('.^v<>SE'.includes(r.cells[y + dy][x + dx])) open++;
+        if (open >= 2) n++;
+      }
+      return n >= 1;
+    }).length;
+    assert(`biome1 r36: ${withStructure} of ${detailed.length} non-shop, non-shaft rooms have ledges, pillars, bumps or platforms inside`, withStructure === detailed.length);
+  }
 
   // open fraction: caves, not open fields
   let rock = 0;

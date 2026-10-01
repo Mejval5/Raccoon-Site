@@ -39,7 +39,7 @@ import { createJournal, creatureId, itemId, ENTRIES } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop, drawRubble } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawQuestSign, drawCritter, drawVaultCache, drawShop, drawRubble, drawDecorBoulders } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import {
   fetchQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
@@ -670,6 +670,18 @@ function stepV2(snap) {
   }
 }
 
+// r36: the level's decor boulders (pattern table), flattened once per level: x, y, dy, seed
+let boulderLevel = null, boulderList = null;
+function decorBoulders(lv) {
+  if (boulderLevel === lv) return boulderList;
+  boulderLevel = lv;
+  const out = [];
+  const chunk = world.residentChunks()[0] && world.residentChunks()[0].chunk;
+  if (chunk && chunk.spawns) for (const s of chunk.spawns) if (s.type === 'decor' && s.dk === 'boulder') out.push(s.x, s.y, s.dy, (Math.floor(s.x) * 7 + Math.floor(s.y) * 13) % 97);
+  boulderList = Float32Array.from(out);
+  return boulderList;
+}
+
 function v2Extra(c, camera, w2s, cw, ch) {
   const lv = world.level;
   drawV2Marks(c, camera, cw, ch, {
@@ -687,6 +699,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
   drawRubble(c, camera, cw, ch, props.data);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
+    drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);

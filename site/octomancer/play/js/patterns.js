@@ -117,10 +117,10 @@ export function matchPatterns(t, tiles, w, h, hits = null) {
  * pattern is under its cap for this level, its chance roll passes, it keeps its spacing from everything
  * already placed (`occupied` seeds that list) and `build` accepts it.
  * `build(patternIndex, x, y, dx, dy, flip)` returns the spawn record (x, y = cell centre) or null to reject.
- * Every returned record carries `pid` (pattern id).
+ * Every returned record carries `pid` (pattern id). `filter(patternIndex)` (optional) limits the pass to some patterns.
  * @returns {any[]}
  */
-export function selectSpawns(t, hit, levelIndex, rng, build, occupied = null) {
+export function selectSpawns(t, hit, levelIndex, rng, build, occupied = null, filter = null) {
   const { hits, n } = hit;
   const lv = Math.min(NLEVELS - 1, Math.max(0, levelIndex | 0));
   const order = new Int32Array(n);
@@ -133,6 +133,7 @@ export function selectSpawns(t, hit, levelIndex, rng, build, occupied = null) {
   for (let k = 0; k < n; k++) {
     const i = order[k], v = hits[i * 3];
     const p = t.vPat[v];
+    if (filter && !filter(p)) continue; // r36: a pass over one group of patterns (decor runs after everything else)
     if (count[p] >= t.cap[p * NLEVELS + lv]) continue;
     if (rng() >= t.chance[p * NLEVELS + lv]) continue;
     const x = hits[i * 3 + 1] + 0.5, y = hits[i * 3 + 2] + 0.5;

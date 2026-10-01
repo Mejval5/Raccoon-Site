@@ -313,6 +313,26 @@ function findWallCritters(chunk, yOffset, chunkW, chunkH, chunkIndex) {
   return out;
 }
 
+/** r36: rune carvings from the pattern table (data/patterns.json, kind 'decor', spawn 'rune'). The anchor is the ROCK
+ * tile carrying the carving, so the critter sits inside that tile and the rune pass (drawn over the wall) paints it on
+ * the face. Gone with its tile when a bomb removes it (`support`). */
+function patternRunes(chunk, yOffset, chunkW) {
+  const out = [];
+  if (!chunk.spawns) return out;
+  for (const s of chunk.spawns) {
+    if (s.type !== 'decor' || s.dk !== 'rune') continue;
+    const tx = Math.floor(s.x), ty = Math.floor(s.y);
+    if (nearEnemySlot(chunk, tx, ty)) continue;
+    const h = hash2(tx * 91 + 7, ty * 53 + 3);
+    out.push({
+      kind: CRITTER_KINDS_WALL[h % 3], x: s.x - s.dx * 0.12, y: s.y + yOffset - s.dy * 0.12,
+      support: ty * chunkW + tx, onFloor: s.dy < 0, onCeiling: s.dy > 0, wallDir: -s.dx,
+      phase: (h % 1000) / 1000 * Math.PI * 2, flip: (h >> 3) % 2 === 0,
+    });
+  }
+  return out;
+}
+
 /** Picks a handful of floor cells per chunk to act as bubble vents (cheap,
  * deterministic given the chunk's own tile data - no extra RNG needed). */
 function findVents(chunk, yOffset, chunkW, chunkH) {
@@ -403,7 +423,25 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
       const clearAbove = ty - 2 < 0 || chunk.tiles[(ty - 2) * chunkW + tx] === 0;
       const clearBelow = ty + 2 >= chunkH || chunk.tiles[(ty + 2) * chunkW + tx] === 0;
       if (openAbove && clearAbove && h % 3 === 0) out.push({ tx, ty, onCeiling: false, hash: h });
-      else if (openBelow && clearBelow && h % 7 === 0) out.push({ tx, ty, onCeiling: true, hash: h });
+      else if (openBelow && clearBelow && h % (chunk.v2 ? 5 : 7) === 0) out.push({ tx, ty, onCeiling: true, hash: h });
+    }
+  }
+  // r36: foliage clusters the pattern table placed (kind 'decor', spawn 'foliage'): on ledges, platforms and floors,
+  // under overhangs; the same keep-outs apply, and a cell the hash gate already chose is not doubled
+  if (chunk.spawns) {
+    const have = new Set();
+    for (const a of out) have.add(a.ty * chunkW + a.tx);
+    for (const s of chunk.spawns) {
+      if (s.type !== 'decor' || s.dk !== 'foliage') continue;
+      const tx = Math.floor(s.x), ty = Math.floor(s.y) - s.dy; // the rock tile under (or over) the anchor cell
+      if (tx < 1 || tx >= chunkW - 1 || ty < 1 || ty >= chunkH - 1 || chunk.tiles[ty * chunkW + tx] === 0 || have.has(ty * chunkW + tx)) continue;
+      const nf = chunk.plantFree;
+      if (nf && tx >= nf.x0 && tx < nf.x1 && ty >= nf.y0 && ty < nf.y1) continue;
+      const pf = chunk.plantKeepOut;
+      if (pf && pf.some((r) => tx >= r.x0 && tx < r.x1 && ty >= r.y0 && ty < r.y1)) continue;
+      if (nearEnemySlot(chunk, tx, ty)) continue;
+      have.add(ty * chunkW + tx);
+      out.push({ tx, ty, onCeiling: s.dy > 0, hash: hash2(chunkIndex * 733 + tx * 131 + 17, ty * 977 + chunkIndex) });
     }
   }
   return out;
@@ -446,7 +484,7 @@ export function createDecor(chunkW, chunkH) {
     if (byChunk.has(ci)) return byChunk.get(ci);
     const vents = findVents(chunk, yOffset, chunkW, chunkH);
     const bubbles = vents.map((v, i) => ({ x: v.x, y: v.y, t: (i * BUBBLE_LIFETIME) / (vents.length || 1) }));
-    const critters = findWallCritters(chunk, yOffset, chunkW, chunkH, ci);
+    const critters = findWallCritters(chunk, yOffset, chunkW, chunkH, ci).concat(patternRunes(chunk, yOffset, chunkW));
     const entry = { vents, bubbles, critters };
     byChunk.set(ci, entry);
     return entry;

@@ -710,6 +710,84 @@ export function createRenderer(ctx, world) {
       y: canvasH / 2 + (s.y - canvasH / 2) * AMBIENT_PARALLAX,
     };
   }
+  // ---- r36 (v2 only): deeper rock behind the walls. A second cave wall seen through the water, 0.7 parallax and a
+  // touch smaller than the real one: the level's own rock mask, thickened along its edges by a hash, softened by a
+  // low-res bake, with the existing plant sprites in a dark teal on its floors and ceilings. Baked once per level
+  // (and again when the plant art finishes loading); one drawImage per frame. The opaque walls cover it, so it only
+  // shows in the open water, where it gives the cave depth the flat gradient lacked.
+  const DEEP_PARALLAX = 0.7, DEEP_SCALE = 0.86, DEEP_PX = 12;
+  const DEEP_ROCK = 'rgba(20,64,88,0.72)', DEEP_FOLIAGE = 'rgba(24,78,98,0.85)';
+  let deepLevel = null, deepCanvas = null, deepPlants = false;
+  const deepHash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263 + 1013, 1274126177); h ^= h >>> 13; return (Math.imul(h, 1103515245) >>> 0); };
+  function bakeDeepRock() {
+    const W = world.width, H = world.height;
+    const solid = (x, y) => x < 0 || y < 0 || x >= W || y >= H || world.tileAt(x, y) !== 0;
+    // the mass as overlapping round blobs (one per rock cell, a few extra beside the edges), blurred once at bake time:
+    // organic, soft-edged silhouettes instead of a tile grid
+    const c = document.createElement('canvas');
+    c.width = W * DEEP_PX; c.height = H * DEEP_PX;
+    const g = c.getContext('2d');
+    const blur = 'filter' in g;
+    if (blur) g.filter = 'blur(' + Math.round(DEEP_PX * 0.45) + 'px)';
+    g.fillStyle = '#000';
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const h = deepHash(x, y);
+        let on = solid(x, y), r = 0.78;
+        if (!on) { // water next to rock: a hash-gated extra lump, so the deep wall is lumpier and thicker than the near one
+          const n = solid(x + 1, y) + solid(x - 1, y) + solid(x, y + 1) + solid(x, y - 1);
+          on = n > 0 && h % 100 < 25 + n * 12;
+          r = 0.55 + ((h >>> 8) % 40) / 100;
+        }
+        if (!on) continue;
+        const jx = (((h >>> 12) % 21) - 10) / 40, jy = (((h >>> 17) % 21) - 10) / 40;
+        g.beginPath(); g.arc((x + 0.5 + jx) * DEEP_PX, (y + 0.5 + jy) * DEEP_PX, r * DEEP_PX, 0, Math.PI * 2); g.fill();
+      }
+    }
+    g.filter = 'none';
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = DEEP_ROCK;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over';
+    // foliage silhouettes on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark)
+    deepPlants = !!(plants[0].complete && plants[0].naturalWidth && plants[1].complete && plants[1].naturalWidth);
+    if (deepPlants) {
+      const tint = plants.map((img) => {
+        const t = document.createElement('canvas'); t.width = img.naturalWidth; t.height = img.naturalHeight;
+        const tg = t.getContext('2d'); tg.drawImage(img, 0, 0);
+        tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = DEEP_FOLIAGE; tg.fillRect(0, 0, t.width, t.height);
+        return t;
+      });
+      for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          if (world.tileAt(x, y) === 0) continue;
+          const h = deepHash(x * 3 + 1, y * 5 + 2);
+          const floor = world.tileAt(x, y - 1) === 0, ceil = world.tileAt(x, y + 1) === 0;
+          if (!(floor && h % 5 === 0) && !(ceil && !floor && h % 9 === 0)) continue;
+          const img = tint[(h >>> 8) & 1], ph = DEEP_PX * (1.5 + ((h >>> 12) % 10) / 10), pw = ph * (img.width / img.height);
+          g.save();
+          g.translate((x + 0.5) * DEEP_PX, (floor ? y + 0.15 : y + 0.85) * DEEP_PX);
+          if (!floor) g.scale(1, -1);
+          g.drawImage(img, -pw / 2, -ph, pw, ph);
+          g.restore();
+        }
+      }
+    }
+    deepCanvas = c; deepLevel = world.level;
+  }
+  function drawDeepRock(canvasW, canvasH, depth) {
+    if (!world.level || !world.tileAt) return;
+    if (deepLevel !== world.level || !deepCanvas || (!deepPlants && plants[0].complete && plants[0].naturalWidth && plants[1].complete && plants[1].naturalWidth)) bakeDeepRock();
+    const ppu = camera.pxPerUnit, W = world.width, H = world.height, cx0 = W / 2, cy0 = H / 2, s = DEEP_SCALE;
+    const camLx = cx0 + (camera.x - cx0) * DEEP_PARALLAX, camLy = cy0 + (camera.y - cy0) * DEEP_PARALLAX;
+    const dx = canvasW / 2 + (cx0 * (1 - s) - camLx) * ppu, dy = canvasH / 2 + (cy0 * (1 - s) - camLy) * ppu;
+    const dw = W * s * ppu, dh = H * s * ppu;
+    if (dx > canvasW || dy > canvasH || dx + dw < 0 || dy + dh < 0) return;
+    ctx.save();
+    ctx.globalAlpha = 1 - Math.min(0.5, depth / 240);
+    ctx.drawImage(deepCanvas, dx, dy, dw, dh);
+    ctx.restore();
+  }
   function drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     const t = Math.min(1, depth / 500);
@@ -911,6 +989,7 @@ export function createRenderer(ctx, world) {
     if (!img.complete || !img.naturalWidth) return;
     const s = worldToScreen(camera, canvasW_, canvasH_, cx, cy);
     const h = camera.pxPerUnit * PLANT_BASE_SCALE * sizeMul;
+    if (s.x < -h || s.x > canvasW_ + h || s.y < -h * 0.3 || s.y > canvasH_ + h * 1.3) return; // r36: off screen (levels carry about twice the plants now)
     const w = h * (img.naturalWidth / img.naturalHeight);
     ctx.save();
     ctx.translate(s.x, s.y);
@@ -925,13 +1004,25 @@ export function createRenderer(ctx, world) {
   // `drawOnePlant` (used from three separate loops below) doesn't need its
   // own canvasW/canvasH parameters threaded through every call site.
   let canvasW_ = 0, canvasH_ = 0;
+  const plantCache = new WeakMap();
 
   function drawPlants(canvasW, canvasH, resident, time = 0, reduced = false) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     canvasW_ = canvasW; canvasH_ = canvasH;
     for (const { index, yOffset, chunk } of resident) {
-      const anchors = findPlantAnchors(chunk, chunkW, chunkH, index);
-      for (const { tx, ty, onCeiling, hash: h } of anchors) {
+      // r36 (v2): the anchors and their cluster mates are worked out once per tile change, not every frame
+      let anchors, matesOf = null;
+      if (world.v2) {
+        let e = plantCache.get(chunk);
+        if (!e || e.ver !== world.tileVersion) {
+          const list = findPlantAnchors(chunk, chunkW, chunkH, index);
+          e = { ver: world.tileVersion, anchors: list, mates: list.map((a) => findClusterMates(chunk, chunkW, chunkH, a.tx, a.ty, a.onCeiling, a.hash)) };
+          plantCache.set(chunk, e);
+        }
+        anchors = e.anchors; matesOf = e.mates;
+      } else anchors = findPlantAnchors(chunk, chunkW, chunkH, index);
+      for (let ai = 0; ai < anchors.length; ai++) {
+        const { tx, ty, onCeiling, hash: h } = anchors[ai];
         const sway = reduced ? 0 : Math.sin(time * SWAY_SPEED + (h % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
         if (!onCeiling) {
           // Floor cap: solid here, open water directly above -- grows up.
@@ -941,7 +1032,7 @@ export function createRenderer(ctx, world) {
           // most floor anchors -- offsets/safety come from decor.js's
           // `findClusterMates` (shared with decor.test.js) so this loop only
           // turns each validated slot into a draw call.
-          for (const { dx, hash: h2 } of findClusterMates(chunk, chunkW, chunkH, tx, ty, false, h)) {
+          for (const { dx, hash: h2 } of matesOf ? matesOf[ai] : findClusterMates(chunk, chunkW, chunkH, tx, ty, false, h)) {
             const useBush = false; // r15 review: decor-bush2 clashes with the pale vines; vine-only clusters
             const mateSway = reduced ? 0 : Math.sin(time * SWAY_SPEED * 1.3 + (h2 % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
             drawOnePlant(tx + dx + 0.5, cy + 0.05, mateSway, false, h2, useBush ? 0.9 : 0.7, useBush ? clusterBush : undefined);
@@ -1150,6 +1241,7 @@ export function createRenderer(ctx, world) {
       // Round-12 "fill the cave" pass, section 2: distant background
       // silhouettes/motes, behind everything (drawWalls, below, composites
       // opaque rock right over this same as it does the FG plants).
+      if (world.v2) drawDeepRock(canvasW, canvasH, depth);
       drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced);
       // Layering pass: plants/decor draw BEFORE the walls now (was after), so
       // the wall bake -- opaque rock art -- composites on top and occludes
