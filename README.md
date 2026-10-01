@@ -20,7 +20,7 @@ RSVPs are submitted via `POST /api/rsvp`, a Firebase Hosting rewrite to the `rsv
 
 The endpoint is protected by an [ALTCHA](https://altcha.org) proof-of-work captcha (`altcha-lib`). `GET /api/rsvp?challenge=1` issues a signed, expiring challenge; the form solves it client-side and submits the result as `altcha` in the POST body, which the function verifies (HMAC + expiry) using the Firebase secret `ALTCHA_HMAC_KEY` (set once with `firebase functions:secrets:set ALTCHA_HMAC_KEY`). Each solved challenge can only be redeemed once, guarded by a Firestore doc in `svatba-captcha`.
 
-- Deploy: `firebase deploy --only functions,hosting` (the first run offers to delete the legacy `sendUsEmail` / `uploadEmail` functions, since they are not in `functions/`)
+- Deploy: push to `master` (see [Auto-deploy](#auto-deploy)). Functions are deployed by name, so the legacy `sendUsEmail` / `uploadEmail` functions in the project are left alone.
 - Test the backend: `cd functions && npm install && npm test`
 
 ## Adding a project

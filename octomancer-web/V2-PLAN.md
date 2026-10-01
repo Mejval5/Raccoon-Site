@@ -305,7 +305,7 @@ existing enemy constructors keep working.
 - **Performance:** `?fps=1` within the `PLAN.md` budgets (median frame work at most 4 ms in the pane).
 - **Visual tasks** end with the Opus screenshot review.
 - **QA:** Owl tests each milestone.
-- **Deploy:** merged to master, then deployed.
+- **Deploy:** merged to master; pushing master deploys it automatically (see `CLAUDE.md`).
 - **Hard rules:** the Unity project and SmartRooms are read-only. Nothing paid and no Unity file goes into `site/`.
   New exported art gets an `ASSETS.md` row.
 
