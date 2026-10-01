@@ -62,7 +62,7 @@ const hudEl = document.getElementById('hud');
 const params = new URLSearchParams(location.search);
 // without ?seed= every page load gets its own run seed, so the first dive of a session is not always the same three levels
 // (v2 only: endless keeps its fixed default seed)
-const initialSeed = Number(params.get('seed')) || (params.get('v2') === '1' ? ((Math.random() * 4294967296) >>> 0) : 0) || 1;
+const initialSeed = Number(params.get('seed')) || (params.get('endless') !== '1' ? ((Math.random() * 4294967296) >>> 0) : 0) || 1;
 // v2 feel: ?sink=<u/s^2> tunes the idle sink of the octopus (0 = none); junk or negative falls back to the default
 const SINK = (() => { const v = params.get('sink'); const n = v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) && n >= 0 && n <= 5 ? n : OCTO_IDLE_SINK; })();
 const SEEDED = params.has('seed'); // a seeded run: the level title card shows the seed
@@ -74,7 +74,7 @@ let autofire = AUTO ? createAutofire() : null;
 // Shallows 1-1..1-3 -> end screen, js/run.js) through the single-level world
 // (world-v2.js) instead of the endless chunk stream. Without the flag nothing below
 // changes. ?at=hub|tutorial|1|2|3|end starts at a given state (tests, review).
-const V2 = params.get('v2') === '1';
+const V2 = params.get('endless') !== '1'; // v2 (levels) is the game; ?endless=1 keeps the old endless mode
 let authoredJson = null;
 let run = null;
 let questTable = null;

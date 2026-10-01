@@ -544,3 +544,16 @@ Note (2026-09-30, late): rounds 24-28 delivered only item 1 (art pass) plus poli
 ## 12. Vertical slice on biome 1 (Daniel, 2026-10-01; rounds 33-36)
 
 Daniel: it does not feel like Spelunky yet; enemies are buggy, levels lack detail, bombs should have gravity, more physics sim. Scheduled, one per round: physics props (bombs sink, bounce, roll; pots, clams, chests, relic and falling rocks as bodies; explosion impulses; rubble), enemy fixes from Owl's QA-ENEMIES.md plus readable telegraphed patterns, level detail (reworked rooms, more quantum tiles, 10 new rooms with 3 set pieces, 2x props, background detail), game feel (shake, hit-stop, dash recoil, tunable idle sink via ?sink=). The auto-fire verdict and biome 2 wait until the slice feels right.
+
+## 13. Daniel's corrections (2026-10-01): default mode, settings menu, journal and quests the Spelunky way
+
+- `?v2=1` is gone: `/octomancer/play/` is the level game; `?endless=1` keeps the old endless mode until it is deleted.
+- **Settings menu (top right):** a gear button next to pause and mute opens one panel: music and SFX volume, reduced motion, screen shake on/off, control scheme help, octopus sink strength (slider, replaces `?sink=`), seed for the next run (replaces `?seed=`), language later. Persisted in save.js. All debug URL params stay only for tests.
+- **Journal, as in Spelunky 2:** not a list. A book with tabs: Places, Bestiary, Items, Traps, People. Each entry is locked (silhouette with '???') until first encountered, then shows art (the actual sprite), a name, a 2-line description, and counters (seen, killed / killed by, collected). A Progress page: completion %, deaths, best depth, play time. Opened from the hub board and from the pause menu. Entry discovery toast stays but smaller.
+- **Quests, as in Spelunky 2:** no HUD "Quest:" line and no random per-level objective. Quests are emergent NPC questlines found in the levels, chained across levels and runs, never explained up front:
+  - *The Stranded Diver* (1-1 or 1-2): an NPC behind rock asks for a way out; bomb him free and he appears in the hub with a small reward each run he is freed; free him 3 runs and he opens a shortcut.
+  - *The Caged Critter*: a cage with a critter; break it open and the critter follows you; bring it to the exit for a shell reward and it joins the hub.
+  - *The Collector*: an NPC who wants 3 relics across runs; each delivered relic unlocks a journal entry and finally a lantern at the hub.
+  - *The Challenge Pool*: a wager room (pay 5 shells): survive 20 s of hazards for a prize.
+  - *The Altar*: sacrifice an item or a stunned enemy for a random boon.
+  The shop and the "Untouched" style bonuses go away as quests; "Untouched" becomes a journal stat. Quest state lives in save.js (per run and across runs) as flat flags.
