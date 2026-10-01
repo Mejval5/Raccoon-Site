@@ -720,3 +720,151 @@ exports.dary = onRequest(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// ShadingLanguageX gallery: /api/gallery (see lib/gallery.js for the contract)
+//
+// GET    /api/gallery          list, newest first         -> { items }
+// GET    /api/gallery/:id      one entry                  -> item
+// POST   /api/gallery          share  { name, author, src, opts } -> 201 { item } + owner cookie
+// PUT    /api/gallery/:id      update { name, src, opts }, owner cookie -> { item }
+// DELETE /api/gallery/:id      remove, owner cookie       -> 204
+//
+// Every POST and PUT is compiled with the real mxslc build first (lib/slx-compile.js); a
+// program that does not compile is refused with 422 { error, line } and never stored.
+const {
+  LIMITS: GALLERY_LIMITS,
+  newOwnerToken,
+  ownerHash,
+  readOwnerToken,
+  ownerCookie,
+  isOwner,
+  validateSubmission,
+  docToItem,
+  normalizeGalleryPath,
+  rateLimitState,
+} = require("./lib/gallery");
+const { compileCheck } = require("./lib/slx-compile");
+
+const GALLERY = "slx-gallery";
+const GALLERY_OWNERS = "slx-gallery-owners";
+
+exports.gallery = onRequest(
+  {
+    region: "europe-west1",
+    cors: ALLOWED_ORIGINS,
+    maxInstances: 5,
+    memory: "512MiB",
+    timeoutSeconds: 30,
+  },
+  async (req, res) => {
+    try {
+      if (req.method === "OPTIONS") {
+        res.status(204).end();
+        return;
+      }
+      const path = normalizeGalleryPath(req.path);
+      if (!path) {
+        res.status(404).json({ error: "not found" });
+        return;
+      }
+      const database = getDb();
+      const col = database.collection(GALLERY);
+      const token = readOwnerToken(req.get("cookie"));
+      const secure = req.secure || req.get("x-forwarded-proto") === "https";
+      const json = (status, body) => { res.set("Cache-Control", "no-store"); res.status(status).json(body); };
+
+      let body = req.body;
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (e) { json(400, { error: "invalid JSON" }); return; }
+      }
+
+      // ---- collection
+      if (path === "/") {
+        if (req.method === "GET") {
+          const snap = await col.orderBy("updated", "desc").limit(GALLERY_LIMITS.listMax).get();
+          res.set("Cache-Control", "private, max-age=15");
+          res.status(200).json({ items: snap.docs.map((d) => docToItem(d.id, d.data(), token)) });
+          return;
+        }
+        if (req.method !== "POST") {
+          res.set("Allow", "GET, POST, OPTIONS");
+          json(405, { error: "method not allowed" });
+          return;
+        }
+        const v = validateSubmission(body);
+        if (!v.ok) { json(400, { error: v.error }); return; }
+
+        // the first share of this browser mints its owner token
+        const ownerToken = token || newOwnerToken();
+        const hash = ownerHash(ownerToken);
+        const ownerRef = database.collection(GALLERY_OWNERS).doc(hash);
+        const now = Date.now();
+        const limited = await database.runTransaction(async (tx) => {
+          const prev = (await tx.get(ownerRef)).data();
+          const r = rateLimitState(prev, now);
+          if (!r.allowed) return true;
+          tx.set(ownerRef, r.next);
+          return false;
+        });
+        if (limited) { json(429, { error: `at most ${GALLERY_LIMITS.sharesPerHour} shares per hour; try again later` }); return; }
+
+        const c = await compileCheck(v.data.src, v.data.opts);
+        if (!c.ok) { json(422, { error: c.error, line: c.line }); return; }
+
+        const doc = {
+          name: v.data.name, author: v.data.author, src: v.data.src, opts: v.data.opts,
+          nodes: c.nodes, created: now, updated: now, version: 1, ownerHash: hash,
+        };
+        const ref = await col.add(doc);
+        // Firebase Hosting drops Set-Cookie on its way back to the browser (the emulator does,
+        // and production is not documented to pass it), so a first share also returns the token
+        // in the body and the page sets the __session cookie itself. Direct callers get the header.
+        const payload = { item: docToItem(ref.id, doc, ownerToken) };
+        if (!token) {
+          res.set("Set-Cookie", ownerCookie(ownerToken, { secure }));
+          payload.ownerToken = ownerToken;
+        }
+        json(201, payload);
+        return;
+      }
+
+      // ---- one entry
+      const id = path.slice(1);
+      const ref = col.doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) { json(404, { error: "not found" }); return; }
+      const doc = snap.data();
+
+      if (req.method === "GET") {
+        res.set("Cache-Control", "private, max-age=15");
+        res.status(200).json(docToItem(id, doc, token));
+        return;
+      }
+      if (!isOwner(token, doc)) { json(403, { error: "this browser does not own that entry" }); return; }
+
+      if (req.method === "PUT") {
+        const v = validateSubmission(body, { update: true });
+        if (!v.ok) { json(400, { error: v.error }); return; }
+        const c = await compileCheck(v.data.src, v.data.opts);
+        if (!c.ok) { json(422, { error: c.error, line: c.line }); return; }
+        const patch = { name: v.data.name, src: v.data.src, opts: v.data.opts, nodes: c.nodes, updated: Date.now(), version: (doc.version || 1) + 1 };
+        await ref.update(patch);
+        json(200, { item: docToItem(id, { ...doc, ...patch }, token) });
+        return;
+      }
+      if (req.method === "DELETE") {
+        await ref.delete();
+        res.set("Cache-Control", "no-store");
+        res.status(204).end();
+        return;
+      }
+      res.set("Allow", "GET, PUT, DELETE, OPTIONS");
+      json(405, { error: "method not allowed" });
+    } catch (err) {
+      console.error("gallery handler error", err);
+      res.set("Cache-Control", "no-store");
+      res.status(500).json({ error: "server error" });
+    }
+  }
+);

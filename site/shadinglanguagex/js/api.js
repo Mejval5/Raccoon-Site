@@ -1,0 +1,152 @@
+// The gallery API as seen from the page. Live mode talks to the Cloud Function behind
+// /api/gallery with the owner cookie; mock mode is a stand-in with the same contract for
+// run_locally.bat, where there is no backend. The page switches to the mock on its own
+// when /api/gallery is not there, and shows a badge so nobody mistakes it for live data.
+//
+//   GET    /api/gallery          -> 200 { items: [{ id, name, author, src, nodes, created, updated, version, mine }] }
+//   GET    /api/gallery/:id      -> 200 item
+//   POST   /api/gallery          { name, author, src, opts }  -> 201 { item } (+ owner cookie) | 422 { error, line }
+//   PUT    /api/gallery/:id      { name, src, opts }          -> 200 { item } | 403 | 404 | 422
+//   DELETE /api/gallery/:id                                   -> 204 | 403 | 404
+import { readJson, storeGet, storeSet, uid, lineOf } from './util.js';
+import { countNodes } from './graph.js';
+import { PRESETS } from './presets.js';
+
+const BASE = '/api/gallery';
+const listeners = [];
+let mode = 'live';
+let compileCheck = null; // set by the page: (src, opts) -> { ok, xml } | { ok: false, error }
+
+export const api = {
+  get mode() { return mode; },
+  onRequest(cb) { listeners.push(cb); },
+  configure(o) { if (o.compileCheck) compileCheck = o.compileCheck; if (o.mode) setMode(o.mode); },
+  list() { return req('GET', BASE); },
+  get(id) { return req('GET', `${BASE}/${id}`); },
+  create(p) { return req('POST', BASE, p); },
+  update(id, p) { return req('PUT', `${BASE}/${id}`, p); },
+  remove(id) { return req('DELETE', `${BASE}/${id}`); },
+};
+
+function setMode(m) {
+  mode = m;
+  document.documentElement.dataset.api = m;
+  for (const el of document.querySelectorAll('[data-api-badge]')) el.hidden = m !== 'mock';
+}
+
+class ApiError extends Error {
+  constructor(status, data) { super(data?.error || `HTTP ${status}`); this.status = status; this.line = data?.line || 0; }
+}
+
+async function req(method, path, body) {
+  const t0 = performance.now();
+  let status, data;
+  if (mode === 'live') {
+    let res;
+    try {
+      res = await fetch(path, {
+        method, credentials: 'include',
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      if (!navigator.onLine) throw new Error('You are offline.');
+      return fallback(method, path, body, t0, `network error: ${e.message}`);
+    }
+    // a static server answers 404 (GET) or 501/405 (POST) with text/html: no backend here, use the mock
+    const isJson = (res.headers.get('content-type') || '').includes('json');
+    if (!isJson && [404, 405, 501].includes(res.status)) return fallback(method, path, body, t0, `no /api on this server (${res.status})`);
+    status = res.status;
+    data = status === 204 ? null : await res.json().catch(() => ({ error: `${status} ${res.statusText}` }));
+    // A first share hands back the owner token: Hosting does not pass the server's Set-Cookie
+    // through, so the page sets the cookie. Hosting does forward "__session" on later requests.
+    if (data && data.ownerToken) {
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `__session=${encodeURIComponent(data.ownerToken)}; Max-Age=31536000; Path=/api/gallery; SameSite=Strict${secure}`;
+      delete data.ownerToken;
+    }
+  } else {
+    await new Promise((r) => setTimeout(r, 120 + Math.random() * 280)); // pretend network
+    [status, data] = await mock.handle(method, path, body);
+  }
+  notify(method, path, status, performance.now() - t0);
+  if (status >= 400) throw new ApiError(status, data);
+  return data;
+}
+function fallback(method, path, body, t0, why) {
+  if (mode === 'mock') throw new Error(why);
+  console.warn(`Gallery API unavailable (${why}); using the in-browser mock.`);
+  setMode('mock');
+  notify('MOCK', '(switched: ' + why + ')', 0, performance.now() - t0);
+  return req(method, path, body);
+}
+function notify(method, path, status, ms) { for (const cb of listeners) cb({ method, path, status, ms }); }
+
+// ---------------------------------------------------------------- mock server
+// Lives in localStorage; "owner" is a random token in storage standing in for the cookie.
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+const mock = {
+  dbKey: 'mxsl-mock-db',
+  owner() { let t = storeGet('mxsl-mock-owner'); if (!t) { t = uid() + uid(); storeSet('mxsl-mock-owner', t); } return t; },
+  load() { return readJson(this.dbKey, null); },
+  save(db) { storeSet(this.dbKey, JSON.stringify(db)); },
+  async reset() { storeSet(this.dbKey, 'null'); return this.seed(); },
+  async seed() {
+    const db = { items: {} };
+    const who = ['example-bot', 'demo-seed'];
+    let t = Date.now() - PRESETS.length * 86400000;
+    for (const [i, [name, code]] of PRESETS.entries()) {
+      const id = uid();
+      db.items[id] = { id, name: name.replace(/\.mxsl$/, ''), author: who[i % 2], src: code, nodes: null, created: t, updated: t, version: 1, ownerHash: 'seed' };
+      t += 86400000;
+    }
+    this.save(db);
+    return db;
+  },
+  async pub(it) { const { ownerHash, ...rest } = it; return { ...rest, mine: ownerHash === await sha256(this.owner()) }; },
+  async handle(method, path, body) {
+    const db = this.load() || await this.seed();
+    const m = /^\/api\/gallery(?:\/([\w-]+))?$/.exec(path);
+    if (!m) return [404, { error: 'not found' }];
+    const id = m[1];
+    if (method === 'GET' && !id) {
+      const items = [];
+      for (const it of Object.values(db.items).sort((a, b) => b.updated - a.updated)) items.push(await this.pub(it));
+      return [200, { items }];
+    }
+    const it = id && db.items[id];
+    if (method === 'GET') return it ? [200, await this.pub(it)] : [404, { error: 'not found' }];
+    const clean = (v, max) => String(v ?? '').trim().slice(0, max);
+    const check = async (src) => {
+      if (!compileCheck) return { ok: true, xml: '' };
+      return compileCheck(src, body.opts || {});
+    };
+    if (method === 'POST' && !id) {
+      const name = clean(body.name, 60), author = clean(body.author, 40), src = String(body.src ?? '');
+      if (!name || !author || !src.trim()) return [400, { error: 'name, author and src are required' }];
+      if (src.length > 50000) return [413, { error: 'source is over 50 000 characters' }];
+      const c = await check(src);
+      if (!c.ok) return [422, { error: c.error, line: lineOf(c.error) }];
+      const newId = uid(), now = Date.now();
+      db.items[newId] = { id: newId, name, author, src, nodes: countNodes(c.xml), created: now, updated: now, version: 1, ownerHash: await sha256(this.owner()) };
+      this.save(db);
+      return [201, { item: await this.pub(db.items[newId]) }];
+    }
+    if (!it) return [404, { error: 'not found' }];
+    if (it.ownerHash !== await sha256(this.owner())) return [403, { error: 'this browser does not own that entry' }];
+    if (method === 'PUT') {
+      const src = String(body.src ?? '');
+      const c = await check(src);
+      if (!c.ok) return [422, { error: c.error, line: lineOf(c.error) }];
+      Object.assign(it, { src, name: clean(body.name, 60) || it.name, nodes: countNodes(c.xml), updated: Date.now(), version: it.version + 1 });
+      this.save(db);
+      return [200, { item: await this.pub(it) }];
+    }
+    if (method === 'DELETE') { delete db.items[id]; this.save(db); return [204, null]; }
+    return [405, { error: 'method not allowed' }];
+  },
+};
+export const mockServer = mock;
