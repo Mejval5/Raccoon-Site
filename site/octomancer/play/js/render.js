@@ -1236,7 +1236,7 @@ export function createRenderer(ctx, world) {
     // image at that alpha, which is exactly an "x-ray" look. Passing the
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
-    const octoAlpha = o.invulnTimer > 0 && !o.dead ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
+    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
     drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }

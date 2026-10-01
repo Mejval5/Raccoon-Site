@@ -116,8 +116,32 @@ const SAVE_ONCE = "try{if(!localStorage.getItem('octomancer.best.v1'))localStora
       check(tag + ': panel inside the viewport', r.panel.l >= 0 && r.panel.t >= 0 && r.panel.r <= r.vw && r.panel.b <= r.vh, JSON.stringify(r.panel));
       check(tag + ': panel clear of the pause / mute / gear buttons', clear);
       check(tag + ': Close button visible', r.close.t >= 0 && r.close.b <= r.vh);
+      check(tag + ': the pause, mute and gear buttons are at least 44 x 44 px', r.btns.every((b) => b.w >= 43.5 && b.h >= 43.5), JSON.stringify(r.btns.map((b) => [b.w, b.h])));
+      const hud = await page.evaluate(() => {
+        const bar = document.querySelector('.octo-hud-bar'), panel = document.querySelector('.octo-settings-panel');
+        const bg = getComputedStyle(panel).backgroundColor, a = /rgba\(.*,\s*([\d.]+)\)$/.exec(bg);
+        return { hidden: getComputedStyle(bar).visibility === 'hidden', opaque: !a || Number(a[1]) === 1, cls: document.getElementById('hud').classList.contains('octo-modal-open') };
+      });
+      check(tag + ': the HUD row (hearts, stats) is hidden under the panel and the panel is opaque', hud.hidden && hud.opaque && hud.cls);
       check(tag + ': every target is at least 44 px tall', r.small.length === 0, r.small.join(';'));
       check(tag + ': no horizontal page scroll', !r.hscroll);
+      if (tag === 'phone-landscape') {
+        const cols = await page.evaluate(() => { const c = [...document.querySelectorAll('.octo-settings-body > .octo-set-col')].slice(0, 2).map((e) => e.getBoundingClientRect()); const body = document.querySelector('.octo-settings-body').getBoundingClientRect(); const sink = document.querySelector('input[data-setting="sink"]').getBoundingClientRect(); const seed = document.querySelector('input[data-setting="seed"]').getBoundingClientRect(); return { sideBySide: c.length === 2 && Math.abs(c[0].top - c[1].top) < 4 && c[1].left > c[0].left + 100, sinkIn: sink.bottom <= body.bottom + 1, seedIn: seed.bottom <= body.bottom + 1, bodyH: body.height }; });
+        check('phone-landscape: the options sit in two columns and the sound / swimming / seed rows need no scrolling', cols.sideBySide && cols.sinkIn && cols.seedIn, JSON.stringify(cols));
+      }
+      // the reset confirm opens inside the visible part of the scroll body (never below the fold)
+      const conf = await page.evaluate(async () => {
+        document.querySelector('.octo-set-reset > button.octo-btn-ghost').click();
+        await new Promise((r) => setTimeout(r, 120));
+        const body = document.querySelector('.octo-settings-body').getBoundingClientRect(), close = document.querySelector('.octo-settings-close').getBoundingClientRect();
+        const yes = [...document.querySelectorAll('.octo-set-confirm button')].find((b) => /Yes/.test(b.textContent)).getBoundingClientRect();
+        const no = [...document.querySelectorAll('.octo-set-confirm button')].find((b) => /Keep/.test(b.textContent)).getBoundingClientRect();
+        const ok = (b) => b.top >= body.top - 1 && b.bottom <= body.bottom + 1 && (b.bottom <= close.top + 1 || b.top >= close.bottom - 1);
+        const res = { yes: ok(yes), no: ok(no) };
+        [...document.querySelectorAll('.octo-set-confirm button')].find((b) => /Keep/.test(b.textContent)).click();
+        return res;
+      });
+      check(tag + ': pressing Reset progress shows both confirm buttons in view, not under the Close bar', conf.yes && conf.no, JSON.stringify(conf));
       await page.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'settings-' + tag + '.png') });
       await page.evaluate(() => __octo.closeSettings());
     };

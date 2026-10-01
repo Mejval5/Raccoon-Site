@@ -28,7 +28,7 @@ import { createProps, PROP_NAMES } from './props.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { getJournalStats, saveJournalStats, getStory, addStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
+import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
   createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, BIOME_LEVELS, BIOME_NAME,
@@ -39,9 +39,11 @@ import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, 
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks } from './v2-draw.js';
-import { drawPocketCracks, drawWallCue, drawCritter, drawDiver, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawTank, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
-import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, encounterRoll, Q_RESCUE, Q_VAULT } from './quests.js';
+import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questSpeaker, hubResidents, hubLines, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_FETCH, Q_MEET, ST_ACTIVE } from './quests.js';
+import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
+import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast } from './shop.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
 import { drawContactShadows } from './feel-draw.js';
@@ -74,7 +76,6 @@ let autofire = AUTO ? createAutofire() : null;
 // (world-v2.js) instead of the endless chunk stream. Without the flag nothing below
 // changes. ?at=hub|tutorial|1|2|3|end starts at a given state (tests, review).
 const V2 = params.get('endless') !== '1'; // v2 (levels) is the game; ?endless=1 keeps the old endless mode
-const DIVER_SHORTCUT = 3; // dives in which the stranded diver was freed before he opens the hub shortcut
 let authoredJson = null;
 let run = null;
 let questTable = null;
@@ -85,7 +86,7 @@ if (V2) {
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   shopItems = await fetchShopItems();
-  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut() || getStory().diverFreed >= DIVER_SHORTCUT });
+  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut() || getStory().marlo >= 2 });
   run.nextSeed = seedFromText(getSettings().seed); // the seed typed in the settings menu for the next dive (null = random)
   const at = params.get('at');
   if (at === 'tutorial') run.state = S_TUTORIAL;
@@ -165,7 +166,11 @@ let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
 let tutState = createTutorialState();
-let story = getStory(); // freed diver / critter counts (save.js): who waits in the hub
+let story = getStory(); // the stage of Marlo, Pip and Quill, relics delivered (save.js): who waits in the hub
+let diveStory = { ...story }; // the story as the dive began: people move on between dives, never within one
+const diveDone = new Set(); // people whose scene was finished in this dive (nobody appears twice in a dive)
+let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
+const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {} }; // what a hub resident is saying now
 
 const sim = {
   time: 0,
@@ -205,7 +210,14 @@ const ui = createUI(hudEl, {
 // v2 journal (B1-4): entries persisted through save.js; the list screen opens from the hub board.
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
 const seenDive = new Set(); // entry ids already counted as seen in this dive / hub visit
-const journalScreen = createJournalScreen(hudEl, journal, { onClose() { boardCooldown = true; }, onOpen() { ui.setPrompt(null); journal.flush(); }, getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; } });
+const journalScreen = createJournalScreen(hudEl, journal, {
+  onClose() { boardCooldown = true; syncModal(); },
+  onOpen() { ui.setPrompt(null); journal.flush(); syncModal(); },
+  getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; },
+  reducedMotion: prefersReducedMotion,
+});
+/** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
+function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen()); }
 // settings menu (round 38): every change applies at once and is persisted by save.js
 function applySetting(key, v) {
   switch (key) {
@@ -224,9 +236,10 @@ const settingsPanel = createSettingsPanel(hudEl, {
   set(key, value) { const v = setSetting(key, value); applySetting(key, v); return v; },
   osReducedMotion: osPrefersReducedMotion,
   inputMode() { return input.mode() || (matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard'); },
-  onOpen() { settingsOpen = true; ui.setPrompt(null); applyPaused(); },
-  onClose() { settingsOpen = false; applyPaused(); },
+  onOpen() { settingsOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
+  onClose() { settingsOpen = false; applyPaused(); syncModal(); },
   onResetProgress() { resetProgress(); setTimeout(() => location.reload(), 700); },
+  onOpenJournal() { settingsPanel.hide(); journalScreen.show(); },
 });
 let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 function announceJournal() {
@@ -339,7 +352,7 @@ function step(dt) {
   }
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
-  if (godMode && !octo.dead) octo.invulnTimer = Math.max(octo.invulnTimer, 0.5);
+  if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && run.state === S_BIOME && !octo.dead) run.dive.time += dt; // the run summary's clock
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
@@ -619,9 +632,11 @@ function v2Event(ev) {
   const fade = ensureFade();
   fade.style.opacity = '1';
   setTimeout(() => {
+    if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
     resetWorld(0);
     if (run.state === S_BIOME && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     discoverStatePlace();
+    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) ui.showToast('Quill\'s lantern lights the way', 2600, true);
     window.dispatchEvent(new CustomEvent('restart'));
     fade.style.opacity = '0';
     setTimeout(() => { transitioning = false; }, FADE_MS);
@@ -674,13 +689,15 @@ const solidForSight = (tx, ty) => world.isSolid(tx, ty);
 function stepV2(snap) {
   const lv = world.level;
   if (run.state === S_BIOME) {
-    if (questUpdate(quest, octo, world)) payQuest();
+    if (questUpdate(quest, octo, world, STEP)) payQuest();
+    if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
     if (ev) onShopEvent(ev);
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) discover('place-shop');
   }
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
+    if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); ui.showToast('Relic safe. Quill will want to hear about it.', 3000, true); }
     v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT);
     return;
   }
@@ -688,11 +705,7 @@ function stepV2(snap) {
     v2Event(EV_ENTER_SHORTCUT);
     return;
   }
-  if (lv.signX !== undefined && lv.signX >= 0) {
-    const d = Math.hypot(octo.x - (lv.signX + 0.5), octo.y - (lv.signY + 0.5));
-    const who = hubPerson(d);
-    if (who) { ui.setPrompt(who[0], who[1]); return; }
-  }
+  if (run.state === S_HUB) hubStep(lv);
   if (lv.boardX >= 0) {
     const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
     if (d > 2.2) boardCooldown = false;
@@ -715,6 +728,7 @@ function stepV2(snap) {
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
     for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
   }
+  if ((seeTick & 15) === 8 && run.state === S_BIOME) discoverScenery();
   if ((seeTick & 7) === 4 && run.state === S_BIOME) {
     for (const lk of loot.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(lootJournalId(lk));
   }
@@ -775,8 +789,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
-    if (quest && quest.status === 0 && quest.plan.kindId === Q_RESCUE) drawCritter(c, camera, cw, ch, quest.cx, quest.cy, quest.following, t);
-    if (quest && quest.plan && quest.plan.kindId === Q_VAULT) drawDiver(c, camera, cw, ch, quest.plan.pos[0], quest.plan.pos[1] - 0.4, t, quest.collected);
+    if (quest) drawQuestThing(c, camera, cw, ch, t);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
 }
@@ -833,6 +846,7 @@ function handleLootEvents() {
         gainShells(run, ev.shells);
         particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
         discover('loot-relic');
+        relicHeld = true;
         ui.showToast('Relic taken, +' + ev.shells + ' shells. The ceiling is coming down!', 4200);
         break;
       case 'chaseEnd': ui.showToast('The rumbling stops'); break;
@@ -852,47 +866,149 @@ function killDropRoll(n) {
 
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; tutState = createTutorialState();
+  quest = null; shopSt = null; tutState = createTutorialState(); relicHeld = false;
   if (run.state === S_BIOME) {
     const spec = levelSpec(run);
-    if (encounterRoll(spec.seed, spec.levelIndex)) {
-      const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex);
-      quest = createQuestState(plan);
-      if (plan) questClear = { x: plan.pos[0], y: plan.pos[1] };
-    }
+    const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
+    const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex, eligible, otherSpawns());
+    quest = createQuestState(plan);
+    if (plan) questClear = { x: plan.pos[0], y: plan.pos[1] };
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
   }
 }
 
-/** An encounter ended well: a few shells, a quiet line, a People entry, and the story flags that put them in the hub. */
+/** An encounter ended well: shells, a quiet line, the People entry, and the person's story moves to the next stage. */
 function payQuest() {
   const p = quest.plan;
   gainShells(run, p.reward);
   run.dive.quests++;
-  ui.showToast(p.done);
+  if (p.done) ui.showToast(p.done);
   sfx.chime();
   particles.pickupSparkle(octo.x, octo.y, '#ffe38a');
   if (p.journal) { discover(p.journal); journal.bump(p.journal, STAT_COLLECTED); }
-  if (p.id === 'diver') {
-    const n = addStory('diverFreed');
-    if (n >= DIVER_SHORTCUT && !run.shortcut) { run.shortcut = true; setShortcut(true); ui.showToast('The diver found you a shortcut', 3200, true); }
-  } else if (p.id === 'critter') addStory('critterFreed');
+  setStory(p.npc, p.set);
+  diveDone.add(p.npc);
+  if (p.id === 'marlo-1') addStory('diverFreed'); else if (p.id === 'pip-1') addStory('critterFreed');
+  if (p.id === 'marlo-2' && !run.shortcut) { run.shortcut = true; setShortcut(true); ui.showToast('Marlo opened a shortcut in the hub', 3200, true); }
   story = getStory();
 }
 
-/** Who stands in the hub where the old quest sign was: the freed diver and critter. Returns [name, line] near them, else null. */
-function hubPerson(d) {
-  if (d > 2.6) return null;
-  if (story.diverFreed > 0) {
-    return ['The Diver', story.diverFreed >= DIVER_SHORTCUT ? 'Ring beside the dive well. Mind the dark.' : story.diverFreed === 1 ? 'Still breathing, thanks to you.' : 'Back for more? I owe you.'];
-  }
-  if (story.critterFreed > 0) return ['The Critter', 'Squeak.'];
+/** x, y of the level's other spawns (enemies, hazards, loot, boulders): an encounter keeps clear of them. */
+function otherSpawns() {
+  const out = [];
+  for (const s of levelSpawns()) if (s.type !== 'shell' && (s.type !== 'decor' || s.dk === 'boulder')) out.push(s.x, s.y);
+  return Float32Array.from(out);
+}
+function levelSpawns() {
+  const rc = world.residentChunks()[0];
+  return rc && rc.chunk && rc.chunk.spawns ? rc.chunk.spawns : [];
+}
+
+const DECOR_JOURNAL = { foliage: 'prop-weed', boulder: 'prop-boulder', rune: 'prop-rune', fossil: 'prop-fossil', wreck: 'place-wreck' };
+const SET_JOURNAL = ['', 'place-wreck', 'place-garden', 'place-gauntlet'];
+function critterJournal(kind) {
+  if (kind === 'fish') return 'creature-fish';
+  if (kind.startsWith('rune')) return 'prop-rune';
+  if (kind.startsWith('fossil')) return 'prop-fossil';
+  if (kind.startsWith('bush')) return 'prop-bush';
   return null;
 }
+/** Scenery met within a few tiles: set-piece rooms, decor spawns, wall critters (props, places, ambient fish). */
+function discoverScenery() {
+  const lv = world.level;
+  for (let i = 0; i < (lv.nSetPieces | 0); i++) {
+    const x0 = lv.setPieces[i * 4], y0 = lv.setPieces[i * 4 + 1];
+    if (octo.x >= x0 && octo.x < x0 + ROOM_W && octo.y >= y0 && octo.y < y0 + ROOM_H) discover(SET_JOURNAL[lv.setPieces[i * 4 + 2]]);
+  }
+  for (const s of levelSpawns()) {
+    if (s.type !== 'decor') continue;
+    const dx = s.x - octo.x, dy = s.y - octo.y;
+    if (dx * dx + dy * dy < 42) discover(DECOR_JOURNAL[s.dk]);
+  }
+  for (const c of decor.visibleCritters(world.residentChunks())) {
+    const dx = c.x - octo.x, dy = c.y - octo.y;
+    if (dx * dx + dy * dy < 36) discover(critterJournal(c.kind));
+  }
+}
+
+/** What is lying on the level: the sealed diver, the caged critter (resting on the floor), the tank, the collector; and the speech bubble. */
+function drawQuestThing(c, camera, cw, ch, t) {
+  const st = quest, p = st.plan;
+  const fade = st.status === ST_ACTIVE ? 1 : Math.max(0, Math.min(1, st.leave / 1.2));
+  const mama = p.variant === 'mama';
+  switch (p.kindId) {
+    case Q_VAULT:
+      if (fade > 0) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, p.pos[0], p.pos[1] + 0.22, t, st.collected, true); c.restore(); }
+      break;
+    case Q_RESCUE:
+      if (!st.following) drawCritter(c, camera, cw, ch, st.cx, st.cy, false, t, p.floorY, p.variant);
+      else {
+        drawCage(c, camera, cw, ch, p.pos[0], p.floorY, mama ? 1.7 : 1.25, mama ? 1.55 : 1.15, true); // the open cage stays behind
+        if (st.status === ST_ACTIVE) drawCritter(c, camera, cw, ch, st.cx, st.cy, true, t, 0, p.variant);
+      }
+      break;
+    case Q_FETCH:
+      if (st.status === ST_ACTIVE) drawTank(c, camera, cw, ch, st.cx, st.cy, t, !st.following);
+      break;
+    case Q_MEET:
+      if (fade > 0) { c.save(); c.globalAlpha = fade; drawCollector(c, camera, cw, ch, p.pos[0], p.floorY, t, false); c.restore(); }
+      break;
+    default: break;
+  }
+  if (p.kindId !== Q_FETCH) { const sp = questSpeaker(st); drawSpeech(c, camera, cw, ch, sp[0], sp[1], st.talk.text, talkAlpha(st.talk), p.name); }
+}
+
+// --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the ledge by the board; each speaks when you come near ---
+const HUB_TALK_R = 3.4;
+/** Where a resident is: x, y of the feet (or the centre for the swimmers) and the head height for the bubble. */
+function hubPlace(lv, id, t, which = 0) {
+  switch (id) {
+    case 'marlo': return { x: lv.signX + 0.5, y: lv.signY + 1, head: 1.35, fly: false };
+    case 'quill': return { x: lv.boardX + 2.3, y: lv.boardY, head: 1.3, fly: false };
+    default: return { x: lv.signX - 1.4 - which * 2.2 + Math.sin(t * 0.7 + which) * 0.8, y: lv.signY - 0.7 + Math.sin(t * 1.3 + which * 2) * 0.22, head: which ? 0.95 : 0.7, fly: true };
+  }
+}
+function capName(id) { return id.charAt(0).toUpperCase() + id.slice(1); }
+
+function hubStep(lv) {
+  if (lv.signX === undefined || lv.signX < 0) return;
+  talkStep(hubTalk.talk, STEP);
+  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; }
+  if (talking(hubTalk.talk)) return;
+  const t = sim.time;
+  for (const r of hubResidents(questTable, story)) {
+    if ((hubTalk.cool[r.id] || 0) > t) continue;
+    const pl = hubPlace(lv, r.id, t);
+    if (Math.hypot(octo.x - pl.x, octo.y - (pl.fly ? pl.y : pl.y - 0.8)) > HUB_TALK_R) continue;
+    let stage = r.stage;
+    if (r.id === 'quill' && stage === 1 && story.relics >= RELICS_NEEDED) { setStory('quill', 2); story = getStory(); stage = 2; }
+    const npc = questTable.npcById.get(r.id), key = 'said' + capName(r.id);
+    const pending = (story[key] | 0) < stage;
+    const visit = hubTalk.visits[r.id] | 0;
+    say(hubTalk.talk, hubLines(npc, stage, story.relics | 0, pending, visit));
+    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id;
+    if (pending) { setStory(key, stage); story = getStory(); }
+    if (npc.journal) discover(npc.journal);
+    break;
+  }
+}
+
 function drawHubPeople(c, camera, cw, ch, lv, t) {
-  const x = lv.signX + 0.5, y = lv.signY + 0.5;
-  if (story.diverFreed > 0) drawDiver(c, camera, cw, ch, x, y - 0.3, t, true);
-  if (story.critterFreed > 0) drawCritter(c, camera, cw, ch, x - 1.6, y - 0.2 + Math.sin(t * 2) * 0.08, true, t);
+  for (const r of hubResidents(questTable, story)) {
+    const pl = hubPlace(lv, r.id, t);
+    if (r.id === 'marlo') {
+      drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
+      if (r.stage >= 2) drawTank(c, camera, cw, ch, pl.x + 0.85, pl.y - 0.36, t, true);
+    } else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
+    else {
+      drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
+      if (r.stage >= 2) { const m = hubPlace(lv, r.id, t, 1); drawCritter(c, camera, cw, ch, m.x, m.y, true, t, 0, 'mama'); }
+    }
+  }
+  if (hubTalk.who && hubTalk.talk.text) {
+    const pl = hubPlace(lv, hubTalk.who, t);
+    drawSpeech(c, camera, cw, ch, pl.x, pl.y - pl.head, hubTalk.talk.text, talkAlpha(hubTalk.talk), questTable.npcById.get(hubTalk.who).name);
+  }
 }
 
 function onShopEvent(ev) {
@@ -1032,6 +1148,7 @@ window.__octo = {
   journal() { return { found: journal.list().filter((e) => e.found).map((e) => e.id), count: journal.count(), open: journalScreen.isOpen(), tab: journalScreen.tab(), entry: journalScreen.entry() }; },
   openJournal(tab, entry) { journalScreen.show(tab); if (entry) journalScreen.showEntry(entry); return true; },
   journalSet(tab) { journalScreen.setTab(tab); return true; },
+  journalPage() { return journalScreen.page(); },
   stat(id, k) { return journal.stat(id, k); },
   closeJournal() { journalScreen.hide(); return true; },
   /** v2: quest / shop / wallet snapshot for tests and review. */

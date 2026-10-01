@@ -21,7 +21,7 @@ function el(tag, className, text) {
  *   osReducedMotion: () => boolean,
  *   inputMode: () => string,
  *   onOpen?: () => void, onClose?: () => void,
- *   onResetProgress?: () => void,
+ *   onResetProgress?: () => void, onOpenJournal?: () => void,
  * }} handlers
  */
 export function createSettingsPanel(root, handlers) {
@@ -44,8 +44,13 @@ export function createSettingsPanel(root, handlers) {
 
   const ctl = {};
   let open = false;
+  // three groups: sound + comfort | swimming + seed | controls + progress. One column on a tall screen; on a short landscape
+  // phone the first two sit side by side and the third spans both (css), so little scrolling is needed.
+  const colA = el('div', 'octo-set-col'), colB = el('div', 'octo-set-col'), colC = el('div', 'octo-set-col octo-set-wide');
+  body.append(colA, colB, colC);
+  let cur = colA;
 
-  function heading(text) { body.appendChild(el('div', 'octo-settings-head', text)); }
+  function heading(text) { cur.appendChild(el('div', 'octo-settings-head', text)); }
   function fmt(def, v) {
     if (def.key === 'sink') return v === 0 ? 'None' : v.toFixed(2);
     return Math.round(v * 100) + '%';
@@ -66,7 +71,7 @@ export function createSettingsPanel(root, handlers) {
     top.append(label, out);
     row.append(top, input);
     if (def.hint) row.appendChild(el('div', 'octo-set-hint', def.hint));
-    body.appendChild(row);
+    cur.appendChild(row);
     ctl[def.key] = { def, row, input, out };
   }
 
@@ -91,7 +96,7 @@ export function createSettingsPanel(root, handlers) {
     });
     row.appendChild(sw);
     if (def.hint) row.appendChild(el('div', 'octo-set-hint', def.hint));
-    body.appendChild(row);
+    cur.appendChild(row);
     ctl[def.key] = { def, row, sw, tag };
   }
 
@@ -113,7 +118,7 @@ export function createSettingsPanel(root, handlers) {
     line.append(input, clear);
     row.append(label, line);
     if (def.hint) row.appendChild(el('div', 'octo-set-hint', def.hint));
-    body.appendChild(row);
+    cur.appendChild(row);
     ctl[def.key] = { def, row, input };
   }
 
@@ -122,22 +127,28 @@ export function createSettingsPanel(root, handlers) {
   buildRange(byKey.musicVol); buildRange(byKey.sfxVol);
   heading('Comfort');
   buildToggle(byKey.shake); buildToggle(byKey.reducedMotion);
+  cur = colB;
   heading('Swimming');
   buildRange(byKey.sink);
   heading('Next dive');
   buildSeed(byKey.seed);
 
+  cur = colC;
   heading('Controls');
   const helpBlocks = {};
   for (const c of CONTROLS_HELP) {
     const box = el('div', 'octo-set-help');
     box.appendChild(el('div', 'octo-set-helptitle', c.title));
     for (const l of c.lines) box.appendChild(el('div', 'octo-set-helpline', l));
-    body.appendChild(box);
+    cur.appendChild(box);
     helpBlocks[c.id] = box;
   }
 
   heading('Progress');
+  const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-set-journal', 'Open the journal');
+  journalBtn.type = 'button';
+  journalBtn.addEventListener('click', () => { if (handlers.onOpenJournal) handlers.onOpenJournal(); });
+  cur.appendChild(journalBtn);
   const resetRow = el('div', 'octo-set-row octo-set-reset');
   const resetBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-btn-danger', 'Reset progress');
   resetBtn.type = 'button';
@@ -149,13 +160,15 @@ export function createSettingsPanel(root, handlers) {
   confirmNo.type = 'button';
   confirmBox.append(confirmText, confirmYes, confirmNo);
   resetRow.append(resetBtn, confirmBox);
-  body.appendChild(resetRow);
+  cur.appendChild(resetRow);
   const ASK = 'Erase the journal, best runs, stats and the tutorial flag? This cannot be undone. Your settings stay.';
   function showConfirm(on) {
     confirmBox.style.display = on ? '' : 'none';
     resetBtn.style.display = on ? 'none' : '';
     confirmText.textContent = ASK;
     confirmYes.style.display = confirmNo.style.display = '';
+    // the confirm is taller than the button it replaced and sits at the end of the scroll body: bring it into view
+    if (on) confirmBox.scrollIntoView({ block: 'nearest' });
   }
   resetBtn.addEventListener('click', () => showConfirm(true));
   confirmNo.addEventListener('click', () => showConfirm(false));

@@ -4,98 +4,34 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person';
-export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT];
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person', CAT_PROP = 'prop';
+export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT, CAT_PROP];
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
-export const TABS = [
-  { id: 'places', title: 'Places', cats: [CAT_PLACE] },
-  { id: 'people', title: 'People', cats: [CAT_PERSON] },
-  { id: 'bestiary', title: 'Bestiary', cats: [CAT_CREATURE] },
-  { id: 'items', title: 'Items', cats: [CAT_ITEM, CAT_LOOT] },
-  { id: 'traps', title: 'Traps', cats: [CAT_HAZARD] },
-];
+export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
 export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_COUNT = 4;
 
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', person: 'People' };
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
-/** Seed content; the art and longer text come later. Ids are stable: saves store them. */
-export const ENTRIES = [
-  { id: 'place-hub', cat: CAT_PLACE, name: 'The Hub',
-    text: 'A quiet cave where every dive begins. The ring in the floor leads down, and the board on the wall keeps this journal.' },
-  { id: 'place-tutorial', cat: CAT_PLACE, name: 'The Training Cave',
-    text: 'A short cave that teaches swimming, dashing and bombing. It ends in a ring that leads on to the Shallows.' },
-  { id: 'place-shallows', cat: CAT_PLACE, name: 'The Shallows',
-    text: 'The first biome: sunlit caves of winding tunnels, ledges and shafts. Find the ring at the bottom of each level to swim deeper.' },
-  { id: 'place-shop', cat: CAT_PLACE, name: 'The Shell Stall',
-    text: 'A keeper with three pedestals, tucked into a side cave. Swim onto an item to buy it with shells.' },
-
-  { id: 'creature-urchin', cat: CAT_CREATURE, name: 'Urchin',
-    text: 'A spiny ball that sits still on the rock. It never chases you, but touching it hurts.' },
-  { id: 'creature-piranha', cat: CAT_CREATURE, name: 'Piranha',
-    text: 'A fast fish that patrols and gives chase when it spots you. A dash straight through one is enough to beat it.' },
-  { id: 'creature-crab', cat: CAT_CREATURE, name: 'Crab',
-    text: 'Scuttles along the rock, floor and ceiling alike. Keep your distance.' },
-  { id: 'creature-horns', cat: CAT_CREATURE, name: 'Horned Growth',
-    text: 'Hard spikes that grow from the ceiling. They do not move, so swim around them.' },
-  { id: 'creature-manta', cat: CAT_CREATURE, name: 'Manta',
-    text: 'A broad ray that glides through open water and spits at you. It needs wide caves.' },
-  { id: 'creature-cannon', cat: CAT_CREATURE, name: 'Cannon',
-    text: 'A fixed turret grown into the wall. It fires slow shots along its line of sight.' },
-  { id: 'creature-beholder', cat: CAT_CREATURE, name: 'The Beholder',
-    text: 'It comes for anyone who lingers too long in one level, and it does not stop.' },
-
-  { id: 'hazard-jet', cat: CAT_HAZARD, name: 'Current Jet',
-    text: 'A vent in the rock that blasts water along a line of bubbles. It does no harm, but it will carry you wherever it points.' },
-  { id: 'hazard-spikes', cat: CAT_HAZARD, name: 'Spike Wall',
-    text: 'A strip of hard spikes set into the rock face. Touching it hurts, so keep a body length away.' },
-  { id: 'hazard-rock', cat: CAT_HAZARD, name: 'Loose Rock',
-    text: 'A boulder wedged in a ledge that drops when something swims underneath. It hurts on the way down, then settles as ordinary rock that a bomb will clear.' },
-  { id: 'hazard-eel', cat: CAT_HAZARD, name: 'Electric Eel',
-    text: 'It patrols a narrow shaft. The body glows just before it lets out a ring of shock that spreads through open water; rock stops it.' },
-  { id: 'hazard-anemone', cat: CAT_HAZARD, name: 'Anemone Cluster',
-    text: 'Soft pink fronds that sway on the cave floor. They sting on contact, so swim over them, not through them.' },
-
-  { id: 'item-plankton', cat: CAT_ITEM, name: 'Plankton',
-    text: 'Glowing drifts of tiny life. Collect it for score.' },
-  { id: 'item-shell', cat: CAT_ITEM, name: 'Shell',
-    text: 'A rare find, often tucked away on the cave floor. Worth a lot of score.' },
-  { id: 'item-bomb', cat: CAT_ITEM, name: 'Bomb',
-    text: 'Place one and swim clear: after a short fuse it breaks nearby rock and hurts anything close, you included.' },
-  { id: 'item-heart', cat: CAT_ITEM, name: 'Heart',
-    text: 'Sold at the Shell Stall. Restores one heart, up to your maximum.' },
-  { id: 'item-bombpack', cat: CAT_ITEM, name: 'Bomb Pack',
-    text: 'Sold at the Shell Stall. Three bombs in one bundle, up to the most you can carry.' },
-
-  { id: 'item-flippers', cat: CAT_ITEM, name: 'Flippers',
-    text: 'A pair of fins you keep for the rest of the dive: you swim a fifth faster. Found in chests and hidden pockets, or sold at the Shell Stall. Lost if you fall.' },
-  { id: 'item-lantern', cat: CAT_ITEM, name: 'Lantern',
-    text: 'The Shallows are dim away from your own glow. A lantern widens the light around you so you see more of the cave ahead. Kept for the dive, lost if you fall.' },
-  { id: 'item-magnet', cat: CAT_ITEM, name: 'Shell Magnet',
-    text: 'Shells within three tiles slide towards you. Kept for the dive, lost if you fall.' },
-  { id: 'item-bombbag', cat: CAT_ITEM, name: 'Bomb Bag',
-    text: 'Three bombs now, and room for one more in your stock from here on. You can carry two of these. Lost if you fall.' },
-  { id: 'item-heartcontainer', cat: CAT_ITEM, name: 'Heart Container',
-    text: 'One more heart, and it heals one at once. You can carry two of these. Lost if you fall.' },
-
-  { id: 'loot-clam', cat: CAT_LOOT, name: 'Clam',
-    text: 'A sleeping clam with something shiny inside. A dash straight through it, or a bomb, cracks it open and sends shells tumbling out.' },
-  { id: 'loot-pot', cat: CAT_LOOT, name: 'Clay Pot',
-    text: 'An old pot left on the cave floor. It shatters to a dash or a blast, and there are always a few shells in the pieces.' },
-  { id: 'loot-chest', cat: CAT_LOOT, name: 'Chest',
-    text: 'Swim into a chest to open it: a small pile of shells. Not every one is honest, and some bite back with spikes or a swarm of piranhas.' },
-  { id: 'loot-pocket', cat: CAT_LOOT, name: 'Hidden Pocket',
-    text: 'A rock tile with a hairline crack or a faint glint, hollow inside. Bomb it from the nearest cave and see what was tucked away.' },
-  { id: 'loot-relic', cat: CAT_LOOT, name: 'The Relic',
-    text: 'A golden idol on a pedestal, worth twenty-five shells. The moment you lift it the ceiling starts to come down, for about ten seconds: keep moving.' },
-
-  { id: 'person-diver', cat: CAT_PERSON, name: 'The Stranded Diver',
-    text: 'Sealed in a pocket of rock with only his own bubbles for company. Bomb the rock open and swim in. Free him on enough dives and he finds you a shortcut.' },
-  { id: 'person-critter', cat: CAT_PERSON, name: 'The Caged Critter',
-    text: 'A small creature shut in a cage in a side cave. Touch the cage and it follows you: bring it all the way to the exit and it moves into the hub.' },
-  { id: 'person-keeper', cat: CAT_PERSON, name: 'The Shopkeeper',
-    text: 'A hermit crab who sells whatever washes up, three things at a time. He only takes shells, and he flinches when you throw bombs nearby.' },
-];
+/**
+ * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
+ * (a real sprite, generated art, an item icon or a code drawing: journal-art.js) and which counters apply. Ids are
+ * stable: saves store them. Fetched once when the module loads (every importer is a browser module).
+ * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][]}[]}
+ */
+export const ENTRIES = [];
+const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED };
+{
+  const res = await fetch(new URL('../data/journal.json', import.meta.url));
+  if (!res.ok) throw new Error('journal.json ' + res.status);
+  const json = await res.json();
+  TABS.length = 0;
+  for (const t of json.tabs) TABS.push({ id: t.id, title: t.title, cats: t.categories.slice() });
+  for (const r of json.entries) {
+    const counters = (r.counters || []).filter((c) => STAT_KEYS[c[0]] !== undefined).map((c) => [c[0], String(c[1])]);
+    ENTRIES.push({ id: r.id, cat: r.category, name: r.name, text: r.text, art: r.art || null, counters });
+  }
+}
 
 const INDEX = new Map(ENTRIES.map((e, i) => [e.id, i]));
 
@@ -209,4 +145,19 @@ export function createJournal(store) {
     /** Ids discovered since the last call (main.js turns them into toasts). */
     takeNew() { return events.splice(0, events.length); },
   };
+}
+
+/** Whole-number percentage found / total (0 for an empty set); rounds down so 100% only means every entry. */
+export function percent(found, total) { return total > 0 ? Math.floor((100 * found) / total) : 0; }
+
+/** Counter rows of an entry as [label, value] pairs, the ones its data row lists (`e.stats` from journal.list). */
+export function counterRows(e) {
+  return e.counters.map(([key, label]) => [label, e.stats[STAT_KEYS[key]] || 0]);
+}
+
+/** Completion: overall and per tab, from the journal's found counts. {found, total, pct, tabs:[{id, title, found, total, pct}]} */
+export function completion(journal) {
+  const tabs = TABS.map((t) => { const p = journal.tabProgress(t.id); return { id: t.id, title: t.title, found: p.found, total: p.total, pct: percent(p.found, p.total) }; });
+  const found = tabs.reduce((a, t) => a + t.found, 0), total = tabs.reduce((a, t) => a + t.total, 0);
+  return { found, total, pct: percent(found, total), tabs };
 }

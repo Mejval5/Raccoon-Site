@@ -558,4 +558,4 @@ Daniel: it does not feel like Spelunky yet; enemies are buggy, levels lack detai
   - *The Altar*: sacrifice an item or a stunned enemy for a random boon.
   The shop and the "Untouched" style bonuses go away as quests; "Untouched" becomes a journal stat. Quest state lives in save.js (per run and across runs) as flat flags.
 
-- **Status (round 38):** settings menu, the journal book (tabs, silhouettes, entry pages, counters, Progress) and the first two encounters (Caged Critter, Stranded Diver, hub residents, diver shortcut) are built; the Collector, Challenge Pool and Altar are still open.
+- **Status (round 38, second pass):** settings menu built. The journal is a real book (two parchment pages, bookmark tabs, locked silhouettes, per-entry counters, a Progress spread; data in `data/journal.json`). Quests are named NPC questlines (Marlo, Pip, Quill the Collector) with staged speech bubbles, chains across levels and runs and a changing hub. The Challenge Pool and the Altar are still open.

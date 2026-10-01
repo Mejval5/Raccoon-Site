@@ -136,8 +136,8 @@ body {
   position: absolute;
   right: calc(12px + var(--safe-r));
   top: calc(8px + var(--safe-t));
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.4);
   background: rgba(255,255,255,0.14);
@@ -153,8 +153,8 @@ body {
   position: absolute;
   right: calc(12px + var(--safe-r));
   top: calc(56px + var(--safe-t));
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.4);
   background: rgba(255,255,255,0.14);
@@ -170,8 +170,8 @@ body {
   position: absolute;
   right: calc(12px + var(--safe-r));
   top: calc(104px + var(--safe-t));
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.4);
   background: rgba(255,255,255,0.14);
@@ -319,34 +319,6 @@ body {
   pointer-events: none;
   z-index: 4;
 }
-.octo-journal-panel {
-  width: min(92vw, 480px);
-  max-width: min(92vw, 480px);
-  max-height: 86dvh;
-  padding: 20px 20px 16px;
-}
-.octo-journal-body {
-  width: 100%;
-  overflow-y: auto;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-}
-.octo-journal-cat {
-  font: 700 12px 'Quicksand', sans-serif;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #7cf0d0;
-  margin-top: 8px;
-}
-.octo-journal-entry { padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); }
-.octo-journal-name { font-weight: 700; font-size: 15px; }
-.octo-journal-text { font-size: 13px; opacity: .85; line-height: 1.35; }
-.octo-journal-unknown { opacity: .5; }
-
 /* v2 level title card (round 24): the generated ribbon behind the stage name */
 #hud > .octo-title {
   position: absolute;
@@ -390,9 +362,6 @@ body {
 .octo-summary-bestrun { padding: 2px 10px; border-radius: 8px; opacity: .85; }
 .octo-summary-bestrun.is-new { background: rgba(255, 227, 138, 0.18); color: #ffe38a; opacity: 1; font-weight: 700; }
 .octo-summary-note { font-size: 13px; font-weight: 700; color: #ffe38a; margin-top: 4px; }
-.octo-journal-tabs { display: flex; gap: 8px; width: 100%; }
-.octo-journal-tab { flex: 1; padding: 6px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.25); background: transparent; color: #eafffa; font: 700 13px 'Quicksand', sans-serif; cursor: pointer; }
-.octo-journal-tab.is-active { background: rgba(124, 240, 208, 0.22); border-color: rgba(124, 240, 208, 0.7); }
 .octo-stat-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 14px; }
 .octo-stat-row b { color: #fff; }
 
@@ -450,43 +419,138 @@ body {
 .octo-set-confirmtext { font-size: 13px; font-weight: 600; color: #ffd0c6; line-height: 1.35; }
 .octo-settings-close { flex: none; min-height: 44px; }
 .octo-settings-overlay .octo-btn-wide { min-height: 44px; }
-@media (max-height: 420px) {
-  .octo-settings-panel { flex-direction: column; padding: 10px 14px; }
-  .octo-settings-banner { width: 130px; }
+/* the groups are plain wrappers on a tall screen */
+.octo-set-col { display: contents; }
+.octo-settings-overlay { background: rgba(4, 12, 18, 0.95); }
+.octo-settings-panel { background: rgb(10, 28, 42); } /* opaque: nothing of the HUD shows through */
+.octo-set-journal { min-height: 44px; margin-top: 2px; }
+/* short landscape phone: banner and Close share one row, the options sit in two columns */
+@media (orientation: landscape) and (max-height: 500px) {
+  .octo-settings-panel {
+    width: min(100%, 780px); max-width: 780px; padding: 8px 12px 8px; gap: 6px;
+    display: grid; grid-template-columns: 1fr 150px; grid-template-rows: auto minmax(0, 1fr); align-items: center;
+  }
+  .octo-settings-banner { width: 128px; grid-column: 1; grid-row: 1; justify-self: start; margin-left: 12px; }
+  .octo-settings-close { grid-column: 2; grid-row: 1; width: 150px; }
+  .octo-settings-body { grid-column: 1 / -1; grid-row: 2; height: 100%; display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; align-content: start; align-items: start; }
+  .octo-set-col { display: flex; flex-direction: column; gap: 5px; }
+  .octo-set-wide { grid-column: 1 / -1; }
+  .octo-settings-head { margin-top: 4px; }
 }
 
-/* --- journal book (round 38) --- */
-.octo-journal-overlay { z-index: 6; padding-right: calc(64px + var(--safe-r)); }
-.octo-journal-panel { width: min(100%, 540px); max-width: 540px; max-height: 100%; padding: 14px 16px 14px; gap: 8px; align-items: stretch; text-align: left; }
-.octo-journal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.octo-journal-total { font: 700 14px 'Quicksand', sans-serif; color: #ffe38a; }
-.octo-journal-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.octo-journal-tab { flex: 1 1 auto; min-height: 44px; padding: 4px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
-.octo-journal-tabname { font-weight: 700; }
-.octo-journal-tabcount { font-size: 11px; opacity: .7; }
-.octo-journal-tabcount:empty { display: none; }
-.octo-journal-body { flex: 1 1 auto; min-height: 120px; }
-.octo-journal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-.octo-journal-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; min-height: 44px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #eafffa; font-family: 'Quicksand', sans-serif; cursor: pointer; }
-.octo-journal-card:active, .octo-journal-card:hover { background: rgba(124, 240, 208, 0.14); border-color: rgba(124, 240, 208, 0.5); }
-.octo-journal-art { width: 72px; height: 72px; display: block; }
-.octo-journal-cardname { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.15; }
-.octo-journal-q { position: absolute; left: 0; right: 0; top: 24px; text-align: center; font: 700 26px 'Quicksand', sans-serif; color: rgba(186, 255, 234, 0.55); pointer-events: none; }
-.octo-journal-qbig { top: 44px; font-size: 44px; }
-.octo-journal-unknown .octo-journal-cardname { opacity: .55; }
-.octo-journal-nav { display: flex; gap: 8px; }
-.octo-journal-navbtn { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.25); background: transparent; color: #eafffa; font: 700 13px 'Quicksand', sans-serif; cursor: pointer; margin-right: auto; }
-.octo-journal-navsq { min-width: 44px; margin-right: 0; padding: 0; font-size: 18px; }
-.octo-journal-page { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 8px 6px; }
-.octo-journal-pageart { position: relative; width: 132px; height: 132px; border-radius: 16px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; }
-.octo-journal-pageart .octo-journal-art { width: 132px; height: 132px; }
-.octo-journal-page .octo-journal-name { font-size: 20px; text-align: center; }
-.octo-journal-page .octo-journal-text { font-size: 14px; text-align: center; max-width: 40ch; opacity: .92; }
-.octo-journal-counters { width: 100%; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.octo-journal-bar { height: 10px; border-radius: 999px; background: rgba(255,255,255,0.14); overflow: hidden; }
-.octo-journal-barfill { height: 100%; background: #3fd6a8; }
-.octo-journal-close { flex: none; min-height: 44px; }
+/* --- journal book (round 38): an open book, two parchment pages in the banner-art frame, bookmarks on the right edge --- */
+.octo-journal-overlay { z-index: 6; padding: calc(10px + var(--safe-t)) calc(64px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: #04121c; }
+.octo-book {
+  --ink: #3a2a1b; --ink-soft: #6d5a43; --paper: #efe3bf; --paper-dk: #d9c794; --teal: #2a6b73; --teal-lt: #62b5a8; --teal-dk: #143c47;
+  position: relative; width: min(100%, 920px); height: min(100%, 620px); padding: 22px 38px 0 0;
+  display: flex; font-family: 'Quicksand', sans-serif; color: var(--ink); text-align: left;
+}
+.octo-bk-ribbon {
+  position: absolute; left: calc(50% - 19px); top: 0; transform: translateX(-50%); width: 230px; aspect-ratio: 725 / 176; z-index: 3;
+  background-size: 100% 100%; background-repeat: no-repeat; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); pointer-events: none;
+}
+.octo-bk-ribbon-text { font-size: 22px; font-weight: 700; color: #eafffa; text-shadow: 0 2px 3px rgba(0,0,0,.6); letter-spacing: .04em; }
+.octo-bk-frame {
+  position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 34px 12px 8px;
+  border-radius: 20px; border: 3px solid var(--teal-lt);
+  background: linear-gradient(180deg, #2f7580 0%, #1d505b 55%, #17424d 100%);
+  box-shadow: 0 14px 40px rgba(0,0,0,.6), inset 0 0 0 3px var(--teal-dk), inset 0 2px 14px rgba(0,0,0,.35);
+}
+.octo-bk-spread { position: relative; flex: 1; min-height: 0; display: flex; border-radius: 8px; perspective: 1600px; box-shadow: 0 0 0 2px #0d2a33, 0 5px 0 -1px #cdbb88, 0 6px 0 -1px #0d2a33, 0 9px 0 -3px #bcaa78; background: var(--paper); touch-action: pan-y; }
+.octo-bk-page { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 24px; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #b9a572 transparent; }
+.octo-bk-left { border-radius: 8px 0 0 8px; background: linear-gradient(90deg, #e9dcb3 0%, #f1e6c4 18%, #efe3bf 78%, #d8c691 100%); transform-origin: right center; }
+.octo-bk-right { border-radius: 0 8px 8px 0; background: linear-gradient(90deg, #d8c691 0%, #efe3bf 22%, #f1e6c4 82%, #e7d9af 100%); transform-origin: left center; }
+.octo-bk-spine { flex: none; width: 3px; background: linear-gradient(90deg, rgba(60,40,15,0), rgba(60,40,15,.45), rgba(60,40,15,0)); box-shadow: 0 0 14px 6px rgba(60,40,15,.18); z-index: 1; pointer-events: none; }
+.octo-bk-page.turn-next { animation: octo-bk-next .38s ease-out both; }
+.octo-bk-page.turn-prev { animation: octo-bk-prev .38s ease-out both; }
+@keyframes octo-bk-next { 0% { transform: rotateY(-88deg); filter: brightness(.7); } 100% { transform: rotateY(0); filter: none; } }
+@keyframes octo-bk-prev { 0% { transform: rotateY(88deg); filter: brightness(.7); } 100% { transform: rotateY(0); filter: none; } }
+@media (prefers-reduced-motion: reduce) { .octo-bk-page.turn-next, .octo-bk-page.turn-prev { animation: none; } }
+.octo-bk-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 4px; border-bottom: 2px solid rgba(58,42,27,.35); flex: none; }
+.octo-bk-title { font: 700 13px 'Quicksand', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.octo-bk-count { font: 700 13px 'Quicksand', sans-serif; color: var(--ink-soft); }
+.octo-bk-no { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font: 600 11px 'Quicksand', sans-serif; color: var(--ink-soft); pointer-events: none; }
+.octo-bk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 8px; align-content: start; padding-top: 6px; }
+.octo-bk-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 5px 3px 5px; min-height: 44px; border-radius: 10px; border: 2px solid transparent; background: transparent; color: var(--ink); font-family: inherit; cursor: pointer; touch-action: manipulation; }
+.octo-bk-card:hover { background: rgba(58,42,27,.07); }
+.octo-bk-card.is-sel { border-color: #b0432f; background: rgba(176,67,47,.1); }
+.octo-bk-card:focus-visible { outline: 3px solid #1d7d8a; outline-offset: 1px; }
+.octo-bk-plate { position: relative; width: 100%; max-width: 84px; aspect-ratio: 1; border-radius: 12px; background: radial-gradient(circle at 50% 38%, #3d8f98 0%, #1f5a66 70%, #174853 100%); box-shadow: inset 0 0 0 2px #0f3039, 0 1px 0 rgba(255,255,255,.4); overflow: hidden; }
+.octo-bk-plate canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.octo-bk-card.is-locked .octo-bk-plate, .octo-bk-entry.is-locked .octo-bk-plate { background: radial-gradient(circle at 50% 38%, #e4d6aa 0%, #d3c18c 80%, #c7b47d 100%); box-shadow: inset 0 0 0 2px #a99765, 0 1px 0 rgba(255,255,255,.4); }
+.octo-bk-q { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font: 700 30px Georgia, 'Times New Roman', serif; color: #f2e8c8; text-shadow: 0 0 3px #3a2a1b, 0 1px 0 #3a2a1b, 0 -1px 0 #3a2a1b, 1px 0 0 #3a2a1b, -1px 0 0 #3a2a1b; pointer-events: none; }
+.octo-bk-qbig { font-size: 56px; }
+.octo-bk-cardname { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.15; }
+.octo-bk-card.is-locked .octo-bk-cardname { color: var(--ink-soft); letter-spacing: .12em; }
+.octo-bk-entry { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 2px; }
+.octo-bk-kicker { align-self: stretch; padding-bottom: 4px; border-bottom: 2px solid rgba(58,42,27,.35); font: 700 12px 'Quicksand', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); }
+.octo-bk-plate-big { width: min(100%, 200px); max-width: 200px; border-radius: 16px; flex: none; }
+.octo-bk-name { font: 700 24px Georgia, 'Times New Roman', serif; text-align: center; line-height: 1.1; color: var(--ink); }
+.octo-bk-text { font: 600 14px/1.4 'Quicksand', sans-serif; text-align: center; max-width: 36ch; color: #4a3826; }
+.octo-bk-hint { color: var(--ink-soft); font-style: italic; }
+.octo-bk-ledger { align-self: stretch; display: flex; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 8px; border-top: 2px solid rgba(58,42,27,.35); }
+.octo-bk-lrow { display: flex; align-items: baseline; gap: 6px; font-size: 14px; font-weight: 700; }
+.octo-bk-lk { color: var(--ink); }
+.octo-bk-dots { flex: 1; border-bottom: 2px dotted rgba(58,42,27,.4); transform: translateY(-3px); min-width: 12px; }
+.octo-bk-lv { color: #8a2f1e; font-variant-numeric: tabular-nums; }
+.octo-bk-prog { display: flex; flex-direction: column; gap: 6px; }
+.octo-bk-headrow { margin-bottom: 4px; }
+.octo-bk-bignum { font: 700 64px/1 Georgia, 'Times New Roman', serif; text-align: center; color: #8a2f1e; margin-top: 4px; }
+.octo-bk-bigsub { text-align: center; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; }
+.octo-bk-bars { display: flex; flex-direction: column; gap: 8px; }
+.octo-bk-barrow { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 14px; font-weight: 700; }
+.octo-bk-barpct { color: #8a2f1e; font-variant-numeric: tabular-nums; }
+.octo-bk-bar { grid-column: 1 / -1; height: 10px; border-radius: 999px; background: rgba(58,42,27,.18); overflow: hidden; }
+.octo-bk-barfill { height: 100%; background: linear-gradient(90deg, #2a8f86, #4fc2b0); }
+.octo-bk-sub { margin-top: 8px; font: 700 12px 'Quicksand', sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); }
+.octo-bk-none, .octo-bk-bestline { font-size: 13.5px; font-weight: 600; color: #4a3826; }
+.octo-bk-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 2px 0; }
+.octo-bk-pagelabel { flex: 1; min-width: 0; text-align: center; font: 700 11px 'Quicksand', sans-serif; letter-spacing: .04em; color: #cfeee4; }
+.octo-bk-turn, .octo-bk-close { min-width: 44px; min-height: 44px; border-radius: 999px; border: 2px solid #0f3039; background: var(--paper); color: var(--ink); font: 700 22px/1 'Quicksand', sans-serif; cursor: pointer; padding: 0 12px; box-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.octo-bk-close { font-size: 14px; padding: 0 20px; }
+.octo-bk-turn:disabled { opacity: .35; cursor: default; }
+.octo-bk-turn:active:not(:disabled), .octo-bk-close:active { background: var(--paper-dk); }
+.octo-bk-tabs { position: absolute; right: 0; top: 56px; bottom: 36px; width: 40px; display: flex; flex-direction: column; gap: 5px; z-index: 2; }
+.octo-bk-tab {
+  flex: 1 1 0; min-height: 44px; max-height: 96px; width: 34px; margin-left: 0; padding: 4px 0; border: 2px solid rgba(20,40,50,.75); border-left: 0; border-radius: 0 12px 12px 0;
+  background: var(--tab); color: #2a1d12; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 2px 2px 0 rgba(0,0,0,.35);
+  transition: width .12s, filter .12s; position: relative; left: -6px;
+}
+.octo-bk-tab:hover { filter: brightness(1.08); }
+.octo-bk-tab.is-active { width: 42px; filter: brightness(1.12); z-index: 1; box-shadow: 3px 3px 0 rgba(0,0,0,.4); }
+.octo-bk-tab:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
+.octo-bk-tabname { writing-mode: vertical-rl; font: 700 13px 'Quicksand', sans-serif; letter-spacing: .06em; white-space: nowrap; }
+/* one page at a time (phone portrait): the grid, then the entry */
+.octo-book[data-mode="single"] .octo-bk-spine { display: none; }
+.octo-book[data-mode="single"] .octo-bk-pagelabel { display: none; }
+.octo-book[data-mode="single"] .octo-bk-foot { justify-content: space-between; }
+.octo-book[data-mode="single"] .octo-bk-left { border-radius: 8px; }
+.octo-book[data-mode="single"] .octo-bk-right { border-radius: 8px; }
+.octo-book[data-mode="single"][data-view="grid"] .octo-bk-right, .octo-book[data-mode="single"][data-view="entry"] .octo-bk-left { display: none; }
+.octo-book[data-mode="single"] .octo-bk-ribbon { width: 170px; left: calc(50% - 19px); }
+.octo-book[data-mode="single"] .octo-bk-ribbon-text { font-size: 17px; }
+.octo-book[data-mode="single"] .octo-bk-frame { padding-top: 28px; }
+.octo-book[data-mode="single"] .octo-bk-tabname { font-size: 12px; }
+.octo-book[data-mode="single"] .octo-bk-bignum { font-size: 52px; }
+@media (max-height: 520px) {
+  .octo-book { padding-top: 10px; }
+  .octo-bk-ribbon { width: 150px; }
+  .octo-bk-ribbon-text { font-size: 16px; }
+  .octo-bk-frame { padding: 22px 10px 6px; }
+  .octo-bk-page { padding: 10px 14px 20px; gap: 4px; }
+  .octo-bk-tabs { top: 34px; bottom: 6px; }
+  .octo-bk-tab { min-height: 40px; padding: 2px 0; }
+  .octo-bk-tabname { font-size: 11px; letter-spacing: 0; }
+  .octo-bk-plate-big { width: 120px; }
+  .octo-bk-name { font-size: 20px; }
+  .octo-bk-text { font-size: 13px; line-height: 1.3; }
+  .octo-bk-qbig { font-size: 40px; }
+  .octo-bk-plate { max-width: 62px; }
+  .octo-bk-foot { padding-top: 3px; }
+}
 #hud > .octo-toast.is-small { padding: 4px 12px; font-size: 11px; font-weight: 600; background: rgba(6, 22, 34, 0.74); border-color: rgba(186, 255, 234, 0.4); color: #cfeee4; bottom: calc(18px + var(--safe-b)); }
 .octo-pause-btns { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
-@media (max-height: 420px) { .octo-journal-panel { padding: 8px 12px; } .octo-journal-pageart { width: 96px; height: 96px; } .octo-journal-pageart .octo-journal-art { width: 96px; height: 96px; } }
-.octo-journal-overlay { background: rgba(4, 12, 18, 0.93); }
+
+
+/* a full-screen panel (settings, journal) hides the HUD row under it: the hearts and stats never peek out or show through */
+#hud.octo-modal-open > .octo-hud-bar, #hud.octo-modal-open > .octo-toast, #hud.octo-modal-open > .octo-title, #hud.octo-modal-open > .octo-speech { visibility: hidden; }

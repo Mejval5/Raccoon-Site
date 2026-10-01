@@ -1,8 +1,34 @@
 {
+ "_doc": "Named NPC questlines (round 38). `npcs` are the people (hub lines per stage); `quests` are the encounters that move a person from stage `need` to stage `set` on the listed levels (0 = Shallows 1-1). Nothing is announced or listed: a person speaks when you come near. kinds: vault (sealed in a rock pocket, bomb it open), rescue (a cage on the floor; touch it, bring the freed creature to the exit), fetch (an item on the floor; bring it to the exit), meet (a person standing on the floor; swim up to him). lines: meet, ask (said as you approach), help (when you act), thank (right after). Hub lines may use {n} (relics delivered) and {left}.",
+ "npcs": [
+  { "id": "marlo", "name": "Marlo", "title": "The Stranded Diver", "journal": "person-diver",
+    "hub": { "1": ["Breathing again, thanks to you.", "My old tank got swept off somewhere in the caves. Green, with a dent.", "If you spot it on 1-2 or 1-3, bring it out for me."],
+             "2": ["Air in the tank and a shortcut in the floor. We are square.", "The new ring by the dive well drops you at 1-2."] },
+    "thanks": { "1": "Made it! Thanks for the rescue.", "2": "My tank! You found it! Take the shortcut ring: it is yours." } },
+  { "id": "pip", "name": "Pip", "title": "The Caged Critter", "journal": "person-critter",
+    "hub": { "1": ["Squeak!", "Squeak squeak. (Mother is in a cage in the caves too.)"],
+             "2": ["Squeak squeak squeak!", "(Mother and I are together again.)"] },
+    "thanks": { "1": "Squeak! Home!", "2": "Mama! Squeeee!" } },
+  { "id": "quill", "name": "Quill", "title": "The Collector", "journal": "person-collector",
+    "hub": { "1": ["Golden relics, my friend. Heavy, shiny, slightly cursed.", "{n} of 3 so far. {left} to go.", "Carry one out through the exit ring, and it is mine."],
+             "2": ["My lantern burns for you now.", "Every dive starts a little brighter."] },
+    "thanks": { "1": "Delighted to be here. Mind the ledge.", "2": "Three relics! You have outdone yourself. Take my lantern on every dive." } }
+ ],
  "quests": [
-  { "id": "critter", "kind": "rescue", "name": "The Caged Critter", "weight": 1, "reward": 3,
-    "hud": "", "done": "It squeaks happily and swims home", "journal": "person-critter" },
-  { "id": "diver", "kind": "vault", "name": "The Stranded Diver", "weight": 1, "reward": 3,
-    "hud": "", "done": "The diver waves, free at last", "journal": "person-diver" }
+  { "id": "marlo-1", "npc": "marlo", "kind": "vault", "need": 0, "set": 1, "levels": [0, 1], "chance": 0.4, "reward": 3,
+    "lines": { "meet": "Hey! Over here! In the rock!", "ask": "My tank is nearly dry. Blow this wall open, would you?", "help": "Fresh water! You did it!", "thank": "Find me at the hub. I owe you one." },
+    "done": "The diver waves, free at last" },
+  { "id": "marlo-2", "npc": "marlo", "kind": "fetch", "need": 1, "set": 2, "levels": [1, 2], "chance": 0.5, "reward": 5,
+    "lines": { "help": "A green tank with a dent: Marlo's! Carry it to the exit." },
+    "done": "Marlo's tank is safe", "journal": "person-diver" },
+  { "id": "pip-1", "npc": "pip", "kind": "rescue", "need": 0, "set": 1, "levels": [0, 1, 2], "chance": 0.34, "reward": 3,
+    "lines": { "meet": "Eep! Someone is here!", "ask": "The latch is stuck. Could you open the cage?", "help": "Free! Squee! Lead the way!", "thank": "I will follow you home." },
+    "done": "It squeaks happily and swims home" },
+  { "id": "pip-2", "npc": "pip", "kind": "rescue", "variant": "mama", "need": 1, "set": 2, "levels": [1, 2], "chance": 0.45, "reward": 4,
+    "lines": { "meet": "Is that Pip I smell?", "ask": "I am Pip's mother. Please let me out?", "help": "Oh, bless you, little octopus!", "thank": "Take me to my baby." },
+    "done": "Mother and child are reunited" },
+  { "id": "quill-1", "npc": "quill", "kind": "meet", "need": 0, "set": 1, "levels": [1, 2], "chance": 0.4, "reward": 2,
+    "lines": { "meet": "Ah, a visitor! Mind the dust.", "ask": "I collect golden relics. Bring me three, and I shall make it worth your while.", "help": "Splendid! I shall set up at your hub.", "thank": "Look for my lantern there." },
+    "done": "The Collector will wait in the hub" }
  ]
 }

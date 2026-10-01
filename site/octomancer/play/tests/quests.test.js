@@ -1,9 +1,10 @@
 // Round 22: quests (quests.js), shops (shop.js), the shell currency (run.js, pickups.js) and their
 // journal persistence (journal.js + save.js).
 import {
-  parseQuests, planQuest, createQuestState, questUpdate, questOnExit, encounterRoll, ENCOUNTER_CHANCE,
-  Q_RESCUE, Q_VAULT, ST_ACTIVE, ST_DONE,
+  parseQuests, planQuest, createQuestState, questUpdate, questOnExit, questSpeaker, eligibleRows, nextStage, hubResidents, hubLines, RELICS_NEEDED,
+  Q_RESCUE, Q_VAULT, Q_MEET, Q_FETCH, ST_ACTIVE, ST_DONE,
 } from '../js/quests.js';
+import { createTalk, say, talking, talkStep, talkAlpha, lineDuration, wrapLines } from '../js/speech.js';
 import { parseShopItems, createShopState, shopStep, applyItem, canUse, BUY_R } from '../js/shop.js';
 import { createRoomBank } from '../js/rooms.js';
 import { generateLevel, setDefaultBank } from '../js/level.js';
@@ -11,7 +12,7 @@ import { createPathGrid, reachableNodes, reachedNear, findPath } from '../js/pat
 import { createLevelWorld } from '../js/world-v2.js';
 import { createRun, runEvent, levelSpec, nextDiveSeed, EV_ENTER_DIVE, EV_EXIT, EV_DEATH } from '../js/run.js';
 import { createJournal, ENTRIES, CATEGORIES, CATEGORY_TITLES } from '../js/journal.js';
-import { getJournalIds, saveJournalIds, _resetForTests } from '../js/save.js';
+import { getJournalIds, saveJournalIds, getStory, setStory, addStory, _resetForTests } from '../js/save.js';
 import { createPickups } from '../js/pickups.js';
 import { createOctopus } from '../js/octopus.js';
 import { BOMB_MAX, HEART_MAX } from '../js/config.js';
@@ -23,48 +24,82 @@ export async function runQuestTests(assert) {
   // the carried-item rows (round 32) have their own tests (items.test.js): the stall tests below use the three consumables
   const items = parseShopItems(await (await fetch('../data/shop-items.json')).json()).filter((i) => i.effect !== 'carry');
 
-  // ---- data ----
-  assert('encounters data: the caged critter and the stranded diver, each with a small reward, a line and a People entry (no HUD text, nothing to explain)',
-    ['critter', 'diver'].every((id) => table.byId.has(id)) && table.rows.length === 2 &&
-    table.rows.every((r) => r.reward > 0 && !r.hud && r.name && r.done && ENTRIES.some((e) => e.id === r.journal && e.cat === 'person')));
+  // ---- data: named people, staged encounters ----
+  assert('questlines data: Marlo, Pip and Quill, each with hub lines for every stage they reach and a thank-you per stage',
+    ['marlo', 'pip', 'quill'].every((id) => table.npcById.has(id)) && table.npcs.every((n) => n.name && n.title && ENTRIES.some((e) => e.id === n.journal && e.cat === 'person') &&
+      table.rows.filter((r) => r.npc === n.id).every((r) => (n.hub[r.set] || []).length > 0 && n.thanks[r.set])));
+  assert('questlines data: five encounters, each moves its person exactly one stage (need -> need + 1), pays shells, and is a spoken scene (meet, ask, help, thank; a lost tank only says what you found)',
+    table.rows.length === 5 && table.rows.every((r) => r.set === r.need + 1 && r.reward > 0 && r.done && r.levels.length >= 1 && r.chance > 0 && r.chance < 1 &&
+      (r.kind === 'fetch' ? !!r.lines.help : ['meet', 'ask', 'help', 'thank'].every((k) => r.lines[k] && r.lines[k].length > 8))));
+  assert('questlines data: Marlo has two stages (vault, then the tank), Pip two (cage, then his mother), Quill one (met; then relics)',
+    table.rows.filter((r) => r.npc === 'marlo').map((r) => r.kind).join() === 'vault,fetch' && table.rows.filter((r) => r.npc === 'pip').map((r) => r.kind).join() === 'rescue,rescue' &&
+    table.rows.filter((r) => r.npc === 'quill').map((r) => r.kind).join() === 'meet' && table.rows.find((r) => r.id === 'pip-2').variant === 'mama');
+  assert('questlines data: no HUD text anywhere', table.rows.every((r) => !r.hud));
+  assert('questlines: a person only appears at the stage the row needs, on the listed levels',
+    eligibleRows(table, {}, 1).map((r) => r.id).sort().join() === 'marlo-1,pip-1,quill-1' && eligibleRows(table, {}, 0).map((r) => r.id).sort().join() === 'marlo-1,pip-1' &&
+    eligibleRows(table, { marlo: 1, pip: 1, quill: 1 }, 1).map((r) => r.id).sort().join() === 'marlo-2,pip-2' && eligibleRows(table, { marlo: 2, pip: 2, quill: 1 }, 1).length === 0);
+  let threw = false;
+  try { parseQuests({ npcs: [], quests: [{ id: 'x', npc: 'nobody', kind: 'meet' }] }); } catch (e) { threw = true; }
+  assert('questlines data: a row with an unknown person is rejected', threw);
   assert('shop data: bomb (3), heart (5) and bomb pack x3 (8) in shop-items.json',
     (() => { const by = Object.fromEntries(items.map((i) => [i.id, i])); return by.bomb.price === 3 && by.bomb.amount === 1 && by.heart.price === 5 && by.bombpack.price === 8 && by.bombpack.amount === 3; })());
-  let threw = false;
+  threw = false;
   try { parseShopItems({ items: [{ id: 'x', price: 0, effect: 'bombs' }] }); } catch (e) { threw = true; }
   assert('shop data: a malformed item is rejected', threw);
-  assert('journal: the People category and every shop / encounter entry exist', CATEGORIES.includes('person') && CATEGORY_TITLES.person === 'People' &&
-    ['place-shop', 'item-heart', 'item-bombpack', 'person-critter', 'person-diver', 'person-keeper'].every((id) => ENTRIES.some((e) => e.id === id)));
+  assert('journal: the People category and every shop / questline entry exist', CATEGORIES.includes('person') && CATEGORY_TITLES.person === 'People' &&
+    ['place-shop', 'item-heart', 'item-bombpack', 'person-critter', 'person-diver', 'person-keeper', 'person-collector'].every((id) => ENTRIES.some((e) => e.id === id)));
 
   // ---- placement over generated levels ----
   const bank = createRoomBank(await loadBiome1Json());
   bank.fallbackBank = createRoomBank(await loadRoomsJson());
   setDefaultBank(bank);
   {
+    const { buildLevelSpawns } = await import('../js/level-spawns.js');
+    const stories = [{}, { marlo: 1, pip: 1, quill: 1 }];
     const kinds = new Set();
-    let n = 0, bad = [], same = 0;
-    for (let i = 0; i < 300; i++) {
-      const seed = 1 + (i % 7) * 977, idx = i % 3;
+    let n = 0, planned = 0, eligible = 0; const bad = [];
+    let same = 0;
+    for (let i = 0; i < 360; i++) {
+      const seed = 1 + (i % 9) * 977 + i, idx = i % 3, story = stories[i % 2];
       const lv = generateLevel(seed, idx, bank);
-      const a = planQuest(lv, table, seed, idx), b = planQuest(lv, table, seed, idx);
+      const avoid = []; for (const s of buildLevelSpawns(lv, seed, idx).spawns) if (s.type !== 'shell' && (s.type !== 'decor' || s.dk === 'boulder')) avoid.push(s.x, s.y);
+      const a = planQuest(lv, table, seed, idx, story, avoid), b = planQuest(lv, table, seed, idx, story, avoid);
       n++;
-      if (!a) { bad.push('null ' + i); continue; }
+      if (eligibleRows(table, story, idx).length) eligible++;
+      if (!a) { if (b) bad.push('flaky ' + i); continue; }
+      planned++;
       kinds.add(a.id);
-      if (a.id === b.id && a.pos.length === b.pos.length && a.pos.every((v, k) => v === b.pos[k])) same++;
+      if (b && a.id === b.id && a.pos.length === b.pos.length && a.pos.every((v, k) => v === b.pos[k])) same++;
+      if (!eligibleRows(table, story, idx).some((r) => r.id === a.id)) bad.push('ineligible ' + i);
       const grid = createPathGrid(lv.w, lv.h, (x, y) => lv.tiles[y * lv.w + x] !== 0);
       const reached = reachableNodes(grid, lv.startX + 0.5, lv.startY + 0.5);
       const route = findPath(grid, lv.startX + 0.5, lv.startY + 0.5, lv.exitX + 0.5, lv.exitY + 0.5);
       const inShop = (x, y) => !!lv.shop && x >= lv.shop.x0 && x < lv.shop.x1 && y >= lv.shop.y0 && y < lv.shop.y1;
-      if (a.kindId === Q_RESCUE) {
-        const [x, y] = [a.pos[0], a.pos[1]];
-        let dr = 1e9; for (let k = 0; k < route.points.length; k += 2) dr = Math.min(dr, Math.hypot(route.points[k] - x, route.points[k + 1] - y));
-        if (!reachedNear(grid, reached, x, y, 0.3) || dr < 1.5 || inShop(x, y) || lv.tiles[Math.floor(y) * lv.w + Math.floor(x)] !== 0) bad.push('rescue ' + i);
-      } else if (a.kindId === Q_VAULT) {
+      const T = (x, y) => lv.tiles[y * lv.w + x] !== 0;
+      if (a.kindId === Q_VAULT) {
         const px = lv.pockets[0], py = lv.pockets[1];
         if (!(lv.nPockets > 0) || a.pos[0] < px || a.pos[0] > px + 2 || a.pos[1] < py || a.pos[1] > py + 2) bad.push('vault ' + i);
+      } else {
+        const [x, y] = [a.pos[0], a.pos[1]];
+        const tx = Math.floor(x), fy = a.floorY;
+        let dr = 1e9; for (let k = 0; k < route.points.length; k += 2) dr = Math.min(dr, Math.hypot(route.points[k] - x, route.points[k + 1] - y));
+        let near = false; for (let k = 0; k < avoid.length; k += 2) if (Math.hypot(avoid[k] - x, avoid[k + 1] - y) < 2.3) near = true;
+        let inSet = false; for (let k = 0; k < lv.nSetPieces; k++) if (x >= lv.setPieces[k * 4] - 1 && x <= lv.setPieces[k * 4] + 10 && y >= lv.setPieces[k * 4 + 1] - 1 && y <= lv.setPieces[k * 4 + 1] + 16) inSet = true;
+        // the cage / person / tank rests on a floor: rock under the tile and both neighbours, the body centre is open water
+        const onFloor = Number.isInteger(fy) && T(tx, fy) && T(tx - 1, fy) && T(tx + 1, fy) && !T(tx, fy - 1) && !T(Math.floor(x), Math.floor(y));
+        if (!reachedNear(grid, reached, x, fy - 0.5, 0.3) || dr < 1.5 || inShop(x, y) || inSet || near || !onFloor) bad.push(a.id + ' ' + i + (inSet ? ' set' : '') + (near ? ' near' : '') + (onFloor ? '' : ' float'));
       }
     }
-    assert(`encounters: a level that holds one always has a feasible plan, both kinds appear (${[...kinds].join(', ')}), and it is deterministic (${same}/${n})`, bad.length === 0 && kinds.size === 2 && same === n);
-    assert('encounters: caged critters sit in A*-reachable side spots, the diver inside a pocket' + (bad.length ? ' [' + bad.slice(0, 4).join(', ') + ']' : ''), bad.length === 0);
+    assert(`questlines: every planned encounter is feasible and deterministic (${planned}/${eligible} eligible levels planned, ${same}/${planned} identical on a replan), all five kinds appear (${[...kinds].join(', ')})` + (bad.length ? ' [' + bad.slice(0, 5).join(', ') + ']' : ''),
+      bad.length === 0 && same === planned && kinds.size === 5 && planned >= eligible * 0.3);
+    assert('questlines: cages and people rest on a floor (never hang in open water), keep out of set-piece rooms and the shop, and clear of other spawns', bad.length === 0);
+    // a level whose story has nobody eligible never gets an encounter
+    let leaked = 0;
+    for (let i = 0; i < 40; i++) if (planQuest(generateLevel(7 + i, i % 3, bank), table, 7 + i, i % 3, { marlo: 2, pip: 2, quill: 1 })) leaked++;
+    assert('questlines: with every person finished or waiting for relics, no level holds an encounter', leaked === 0);
+    // the first dives meet somebody on most levels, later stages less often
+    let first = 0; for (let i = 0; i < 120; i++) if (planQuest(generateLevel(3 + i * 5, 1, bank), table, 3 + i * 5, 1, {})) first++;
+    assert(`questlines: Shallows 1-2 holds an encounter on a good share of fresh saves (${first}/120)`, first >= 25 && first <= 100);
   }
 
   {
@@ -83,17 +118,37 @@ export async function runQuestTests(assert) {
     assert(`shop: no enemy slots or plankton swarms in or beside the shop room (${checked} shops checked)`, checked >= 30 && bad === 0);
   }
 
+  // ---- speech ----
+  {
+    const t = createTalk();
+    say(t, ['Hello there', '', 'Second line']);
+    assert('speech: empty lines are skipped, the first line shows on the first step', talking(t) && t.q.length === 2 - 0 && (talkStep(t, 0.02), t.text === 'Hello there' && t.q.length === 1));
+    assert('speech: a line fades in, holds and fades out', talkAlpha(t) === 0 && (talkStep(t, 0.05), talkAlpha(t) > 0 && talkAlpha(t) < 1) && (talkStep(t, 0.5), talkAlpha(t) === 1) && (talkStep(t, lineDuration('Hello there') - 0.6), talkAlpha(t) < 1));
+    talkStep(t, 1);
+    assert('speech: the next line follows the first, then it is quiet', t.text === 'Second line' && (talkStep(t, 10), talkStep(t, 0.02), !talking(t) && t.text === ''));
+    assert('speech: longer lines stay up longer (capped), wrapLines breaks at spaces', lineDuration('Hi') < lineDuration('I collect golden relics. Bring me three, and I shall make it worth your while.') && lineDuration('x'.repeat(400)) <= 5.5 &&
+      wrapLines('Blow this wall open, would you please', 14).every((r) => r.length <= 14) && wrapLines('Blow this wall open, would you please', 14).join(' ') === 'Blow this wall open, would you please');
+  }
+
   // ---- runtime ----
   const stubWorld = { isSolid: () => false };
-  const mk = (kindId, pos) => createQuestState({ qi: 0, kindId, id: 'q', name: 'Q', reward: 4, count: 1, hud: '', done: 'd', journal: 'person-critter', pos: pos || new Float32Array(0) });
+  const L = { meet: 'Hello, a visitor', ask: 'Could you help me out', help: 'Thank you so much', thank: 'See you at the hub' };
+  const mk = (kindId, pos, extra = {}) => createQuestState({ qi: 0, kindId, id: 'q', npc: 'pip', name: 'Q', reward: 4, count: 1, set: 1, lines: L, done: 'd', journal: 'person-critter', variant: '', floorY: pos ? pos[1] + 0.55 : 0, pos: pos || new Float32Array(0), ...extra });
+  const run = (st, o, secs, w = stubWorld) => { for (let i = 0; i < secs * 50; i++) questUpdate(st, o, w, 0.02); };
   {
     const st = mk(Q_RESCUE, Float32Array.of(10.5, 10.5));
-    const o = { x: 4, y: 4 };
+    const o = { x: 25, y: 10 };
+    questUpdate(st, o, stubWorld);
+    assert('quest rescue: nobody speaks while you are far away', !st.met && !st.talk.text);
+    o.x = 5; o.y = 5;
     questUpdate(st, o, stubWorld);
     assert('quest rescue: the critter waits until touched and the exit does not complete it', !st.following && questOnExit(st) === false && st.status === ST_ACTIVE);
+    assert('quest rescue: coming near (about 8 tiles) it speaks: first the meeting line, then the ask', st.met && st.talk.text === L.meet && st.talk.q[0] === L.ask);
+    run(st, o, 3);
+    assert('quest rescue: the ask follows the meeting line', st.talk.text === L.ask);
     o.x = 10; o.y = 10;
     questUpdate(st, o, stubWorld);
-    assert('quest rescue: touching the critter makes it follow', st.following === true);
+    assert('quest rescue: touching the critter frees it and it follows; it answers with help, then thank', st.following === true && st.talk.text === L.help && st.talk.q[0] === L.thank);
     for (let i = 0; i < 40; i++) { o.x = 10 - i * 0.1; o.y = 10; questUpdate(st, o, stubWorld); }
     const d = Math.hypot(st.cx - o.x, st.cy - o.y);
     assert(`quest rescue: it trails the octopus along its path, beside it and not inside it (${d.toFixed(2)} away)`, d > 0.6 && d < 4 && st.cx > o.x);
@@ -102,20 +157,72 @@ export async function runQuestTests(assert) {
     const st2 = mk(Q_RESCUE, Float32Array.of(1.5, 1.5)); st2.following = true; st2.cx = 1; st2.cy = 1;
     for (let i = 0; i < 30; i++) questUpdate(st2, { x: 1 - i * 0.05, y: 1 }, solidWorld);
     assert('quest rescue: the critter is never left inside rock', !solidWorld.isSolid(st2.cx, st2.cy));
+    // asking again: lingering beside the cage repeats the ask after a while, but only once the bubble is quiet
+    const st3 = mk(Q_RESCUE, Float32Array.of(30.5, 30.5));
+    const o3 = { x: 29, y: 30 };
+    run(st3, o3, 30);
+    assert('quest rescue: a player who lingers beside the cage hears the ask again', st3.lastAsk > 5);
   }
   {
-    const st = mk(Q_VAULT, Float32Array.of(20.5, 20.55));
-    assert('quest vault: far from the cache nothing happens, touching it completes the quest', questUpdate(st, { x: 15, y: 20 }, stubWorld) === false && questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected);
+    const st = mk(Q_VAULT, Float32Array.of(20.5, 20.55), { npc: 'marlo' });
+    assert('quest vault: far from the cache nothing happens, near him he calls out (meet, ask) through the rock', questUpdate(st, { x: 15, y: 20 }, stubWorld) === false && st.talk.text === L.meet && st.status === ST_ACTIVE);
+    assert('quest vault: touching the cache completes the quest and he says help, then thank', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected && st.talk.text === L.help && st.talk.q[0] === L.thank && st.leave > 0);
     assert('quest vault: completing it twice is impossible', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === false);
   }
-  // ---- the roll: no HUD, no preview, about one level in three ----
   {
-    let yes = 0, same = 0; const N = 3000;
-    for (let i = 0; i < N; i++) { const a = encounterRoll(i * 7 + 1, i % 3), b = encounterRoll(i * 7 + 1, i % 3); if (a) yes++; if (a === b) same++; }
-    const frac = yes / N;
-    assert(`encounters: encounterRoll is deterministic and about ${Math.round(ENCOUNTER_CHANCE * 100)}% of levels (${frac.toFixed(2)})`, same === N && frac > 0.2 && frac < 0.42);
-    let third = 0, first = 0; for (let i = 0; i < N; i++) { if (encounterRoll(i + 1, 2)) third++; if (encounterRoll(i + 1, 0)) first++; }
-    assert('encounters: Shallows 1-3 holds fewer than 1-1', third < first);
+    const st = mk(Q_MEET, Float32Array.of(12.5, 12.4), { npc: 'quill', floorY: 13 });
+    const o = { x: 6, y: 12 };
+    questUpdate(st, o, stubWorld);
+    assert('quest meet: he greets you from a distance and asks, but waits for you to swim up to him', st.met && st.talk.text === L.meet && st.status === ST_ACTIVE);
+    assert('quest meet: swimming up to him completes the scene (help, thank), his speech hangs above his head', (o.x = 12, o.y = 12, questUpdate(st, o, stubWorld)) === true && st.talk.text === L.help && questSpeaker(st)[1] < 13 - 1);
+  }
+  {
+    const st = mk(Q_FETCH, Float32Array.of(14.5, 10.64), { npc: 'marlo', lines: { help: 'A green tank: Marlo\'s' } });
+    const o = { x: 10, y: 10 };
+    questUpdate(st, o, stubWorld);
+    assert('quest fetch: a lost tank says nothing and waits on the floor', !st.met && !st.talk.text && !st.following);
+    o.x = 14.2; o.y = 10.5; questUpdate(st, o, stubWorld);
+    assert('quest fetch: touching it picks it up (it trails you), it only counts at the exit', st.following && st.status === ST_ACTIVE && questOnExit(st) === true && st.status === ST_DONE);
+  }
+  assert('quest stage: a person never goes back a stage', nextStage(2, { set: 1 }) === 2 && nextStage(0, { set: 1 }) === 1);
+
+  // ---- the hub residents ----
+  {
+    const story = { marlo: 1, pip: 2, quill: 0, relics: 1 };
+    assert('hub: only people who have been met stand there (stage >= 1), in table order', hubResidents(table, story).map((r) => r.id + r.stage).join() === 'marlo1,pip2');
+    const marlo = table.npcById.get('marlo'), quill = table.npcById.get('quill');
+    const first = hubLines(marlo, 1, 0, true, 0);
+    assert('hub: the first visit after a stage change says the thank-you, then the whole stage', first[0] === marlo.thanks[1] && first.length === 1 + marlo.hub[1].length);
+    assert('hub: later visits say one line at a time, rotating', hubLines(marlo, 1, 0, false, 1).length === 1 && hubLines(marlo, 1, 0, false, 1)[0] === marlo.hub[1][1] && hubLines(marlo, 1, 0, false, 4)[0] === marlo.hub[1][1]);
+    const q = hubLines(quill, 1, 2, false, 1);
+    assert('hub: Quill counts the relics: "{n} of 3 so far. {left} to go."', q.length === 1 && q[0] === '2 of 3 so far. 1 to go.' && RELICS_NEEDED === 3);
+  }
+
+  // ---- save.js story flags ----
+  {
+    const mem = new Map();
+    const fake = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    let stubbed = false;
+    try { Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true }); stubbed = true; } catch (e) { /* engine refuses */ }
+    if (stubbed) {
+      _resetForTests();
+      const s0 = getStory();
+      assert('story: a fresh save has every person at stage 0, no relics', s0.marlo === 0 && s0.pip === 0 && s0.quill === 0 && s0.relics === 0);
+      setStory('marlo', 1); setStory('marlo', 0); addStory('relics'); addStory('relics'); addStory('nonsense');
+      _resetForTests();
+      const s1 = getStory();
+      assert('story: stages and relics persist across a reload; a stage never goes down, unknown keys are ignored', s1.marlo === 1 && s1.relics === 2 && !('nonsense' in s1));
+      mem.set('octomancer.best.v1', JSON.stringify({ v: 1, story: { diverFreed: 2, critterFreed: 1 } }));
+      _resetForTests();
+      const s2 = getStory();
+      assert('story: a save from before the questlines puts the people it knows at stage 1 (already thanked)', s2.marlo === 1 && s2.saidMarlo === 1 && s2.pip === 1 && s2.saidPip === 1 && s2.quill === 0);
+      _resetForTests();
+      if (desc) Object.defineProperty(globalThis, 'localStorage', desc); else delete globalThis.localStorage;
+      _resetForTests();
+    } else {
+      assert('story: persistence (skipped: localStorage cannot be stubbed here)', true);
+    }
   }
 
   // ---- shop ----
@@ -225,7 +332,7 @@ export async function runQuestTests(assert) {
       const j2 = createJournal({ load: getJournalIds, save: saveJournalIds });
       assert('quest journal: a completed quest, the shop and a bought item survive a reload', j2.has('person-diver') && j2.has('place-shop') && j2.has('item-heart') && !j2.has('person-critter'));
       const questRows = j2.list('person');
-      assert('quest journal: the People category lists the three people, one found', questRows.length === 3 && questRows.filter((e) => e.found).length === 1);
+      assert('quest journal: the People category lists the four people, one found', questRows.length === 4 && questRows.filter((e) => e.found).length === 1);
       _resetForTests();
       if (desc) Object.defineProperty(globalThis, 'localStorage', desc); else delete globalThis.localStorage;
       _resetForTests();

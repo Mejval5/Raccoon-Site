@@ -5,36 +5,13 @@
 
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
+import { ENTRIES } from './journal.js';
 
-const ASSET = (f) => new URL('../assets/' + f, import.meta.url).href;
-const V2 = (f) => new URL('../img/v2/' + f, import.meta.url).href;
 const TAU = Math.PI * 2;
 const INK = '#10202c';
 
-/** id -> {img: url} | {item: carried item id} | {fn: name of a code drawing} */
-const ART = {
-  'place-hub': { img: V2('hub-board.webp') },
-  'place-tutorial': { img: V2('exit-ring.webp') },
-  'place-shallows': { img: V2('shallows-near.webp'), cover: true },
-  'place-shop': { img: V2('shop-sign.webp') },
-  'person-diver': { fn: 'diver' },
-  'person-critter': { fn: 'critter' },
-  'person-keeper': { img: V2('shop-keeper.webp') },
-  'creature-urchin': { img: ASSET('enemy-urchin.webp') },
-  'creature-piranha': { img: ASSET('enemy-piranha.webp') },
-  'creature-crab': { img: ASSET('enemy-crab-slow.webp') },
-  'creature-horns': { img: ASSET('enemy-horns.webp') },
-  'creature-manta': { img: ASSET('enemy-manta.webp') },
-  'creature-cannon': { img: ASSET('enemy-cannon.webp') },
-  'creature-beholder': { img: ASSET('enemy-beholder-0.webp') },
-  'hazard-jet': { fn: 'jet' }, 'hazard-spikes': { fn: 'spikes' }, 'hazard-rock': { fn: 'rock' }, 'hazard-eel': { fn: 'eel' }, 'hazard-anemone': { fn: 'anemone' },
-  'item-plankton': { fn: 'plankton' }, 'item-shell': { img: ASSET('shell-blue.webp') }, 'item-bomb': { fn: 'bomb' },
-  'item-heart': { img: ASSET('ui-heart.webp') }, 'item-bombpack': { fn: 'bombpack' },
-  'item-flippers': { item: 'flippers' }, 'item-lantern': { item: 'lantern' }, 'item-magnet': { item: 'magnet' },
-  'item-bombbag': { item: 'bombbag' }, 'item-heartcontainer': { item: 'heartcontainer' },
-  'loot-clam': { fn: 'clam' }, 'loot-pot': { fn: 'pot' }, 'loot-chest': { img: V2('chest-closed.webp') },
-  'loot-pocket': { fn: 'pocket' }, 'loot-relic': { fn: 'relic' },
-};
+/** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {item: carried item id} | {fn: name of a code drawing below}. */
+const ART = new Map(ENTRIES.map((e) => [e.id, e.art ? (e.art.img ? { ...e.art, img: new URL('../' + e.art.img, import.meta.url).href } : e.art) : null]));
 
 /** @type {Map<string, HTMLImageElement>} */
 const images = new Map();
@@ -55,7 +32,7 @@ export function onArtReady(fn) { listeners.push(fn); }
 function stroke(ctx, fill, lw) { ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; }
 
 /** Code drawings: each fills roughly the box [-1, 1] x [-1, 1] around the origin (unit = half the picture). */
-const FN = {
+export const FN = {
   bomb(c) {
     stroke(c, '#2c3946', 0.1); c.beginPath(); c.arc(0, 0.12, 0.62, 0, TAU); c.fill(); c.stroke();
     c.fillStyle = 'rgba(255,255,255,0.28)'; c.beginPath(); c.arc(-0.22, -0.1, 0.18, 0, TAU); c.fill();
@@ -136,12 +113,41 @@ const FN = {
     for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(i * 0.25, -0.62); c.lineTo(i * 0.25, 0.72); c.stroke(); }
     c.beginPath(); c.moveTo(-0.82, -0.62); c.lineTo(0.82, -0.62); c.moveTo(-0.82, 0.72); c.lineTo(0.82, 0.72); c.stroke();
   },
+  wreck(c) {
+    stroke(c, '#6b4a2f', 0.07); c.beginPath(); c.moveTo(-0.05, 0.1); c.lineTo(-0.2, -0.95); c.lineTo(-0.1, -0.95); c.lineTo(0.08, 0.1); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(210,218,205,0.9)'; c.beginPath(); c.moveTo(-0.18, -0.9); c.lineTo(0.6, -0.78); c.lineTo(0.5, -0.35); c.lineTo(0.3, -0.45); c.lineTo(0.15, -0.2); c.lineTo(-0.1, -0.35); c.closePath(); c.fill(); c.stroke();
+    stroke(c, '#7a5636', 0.08); c.beginPath(); c.moveTo(-0.95, 0.05); c.lineTo(-0.55, 0.0); c.lineTo(-0.5, 0.12); c.lineTo(0.3, 0.1); c.lineTo(0.95, -0.1); c.lineTo(0.55, 0.5); c.quadraticCurveTo(0, 0.78, -0.55, 0.62); c.quadraticCurveTo(-0.9, 0.45, -0.95, 0.05); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = INK; for (const x of [-0.5, -0.12, 0.3]) { c.beginPath(); c.arc(x, 0.36, 0.07, 0, TAU); c.fill(); }
+  },
+  fossil(c) {
+    stroke(c, '#d9cdb4', 0.08); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.2); c.fill(); c.stroke();
+    c.strokeStyle = '#8c7e63'; c.lineWidth = 0.09; c.lineCap = 'round'; c.beginPath();
+    for (let a = 0; a < TAU * 2.4; a += 0.2) { const r = 0.07 + a * 0.085; const x = Math.cos(a) * r, y = Math.sin(a) * r; if (a === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    c.stroke();
+  },
+  decorrock(c) {
+    stroke(c, '#9fb0bd', 0.09); c.beginPath(); c.moveTo(-0.8, 0.5); c.bezierCurveTo(-0.85, -0.3, -0.35, -0.75, 0.15, -0.7); c.bezierCurveTo(0.7, -0.65, 0.9, 0, 0.8, 0.5); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,0.3)'; c.beginPath(); c.ellipse(-0.2, -0.3, 0.3, 0.16, -0.5, 0, TAU); c.fill();
+    c.fillStyle = '#6fa078'; c.beginPath(); c.ellipse(0.35, 0.12, 0.2, 0.12, 0.3, 0, TAU); c.fill();
+  },
+  collector(c) {
+    stroke(c, '#8d6fb0', 0.08);
+    for (const [x, a] of [[-0.55, 0.5], [-0.2, 0.2], [0.2, -0.2], [0.55, -0.5]]) { c.beginPath(); c.moveTo(x * 0.6, 0.35); c.quadraticCurveTo(x * 1.2, 0.95, x * 1.35 + a * 0.2, 0.85); c.lineWidth = 0.2; c.strokeStyle = INK; c.stroke(); c.lineWidth = 0.13; c.strokeStyle = '#8d6fb0'; c.stroke(); }
+    stroke(c, '#8d6fb0', 0.08); c.beginPath(); c.ellipse(0, -0.05, 0.62, 0.7, 0, 0, TAU); c.fill(); c.stroke();
+    c.fillStyle = '#fff'; for (const sx of [-0.24, 0.24]) { c.beginPath(); c.arc(sx, -0.05, 0.19, 0, TAU); c.fill(); }
+    c.fillStyle = INK; for (const sx of [-0.22, 0.26]) { c.beginPath(); c.arc(sx, -0.03, 0.08, 0, TAU); c.fill(); }
+    c.strokeStyle = '#e7b94a'; c.lineWidth = 0.06; for (const sx of [-0.24, 0.24]) { c.beginPath(); c.arc(sx, -0.05, 0.22, 0, TAU); c.stroke(); }
+    c.beginPath(); c.moveTo(-0.02, -0.05); c.lineTo(0.02, -0.05); c.stroke();
+    c.strokeStyle = '#efe6d2'; c.lineWidth = 0.09; c.beginPath(); c.moveTo(-0.3, 0.3); c.quadraticCurveTo(0, 0.18, 0.3, 0.3); c.stroke();
+  },
 };
 
 const cache = new Map();
+/** The locked silhouette's ink: a warm brown that reads on parchment. */
+const LOCKED_INK = '#5b4636';
 
 function paint(ctx, id, px) {
-  const a = ART[id];
+  const a = ART.get(id);
   ctx.save();
   ctx.translate(px / 2, px / 2);
   if (!a) { ctx.restore(); return; }
@@ -176,7 +182,7 @@ export function entryArt(id, px, locked) {
   paint(g, id, px);
   if (locked) {
     g.globalCompositeOperation = 'source-in';
-    g.fillStyle = '#0a1a26';
+    g.fillStyle = LOCKED_INK;
     g.fillRect(0, 0, px, px);
     g.globalCompositeOperation = 'source-over';
   }
@@ -185,8 +191,9 @@ export function entryArt(id, px, locked) {
 }
 
 /** Preload every picture of the book (called when it opens). */
-export function preloadArt() { for (const id of Object.keys(ART)) if (ART[id].img) image(ART[id].img); }
+export function preloadArt() { for (const a of ART.values()) if (a && a.img) image(a.img); }
 
 /** Whether an entry id has art at all (tests). */
-export function hasArt(id) { return !!ART[id]; }
-export const ART_IDS = Object.keys(ART);
+export function hasArt(id) { return !!ART.get(id); }
+/** Every entry's art descriptor, with image urls resolved (tests check that each file exists and each drawing is defined). */
+export function artList() { return ENTRIES.map((e) => ({ id: e.id, art: ART.get(e.id) })); }

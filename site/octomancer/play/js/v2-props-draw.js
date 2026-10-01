@@ -6,6 +6,8 @@
 import { artImg, COUNTER_SLICES } from './v2-art.js';
 import { isItem } from './items.js';
 import { drawItemIcon } from './items-draw.js';
+import { FN } from './journal-art.js';
+import { wrapLines } from './speech.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -266,78 +268,196 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   bombGlyph(ctx, mx - ppu * 0.04, my + ppu * 0.06, ppu * 0.3 * s, time);
 }
 
-/** The caged critter: a small round friend with fins and eyes, behind bars until you touch it, then it follows (round 38). */
-export function drawCritter(ctx, camera, cw, ch, x, y, following, time) {
+/**
+ * Pip (round 38): a small round friend with fins and eyes. Caged until you touch it: the cage RESTS ON THE FLOOR (a base
+ * plank with feet, bars, a lid), the critter sits inside it; once free it just swims. (x, y) is the critter's centre,
+ * `cageFloor` the floor line the cage stands on (0 = no cage). variant 'mama' is the big orange mother.
+ */
+export function drawCritter(ctx, camera, cw, ch, x, y, following, time, cageFloor = 0, variant = '') {
   const { ppu, sx, sy } = view(camera, cw, ch);
-  const bob = Math.sin(time * 3.1 + x) * ppu * 0.06;
-  const cx = sx(x), cy = sy(y) + bob, r = ppu * 0.19; // about 0.7x the octopus
+  const mama = variant === 'mama';
+  const caged = !following && cageFloor > 0;
+  const bob = Math.sin(time * 3.1 + x) * ppu * (caged ? 0.025 : 0.06);
+  const cx = sx(x), cy = sy(y) + bob, r = ppu * (mama ? 0.27 : 0.19); // Pip is about 0.7x the octopus
   if (cx < -ppu * 3 || cx > cw + ppu * 3 || cy < -ppu * 3 || cy > ch + ppu * 3) return;
   const lw = Math.max(1.5, ppu * 0.06);
   ctx.lineJoin = 'round';
   const flap = Math.sin(time * 9) * 0.25;
-  ctx.fillStyle = '#58c8b8'; ctx.strokeStyle = '#0c3a3c'; ctx.lineWidth = lw;
+  const body = mama ? '#f2b08e' : '#86e6d2', fin = mama ? '#d9805e' : '#58c8b8', edge = mama ? '#5a2a1c' : '#0c3a3c';
+  ctx.fillStyle = fin; ctx.strokeStyle = edge; ctx.lineWidth = lw;
   for (const sd of [-1, 1]) { // fins
     ctx.beginPath(); ctx.ellipse(cx + sd * r * 1.0, cy + r * 0.1, r * 0.5, r * 0.28, sd * (0.6 + flap), 0, TAU); ctx.fill(); ctx.stroke();
   }
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = '#86e6d2'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = body; ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#eafffa';
   for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + sd * r * 0.38, cy - r * 0.12, r * 0.22, 0, TAU); ctx.fill(); }
   ctx.fillStyle = '#0c2a2c';
   for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + sd * r * 0.4, cy - r * 0.1, r * 0.1, 0, TAU); ctx.fill(); }
-  ctx.strokeStyle = '#0c3a3c'; ctx.lineWidth = Math.max(1, lw * 0.7);
+  ctx.strokeStyle = edge; ctx.lineWidth = Math.max(1, lw * 0.7);
   ctx.beginPath(); ctx.arc(cx, cy + r * 0.2, r * 0.3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-  if (!following) { // a little cage of bars around it until you touch it
-    const hw = r * 2.1, hh = r * 1.9;
-    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
+  if (caged) drawCage(ctx, camera, cw, ch, x, cageFloor, mama ? 1.7 : 1.25, mama ? 1.55 : 1.15, false);
+}
+
+/** A cage resting on the floor line `floorY` (world units): base plank on two feet, vertical bars, a lid. w, h in tiles. */
+export function drawCage(ctx, camera, cw, ch, x, floorY, w, h, open) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const cx = sx(x), fy = sy(floorY);
+  if (cx < -ppu * 3 || cx > cw + ppu * 3 || fy < -ppu * 3 || fy > ch + ppu * 4) return;
+  const hw = w * ppu / 2, hh = h * ppu, lw = Math.max(1.5, ppu * 0.05);
+  const feet = ppu * 0.07, top = fy - feet - hh;
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // soft contact shadow
+  ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, hw * 1.05, ppu * 0.07, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#3d2c18'; // two feet on the floor
+  for (const sd of [-1, 1]) ctx.fillRect(cx + sd * hw * 0.78 - ppu * 0.05, fy - feet, ppu * 0.1, feet);
+  if (!open) {
+    ctx.strokeStyle = '#7e5c30'; ctx.lineWidth = lw;
     ctx.beginPath();
-    for (let i = -3; i <= 3; i++) { ctx.moveTo(cx + i * hw / 3, cy - hh); ctx.lineTo(cx + i * hw / 3, cy + hh); }
-    ctx.moveTo(cx - hw, cy - hh); ctx.lineTo(cx + hw, cy - hh); ctx.moveTo(cx - hw, cy + hh); ctx.lineTo(cx + hw, cy + hh);
+    const n = Math.max(4, Math.round(w * 3.4));
+    for (let i = 0; i <= n; i++) { const bx = cx - hw + (2 * hw) * i / n; ctx.moveTo(bx, top); ctx.lineTo(bx, fy - feet); }
     ctx.stroke();
     ctx.strokeStyle = 'rgba(255,230,170,0.35)'; ctx.lineWidth = Math.max(1, ppu * 0.02);
-    ctx.beginPath(); ctx.moveTo(cx - hw + 2, cy - hh); ctx.lineTo(cx - hw + 2, cy + hh); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - hw + lw, top); ctx.lineTo(cx - hw + lw, fy - feet); ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#7e5c30'; ctx.lineWidth = lw; // the open cage: two posts and the lid, the door swung aside
+    ctx.beginPath(); ctx.moveTo(cx - hw, top); ctx.lineTo(cx - hw, fy - feet); ctx.moveTo(cx + hw, top); ctx.lineTo(cx + hw, fy - feet); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + hw, top + hh * 0.15); ctx.lineTo(cx + hw + ppu * 0.28, top + hh * 0.45); ctx.stroke();
   }
+  // lid and base plank
+  ctx.fillStyle = '#5a4020'; ctx.strokeStyle = '#2a1808'; ctx.lineWidth = Math.max(1, lw * 0.7);
+  ctx.beginPath(); ctx.roundRect(cx - hw - ppu * 0.05, top - ppu * 0.07, 2 * hw + ppu * 0.1, ppu * 0.1, ppu * 0.03); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(cx - hw - ppu * 0.05, fy - feet - ppu * 0.08, 2 * hw + ppu * 0.1, ppu * 0.1, ppu * 0.03); ctx.fill(); ctx.stroke();
+  ctx.restore();
 }
 
 /**
- * The stranded diver (round 38): sealed in a rock pocket, gloved hands against the rock and bubbles rising from his
- * helmet; once `freed` he waves. (x, y) is where his feet are, in world units.
+ * Marlo, the diver (round 38). (x, y) is where his feet are, in world units. `sealed`: stuck in the rock pocket, small,
+ * arms at his sides and bubbles from his helmet; otherwise he stands on a floor, planted, with an idle bob of the upper body
+ * and one arm waving when `freed`.
  */
-export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false) {
+export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed = false) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 3 || cy > ch + ppu * 2) return;
   const lw = Math.max(1.5, ppu * 0.055);
-  const bob = Math.sin(time * 1.7) * ppu * 0.03;
+  const bob = Math.sin(time * 1.7) * ppu * 0.02;
+  const u = ppu * (sealed ? 0.74 : 1);
   ctx.save();
-  ctx.translate(cx, cy + bob);
+  ctx.translate(cx, cy);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  const u = ppu;
-  // legs / flippers
+  // legs / flippers: planted, they do not bob
   ctx.fillStyle = '#b87a2a'; ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;
-  for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * u * 0.13, u * 0.02, u * 0.1, u * 0.22, sd * 0.12, 0, TAU); ctx.fill(); ctx.stroke(); }
+  for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * u * 0.13, -u * 0.12, u * 0.1, u * 0.14, sd * 0.12, 0, TAU); ctx.fill(); ctx.stroke(); }
+  ctx.translate(0, bob);
   // body
   ctx.fillStyle = '#e0a94a';
-  ctx.beginPath(); ctx.roundRect(-u * 0.27, -u * 0.62, u * 0.54, u * 0.62, u * 0.16); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(-u * 0.27, -u * 0.62, u * 0.54, u * 0.52, u * 0.16); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#7a4f14'; ctx.fillRect(-u * 0.27, -u * 0.34, u * 0.54, u * 0.07);
-  // arms: pressed against the rock (up, left) or waving
-  ctx.strokeStyle = '#2a1808'; ctx.lineWidth = u * 0.17;
+  // arms: at his sides while sealed, one waving when free
   const wave = freed ? Math.sin(time * 6) * 0.35 : 0;
-  ctx.beginPath(); ctx.moveTo(-u * 0.24, -u * 0.5); ctx.lineTo(-u * 0.5, -u * (freed ? 0.78 : 0.62) + wave * u * 0.2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(u * 0.24, -u * 0.5); ctx.lineTo(u * 0.5, -u * 0.62); ctx.stroke();
-  ctx.strokeStyle = '#e0a94a'; ctx.lineWidth = u * 0.11;
-  ctx.beginPath(); ctx.moveTo(-u * 0.24, -u * 0.5); ctx.lineTo(-u * 0.5, -u * (freed ? 0.78 : 0.62) + wave * u * 0.2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(u * 0.24, -u * 0.5); ctx.lineTo(u * 0.5, -u * 0.62); ctx.stroke();
+  const arm = (x0, y0, x1, y1) => {
+    ctx.strokeStyle = '#2a1808'; ctx.lineWidth = u * 0.17; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.strokeStyle = '#e0a94a'; ctx.lineWidth = u * 0.11; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  };
+  if (sealed && !freed) { arm(-u * 0.24, -u * 0.5, -u * 0.31, -u * 0.18); arm(u * 0.24, -u * 0.5, u * 0.31, -u * 0.18); }
+  else {
+    arm(-u * 0.24, -u * 0.5, -u * 0.46, -u * (freed ? 0.78 : 0.3) + wave * u * 0.2);
+    arm(u * 0.24, -u * 0.5, u * 0.36, -u * 0.22);
+  }
   // helmet
   ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;
   ctx.fillStyle = '#c9d6df'; ctx.beginPath(); ctx.arc(0, -u * 0.82, u * 0.32, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#26465f'; ctx.beginPath(); ctx.ellipse(u * 0.03, -u * 0.82, u * 0.2, u * 0.17, 0, 0, TAU); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(-u * 0.05, -u * 0.88, u * 0.045, 0, TAU); ctx.fill();
   // bubbles from the helmet
-  ctx.strokeStyle = 'rgba(215,242,255,0.8)'; ctx.lineWidth = Math.max(1, u * 0.025);
-  for (let i = 0; i < 3; i++) {
-    const ph = (time * 0.6 + i / 3) % 1;
-    ctx.beginPath(); ctx.arc(u * (0.18 + Math.sin(ph * 6 + i) * 0.05), -u * (1.2 + ph * 0.7), u * (0.04 + 0.04 * ph), 0, TAU); ctx.stroke();
+  if (sealed || freed) {
+    ctx.strokeStyle = 'rgba(215,242,255,0.8)'; ctx.lineWidth = Math.max(1, u * 0.025);
+    for (let i = 0; i < 3; i++) {
+      const ph = (time * 0.6 + i / 3) % 1;
+      ctx.beginPath(); ctx.arc(u * (0.18 + Math.sin(ph * 6 + i) * 0.05), -u * (1.2 + ph * (sealed ? 0.45 : 0.7)), u * (0.04 + 0.04 * ph), 0, TAU); ctx.stroke();
+    }
   }
+  ctx.restore();
+}
+
+/** Quill, the collector: a fussy old octopus with a monocle, standing on the floor line `floorY` at x. `lantern`: his glowing lantern beside him (the last stage). */
+export function drawCollector(ctx, camera, cw, ch, x, floorY, time, lantern = false) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const cx = sx(x), fy = sy(floorY);
+  if (cx < -ppu * 3 || cx > cw + ppu * 3 || fy < -ppu * 3 || fy > ch + ppu * 4) return;
+  const k = ppu * 0.64, bob = Math.sin(time * 1.4) * ppu * 0.02;
+  ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.95, ppu * 0.08, 0, 0, TAU); ctx.fill();
+  ctx.save();
+  ctx.translate(cx, fy - k * 1.05 + bob); ctx.scale(k, k);
+  FN.collector(ctx);
+  ctx.restore();
+  if (lantern) drawHubLantern(ctx, cx + k * 1.35, fy, ppu, time);
+}
+
+/** A lantern standing on the floor with a warm glow (Quill's reward in the hub). */
+export function drawHubLantern(ctx, cx, fy, ppu, time) {
+  const flick = 0.85 + 0.15 * Math.sin(time * 7.3) * Math.sin(time * 3.1);
+  const gy = fy - ppu * 0.38;
+  const g = ctx.createRadialGradient(cx, gy, 0, cx, gy, ppu * 2.2);
+  g.addColorStop(0, `rgba(255,214,120,${0.55 * flick})`); g.addColorStop(1, 'rgba(255,214,120,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, gy, ppu * 2.2, 0, TAU); ctx.fill();
+  drawItemIcon(ctx, 'lantern', cx, fy - ppu * 0.32, ppu * 0.36);
+}
+
+/** Marlo's air tank: a dented green cylinder with a valve (lying on the floor, trailing the octopus, or standing in the hub). (x, y) is its centre. */
+export function drawTank(ctx, camera, cw, ch, x, y, time, floorShadow = false) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const cx = sx(x), cy = sy(y) + Math.sin(time * 2.2 + x) * ppu * (floorShadow ? 0 : 0.04);
+  if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 2 || cy > ch + ppu * 2) return;
+  const lw = Math.max(1.5, ppu * 0.045);
+  if (floorShadow) { ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, cy + ppu * 0.36, ppu * 0.28, ppu * 0.06, 0, 0, TAU); ctx.fill(); }
+  ctx.save(); ctx.translate(cx, cy); ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#13301f'; ctx.lineWidth = lw;
+  ctx.fillStyle = '#4c9a63';
+  ctx.beginPath(); ctx.roundRect(-ppu * 0.17, -ppu * 0.26, ppu * 0.34, ppu * 0.62, ppu * 0.15); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#7ec48f'; ctx.fillRect(-ppu * 0.1, -ppu * 0.2, ppu * 0.05, ppu * 0.46);
+  ctx.fillStyle = '#2f6b44'; ctx.fillRect(-ppu * 0.17, ppu * 0.0, ppu * 0.34, ppu * 0.05); // band
+  ctx.strokeStyle = '#13301f'; ctx.beginPath(); ctx.moveTo(ppu * 0.02, -ppu * 0.12); ctx.lineTo(ppu * 0.09, -ppu * 0.05); ctx.lineTo(ppu * 0.03, ppu * 0.03); ctx.stroke(); // the dent
+  ctx.fillStyle = '#c9b06a'; ctx.beginPath(); ctx.roundRect(-ppu * 0.06, -ppu * 0.38, ppu * 0.12, ppu * 0.14, ppu * 0.03); ctx.fill(); ctx.stroke(); // valve
+  ctx.restore();
+}
+
+/**
+ * A speech bubble over an NPC: parchment, an ink outline and a tail down to (x, y) (the head, world units). `name` is
+ * the speaker in small type above the text. Clamped to the screen so a line near an edge stays readable.
+ */
+export function drawSpeech(ctx, camera, cw, ch, x, y, text, alpha, name = '') {
+  if (!text || alpha <= 0.01) return;
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const ax = sx(x), ay = sy(y);
+  if (ay < -40 || ay > ch + 40 || ax < -ppu * 6 || ax > cw + ppu * 6) return;
+  const k = ctx.canvas && ctx.canvas.clientWidth ? ctx.canvas.width / ctx.canvas.clientWidth : 1; // device px per css px: the type stays readable on a phone
+  const px = Math.round(k * Math.max(13, Math.min(17, ppu / k * 0.26))), pad = Math.round(px * 0.6);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `700 ${px}px Quicksand, sans-serif`;
+  const rows = wrapLines(text, 24);
+  const nameH = name ? Math.round(px * 0.85) : 0;
+  let wMax = 0;
+  for (const r of rows) wMax = Math.max(wMax, ctx.measureText(r).width);
+  const bw = Math.max(wMax, name ? ctx.measureText(name).width * 0.85 : 0) + pad * 2, lh = Math.round(px * 1.25), bh = rows.length * lh + pad * 2 + nameH;
+  const tail = Math.round(px * 0.7);
+  let bx = ax - bw / 2; bx = Math.max(8, Math.min(cw - 8 - bw, bx));
+  const by = Math.max(8, ay - ppu * 0.1 - tail - bh);
+  ctx.lineJoin = 'round'; ctx.lineWidth = 2 * k;
+  ctx.fillStyle = 'rgba(252,246,226,0.97)'; ctx.strokeStyle = '#3a2a1b';
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10 * k);
+  const tx = Math.max(bx + 14 * k, Math.min(bx + bw - 14 * k, ax));
+  ctx.moveTo(tx - 7 * k, by + bh); ctx.lineTo(ax, Math.max(by + bh + 2, ay - ppu * 0.08)); ctx.lineTo(tx + 7 * k, by + bh);
+  ctx.fill(); ctx.stroke();
+  // erase the outline under the tail's base so the bubble and tail read as one shape
+  ctx.fillStyle = 'rgba(252,246,226,0.97)'; ctx.fillRect(tx - 6 * k, by + bh - 1.5 * k, 12 * k, 3 * k);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let ty = by + pad;
+  if (name) { ctx.font = `700 ${Math.round(px * 0.85)}px Quicksand, sans-serif`; ctx.fillStyle = '#a8412c'; ctx.fillText(name, bx + bw / 2, ty + nameH / 2); ty += nameH; ctx.font = `700 ${px}px Quicksand, sans-serif`; }
+  ctx.fillStyle = '#2a1d12';
+  for (const r of rows) { ctx.fillText(r, bx + bw / 2, ty + lh / 2); ty += lh; }
   ctx.restore();
 }
 

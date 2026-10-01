@@ -10,7 +10,13 @@ const KEY = 'octomancer.best.v1';
 export const BEST_RUNS_MAX = 5;
 
 function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, time: 0, deaths: {} }; }
-function freshStory() { return { diverFreed: 0, critterFreed: 0 }; }
+/**
+ * Story flags, all flat counters: marlo / pip / quill are the stage of each person (0 = not met), relics = relics carried
+ * out through an exit for Quill, said<Name> = the highest stage whose thank-you was spoken in the hub, diverFreed /
+ * critterFreed = how many times they were freed (stats).
+ */
+const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'saidMarlo', 'saidPip', 'saidQuill'];
+function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
 }
@@ -226,7 +232,10 @@ function cleanJournalStats(raw) {
 }
 function cleanStory(raw) {
   const out = freshStory();
-  if (raw && typeof raw === 'object') { out.diverFreed = Math.floor(num(raw.diverFreed)); out.critterFreed = Math.floor(num(raw.critterFreed)); }
+  if (raw && typeof raw === 'object') for (const k of STORY_KEYS) out[k] = Math.floor(num(raw[k]));
+  // a save from before the questlines: someone freed earlier is a person met (stage 1), already thanked
+  if (out.diverFreed > 0 && !out.marlo) { out.marlo = 1; out.saidMarlo = 1; }
+  if (out.critterFreed > 0 && !out.pip) { out.pip = 1; out.saidPip = 1; }
   return out;
 }
 
@@ -238,13 +247,21 @@ export function saveJournalStats(stats) {
   writeToStorage();
 }
 
-/** Story flags of the emergent encounters: how many dives the stranded diver was freed in, how many critters came home. */
+/** Story flags of the questlines (see STORY_KEYS): stages of Marlo, Pip and Quill, relics delivered, thank-yous spoken. */
 export function getStory() { return { ...loadBest().story }; }
-/** Count one more freed diver / critter (key 'diverFreed' | 'critterFreed'); returns the new count. */
+/** Add one to a story counter (a key of STORY_KEYS); returns the new value (0 for an unknown key). */
 export function addStory(key) {
   loadBest();
-  if (!(key in memory.story)) return 0;
+  if (!STORY_KEYS.includes(key)) return 0;
   memory.story[key]++;
+  writeToStorage();
+  return memory.story[key];
+}
+/** Set a story counter to `n` (never lowers it); returns the stored value. */
+export function setStory(key, n) {
+  loadBest();
+  if (!STORY_KEYS.includes(key)) return 0;
+  memory.story[key] = Math.max(memory.story[key], Math.floor(num(n)));
   writeToStorage();
   return memory.story[key];
 }

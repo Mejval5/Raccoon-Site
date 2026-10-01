@@ -243,7 +243,7 @@ export async function runMetaTests(assert) {
     root.remove();
   }
 
-  // --- journal book (round 38): tabs, locked silhouettes, entry pages with counters, a Progress page ---
+  // --- journal book (round 38): a two-page spread, bookmark tabs, locked silhouettes, entry pages with counters, a Progress page ---
   {
     const root = document.createElement('div');
     document.body.appendChild(root);
@@ -252,32 +252,39 @@ export async function runMetaTests(assert) {
     const meta = { dives: 6, clears: 1, bestDepth: 4, shells: 77, kills: 21, time: 754, deaths: { crab: 2, eel: 3 } };
     const scr = createJournalScreen(root, j, { getStats: () => ({ meta, bestRuns: [runOf(4, 30, 200)] }) });
     scr.show();
-    assert('journal book: five tabs and a Progress tab, the Places tab first', root.querySelectorAll('.octo-journal-tab').length === 6 && scr.tab() === 'places');
-    assert('journal book: the header counts found / total', /2 \/ \d+/.test(root.querySelector('.octo-journal-total').textContent));
+    assert('journal book: bookmark tabs for Places, People, Bestiary, Items, Traps and Progress, Places open first', [...root.querySelectorAll('.octo-bk-tab')].map((b) => b.dataset.tab).join() === 'places,people,bestiary,items,traps,progress' && scr.tab() === 'places');
+    assert('journal book: two facing pages (a grid page and an entry page) with a spine between them', !!root.querySelector('.octo-bk-left') && !!root.querySelector('.octo-bk-right') && !!root.querySelector('.octo-bk-spine') && !!root.querySelector('.octo-bk-ribbon'));
+    assert('journal book: the left page header counts found / total of the tab', /\d+ \/ \d+/.test(root.querySelector('.octo-bk-left .octo-bk-count').textContent));
     scr.setTab('bestiary');
-    const cards = root.querySelectorAll('.octo-journal-card');
-    const known = root.querySelector('.octo-journal-card[data-id="creature-urchin"]'), locked = root.querySelector('.octo-journal-card[data-id="creature-crab"]');
-    assert('journal book: the Bestiary is a grid of cards, one per creature, with art on each', cards.length === 7 && root.querySelectorAll('canvas.octo-journal-art').length === 7);
-    assert('journal book: a found creature shows its name, an unfound one is a silhouette with ???', known.textContent.includes('Urchin') && !known.classList.contains('octo-journal-unknown') && locked.classList.contains('octo-journal-unknown') && locked.textContent.includes('???') && !locked.textContent.includes('Crab'));
+    const pg = scr.page();
+    const cards = root.querySelectorAll('.octo-bk-card');
+    const known = root.querySelector('.octo-bk-card[data-id="creature-urchin"]'), locked = root.querySelector('.octo-bk-card[data-id="creature-crab"]');
+    assert('journal book: the Bestiary page is a grid of cards (one page of them), with art on each', cards.length === Math.min(pg.perPage, j.tabList('bestiary').length) && root.querySelectorAll('.octo-bk-left canvas').length === cards.length);
+    assert('journal book: a found creature shows its name, an unfound one is a silhouette with ???', !!known && !!locked && known.textContent.includes('Urchin') && !known.classList.contains('is-locked') && locked.classList.contains('is-locked') && locked.textContent.includes('???') && !locked.textContent.includes('Crab'));
     known.click();
-    const page = root.querySelector('.octo-journal-page');
-    assert('journal book: tapping a card opens its page with art, name, text and the counters (seen 3, defeated 2, defeated you 1)',
-      !!page && scr.entry() === 'creature-urchin' && page.textContent.includes('Urchin') && page.textContent.includes('Seen3') && page.textContent.includes('Defeated2') && page.textContent.includes('Defeated you1') && page.querySelector('canvas') !== null);
-    root.querySelector('.octo-journal-navsq[aria-label="Next entry"]').click();
-    assert('journal book: the arrow turns the page to the next entry, a locked one shows no description', scr.entry() === 'creature-piranha' && root.querySelector('.octo-journal-page').textContent.includes('???'));
+    const page = root.querySelector('.octo-bk-entry');
+    assert('journal book: picking a card shows the entry on the right page: art, name, text and the counters (Seen 3, Killed 2, Killed by 1)',
+      !!page && scr.entry() === 'creature-urchin' && page.textContent.includes('Urchin') && page.textContent.includes('Seen3') && page.textContent.includes('Killed2') && page.textContent.includes('Killed by1') && page.querySelector('canvas') !== null);
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown' }));
+    assert('journal book: the down arrow selects the next entry, a locked one shows ??? and no description', scr.entry() === 'creature-piranha' && root.querySelector('.octo-bk-entry').textContent.includes('???') && root.querySelector('.octo-bk-entry').classList.contains('is-locked') && !root.querySelector('.octo-bk-entry .octo-bk-ledger'));
     scr.showEntry('place-hub');
     assert('journal book: showEntry jumps to the right tab', scr.tab() === 'places' && scr.entry() === 'place-hub');
+    const before = scr.page();
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight' }));
+    assert('journal book: the right arrow key turns the page (next grid page or the next tab)', scr.page().tab !== before.tab || scr.page().page !== before.page);
     scr.setTab('items');
-    assert('journal book: Items shows items and loot together', root.querySelectorAll('.octo-journal-card').length === j.tabList('items').length && j.tabList('items').length >= 10);
+    assert('journal book: Items shows items, loot and props together (more than one page of them)', j.tabList('items').length >= 15 && scr.page().pages * scr.page().perPage >= j.tabList('items').length);
+    scr.turn(1);
+    assert('journal book: turning the page moves through the tab (or on to the next)', scr.page().page === 1 || scr.tab() === 'traps');
     scr.setTab('progress');
-    const t = root.querySelector('.octo-journal-body').textContent;
-    assert('journal book: Progress has completion %, deaths, best depth, play time', t.includes('Journal complete') && t.includes('Deaths5') && t.includes('Best depthCleared') && t.includes('Play time12:34'));
+    const t = root.querySelector('.octo-bk-spread').textContent;
+    assert('journal book: Progress has completion %, deaths, best depth, play time, shells collected, runs', t.includes('Completion') && /\d+%/.test(t) && t.includes('Deaths5') && t.includes('Best depthCleared') && t.includes('Play time12:34') && t.includes('Shells collected77') && t.includes('Runs6'));
     assert('journal book: Progress lists deaths by cause (most first, as nouns) and the best runs', t.indexOf('Electric eel') > 0 && t.indexOf('Electric eel') < t.indexOf('Crab') && !/an? (crab|electric eel|piranha)/i.test(t) && t.includes('1. Cleared, 30 shells, 3:20'));
     scr.hide();
     const root2 = document.createElement('div');
     document.body.appendChild(root2);
     createJournalScreen(root2, j, {});
-    assert('journal book: no Progress tab without a stats source', root2.querySelector('.octo-journal-tab[data-tab="progress"]').style.display === 'none');
+    assert('journal book: no Progress tab without a stats source', root2.querySelector('.octo-bk-tab[data-tab="progress"]').style.display === 'none');
     root.remove(); root2.remove();
   }
 

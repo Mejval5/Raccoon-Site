@@ -1,35 +1,49 @@
-// Emergent encounters (round 38, the Spelunky way; replaces the round-22 "soft quests" with a HUD line and a random
-// objective per level). Nothing is announced, listed or previewed: a level may simply hold
-//   The Caged Critter  (kind 'rescue')  a small creature in a cage in a side pocket; touch the cage and it follows your
-//                      trail, bring it to the exit and it moves into the hub (js/main.js, save.js story flags)
-//   The Stranded Diver (kind 'vault')   a diver sealed in a rock pocket (level.js carvePockets); bomb the rock open and
-//                      swim in to free him; every run he is freed he waits in the hub, and after three he opens the shortcut
-// Freeing one pays a few shells and writes a People entry in the journal (main.js does both).
-//
-// planQuest is a pure function of the final level + seed. Object placement uses the A* lattice (pathcheck.js): only
-// spots the octopus can really swim to. `encounterRoll` decides whether a level has an encounter at all (about 1 in 3,
-// never in the tutorial or hub). Data-oriented: rows are plain data, the runtime state is one flat record.
+// NPC questlines (round 38, the Spelunky 2 way). People, not objectives: Marlo the stranded diver, Pip the caged critter
+// and Quill the collector appear on specific levels, speak when you come near (meet, ask), react when you help
+// (help, thank) and move their story forward one stage at a time across levels and runs (save.js story flags:
+// `story[npc]` is the stage). The hub changes with the stages (main.js). Nothing is announced or listed: no HUD line.
+// data/quests.json holds the people (hub lines per stage) and the encounter rows (npc, stage needed, stage set, levels,
+// chance, kind, lines).
+//   vault   (Marlo)   sealed in a rock pocket (level.js carvePockets): bomb it open and swim in
+//   fetch   (Marlo)   his lost air tank lies on the floor: pick it up and carry it to the exit
+//   rescue  (Pip)     a cage on the floor: touch it, the creature follows you, bring it to the exit
+//   meet    (Quill)   he stands on the floor: swim up to him
+// planQuest is a pure function of the final level + seed + story. Spots use the A* lattice (pathcheck.js): only places
+// the octopus can really swim to, never inside a set-piece room or the shop, and clear of the level's other spawns.
+// Data-oriented: rows are plain data, the runtime state is one flat record.
 
 import { mulberry32, hashSeed2 } from './rng.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
+import { ROOM_W, ROOM_H } from './rooms.js';
+import { createTalk, say, talkStep } from './speech.js';
 
-export const Q_RESCUE = 1, Q_VAULT = 2;
-const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT };
-export const ENCOUNTER_CHANCE = 0.34;
+export const Q_RESCUE = 1, Q_VAULT = 2, Q_FETCH = 3, Q_MEET = 4;
+const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT, fetch: Q_FETCH, meet: Q_MEET };
 export const ST_ACTIVE = 0, ST_DONE = 1;
+export const RELICS_NEEDED = 3;           // relics Quill wants (story.relics counts the ones carried out through an exit)
 
 const TRAIL = 64;            // octopus positions kept (one per fixed step)
 const CRITTER_LAG = 22;      // steps behind the octopus (about 0.45 s)
-const TOUCH_R = 1.1;         // octopus centre to critter / cache centre
+const TOUCH_R = 1.1;         // octopus centre to the thing's centre
+const MEET_R = 8.5;          // an NPC speaks up when the octopus is this close
+const ASK_AGAIN_R = 3.5, ASK_AGAIN_S = 12;
 const MIN_START_DIST = 9;
+const AVOID_R = 2.4;         // tiles to any other spawn (chest, pot, enemy slot, hazard)
+const STEP = 0.02;
 
-/** @param {{quests:any[]}} json */
+/** @param {{npcs:any[], quests:any[]}} json */
 export function parseQuests(json) {
+  const npcs = json.npcs.map((n) => ({ ...n, hub: n.hub || {}, thanks: n.thanks || {} }));
+  const npcById = new Map(npcs.map((n) => [n.id, n]));
   const rows = json.quests.map((q) => {
     if (!KINDS[q.kind]) throw new Error('quest ' + q.id + ': unknown kind ' + q.kind);
-    return { ...q, kindId: KINDS[q.kind], weight: q.weight === undefined ? 1 : q.weight, reward: q.reward | 0, count: q.count | 0 };
+    if (!npcById.has(q.npc)) throw new Error('quest ' + q.id + ': unknown npc ' + q.npc);
+    return {
+      ...q, kindId: KINDS[q.kind], weight: 1, reward: q.reward | 0, count: 1, need: q.need | 0, set: q.set | 0,
+      levels: (q.levels || [0, 1, 2]).slice(), chance: q.chance === undefined ? 0.35 : q.chance, lines: q.lines || {}, variant: q.variant || '',
+    };
   });
-  return { rows, byId: new Map(rows.map((r, i) => [r.id, i])) };
+  return { rows, byId: new Map(rows.map((r, i) => [r.id, i])), npcs, npcById };
 }
 
 export async function fetchQuests(url = 'data/quests.json') {
@@ -40,14 +54,28 @@ export async function fetchQuests(url = 'data/quests.json') {
 
 /** Inside a room rect grown by a margin (the shop room and the calm tiles around it). */
 function inRect(x, y, r, m = 4) { return !!r && x >= r.x0 - m && x < r.x1 + m && y >= r.y0 - m && y < r.y1 + m; }
+/** Inside any set-piece room (wreck, garden, gauntlet): they are scenery of their own and a cage would overlap the hull. */
+function inSetPiece(level, x, y) {
+  const sp = level.setPieces, n = level.nSetPieces | 0;
+  for (let i = 0; i < n; i++) if (x >= sp[i * 4] - 1 && x <= sp[i * 4] + ROOM_W && y >= sp[i * 4 + 1] - 1 && y <= sp[i * 4 + 1] + ROOM_H) return true;
+  return false;
+}
+
+/** Rows that can happen on this level for this story: the person is at the stage the row needs and the level is listed. */
+export function eligibleRows(table, story, levelIndex) {
+  return table.rows.filter((r) => ((story && story[r.npc]) | 0) === r.need && r.levels.includes(levelIndex));
+}
 
 /**
- * Pick and place this level's quest. Returns a plan
- *   {qi, kindId, id, name, reward, count, hud, done, journal, pos: Float32Array [x0,y0,...]}
- * (pos: the critter, the vault cache, or the extra piranhas, in world units) or null without quest rows.
- * @param {{tiles:Uint8Array,w?:number,h?:number,startX:number,startY:number,exitX:number,exitY:number,shop?:any,pockets?:Int16Array,nPockets?:number}} level
+ * Pick and place this level's encounter. Returns a plan
+ *   {qi, kindId, id, npc, name, title, reward, count, set, lines, done, journal, variant, floorY, pos: Float32Array [x, y]}
+ * (pos: the centre of the cage / tank / person / pocket cache, in world units; floorY: the floor line it rests on,
+ * 0 for the vault) or null: nothing eligible, the roll failed or no spot fits.
+ * @param {{tiles:Uint8Array,w?:number,h?:number,startX:number,startY:number,exitX:number,exitY:number,shop?:any,pockets?:Int16Array,nPockets?:number,setPieces?:Int16Array,nSetPieces?:number}} level
+ * @param {Record<string, number>} story the stage of every person (save.js getStory)
+ * @param {ArrayLike<number>} [avoid] x, y pairs of the level's other spawns
  */
-export function planQuest(level, table, runSeed, levelIndex) {
+export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid = null) {
   if (!table || !table.rows.length) return null;
   const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x9e57));
   const w = level.w, h = level.h, t = level.tiles;
@@ -65,69 +93,78 @@ export function planQuest(level, table, runSeed, levelIndex) {
     for (let i = 0; i < p.length; i += 2) { const d = Math.hypot(p[i] - x, p[i + 1] - y); if (d < best) best = d; }
     return best;
   };
-  const clear3 = (x, y) => {
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (t[(y + dy) * w + x + dx] !== 0) return false;
-    return true;
+  const rock = (x, y) => t[y * w + x] !== 0;
+  const nearSpawn = (x, y) => {
+    if (!avoid) return false;
+    for (let i = 0; i < avoid.length; i += 2) if (Math.hypot(avoid[i] - x, avoid[i + 1] - y) < AVOID_R) return true;
+    return false;
   };
-  /** water tiles the octopus can reach, at least minStart from the start and inside the border margin */
-  const spots = (needClear) => {
+  /**
+   * Floor spots: a water tile with rock under it and under both neighbours (a flat 3-wide floor), open water in the 3x3
+   * above it (a cage 1.3 tiles wide never touches a wall), reachable, out of the shop, the set pieces and the start / exit.
+   * @param {number} clearH rows of open water needed above the floor tile (including its own)
+   */
+  const floorSpots = (clearH) => {
     ensure();
     const out = [];
-    for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
-      if (t[y * w + x] !== 0 || (needClear && !clear3(x, y))) continue;
-      if (inRect(x, y, level.shop)) continue;
+    for (let y = 4; y < h - 4; y++) for (let x = 4; x < w - 4; x++) {
+      if (rock(x, y) || !rock(x, y + 1) || !rock(x - 1, y + 1) || !rock(x + 1, y + 1)) continue;
+      let open = true;
+      for (let dy = 0; dy < clearH && open; dy++) for (let dx = -1; dx <= 1; dx++) if (rock(x + dx, y - dy)) { open = false; break; }
+      if (!open) continue;
+      if (inRect(x, y, level.shop) || inSetPiece(level, x, y)) continue;
       const cx = x + 0.5, cy = y + 0.5;
       if (Math.hypot(cx - level.startX - 0.5, cy - level.startY - 0.5) < MIN_START_DIST) continue;
       if (Math.hypot(cx - level.exitX - 0.5, cy - level.exitY - 0.5) < 5) continue;
+      if (nearSpawn(cx, cy)) continue;
       if (!reachedNear(grid, reached, cx, cy, 0.3)) continue;
       out.push(x, y);
     }
     return out;
   };
 
+  /** Where this row's thing goes, or null. Floor kinds return [x, y centre, floorY]. */
   const feasible = (row) => {
     switch (row.kindId) {
       case Q_VAULT: {
         if (!(level.nPockets > 0)) return null;
         const px = level.pockets[0], py = level.pockets[1];
-        return Float32Array.of(px + 0.5, py + 1.72); // the chest rests on the pocket floor, left cell (shells sit right of it)
+        return Float32Array.of(px + 0.5, py + 1.72, 0); // the cache rests on the pocket floor, left cell (shells sit right of it)
       }
-      case Q_RESCUE: {
-        // the critter needs open water all round (>= 0.8 tiles to rock: the 3x3 block around its tile centre is
-        // water), so its fins and halo never touch the wall; tight corners only as a last resort
-        let all = spots(true);
-        if (!all.length) all = spots(false);
-        // a side pocket: prefer spots well off the shortest route, then any spot off it
-        for (const minRoute of [4, 2.5, 1.5]) {
-          const cand = [];
-          for (let i = 0; i < all.length; i += 2) if (distToRoute(all[i] + 0.5, all[i + 1] + 0.5) >= minRoute) cand.push(all[i], all[i + 1]);
-          if (cand.length) {
-            const k = Math.floor(rng() * (cand.length / 2)) * 2;
-            return Float32Array.of(cand[k] + 0.5, cand[k + 1] + 0.5);
+      default: {
+        // prefer spots well off the shortest route (a side cave), then any spot off it
+        for (const clearH of [3, 2]) {
+          const all = floorSpots(clearH);
+          if (!all.length) continue;
+          for (const minRoute of [4, 2.5, 1.5]) {
+            const cand = [];
+            for (let i = 0; i < all.length; i += 2) if (distToRoute(all[i] + 0.5, all[i + 1] + 0.5) >= minRoute) cand.push(all[i], all[i + 1]);
+            if (cand.length) {
+              const k = Math.floor(rng() * (cand.length / 2)) * 2;
+              const floorY = cand[k + 1] + 1, off = row.kindId === Q_FETCH ? 0.36 : row.kindId === Q_MEET ? 0.6 : row.variant === 'mama' ? 0.62 : 0.55;
+              return Float32Array.of(cand[k] + 0.5, floorY - off, floorY);
+            }
           }
         }
         return null;
       }
-      default: return null;
     }
   };
 
-  const pool = table.rows.map((_, i) => i);
-  while (pool.length) {
-    let total = 0;
-    for (const i of pool) total += table.rows[i].weight;
-    let r = rng() * total, k = pool.length - 1;
-    for (let j = 0; j < pool.length; j++) { r -= table.rows[pool[j]].weight; if (r < 0) { k = j; break; } }
-    const qi = pool[k];
-    const row = table.rows[qi];
-    const pos = feasible(row);
-    if (pos) {
-      return {
-        qi, kindId: row.kindId, id: row.id, name: row.name, reward: row.reward, count: 1,
-        hud: row.hud, done: row.done, journal: row.journal, pos,
-      };
-    }
-    pool.splice(k, 1);
+  // eligible rows in a seeded order; the first one whose roll passes and that fits wins (one encounter per level at most)
+  const pool = eligibleRows(table, story, levelIndex);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
+  for (const row of pool) {
+    const roll = rng();
+    if (roll >= row.chance) continue;
+    const found = feasible(row);
+    if (!found) continue;
+    const npc = table.npcById.get(row.npc);
+    return {
+      qi: table.byId.get(row.id), kindId: row.kindId, id: row.id, npc: row.npc, name: npc.name, title: npc.title, reward: row.reward, count: 1,
+      set: row.set, lines: row.lines, done: row.done || '', journal: row.journal || npc.journal || '', variant: row.variant,
+      floorY: found[2], pos: Float32Array.of(found[0], found[1]),
+    };
   }
   return null;
 }
@@ -135,39 +172,68 @@ export function planQuest(level, table, runSeed, levelIndex) {
 /** Fresh runtime state for a plan (null plan gives null). */
 export function createQuestState(plan) {
   if (!plan) return null;
+  const floor = plan.kindId === Q_RESCUE || plan.kindId === Q_FETCH || plan.kindId === Q_MEET;
   return {
     plan, status: ST_ACTIVE, progress: 0, goal: plan.count,
-    following: false,                       // rescue: the critter has been touched
-    cx: plan.kindId === Q_RESCUE ? plan.pos[0] : 0, cy: plan.kindId === Q_RESCUE ? plan.pos[1] : 0,
-    collected: false,                       // vault: the cache was taken
+    following: false,                       // rescue / fetch: touched, now trailing the octopus
+    cx: floor ? plan.pos[0] : 0, cy: floor ? plan.pos[1] : 0,
+    collected: false,                       // vault: freed
     trail: new Float32Array(TRAIL * 2), head: 0, filled: 0,
+    clock: 0, met: false, helped: false, lastAsk: -99, leave: 0,
+    talk: createTalk(),
   };
 }
 
 function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_DONE; return true; }
 
+/** The NPC's position, where the speech bubble hangs: [x, y of the head]. */
+export function questSpeaker(st) {
+  const p = st.plan;
+  if (p.kindId === Q_VAULT) return [p.pos[0] + 0.1, p.pos[1] - 1.0];
+  if (p.kindId === Q_MEET) return [st.cx, p.floorY - 1.3];
+  return [st.cx, st.cy - (p.variant === 'mama' ? 0.95 : 0.7)];
+}
+
+function speak(st, key) { const l = st.plan.lines[key]; if (l) say(st.talk, [l]); }
+
 /**
- * One fixed step after the octopus moved: the rescue critter follows the octopus trail once touched, and
- * the diver is freed on touch. Returns true when this completed the encounter (diver).
+ * One fixed step after the octopus moved: speech (meet and ask as you come near), the touch that frees / collects /
+ * meets, and the trail of the follower. Returns true when this completed the encounter without the exit (vault, meet).
  * @param {{isSolid:(x:number,y:number)=>boolean}} world
  */
-export function questUpdate(st, octo, world) {
-  if (!st || st.status !== ST_ACTIVE) return false;
+export function questUpdate(st, octo, world, dt = STEP) {
+  if (!st) return false;
+  st.clock += dt;
+  const done = questStep(st, octo, world, dt);
+  talkStep(st.talk, dt);
+  return done;
+}
+
+function questStep(st, octo, world, dt) {
+  if (st.status !== ST_ACTIVE) { if (st.leave > 0) st.leave -= dt; return false; }
   const k = st.plan.kindId;
-  if (k === Q_RESCUE) {
+  const [nx, ny] = k === Q_VAULT ? [st.plan.pos[0], st.plan.pos[1]] : [st.cx, st.cy];
+  const d = Math.hypot(octo.x - nx, octo.y - ny);
+  const speaker = k !== Q_FETCH; // a lost tank says nothing
+  if (speaker && !st.helped) {
+    if (!st.met && d < MEET_R) { st.met = true; st.lastAsk = st.clock; speak(st, 'meet'); speak(st, 'ask'); }
+    else if (st.met && d < ASK_AGAIN_R && !st.talk.text && !st.talk.q.length && st.clock - st.lastAsk > ASK_AGAIN_S) { st.lastAsk = st.clock; speak(st, 'ask'); }
+  }
+  let done = false;
+  if (k === Q_RESCUE || k === Q_FETCH) {
     st.trail[st.head * 2] = octo.x; st.trail[st.head * 2 + 1] = octo.y;
     st.head = (st.head + 1) % TRAIL;
     if (st.filled < TRAIL) st.filled++;
     if (!st.following) {
-      if (Math.hypot(octo.x - st.cx, octo.y - st.cy) < TOUCH_R) st.following = true;
+      if (d < TOUCH_R) { st.following = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); }
     } else {
       const lag = Math.min(CRITTER_LAG, st.filled);
       const i = (st.head - lag + TRAIL * 2) % TRAIL;
       let tx = st.trail[i * 2], ty = st.trail[i * 2 + 1];
       // keep beside the octopus, not inside it, and never on its centre: if the wanted point is solid, pick the
       // free spot around the octopus (8 directions, 0.95-1.1 tiles) closest to the trail point
-      const dx = tx - octo.x, dy = ty - octo.y, d = Math.hypot(dx, dy);
-      if (d < 0.95) { const ux = d > 1e-3 ? dx / d : -0.7, uy = d > 1e-3 ? dy / d : 0.7; tx = octo.x + ux * 0.95; ty = octo.y + uy * 0.95; }
+      const dx = tx - octo.x, dy = ty - octo.y, dd = Math.hypot(dx, dy);
+      if (dd < 0.95) { const ux = dd > 1e-3 ? dx / dd : -0.7, uy = dd > 1e-3 ? dy / dd : 0.7; tx = octo.x + ux * 0.95; ty = octo.y + uy * 0.95; }
       if (world.isSolid(tx, ty)) {
         const want = { x: tx, y: ty };
         let best = null, bd = Infinity;
@@ -175,33 +241,55 @@ export function questUpdate(st, octo, world) {
           for (let a = 0; a < 8; a++) {
             const px = octo.x + Math.cos(a * Math.PI / 4) * r, py = octo.y + Math.sin(a * Math.PI / 4) * r;
             if (world.isSolid(px, py)) continue;
-            const dd = Math.hypot(px - want.x, py - want.y);
-            if (dd < bd) { bd = dd; best = [px, py]; }
+            const ddd = Math.hypot(px - want.x, py - want.y);
+            if (ddd < bd) { bd = ddd; best = [px, py]; }
           }
         }
         if (best) { tx = best[0]; ty = best[1]; } else { tx = st.cx; ty = st.cy; }
       }
-      const nx = st.cx + (tx - st.cx) * 0.3, ny = st.cy + (ty - st.cy) * 0.3;
-      if (!world.isSolid(nx, ny)) { st.cx = nx; st.cy = ny; }
+      const nx2 = st.cx + (tx - st.cx) * 0.3, ny2 = st.cy + (ty - st.cy) * 0.3;
+      if (!world.isSolid(nx2, ny2)) { st.cx = nx2; st.cy = ny2; }
     }
   } else if (k === Q_VAULT && !st.collected) {
-    if (Math.hypot(octo.x - st.plan.pos[0], octo.y - st.plan.pos[1]) < TOUCH_R) { st.collected = true; return finish(st); }
+    if (d < TOUCH_R) { st.collected = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); st.leave = 6; done = finish(st); }
+  } else if (k === Q_MEET) {
+    if (d < 1.7) { st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = ''; speak(st, 'help'); speak(st, 'thank'); st.leave = 6; done = finish(st); }
   }
-  return false;
+  return done;
 }
 
-/** The octopus reached the exit. Returns true when this completed the encounter (the critter followed it there). */
+/** The octopus reached the exit. Returns true when this completed the encounter (the follower came along). */
 export function questOnExit(st) {
   if (!st || st.status !== ST_ACTIVE) return false;
-  if (st.plan.kindId === Q_RESCUE) return st.following ? finish(st) : false;
+  if (st.plan.kindId === Q_RESCUE || st.plan.kindId === Q_FETCH) return st.following ? finish(st) : false;
   return false;
 }
 
+/** Stage of a person after an encounter row completes (never goes backwards). */
+export function nextStage(current, row) { return Math.max(current | 0, row.set | 0); }
+
+// ---- the hub: who stands where, and what they say --------------------------------------------------------------
+
 /**
- * Does this level hold an encounter? A pure function of the run seed and level index (the hub never previews it).
- * Level 1-1 (index 0) and 1-2 (index 1) are the most likely homes; 1-3 has one less often.
+ * The hub residents for this story: [{id, stage, slot}] in table order, only people who have been met (stage >= 1).
+ * Slots are spots of the hub (main.js maps a slot to a position).
  */
-export function encounterRoll(runSeed, levelIndex) {
-  const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xe7c0));
-  return rng() < (levelIndex === 2 ? ENCOUNTER_CHANCE * 0.6 : ENCOUNTER_CHANCE);
+export function hubResidents(table, story) {
+  const out = [];
+  for (const n of table.npcs) { const stage = (story[n.id] | 0); if (stage >= 1) out.push({ id: n.id, stage, name: n.name }); }
+  return out;
+}
+
+/** The lines a resident says on a visit: the thank line first when the stage was reached since they last spoke, then the stage's lines. */
+export function hubLines(npc, stage, relics, thankPending, visit) {
+  const fill = (s) => s.replace('{n}', String(Math.min(relics, RELICS_NEEDED))).replace('{left}', String(Math.max(0, RELICS_NEEDED - relics)));
+  const lines = [];
+  if (thankPending && npc.thanks[stage]) lines.push(fill(npc.thanks[stage]));
+  const pool = npc.hub[stage] || [];
+  if (pool.length) {
+    // the first visit tells the whole stage; later visits one line at a time, rotating
+    if (thankPending || visit === 0) for (const l of pool) lines.push(fill(l));
+    else lines.push(fill(pool[visit % pool.length]));
+  }
+  return lines;
 }

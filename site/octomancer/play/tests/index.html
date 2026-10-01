@@ -124,7 +124,7 @@ await runBiome1Tests(assert, approx);
 import { runAuthoredTests } from './authored.test.js';
 await runAuthoredTests(assert, approx);
 import { runJournalTests } from './journal.test.js';
-runJournalTests(assert, approx);
+await runJournalTests(assert, approx);
 
 // --- Round 22: A* reachability, bot runs, quests, shops, shells ---
 import { runPathcheckTests } from './pathcheck.test.js';
