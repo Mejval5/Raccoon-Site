@@ -747,6 +747,9 @@ const {
 } = require("./lib/gallery");
 const { compileCheck } = require("./lib/slx-compile");
 
+// Lets scripts/gallery-admin.mjs upload previews for (or remove) any entry, not only the
+// caller's own: sent as X-Admin-Key, compared in constant time.
+const GALLERY_ADMIN_KEY = defineSecret("GALLERY_ADMIN_KEY");
 const GALLERY = "slx-gallery";
 const GALLERY_OWNERS = "slx-gallery-owners";
 // Preview images live in their own collection so listing the gallery never reads them.
@@ -759,6 +762,7 @@ exports.gallery = onRequest(
     maxInstances: 5,
     memory: "512MiB",
     timeoutSeconds: 30,
+    secrets: [GALLERY_ADMIN_KEY],
   },
   async (req, res) => {
     try {
@@ -855,7 +859,8 @@ exports.gallery = onRequest(
         res.status(200).json(docToItem(id, doc, token));
         return;
       }
-      if (!isOwner(token, doc)) { json(403, { error: "this browser does not own that entry" }); return; }
+      const isAdmin = timingSafeEqualString(req.get("x-admin-key") || "", GALLERY_ADMIN_KEY.value() || "");
+      if (!isOwner(token, doc) && !isAdmin) { json(403, { error: "this browser does not own that entry" }); return; }
 
       // PUT /api/gallery/<id>/thumb?frames=24  body: the sprite strip (image/webp or image/png)
       if (isThumb) {

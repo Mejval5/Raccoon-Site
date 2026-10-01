@@ -29,3 +29,8 @@ firebase-debug.log
 
 # Firebase emulator logs
 *-debug.log
+
+# Gallery admin key (same value as the Firebase secret GALLERY_ADMIN_KEY), read by scripts/gallery-admin.mjs
+.gallery-admin-key
+# Local secrets for the Functions emulator
+functions/.secret.local
