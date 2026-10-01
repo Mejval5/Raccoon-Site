@@ -1,12 +1,8 @@
 {
  "quests": [
-  { "id": "rescue", "kind": "rescue", "name": "Rescue the lost critter", "weight": 3, "reward": 4,
-    "hud": "Find the lost critter and bring it to the exit", "done": "Critter rescued", "journal": "quest-rescue" },
-  { "id": "vault", "kind": "vault", "name": "Crack the vault", "weight": 3, "reward": 5,
-    "hud": "Bomb open the sealed vault", "done": "Vault cracked", "journal": "quest-vault" },
-  { "id": "untouched", "kind": "untouched", "name": "Untouched", "weight": 2, "reward": 3,
-    "hud": "Reach the exit without losing a heart", "done": "Untouched", "journal": "quest-untouched" },
-  { "id": "pest", "kind": "pest", "name": "Pest control", "weight": 2, "reward": 4, "count": 3,
-    "hud": "Kill piranhas", "done": "Pests cleared", "journal": "quest-pest" }
+  { "id": "critter", "kind": "rescue", "name": "The Caged Critter", "weight": 1, "reward": 3,
+    "hud": "", "done": "It squeaks happily and swims home", "journal": "person-critter" },
+  { "id": "diver", "kind": "vault", "name": "The Stranded Diver", "weight": 1, "reward": 3,
+    "hud": "", "done": "The diver waves, free at last", "journal": "person-diver" }
  ]
 }

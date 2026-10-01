@@ -512,6 +512,7 @@ export function createEnemies() {
 
   const liveCache = []; // reusable list for autofire (rebuilt each step in hpMode)
   const stepList = []; // every enemy of this step (rebuilt once per update)
+  let hazData = null; // hazards.js data (v2): anemone / spike anchors the crab and piranha turn probes avoid
   function allEnemies() {
     const out = [];
     for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) out.push(list[i]);
@@ -564,6 +565,27 @@ export function createEnemies() {
     return false;
   }
 
+  // r38: hazard anchors (anemone clusters, spike walls) are obstacles for the crab and piranha turn probes too: a crab
+  // used to walk straight into an anemone on its floor. Same hazard codes as hazards.js (kept local: no import cycle).
+  const HZ_SPIKES_K = 2, HZ_ANEMONE_K = 5;
+  function blockerAhead(e, dir, margin, cx, cy, r) {
+    const dx = (cx - e.x) * dir;
+    return dx > -0.1 && dx < e.radius + r + margin && Math.abs(cy - e.y) < e.radius + r;
+  }
+  function hazardAhead(e, dir, margin) {
+    const d = hazData;
+    if (!d) return false;
+    for (let i = 0; i < d.n; i++) {
+      const k = d.kind[i];
+      if (k === HZ_ANEMONE_K) { if (blockerAhead(e, dir, margin, d.x[i], d.y[i] + 0.05, 0.55)) return true; }
+      else if (k === HZ_SPIKES_K) {
+        const tx = -d.dy[i], ty = d.dx[i];
+        for (let j = -1; j <= 1; j++) if (blockerAhead(e, dir, margin, d.x[i] + tx * j - d.dx[i] * 0.15, d.y[i] + ty * j - d.dy[i] * 0.15, 0.35)) return true;
+      }
+    }
+    return false;
+  }
+
   // ------------------------------------------------------------------------------------------ piranha
   function piranhaRecover(e, hit) {
     e.st = PS_RECOVER; e.t = PIRANHA_RECOVER; e.tell = 0;
@@ -588,7 +610,7 @@ export function createEnemies() {
         const moved = Math.abs(e.x - px);
         e.stuck = moved < 0.55 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0; // r36: 0.3 let one hovering at 0.01 per step through
         const far = (e.x - e.baseX) * e.dir > PIRANHA_PATROL_RANGE;
-        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_TURN_PROBE, 0.45) || enemyAhead(e, e.dir, 0.4))) {
+        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_TURN_PROBE, 0.45) || enemyAhead(e, e.dir, 0.4) || hazardAhead(e, e.dir, 0.4))) {
           e.dir = -e.dir; e.flipCd = 0.6; e.stuck = 0;
         }
         e.face = e.dir;
@@ -683,7 +705,7 @@ export function createEnemies() {
         const cx0 = e.x;
         e.x += step;
         const aheadX = e.x + e.dir * (e.radius + 0.15);
-        if (world.isSolid(aheadX, e.y) || bombAhead(e, props) || (e.flipCd <= 0 && enemyAhead(e, e.dir, 0.3))) {
+        if (world.isSolid(aheadX, e.y) || bombAhead(e, props) || (e.flipCd <= 0 && (enemyAhead(e, e.dir, 0.3) || hazardAhead(e, e.dir, 0.3)))) {
           e.x -= step; e.dir *= -1; e.flipCd = 0.5; // wall, resting bomb or another enemy ahead: undo the step and turn around
         } else if (!world.isSolid(aheadX, e.y + groundDy)) {
           e.dir *= -1; // no ledge ahead: turn around before walking off it
@@ -821,6 +843,8 @@ export function createEnemies() {
   }
 
   return {
+    /** v2: hand over the level's hazard data (hazards.js `data`) so patrolling enemies turn before an anemone or spike wall. */
+    setHazardData(d) { hazData = d; },
     events,
     /** All resident enemies plus the Beholder (if spawned) and any hit-stop ghosts, for rendering. */
     all() {

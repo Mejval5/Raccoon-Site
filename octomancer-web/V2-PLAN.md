@@ -557,3 +557,5 @@ Daniel: it does not feel like Spelunky yet; enemies are buggy, levels lack detai
   - *The Challenge Pool*: a wager room (pay 5 shells): survive 20 s of hazards for a prize.
   - *The Altar*: sacrifice an item or a stunned enemy for a random boon.
   The shop and the "Untouched" style bonuses go away as quests; "Untouched" becomes a journal stat. Quest state lives in save.js (per run and across runs) as flat flags.
+
+- **Status (round 38):** settings menu, the journal book (tabs, silhouettes, entry pages, counters, Progress) and the first two encounters (Caged Critter, Stranded Diver, hub residents, diver shortcut) are built; the Collector, Challenge Pool and Altar are still open.

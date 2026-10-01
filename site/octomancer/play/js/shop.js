@@ -62,7 +62,17 @@ export function createShopState(shop, items, runSeed, levelIndex, owned = []) {
     px: Float32Array.from({ length: SHOP_SLOTS * 2 }, (_, i) => shop.px[i] + 0.5),
     keeperX: shop.kx + 0.5, keeperY: shop.ky + 0.5,
     msgCooldown: 0,
+    flinch: 0, // s left of the keeper's flinch after a blast nearby (shopBlast)
   };
+}
+
+export const FLINCH_S = 0.5;
+/** A blast at (x, y) with radius r: a keeper within 3 radii flinches. Returns true when it did. */
+export function shopBlast(st, x, y, r) {
+  if (!st) return false;
+  if (Math.hypot(st.keeperX - x, st.keeperY - y) > r * 3) return false;
+  st.flinch = FLINCH_S;
+  return true;
 }
 
 /**
@@ -72,6 +82,7 @@ export function createShopState(shop, items, runSeed, levelIndex, owned = []) {
 export function shopStep(st, octo, shells, dt, inv = []) {
   if (!st) return null;
   if (st.msgCooldown > 0) st.msgCooldown = Math.max(0, st.msgCooldown - dt);
+  if (st.flinch > 0) st.flinch = Math.max(0, st.flinch - dt);
   for (let i = 0; i < SHOP_SLOTS; i++) {
     if (st.sold[i]) continue;
     if (Math.hypot(octo.x - st.px[i * 2], octo.y - st.px[i * 2 + 1]) > BUY_R) continue;

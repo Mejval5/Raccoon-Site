@@ -1,21 +1,22 @@
-// Soft quests (round 22, behind ?v2=1). Each Shallows level rolls one quest from data/quests.json:
-//   rescue     a lost critter sits in a side pocket off the main route; touch it and it follows your trail,
-//              bring it to the exit
-//   vault      a sealed rock pocket (level.js carvePockets) holds a cache; bomb the rock open and take it
-//   untouched  reach the exit without losing a heart
-//   pest       kill N piranhas (extra piranhas are placed for it)
-// Completing one pays shells (the currency) and writes a journal entry (main.js does both).
+// Emergent encounters (round 38, the Spelunky way; replaces the round-22 "soft quests" with a HUD line and a random
+// objective per level). Nothing is announced, listed or previewed: a level may simply hold
+//   The Caged Critter  (kind 'rescue')  a small creature in a cage in a side pocket; touch the cage and it follows your
+//                      trail, bring it to the exit and it moves into the hub (js/main.js, save.js story flags)
+//   The Stranded Diver (kind 'vault')   a diver sealed in a rock pocket (level.js carvePockets); bomb the rock open and
+//                      swim in to free him; every run he is freed he waits in the hub, and after three he opens the shortcut
+// Freeing one pays a few shells and writes a People entry in the journal (main.js does both).
 //
-// planQuest is a pure function of the final level + seed, so the hub sign can preview level 1-1's quest
-// exactly. Object placement uses the A* lattice (pathcheck.js): only spots the octopus can really swim to.
-// Data-oriented: quest rows are plain data, the runtime state is one flat record.
+// planQuest is a pure function of the final level + seed. Object placement uses the A* lattice (pathcheck.js): only
+// spots the octopus can really swim to. `encounterRoll` decides whether a level has an encounter at all (about 1 in 3,
+// never in the tutorial or hub). Data-oriented: rows are plain data, the runtime state is one flat record.
 
 import { mulberry32, hashSeed2 } from './rng.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 
-export const Q_RESCUE = 1, Q_VAULT = 2, Q_UNTOUCHED = 3, Q_PEST = 4;
-const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT, untouched: Q_UNTOUCHED, pest: Q_PEST };
-export const ST_ACTIVE = 0, ST_DONE = 1, ST_FAILED = 2;
+export const Q_RESCUE = 1, Q_VAULT = 2;
+const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT };
+export const ENCOUNTER_CHANCE = 0.34;
+export const ST_ACTIVE = 0, ST_DONE = 1;
 
 const TRAIL = 64;            // octopus positions kept (one per fixed step)
 const CRITTER_LAG = 22;      // steps behind the octopus (about 0.45 s)
@@ -107,23 +108,7 @@ export function planQuest(level, table, runSeed, levelIndex) {
         }
         return null;
       }
-      case Q_PEST: {
-        const n = Math.max(1, row.count);
-        const all = spots(true);
-        const pick = [];
-        for (let tries = 0; tries < 60 && pick.length < n * 2 && all.length; tries++) {
-          const k = Math.floor(rng() * (all.length / 2)) * 2;
-          const x = all[k], y = all[k + 1];
-          let near = false;
-          for (let i = 0; i < pick.length; i += 2) if (Math.hypot(pick[i] - x, pick[i + 1] - y) < 5) near = true;
-          if (!near) pick.push(x, y);
-        }
-        if (pick.length < n * 2) return null;
-        const pos = new Float32Array(n * 2);
-        for (let i = 0; i < n * 2; i += 2) { pos[i] = pick[i] + 0.5; pos[i + 1] = pick[i + 1] + 0.5; }
-        return pos;
-      }
-      default: return new Float32Array(0); // untouched: nothing to place
+      default: return null;
     }
   };
 
@@ -138,7 +123,7 @@ export function planQuest(level, table, runSeed, levelIndex) {
     const pos = feasible(row);
     if (pos) {
       return {
-        qi, kindId: row.kindId, id: row.id, name: row.name, reward: row.reward, count: row.kindId === Q_PEST ? Math.max(1, row.count) : 1,
+        qi, kindId: row.kindId, id: row.id, name: row.name, reward: row.reward, count: 1,
         hud: row.hud, done: row.done, journal: row.journal, pos,
       };
     }
@@ -161,21 +146,9 @@ export function createQuestState(plan) {
 
 function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_DONE; return true; }
 
-/** A creature died. Returns true when this completed the quest (pest control). */
-export function questOnKill(st, kind) {
-  if (!st || st.status !== ST_ACTIVE || st.plan.kindId !== Q_PEST || kind !== 'piranha') return false;
-  st.progress++;
-  return st.progress >= st.goal ? finish(st) : false;
-}
-
-/** The octopus lost a heart: the Untouched quest fails. */
-export function questOnHurt(st) {
-  if (st && st.status === ST_ACTIVE && st.plan.kindId === Q_UNTOUCHED) st.status = ST_FAILED;
-}
-
 /**
  * One fixed step after the octopus moved: the rescue critter follows the octopus trail once touched, and
- * the vault cache is taken on touch. Returns true when this completed the quest (vault).
+ * the diver is freed on touch. Returns true when this completed the encounter (diver).
  * @param {{isSolid:(x:number,y:number)=>boolean}} world
  */
 export function questUpdate(st, octo, world) {
@@ -217,29 +190,18 @@ export function questUpdate(st, octo, world) {
   return false;
 }
 
-/** The octopus reached the exit. Returns true when this completed the quest (rescue with the critter, untouched). */
+/** The octopus reached the exit. Returns true when this completed the encounter (the critter followed it there). */
 export function questOnExit(st) {
   if (!st || st.status !== ST_ACTIVE) return false;
   if (st.plan.kindId === Q_RESCUE) return st.following ? finish(st) : false;
-  if (st.plan.kindId === Q_UNTOUCHED) return finish(st);
   return false;
 }
 
-/** The HUD line for the quest. */
-export function questHudText(st) {
-  if (!st) return '';
-  const p = st.plan;
-  if (st.status === ST_DONE) return 'Quest done: ' + p.name + ', +' + p.reward + ' shells';
-  if (st.status === ST_FAILED) return 'Quest failed: ' + p.name;
-  switch (p.kindId) {
-    case Q_RESCUE: return 'Quest: ' + p.name + (st.following ? ' (it follows you, reach the exit)' : ' (find it)');
-    case Q_PEST: return 'Quest: ' + p.name + ' ' + st.progress + '/' + st.goal + ' piranhas';
-    case Q_VAULT: return 'Quest: ' + p.name + ' (bomb the sealed rock)';
-    default: return 'Quest: ' + p.name + ' (keep every heart)';
-  }
-}
-
-/** One line for the hub sign: name, what to do, reward. */
-export function questSignText(plan) {
-  return plan ? plan.name + ': ' + plan.hud + '. Reward ' + plan.reward + ' shells.' : '';
+/**
+ * Does this level hold an encounter? A pure function of the run seed and level index (the hub never previews it).
+ * Level 1-1 (index 0) and 1-2 (index 1) are the most likely homes; 1-3 has one less often.
+ */
+export function encounterRoll(runSeed, levelIndex) {
+  const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xe7c0));
+  return rng() < (levelIndex === 2 ? ENCOUNTER_CHANCE * 0.6 : ENCOUNTER_CHANCE);
 }

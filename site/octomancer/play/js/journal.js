@@ -1,12 +1,23 @@
-// Journal (V2-PLAN section 10, B1-4), behind ?v2=1. Entries keyed by id for places,
+// Journal (V2-PLAN section 10; round 38: a book with tabs, the Spelunky 2 way). Entries keyed by id for places,
 // creatures and items. An entry is discovered the first time it is seen or visited and
 // stays discovered (persisted through save.js). The list screen is journal-ui.js.
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_QUEST = 'quest';
-export const CATEGORIES = [CAT_PLACE, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT, CAT_QUEST];
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', quest: 'Quests' };
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person';
+export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT];
+/** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
+export const TABS = [
+  { id: 'places', title: 'Places', cats: [CAT_PLACE] },
+  { id: 'people', title: 'People', cats: [CAT_PERSON] },
+  { id: 'bestiary', title: 'Bestiary', cats: [CAT_CREATURE] },
+  { id: 'items', title: 'Items', cats: [CAT_ITEM, CAT_LOOT] },
+  { id: 'traps', title: 'Traps', cats: [CAT_HAZARD] },
+];
+/** Counters per entry (the entry page shows the ones that fit its category). */
+export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_COUNT = 4;
+
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', person: 'People' };
 
 /** Seed content; the art and longer text come later. Ids are stable: saves store them. */
 export const ENTRIES = [
@@ -78,14 +89,12 @@ export const ENTRIES = [
   { id: 'loot-relic', cat: CAT_LOOT, name: 'The Relic',
     text: 'A golden idol on a pedestal, worth twenty-five shells. The moment you lift it the ceiling starts to come down, for about ten seconds: keep moving.' },
 
-  { id: 'quest-rescue', cat: CAT_QUEST, name: 'Rescue the Lost Critter',
-    text: 'A small creature is stranded in a side pocket. Touch it and it follows your trail: bring it to the exit.' },
-  { id: 'quest-vault', cat: CAT_QUEST, name: 'Crack the Vault',
-    text: 'A cache is sealed inside a pocket of rock. Bomb it open from the nearest cave and swim in.' },
-  { id: 'quest-untouched', cat: CAT_QUEST, name: 'Untouched',
-    text: 'Reach the exit without losing a single heart.' },
-  { id: 'quest-pest', cat: CAT_QUEST, name: 'Pest Control',
-    text: 'Piranhas have moved in. Dash through or blast enough of them to clear the level.' },
+  { id: 'person-diver', cat: CAT_PERSON, name: 'The Stranded Diver',
+    text: 'Sealed in a pocket of rock with only his own bubbles for company. Bomb the rock open and swim in. Free him on enough dives and he finds you a shortcut.' },
+  { id: 'person-critter', cat: CAT_PERSON, name: 'The Caged Critter',
+    text: 'A small creature shut in a cage in a side cave. Touch the cage and it follows you: bring it all the way to the exit and it moves into the hub.' },
+  { id: 'person-keeper', cat: CAT_PERSON, name: 'The Shopkeeper',
+    text: 'A hermit crab who sells whatever washes up, three things at a time. He only takes shells, and he flinches when you throw bombs nearby.' },
 ];
 
 const INDEX = new Map(ENTRIES.map((e, i) => [e.id, i]));
@@ -101,22 +110,59 @@ export function itemId(type) {
   return INDEX.has(id) ? id : null;
 }
 
+/** Journal id for the thing that killed the octopus (octopus.js `cause`): a creature, a hazard, the bomb or a chest; null if none fits. */
+export function causeEntryId(cause) {
+  if (cause === 'shot') return 'creature-cannon';
+  if (cause === 'bomb') return 'item-bomb';
+  if (cause === 'chest') return 'loot-chest';
+  for (const pre of ['creature-', 'hazard-']) if (INDEX.has(pre + cause)) return pre + cause;
+  return null;
+}
+
+/** The tab that shows an entry category. */
+export function tabOfCat(cat) {
+  for (const t of TABS) if (t.cats.includes(cat)) return t.id;
+  return TABS[0].id;
+}
+
 /**
- * @param {{load:()=>string[], save:(ids:string[])=>void}} store persistence (save.js in the game, a fake in tests)
+ * @param {{load:()=>string[], save:(ids:string[])=>void, loadStats?:()=>Record<string, number[]>, saveStats?:(s:Record<string, number[]>)=>void}} store
+ *   persistence (save.js in the game, a fake in tests). Stats are optional: without them the counters just stay in memory.
  */
 export function createJournal(store) {
   const found = new Uint8Array(ENTRIES.length);
-  let count = 0;
+  const stats = new Uint32Array(ENTRIES.length * STAT_COUNT); // flat: entry * STAT_COUNT + STAT_*
+  let count = 0, dirty = false;
   const events = []; // ids discovered since the last takeNew()
   for (const id of store.load()) {
     const i = INDEX.get(id);
     if (i !== undefined && !found[i]) { found[i] = 1; count++; }
+  }
+  if (store.loadStats) {
+    const saved = store.loadStats() || {};
+    for (const id of Object.keys(saved)) {
+      const i = INDEX.get(id);
+      if (i === undefined || !Array.isArray(saved[id])) continue;
+      for (let k = 0; k < STAT_COUNT; k++) stats[i * STAT_COUNT + k] = Math.max(0, Math.floor(Number(saved[id][k]) || 0));
+      if (!found[i]) { found[i] = 1; count++; } // a counter without a discovery can only come from a hand-edited save: show it
+    }
   }
 
   function persist() {
     const ids = [];
     for (let i = 0; i < ENTRIES.length; i++) if (found[i]) ids.push(ENTRIES[i].id);
     store.save(ids);
+  }
+  function persistStats() {
+    if (!store.saveStats) { dirty = false; return; }
+    const out = {};
+    for (let i = 0; i < ENTRIES.length; i++) {
+      let any = false;
+      for (let k = 0; k < STAT_COUNT; k++) if (stats[i * STAT_COUNT + k]) any = true;
+      if (any) out[ENTRIES[i].id] = Array.from(stats.subarray(i * STAT_COUNT, i * STAT_COUNT + STAT_COUNT));
+    }
+    store.saveStats(out);
+    dirty = false;
   }
 
   return {
@@ -132,15 +178,34 @@ export function createJournal(store) {
     has(id) { const i = INDEX.get(id); return i !== undefined && found[i] === 1; },
     count() { return count; },
     total() { return ENTRIES.length; },
-    /** Entries of one category (or all) with a `found` flag, in ENTRIES order. */
+    /** Add `n` to one counter of an entry (STAT_*). Persisted by flush() (the game flushes at dive end, on close and on page hide). */
+    bump(id, stat, n = 1) {
+      const i = INDEX.get(id);
+      if (i === undefined || stat < 0 || stat >= STAT_COUNT) return;
+      stats[i * STAT_COUNT + stat] += n; dirty = true;
+    },
+    stat(id, stat) { const i = INDEX.get(id); return i === undefined ? 0 : stats[i * STAT_COUNT + stat]; },
+    /** Write pending counter changes to the store. */
+    flush() { if (dirty) persistStats(); },
+    /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected], in ENTRIES order. */
     list(cat) {
       const out = [];
       for (let i = 0; i < ENTRIES.length; i++) {
         if (cat && ENTRIES[i].cat !== cat) continue;
-        out.push({ ...ENTRIES[i], found: found[i] === 1 });
+        out.push({ ...ENTRIES[i], found: found[i] === 1, stats: Array.from(stats.subarray(i * STAT_COUNT, i * STAT_COUNT + STAT_COUNT)) });
       }
       return out;
     },
+    /** The entries of one tab (TABS), in book order: the tab's categories one after the other. */
+    tabList(tabId) {
+      const t = TABS.find((x) => x.id === tabId);
+      const out = [];
+      if (!t) return out;
+      for (const cat of t.cats) for (const e of this.list(cat)) out.push(e);
+      return out;
+    },
+    /** Found / total for one tab. */
+    tabProgress(tabId) { const l = this.tabList(tabId); return { found: l.filter((e) => e.found).length, total: l.length }; },
     /** Ids discovered since the last call (main.js turns them into toasts). */
     takeNew() { return events.splice(0, events.length); },
   };

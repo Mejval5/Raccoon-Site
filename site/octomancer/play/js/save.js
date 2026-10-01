@@ -3,13 +3,16 @@
 // access in try/catch with an in-memory fallback (private browsing, blocked
 // storage, etc. must never throw out of this module).
 
+import { defaultSettings, cleanSettings, cleanSetting } from './settings.js';
+
 const KEY = 'octomancer.best.v1';
 
 export const BEST_RUNS_MAX = 5;
 
-function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, deaths: {} }; }
+function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, time: 0, deaths: {} }; }
+function freshStory() { return { diverFreed: 0, critterFreed: 0 }; }
 function freshMemory() {
-  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta() };
+  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
 }
 
 /** @type {ReturnType<typeof freshMemory>} */
@@ -52,6 +55,9 @@ export function loadBest() {
         bestRuns: cleanBestRuns(obj.bestRuns),
         shortcut: !!obj.shortcut,
         meta: cleanMeta(obj.meta),
+        settings: cleanSettings(obj.settings),
+        journalStats: cleanJournalStats(obj.journalStats),
+        story: cleanStory(obj.story),
       };
     }
   }
@@ -132,7 +138,7 @@ function cleanMeta(m) {
   const out = freshMeta();
   if (!m || typeof m !== 'object') return out;
   out.dives = Math.floor(num(m.dives)); out.clears = Math.floor(num(m.clears)); out.bestDepth = Math.floor(num(m.bestDepth));
-  out.shells = Math.floor(num(m.shells)); out.kills = Math.floor(num(m.kills));
+  out.shells = Math.floor(num(m.shells)); out.kills = Math.floor(num(m.kills)); out.time = num(m.time);
   if (m.deaths && typeof m.deaths === 'object') {
     for (const k of Object.keys(m.deaths).slice(0, 64)) { const n = Math.floor(num(m.deaths[k])); if (n > 0) out.deaths[k] = n; }
   }
@@ -166,7 +172,7 @@ export function recordDive(sum) {
   m.dives++;
   if (entry.cleared) m.clears++;
   if (entry.depth > m.bestDepth) m.bestDepth = entry.depth;
-  m.shells += entry.shells; m.kills += entry.kills;
+  m.shells += entry.shells; m.kills += entry.kills; m.time += entry.time;
   if (!entry.cleared) { const k = entry.cause || 'unknown'; m.deaths[k] = (m.deaths[k] || 0) + 1; }
   writeToStorage();
   return { rank: res.rank, bestRuns: res.list.map((r) => ({ ...r })) };
@@ -181,4 +187,64 @@ export function setShortcut(on) {
   loadBest();
   memory.shortcut = !!on;
   writeToStorage();
+}
+
+// --- settings (round 38): the settings menu's values, applied by main.js the moment they change ---
+
+/** A copy of all settings (musicVol, sfxVol, shake, reducedMotion (null = follow the OS), sink, seed text). */
+export function getSettings() { return { ...loadBest().settings }; }
+
+/** Set one setting (cleaned to its range), persist, return the stored value. Unknown keys are ignored. */
+export function setSetting(key, value) {
+  loadBest();
+  const v = cleanSetting(key, value);
+  if (v === undefined) return undefined;
+  memory.settings[key] = v;
+  writeToStorage();
+  return v;
+}
+
+/** Reset progress: best score, runs, journal, best runs, shortcut, lifetime stats and the tutorial flag. Settings and mute stay. */
+export function resetProgress() {
+  loadBest();
+  const keep = { muted: memory.muted, settings: memory.settings };
+  memory = { ...freshMemory(), ...keep };
+  writeToStorage();
+}
+
+// --- journal counters and story flags (round 38) ---
+
+function cleanJournalStats(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const id of Object.keys(raw).slice(0, 1000)) {
+    const a = raw[id];
+    if (!Array.isArray(a)) continue;
+    out[String(id)] = [0, 1, 2, 3].map((k) => Math.floor(num(a[k])));
+  }
+  return out;
+}
+function cleanStory(raw) {
+  const out = freshStory();
+  if (raw && typeof raw === 'object') { out.diverFreed = Math.floor(num(raw.diverFreed)); out.critterFreed = Math.floor(num(raw.critterFreed)); }
+  return out;
+}
+
+/** Per-entry counters of the journal: {entryId: [seen, killed, killedBy, collected]}. */
+export function getJournalStats() { return loadBest().journalStats; }
+export function saveJournalStats(stats) {
+  loadBest();
+  memory.journalStats = cleanJournalStats(stats);
+  writeToStorage();
+}
+
+/** Story flags of the emergent encounters: how many dives the stranded diver was freed in, how many critters came home. */
+export function getStory() { return { ...loadBest().story }; }
+/** Count one more freed diver / critter (key 'diverFreed' | 'critterFreed'); returns the new count. */
+export function addStory(key) {
+  loadBest();
+  if (!(key in memory.story)) return 0;
+  memory.story[key]++;
+  writeToStorage();
+  return memory.story[key];
 }

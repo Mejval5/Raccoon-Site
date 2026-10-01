@@ -2,7 +2,7 @@
 // the rock tile is seamless, the counter slices add up, the draw code runs with the art and without it,
 // the banner title card shows, and endless mode does not fetch any of it.
 import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS } from '../js/v2-art.js';
-import { drawShop, drawVaultCache, drawWallCue, drawQuestSign, drawPocketCracks } from '../js/v2-props-draw.js';
+import { drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
 import { drawV2Marks } from '../js/v2-draw.js';
 
 function pixels(img) {
@@ -58,15 +58,15 @@ export async function runV2ArtTests(assert) {
   try {
     drawShop(ctx, cam, 640, 480, shopSt, 4, 1.2, tileAt);
     drawShop(ctx, cam, 640, 480, shopSt, 9, 1.2, () => 0); // no ceiling: the post stands on the counter end
-    drawVaultCache(ctx, cam, 640, 480, 10.5, 11.5, 1, false);
-    drawVaultCache(ctx, cam, 640, 480, 10.5, 11.5, 1, true);
-    drawQuestSign(ctx, cam, 640, 480, 10, 10, 1);
+    drawDiver(ctx, cam, 640, 480, 10.5, 11.5, 1, false);
+    drawDiver(ctx, cam, 640, 480, 10.5, 11.5, 1, true);
+    drawCritter(ctx, cam, 640, 480, 12.5, 10.5, false, 1);
     drawWallCue(ctx, cam, 640, 480, { walls: Int16Array.from([10, 8, 11, 8, 10, 9, 11, 9]), tileAt: () => 1, attention: 0 }, 1);
     drawPocketCracks(ctx, cam, 640, 480, Int16Array.from([10, 8, 4]), 1, () => 1);
     drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, boardX: 8, boardY: 9, label: 'Dive', tileAt }, 1);
     drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, boardX: -1, boardY: -1, label: '', tileAt }, 1);
   } catch (e) { threw = e; }
-  assert('v2 art: shop, chest, sign, wall crack, pocket crack, ring and board draw without throwing' + (threw ? ' (' + threw + ')' : ''), threw === null);
+  assert('v2 art: shop, diver, caged critter, wall crack, pocket crack, ring and board draw without throwing' + (threw ? ' (' + threw + ')' : ''), threw === null);
   const shot = ctx.getImageData(0, 0, 640, 480).data;
   let painted = 0; for (let i = 3; i < shot.length; i += 4) if (shot[i] > 0) painted++;
   assert('v2 art: the shop and props actually painted pixels', painted > 4000);

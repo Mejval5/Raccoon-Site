@@ -266,47 +266,12 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   bombGlyph(ctx, mx - ppu * 0.04, my + ppu * 0.06, ppu * 0.3 * s, time);
 }
 
-/** The hub's quest sign: the generated plank on a post (floor at the post's foot) with the word on its face. */
-export function drawQuestSign(ctx, camera, cw, ch, x, y, time) {
-  const { ppu, sx, sy } = view(camera, cw, ch);
-  const bx = sx(x + 0.5), by = sy(y + 0.05); // plank wholly in the water above the floor tile, post reaching down to its top
-  const w = ppu * 1.7, h = ppu * 1.15;
-  if (bx < -w || bx > cw + w || by < -h * 2 || by > ch + h) return;
-  const img = artImg('questSign');
-  if (img) {
-    const dw = ppu * 1.7, dh = dw * (img.naturalHeight / img.naturalWidth);
-    const top = by + ppu * 1.0 - dh;            // the post's foot sits on the floor tile
-    ctx.drawImage(img, bx - dw / 2, top, dw, dh);
-    // the plank face is the top 57 % of the sprite; its "!" sits in the right quarter, so the word goes left
-    label(ctx, 'Quests', bx - dw * 0.12, top + dh * 0.29, ppu * 0.27, '#f6e7b8', '#3a2410');
-    return;
-  }
-  const lw = Math.max(2, ppu * 0.09);
-  ctx.lineJoin = 'round';
-  ctx.fillStyle = '#7a5230'; ctx.strokeStyle = INK; ctx.lineWidth = lw;
-  ctx.beginPath(); ctx.roundRect(bx - ppu * 0.09, by, ppu * 0.18, ppu * 1.0, ppu * 0.05); ctx.fill(); ctx.stroke(); // post
-  ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h / 2, w, h, ppu * 0.14); ctx.fillStyle = '#9a6a3a'; ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.roundRect(bx - w * 0.4, by - h * 0.36, w * 0.8, h * 0.72, ppu * 0.1); ctx.fillStyle = '#f0e0b0'; ctx.fill();
-  ctx.lineWidth = Math.max(1, lw * 0.6); ctx.stroke();
-  ctx.fillStyle = INK;
-  ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.32))}px Quicksand, sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Quests', bx, by);
-  const bob = Math.sin(time * 3) * ppu * 0.08;
-  label(ctx, '!', bx, by - h * 0.95 + bob, ppu * 0.8, '#ffe38a');
-}
-
-/** The rescue critter: a small round friend with fins and eyes; rings ripple out while it waits to be found. */
+/** The caged critter: a small round friend with fins and eyes, behind bars until you touch it, then it follows (round 38). */
 export function drawCritter(ctx, camera, cw, ch, x, y, following, time) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const bob = Math.sin(time * 3.1 + x) * ppu * 0.06;
   const cx = sx(x), cy = sy(y) + bob, r = ppu * 0.19; // about 0.7x the octopus
   if (cx < -ppu * 3 || cx > cw + ppu * 3 || cy < -ppu * 3 || cy > ch + ppu * 3) return;
-  if (!following) {
-    const p = (time * 0.7) % 1;
-    ctx.strokeStyle = `rgba(157,255,216,${(1 - p) * 0.55})`; ctx.lineWidth = Math.max(1.5, ppu * 0.04);
-    ctx.beginPath(); ctx.arc(cx, cy, r * (1.4 + 2.2 * p), 0, TAU); ctx.stroke(); // stays under 0.7 tiles: inside the open water around the critter
-  }
   const lw = Math.max(1.5, ppu * 0.06);
   ctx.lineJoin = 'round';
   const flap = Math.sin(time * 9) * 0.25;
@@ -321,34 +286,59 @@ export function drawCritter(ctx, camera, cw, ch, x, y, following, time) {
   for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + sd * r * 0.4, cy - r * 0.1, r * 0.1, 0, TAU); ctx.fill(); }
   ctx.strokeStyle = '#0c3a3c'; ctx.lineWidth = Math.max(1, lw * 0.7);
   ctx.beginPath(); ctx.arc(cx, cy + r * 0.2, r * 0.3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  if (!following) { // a little cage of bars around it until you touch it
+    const hw = r * 2.1, hh = r * 1.9;
+    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
+    ctx.beginPath();
+    for (let i = -3; i <= 3; i++) { ctx.moveTo(cx + i * hw / 3, cy - hh); ctx.lineTo(cx + i * hw / 3, cy + hh); }
+    ctx.moveTo(cx - hw, cy - hh); ctx.lineTo(cx + hw, cy - hh); ctx.moveTo(cx - hw, cy + hh); ctx.lineTo(cx + hw, cy + hh);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,230,170,0.35)'; ctx.lineWidth = Math.max(1, ppu * 0.02);
+    ctx.beginPath(); ctx.moveTo(cx - hw + 2, cy - hh); ctx.lineTo(cx - hw + 2, cy + hh); ctx.stroke();
+  }
 }
 
 /**
- * The vault cache: the generated chest resting on the pocket floor, inset from the rock rim so it never
- * overlaps it (closed and glinting until taken, open once `opened`). (x, y) is the centre of its tile.
+ * The stranded diver (round 38): sealed in a rock pocket, gloved hands against the rock and bubbles rising from his
+ * helmet; once `freed` he waves. (x, y) is where his feet are, in world units.
  */
-export function drawVaultCache(ctx, camera, cw, ch, x, y, time, opened = false) {
+export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
-  if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 2 || cy > ch + ppu * 2) return;
-  const img = artImg(opened ? 'chestOpen' : 'chestClosed');
-  const g = 0.5 + 0.5 * Math.sin(time * 3);
-  if (img) {
-    const dw = ppu * 0.85, dh = dw * (img.naturalHeight / img.naturalWidth);
-    const foot = cy + ppu * 0.5 - ppu * 0.2; // tile floor minus the rim's inner edge
-    const ccx = cx + ppu * 0.12;              // nudged off the left wall's rim
-    ctx.drawImage(img, ccx - dw / 2, foot - dh, dw, dh);
-    if (!opened) glint(ctx, ccx + dw * 0.22, foot - dh * 0.72, ppu * 0.8, 0.5 + 0.4 * g);
-    return;
+  if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 3 || cy > ch + ppu * 2) return;
+  const lw = Math.max(1.5, ppu * 0.055);
+  const bob = Math.sin(time * 1.7) * ppu * 0.03;
+  ctx.save();
+  ctx.translate(cx, cy + bob);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const u = ppu;
+  // legs / flippers
+  ctx.fillStyle = '#b87a2a'; ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;
+  for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * u * 0.13, u * 0.02, u * 0.1, u * 0.22, sd * 0.12, 0, TAU); ctx.fill(); ctx.stroke(); }
+  // body
+  ctx.fillStyle = '#e0a94a';
+  ctx.beginPath(); ctx.roundRect(-u * 0.27, -u * 0.62, u * 0.54, u * 0.62, u * 0.16); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#7a4f14'; ctx.fillRect(-u * 0.27, -u * 0.34, u * 0.54, u * 0.07);
+  // arms: pressed against the rock (up, left) or waving
+  ctx.strokeStyle = '#2a1808'; ctx.lineWidth = u * 0.17;
+  const wave = freed ? Math.sin(time * 6) * 0.35 : 0;
+  ctx.beginPath(); ctx.moveTo(-u * 0.24, -u * 0.5); ctx.lineTo(-u * 0.5, -u * (freed ? 0.78 : 0.62) + wave * u * 0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(u * 0.24, -u * 0.5); ctx.lineTo(u * 0.5, -u * 0.62); ctx.stroke();
+  ctx.strokeStyle = '#e0a94a'; ctx.lineWidth = u * 0.11;
+  ctx.beginPath(); ctx.moveTo(-u * 0.24, -u * 0.5); ctx.lineTo(-u * 0.5, -u * (freed ? 0.78 : 0.62) + wave * u * 0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(u * 0.24, -u * 0.5); ctx.lineTo(u * 0.5, -u * 0.62); ctx.stroke();
+  // helmet
+  ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;
+  ctx.fillStyle = '#c9d6df'; ctx.beginPath(); ctx.arc(0, -u * 0.82, u * 0.32, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#26465f'; ctx.beginPath(); ctx.ellipse(u * 0.03, -u * 0.82, u * 0.2, u * 0.17, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(-u * 0.05, -u * 0.88, u * 0.045, 0, TAU); ctx.fill();
+  // bubbles from the helmet
+  ctx.strokeStyle = 'rgba(215,242,255,0.8)'; ctx.lineWidth = Math.max(1, u * 0.025);
+  for (let i = 0; i < 3; i++) {
+    const ph = (time * 0.6 + i / 3) % 1;
+    ctx.beginPath(); ctx.arc(u * (0.18 + Math.sin(ph * 6 + i) * 0.05), -u * (1.2 + ph * 0.7), u * (0.04 + 0.04 * ph), 0, TAU); ctx.stroke();
   }
-  const w = ppu * 0.8, h = ppu * 0.52, lw = Math.max(1.5, ppu * 0.06);
-  ctx.lineJoin = 'round';
-  ctx.fillStyle = '#c98a2c'; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = lw;
-  ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - h / 2, w, h, ppu * 0.1); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#e8b04a';
-  ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - h / 2, w, h * 0.42, [ppu * 0.1, ppu * 0.1, 0, 0]); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#3a2410'; ctx.fillRect(cx - ppu * 0.05, cy - h * 0.1, ppu * 0.1, h * 0.28);
-  if (!opened) glint(ctx, cx + w * 0.3, cy - h * 0.7, ppu, 0.5 + 0.4 * g);
+  ctx.restore();
 }
 
 function glint(ctx, gx, gy, ppu, alpha) {
@@ -486,9 +476,12 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   // keeper: sits behind / on the counter between the first two pedestals
   const keeper = artImg('keeper');
   const kw = ppu * KEEPER_W, kh = kw * (keeper.naturalHeight / keeper.naturalWidth);
-  const bob = Math.sin(time * 1.6) * ppu * 0.035;
+  const fl = st.flinch > 0 ? st.flinch / 0.5 : 0; // blast nearby: a quick duck and shudder
+  const bob = Math.sin(time * 1.6) * ppu * 0.035 + fl * ppu * 0.12;
   const kBottom = counterTopY + ppu * 0.06 + bob;
-  ctx.drawImage(keeper, kx - kw / 2, kBottom - kh, kw, kh);
+  const shud = fl > 0 ? Math.sin(time * 70) * fl * ppu * 0.07 : 0;
+  const khh = kh * (1 - fl * 0.08);
+  ctx.drawImage(keeper, kx - kw / 2 + shud, kBottom - khh, kw, khh);
 
   // sign: hangs from ropes that reach the rock ceiling above it; with no ceiling in reach it stands on a
   // post at the counter's left END (never behind the keeper)

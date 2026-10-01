@@ -56,7 +56,7 @@ function createSummaryBlock() {
 
 /**
  * @param {HTMLElement} root the #hud element (pointer-events:none, children opt back in via CSS)
- * @param {{onRestart:()=>void, onExit:()=>void, onTogglePause:()=>void, onToggleMute?:()=>boolean, muted?:boolean}} handlers
+ * @param {{onRestart:()=>void, onExit:()=>void, onTogglePause:()=>void, onToggleMute?:()=>boolean, onToggleSettings?:()=>void, onOpenJournal?:()=>void, muted?:boolean}} handlers
  */
 export function createUI(root, handlers) {
   // --- HUD bar (hearts + stats), always visible during play ---
@@ -103,6 +103,12 @@ export function createUI(root, handlers) {
     muteBtn.textContent = nowMuted ? '🔇' : '🔊';
   });
 
+  // Settings gear (round 38): third corner button under mute; opens the settings panel (settings-ui.js, built by main.js)
+  const gearBtn = el('button', 'octo-gear-btn', '⚙');
+  gearBtn.type = 'button';
+  gearBtn.setAttribute('aria-label', 'Settings');
+  gearBtn.addEventListener('click', () => handlers.onToggleSettings && handlers.onToggleSettings());
+
   // Round-8 item 4 (NIGHT-LOG.md): "add [mouse control] to the on-screen
   // help" -- a small always-present control hint, bottom-left, listing both
   // keyboard and mouse actions (the two desktop input modes); main.js hides
@@ -142,7 +148,7 @@ export function createUI(root, handlers) {
   const titleSub = el('div', 'octo-title-sub');
   titleEl.append(titleText, titleSub);
   let titleTimer = 0, titleTimer2 = 0;
-  root.append(bar, pauseBtn, muteBtn, controlsHelp, promptEl, toastEl, titleEl);
+  root.append(bar, pauseBtn, muteBtn, gearBtn, controlsHelp, promptEl, toastEl, titleEl);
 
   /** @type {HTMLImageElement[]} */
   const heartEls = [];
@@ -220,8 +226,12 @@ export function createUI(root, handlers) {
   pause.panel.append(
     el('div', 'octo-overlay-title', 'Paused'),
     el('div', 'octo-overlay-hint', 'Esc, the pause button, or tap here to resume'),
-    el('div', 'octo-credit', CREDIT_TEXT),
   );
+  // round 38: the journal opens from the pause menu too (not only from the hub board)
+  const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Journal');
+  journalBtn.type = 'button';
+  journalBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJournal && handlers.onOpenJournal(); });
+  pause.panel.append(journalBtn, el('div', 'octo-credit', CREDIT_TEXT));
   // Tapping the dimmed backdrop resumes too (but not clicks bubbling from
   // the panel's own future buttons, should any be added).
   pause.overlayEl.addEventListener('click', (e) => {
@@ -282,15 +292,16 @@ export function createUI(root, handlers) {
     /** Text on the level title card: {text, sub}. */
     titleContent() { return { text: titleText.textContent, sub: titleSub.textContent }; },
     /** A toast replaces the one showing; with `queue` it waits for the current one to expire instead (journal announcements). */
-    showToast(text, ms = 3200, queue = false) {
-      if (queue && toastEl.style.display !== 'none') { if (toastQueue.length < 3) toastQueue.push({ text, ms }); return; }
+    showToast(text, ms = 3200, queue = false, small = false) {
+      if (queue && toastEl.style.display !== 'none') { if (toastQueue.length < 3) toastQueue.push({ text, ms, small }); return; }
       toastEl.textContent = text;
+      toastEl.classList.toggle('is-small', !!small);
       toastEl.style.display = '';
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
         toastEl.style.display = 'none';
         const next = toastQueue.shift();
-        if (next) api.showToast(next.text, next.ms);
+        if (next) api.showToast(next.text, next.ms, false, next.small);
       }, ms);
     },
     /** Biome-clear screen; with `detail` (see createSummaryBlock) it shows the run summary instead of the plain lines. */

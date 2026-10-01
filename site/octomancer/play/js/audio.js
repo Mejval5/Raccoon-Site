@@ -16,7 +16,7 @@
 // file is ever assigned a `src`, so only it is requested (network-log
 // verified in m4/s1 metrics).
 
-import { getMuted, setMuted } from './save.js';
+import { getMuted, setMuted, getSettings } from './save.js';
 
 const CROSSFADE = 1.0; // seconds, DECISIONS §1 Q7 / OVERNIGHT §2
 
@@ -48,6 +48,8 @@ function makeNoiseBuffer(ctx, seconds = 2) {
 export function createAudio() {
   let ctx = null;
   let master = null;
+  let musicBus = null, sfxBus = null; // the settings menu's two volume sliders: music tracks / everything synthesised
+  let musicVol = getSettings().musicVol, sfxVol = getSettings().sfxVol;
   let medles = null, flute = null;
   let medlesGain = null, fluteGain = null;
   let started = false;
@@ -92,6 +94,12 @@ export function createAudio() {
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 1;
     master.connect(ctx.destination);
+    musicBus = ctx.createGain();
+    musicBus.gain.value = musicVol;
+    musicBus.connect(master);
+    sfxBus = ctx.createGain();
+    sfxBus.gain.value = sfxVol;
+    sfxBus.connect(master);
 
     const ext = pickExt();
     medles = makeTrack('medles', ext);
@@ -100,12 +108,12 @@ export function createAudio() {
     const medlesSrc = ctx.createMediaElementSource(medles);
     medlesGain = ctx.createGain();
     medlesGain.gain.value = 0;
-    medlesSrc.connect(medlesGain).connect(master);
+    medlesSrc.connect(medlesGain).connect(musicBus);
 
     const fluteSrc = ctx.createMediaElementSource(flute);
     fluteGain = ctx.createGain();
     fluteGain.gain.value = 1;
-    fluteSrc.connect(fluteGain).connect(master);
+    fluteSrc.connect(fluteGain).connect(musicBus);
 
     flute.play().catch(() => {});
     // resume(): some browsers create the context suspended until a gesture;
@@ -123,7 +131,7 @@ export function createAudio() {
     swimFilter.Q.value = 0.7;
     swimGain = ctx.createGain();
     swimGain.gain.value = 0;
-    noiseSrc.connect(swimFilter).connect(swimGain).connect(master);
+    noiseSrc.connect(swimFilter).connect(swimGain).connect(sfxBus);
     noiseSrc.start();
 
     // M7-2 Beholder drone: a low sine, silent until setBeholderDread() opens
@@ -133,7 +141,7 @@ export function createAudio() {
     dreadOsc.frequency.value = 48;
     dreadGain = ctx.createGain();
     dreadGain.gain.value = 0;
-    dreadOsc.connect(dreadGain).connect(master);
+    dreadOsc.connect(dreadGain).connect(sfxBus);
     dreadOsc.start();
   }
 
@@ -163,12 +171,26 @@ export function createAudio() {
     // created lazily on the first input, so sfx calls before that must see
     // `null` and skip rather than capture a stale `undefined`.
     getCtx() { return ctx; },
-    getDest() { return master; },
+    getDest() { return sfxBus; }, // sfx.js plays through the SFX volume bus (which feeds the master / mute gain)
     toggleMute() {
       muted = !muted;
       setMuted(muted);
       if (master) master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
       return muted;
+    },
+    /** Settings menu: music volume 0..1, applied at once (before the first input it is remembered for start()). */
+    setMusicVolume(v) {
+      musicVol = Math.max(0, Math.min(1, v));
+      if (musicBus) musicBus.gain.value = musicVol;
+    },
+    /** Settings menu: volume of the synthesised effects (dash, hurt, bomb, swim whoosh, Beholder drone), 0..1. */
+    setSfxVolume(v) {
+      sfxVol = Math.max(0, Math.min(1, v));
+      if (sfxBus) sfxBus.gain.value = sfxVol;
+    },
+    /** Test hook: the bus gain nodes' targets and current values (null before the first input creates them). */
+    busGains() {
+      return { music: musicVol, sfx: sfxVol, musicNow: musicBus ? musicBus.gain.value : null, sfxNow: sfxBus ? sfxBus.gain.value : null, masterNow: master ? master.gain.value : null };
     },
     /** For `__octo` test hooks: play/gameover-driven state without waiting on real audio playback. */
     currentTrack() { return current; },

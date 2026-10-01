@@ -4,7 +4,7 @@
 // array is pre-allocated once; `spawn()` reuses a dead slot instead of
 // pushing, and `update()` mutates in place.
 
-import { prefersReducedMotion, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
+import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
 
 const POOL_SIZE = 256;
 
@@ -15,7 +15,7 @@ export function createParticles() {
   }
   let cursor = 0;
   let shake = 0; // current screen-shake magnitude, world units (endless)
-  let fxAmp = 0, fxT = 0; // v2 feel shake: peak amplitude (px) and time left (s)
+  let fxAmp = 0, fxT = 0, fxDur = SHAKE_DURATION; // v2 feel shake: peak amplitude (px), time left (s) and the duration it was started with
 
   function spawnOne(x, y, vx, vy, life, size, color) {
     const p = pool[cursor];
@@ -102,24 +102,29 @@ export function createParticles() {
       }
       this.shakeFx(blastShakePx(fromOcto), SHAKE_DURATION);
     },
-    /** v2: a puff where a dash hit a wall, thrown out along the wall normal. */
+    /** v2: a puff where a dash hit a wall, thrown out along the wall normal: 13 bright dust puffs plus 3 rock chips. */
     bouncePuff(x, y, nx, ny) {
       if (prefersReducedMotion()) return;
       const base = Math.atan2(ny, nx);
-      for (let i = 0; i < 9; i++) {
-        const a = base + (Math.random() - 0.5) * 1.9, speed = 0.7 + Math.random() * 1.5;
-        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.07 + Math.random() * 0.05, i % 2 ? 'rgba(190,175,150,0.7)' : 'rgba(225,235,245,0.65)');
+      for (let i = 0; i < 13; i++) {
+        const a = base + (Math.random() - 0.5) * 2.0, speed = 0.9 + Math.random() * 1.9;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.38 + Math.random() * 0.3, 0.09 + Math.random() * 0.06, i % 2 ? 'rgba(232,220,196,0.92)' : 'rgba(245,250,255,0.9)');
+      }
+      for (let i = 0; i < 3; i++) { // rock chips knocked off the wall
+        const a = base + (Math.random() - 0.5) * 1.5, speed = 2 + Math.random() * 2;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed - 0.5, 0.35 + Math.random() * 0.2, 0.05, i % 2 ? '#8a7a6a' : '#5f5348');
       }
     },
-    /** v2: shake the screen by up to `px` pixels for `dur` s (fades out linearly). Ignored under reduced motion. */
+    /** v2: shake the screen by up to `px` pixels for `dur` s (fades out linearly over `dur`). Ignored under reduced motion or with shake off. */
     shakeFx(px, dur = SHAKE_DURATION) {
-      if (prefersReducedMotion() || px <= 0) return;
-      if (px >= fxAmp * (fxT / SHAKE_DURATION)) { fxAmp = Math.min(px, SHAKE_MAX_PX); fxT = dur; }
+      if (prefersReducedMotion() || !shakeEnabled() || px <= 0) return;
+      const cur = fxT > 0 ? fxAmp * (fxT / fxDur) : 0;
+      if (px >= cur) { fxAmp = Math.min(px, SHAKE_MAX_PX); fxT = dur; fxDur = dur; }
     },
     /** v2: the current shake offset in screen pixels (|x|, |y| <= SHAKE_MAX_PX). */
     shakePx() {
       if (fxT <= 0) return { x: 0, y: 0 };
-      const k = fxAmp * (fxT / SHAKE_DURATION), t = performance.now() * 0.06;
+      const k = fxAmp * (fxT / fxDur), t = performance.now() * 0.06;
       return { x: Math.sin(t) * k, y: Math.cos(t * 1.37) * k };
     },
     /** 0.2s screen shake, skipped entirely under reduced motion (M7 also
@@ -146,7 +151,7 @@ export function createParticles() {
   };
 
   function shakeScreen(mag) {
-    if (!prefersReducedMotion()) shake = Math.max(shake, mag);
+    if (!prefersReducedMotion() && shakeEnabled()) shake = Math.max(shake, mag);
   }
 }
 

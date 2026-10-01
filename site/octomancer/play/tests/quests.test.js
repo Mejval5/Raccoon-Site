@@ -1,8 +1,8 @@
 // Round 22: quests (quests.js), shops (shop.js), the shell currency (run.js, pickups.js) and their
 // journal persistence (journal.js + save.js).
 import {
-  parseQuests, planQuest, createQuestState, questOnKill, questOnHurt, questUpdate, questOnExit, questHudText, questSignText,
-  Q_RESCUE, Q_VAULT, Q_UNTOUCHED, Q_PEST, ST_ACTIVE, ST_DONE, ST_FAILED,
+  parseQuests, planQuest, createQuestState, questUpdate, questOnExit, encounterRoll, ENCOUNTER_CHANCE,
+  Q_RESCUE, Q_VAULT, ST_ACTIVE, ST_DONE,
 } from '../js/quests.js';
 import { parseShopItems, createShopState, shopStep, applyItem, canUse, BUY_R } from '../js/shop.js';
 import { createRoomBank } from '../js/rooms.js';
@@ -24,16 +24,16 @@ export async function runQuestTests(assert) {
   const items = parseShopItems(await (await fetch('../data/shop-items.json')).json()).filter((i) => i.effect !== 'carry');
 
   // ---- data ----
-  assert('quests data: rescue, vault, untouched and pest control, each with a reward, hud text and journal id',
-    ['rescue', 'vault', 'untouched', 'pest'].every((id) => table.byId.has(id)) &&
-    table.rows.every((r) => r.reward > 0 && r.hud && r.name && r.done && ENTRIES.some((e) => e.id === r.journal)));
+  assert('encounters data: the caged critter and the stranded diver, each with a small reward, a line and a People entry (no HUD text, nothing to explain)',
+    ['critter', 'diver'].every((id) => table.byId.has(id)) && table.rows.length === 2 &&
+    table.rows.every((r) => r.reward > 0 && !r.hud && r.name && r.done && ENTRIES.some((e) => e.id === r.journal && e.cat === 'person')));
   assert('shop data: bomb (3), heart (5) and bomb pack x3 (8) in shop-items.json',
     (() => { const by = Object.fromEntries(items.map((i) => [i.id, i])); return by.bomb.price === 3 && by.bomb.amount === 1 && by.heart.price === 5 && by.bombpack.price === 8 && by.bombpack.amount === 3; })());
   let threw = false;
   try { parseShopItems({ items: [{ id: 'x', price: 0, effect: 'bombs' }] }); } catch (e) { threw = true; }
   assert('shop data: a malformed item is rejected', threw);
-  assert('journal: quest category and every shop / quest entry exist', CATEGORIES.includes('quest') && CATEGORY_TITLES.quest === 'Quests' &&
-    ['place-shop', 'item-heart', 'item-bombpack', 'quest-rescue', 'quest-vault', 'quest-untouched', 'quest-pest'].every((id) => ENTRIES.some((e) => e.id === id)));
+  assert('journal: the People category and every shop / encounter entry exist', CATEGORIES.includes('person') && CATEGORY_TITLES.person === 'People' &&
+    ['place-shop', 'item-heart', 'item-bombpack', 'person-critter', 'person-diver', 'person-keeper'].every((id) => ENTRIES.some((e) => e.id === id)));
 
   // ---- placement over generated levels ----
   const bank = createRoomBank(await loadBiome1Json());
@@ -61,13 +61,10 @@ export async function runQuestTests(assert) {
       } else if (a.kindId === Q_VAULT) {
         const px = lv.pockets[0], py = lv.pockets[1];
         if (!(lv.nPockets > 0) || a.pos[0] < px || a.pos[0] > px + 2 || a.pos[1] < py || a.pos[1] > py + 2) bad.push('vault ' + i);
-      } else if (a.kindId === Q_PEST) {
-        if (a.pos.length !== 6) bad.push('pest count ' + i);
-        for (let k = 0; k < a.pos.length; k += 2) if (!reachedNear(grid, reached, a.pos[k], a.pos[k + 1], 0.3) || inShop(a.pos[k], a.pos[k + 1])) bad.push('pest ' + i);
       }
     }
-    assert(`quests: every level rolls a quest, all four kinds appear (${[...kinds].join(', ')}), and it is deterministic (${same}/${n})`, bad.length === 0 && kinds.size === 4 && same === n);
-    assert('quests: rescue critters sit in A*-reachable side spots, vault caches inside a pocket, pest piranhas on reachable water' + (bad.length ? ' [' + bad.slice(0, 4).join(', ') + ']' : ''), bad.length === 0);
+    assert(`encounters: a level that holds one always has a feasible plan, both kinds appear (${[...kinds].join(', ')}), and it is deterministic (${same}/${n})`, bad.length === 0 && kinds.size === 2 && same === n);
+    assert('encounters: caged critters sit in A*-reachable side spots, the diver inside a pocket' + (bad.length ? ' [' + bad.slice(0, 4).join(', ') + ']' : ''), bad.length === 0);
   }
 
   {
@@ -88,7 +85,7 @@ export async function runQuestTests(assert) {
 
   // ---- runtime ----
   const stubWorld = { isSolid: () => false };
-  const mk = (kindId, pos) => createQuestState({ qi: 0, kindId, id: 'q', name: 'Q', reward: 4, count: kindId === Q_PEST ? 3 : 1, hud: 'h', done: 'd', journal: 'quest-rescue', pos: pos || new Float32Array(0) });
+  const mk = (kindId, pos) => createQuestState({ qi: 0, kindId, id: 'q', name: 'Q', reward: 4, count: 1, hud: '', done: 'd', journal: 'person-critter', pos: pos || new Float32Array(0) });
   {
     const st = mk(Q_RESCUE, Float32Array.of(10.5, 10.5));
     const o = { x: 4, y: 4 };
@@ -100,7 +97,7 @@ export async function runQuestTests(assert) {
     for (let i = 0; i < 40; i++) { o.x = 10 - i * 0.1; o.y = 10; questUpdate(st, o, stubWorld); }
     const d = Math.hypot(st.cx - o.x, st.cy - o.y);
     assert(`quest rescue: it trails the octopus along its path, beside it and not inside it (${d.toFixed(2)} away)`, d > 0.6 && d < 4 && st.cx > o.x);
-    assert('quest rescue: reaching the exit with the critter completes it once', questOnExit(st) === true && st.status === ST_DONE && questOnExit(st) === false && questHudText(st).includes('+4 shells'));
+    assert('quest rescue: reaching the exit with the critter completes it once', questOnExit(st) === true && st.status === ST_DONE && questOnExit(st) === false);
     const solidWorld = { isSolid: (x) => x < 0 };
     const st2 = mk(Q_RESCUE, Float32Array.of(1.5, 1.5)); st2.following = true; st2.cx = 1; st2.cy = 1;
     for (let i = 0; i < 30; i++) questUpdate(st2, { x: 1 - i * 0.05, y: 1 }, solidWorld);
@@ -111,41 +108,14 @@ export async function runQuestTests(assert) {
     assert('quest vault: far from the cache nothing happens, touching it completes the quest', questUpdate(st, { x: 15, y: 20 }, stubWorld) === false && questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected);
     assert('quest vault: completing it twice is impossible', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === false);
   }
+  // ---- the roll: no HUD, no preview, about one level in three ----
   {
-    const st = mk(Q_UNTOUCHED);
-    assert('quest untouched: the exit completes it', questOnExit(st) === true && st.status === ST_DONE);
-    const st2 = mk(Q_UNTOUCHED); questOnHurt(st2);
-    assert('quest untouched: losing a heart fails it and the exit no longer completes it', st2.status === ST_FAILED && questOnExit(st2) === false && questHudText(st2).startsWith('Quest failed'));
-    const st3 = mk(Q_RESCUE, Float32Array.of(1, 1)); questOnHurt(st3);
-    assert('quest untouched: other quests ignore hurt', st3.status === ST_ACTIVE);
-  }
-  {
-    const st = mk(Q_PEST);
-    assert('quest pest: only piranha kills count', questOnKill(st, 'crab') === false && st.progress === 0);
-    questOnKill(st, 'piranha'); questOnKill(st, 'piranha');
-    assert('quest pest: progress shows in the HUD line', questHudText(st).includes('2/3'));
-    assert('quest pest: the third piranha completes it, then nothing more counts', questOnKill(st, 'piranha') === true && st.status === ST_DONE && questOnKill(st, 'piranha') === false && st.progress === 3);
-  }
-  assert('quest sign text names the quest, what to do and the reward', (() => {
-    const t = questSignText({ name: 'Untouched', hud: 'Reach the exit without losing a heart', reward: 3 });
-    return t.includes('Untouched') && t.includes('Reach the exit') && t.includes('3 shells');
-  })());
-
-  // ---- the hub sign previews the quest 1-1 will roll ----
-  {
-    let match = 0;
-    const N = 12;
-    for (let seed = 1; seed <= N; seed++) {
-      const run = createRun(seed, { tutorialDone: true });
-      const ns = nextDiveSeed(run);
-      const preview = planQuest(generateLevel(ns, 0), table, ns, 0);
-      runEvent(run, EV_ENTER_DIVE);
-      const spec = levelSpec(run);
-      const w = createLevelWorld(spec.seed, spec.levelIndex);
-      const real = planQuest(w.level, table, spec.seed, spec.levelIndex);
-      if (spec.seed === ns && preview && real && preview.id === real.id && preview.pos.every((v, k) => v === real.pos[k])) match++;
-    }
-    assert(`quest sign: the hub previews exactly the quest Shallows 1-1 rolls (${match}/${N} seeds)`, match === N);
+    let yes = 0, same = 0; const N = 3000;
+    for (let i = 0; i < N; i++) { const a = encounterRoll(i * 7 + 1, i % 3), b = encounterRoll(i * 7 + 1, i % 3); if (a) yes++; if (a === b) same++; }
+    const frac = yes / N;
+    assert(`encounters: encounterRoll is deterministic and about ${Math.round(ENCOUNTER_CHANCE * 100)}% of levels (${frac.toFixed(2)})`, same === N && frac > 0.2 && frac < 0.42);
+    let third = 0, first = 0; for (let i = 0; i < N; i++) { if (encounterRoll(i + 1, 2)) third++; if (encounterRoll(i + 1, 0)) first++; }
+    assert('encounters: Shallows 1-3 holds fewer than 1-1', third < first);
   }
 
   // ---- shop ----
@@ -249,13 +219,13 @@ export async function runQuestTests(assert) {
     if (stubbed) {
       _resetForTests();
       const j = createJournal({ load: getJournalIds, save: saveJournalIds });
-      assert('quest journal: nothing found at first', !j.has('quest-vault') && !j.has('place-shop'));
-      j.discover('quest-vault'); j.discover('place-shop'); j.discover('item-heart');
+      assert('quest journal: nothing found at first', !j.has('person-diver') && !j.has('place-shop'));
+      j.discover('person-diver'); j.discover('place-shop'); j.discover('item-heart');
       _resetForTests();
       const j2 = createJournal({ load: getJournalIds, save: saveJournalIds });
-      assert('quest journal: a completed quest, the shop and a bought item survive a reload', j2.has('quest-vault') && j2.has('place-shop') && j2.has('item-heart') && !j2.has('quest-pest'));
-      const questRows = j2.list('quest');
-      assert('quest journal: the quest category lists all four quests, one found', questRows.length === 4 && questRows.filter((e) => e.found).length === 1);
+      assert('quest journal: a completed quest, the shop and a bought item survive a reload', j2.has('person-diver') && j2.has('place-shop') && j2.has('item-heart') && !j2.has('person-critter'));
+      const questRows = j2.list('person');
+      assert('quest journal: the People category lists the three people, one found', questRows.length === 3 && questRows.filter((e) => e.found).length === 1);
       _resetForTests();
       if (desc) Object.defineProperty(globalThis, 'localStorage', desc); else delete globalThis.localStorage;
       _resetForTests();

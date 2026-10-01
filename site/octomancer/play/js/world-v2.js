@@ -68,6 +68,9 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     } : undefined,
   };
 
+  const shopRect = level.shop || null;
+  function inShop(x, y) { return shopRect !== null && x >= shopRect.x0 && x < shopRect.x1 && y >= shopRect.y0 && y < shopRect.y1; }
+
   let deepestY = startY;
 
   // ---- bands ----
@@ -169,12 +172,12 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !bedrock(x, y) && tileAt(x, y) !== 0;
+      return !bedrock(x, y) && !inShop(x, y) && tileAt(x, y) !== 0;
     },
     /** Bomb break: any interior rock, never the 2-tile border. */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (bedrock(x, y)) return false;
+      if (bedrock(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
       if (tiles[y * W + x] === 0) return false;
       setTile(x, y, 0);
       return true;

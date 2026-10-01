@@ -148,11 +148,23 @@ export const DREAD_RANGE = 15;
 export const TRAIL_BUBBLE_PERIOD_MIN = 0.05; // s between trail bubbles at max speed
 export const TRAIL_BUBBLE_PERIOD_MAX = 0.35; // s between trail bubbles near rest
 
+/** Player settings that the whole game reads (js/settings.js writes them; defaults: follow the OS, shake on).
+ * `reduced` is null (follow prefers-reduced-motion) or a boolean the player chose; `shake` switches screen shake alone. */
+const motion = { reduced: null, shake: true };
+export function setMotionSettings(reduced, shake) { motion.reduced = reduced === null || reduced === undefined ? null : !!reduced; motion.shake = !!shake; }
+export function shakeEnabled() { return motion.shake; }
+
+/** The OS preference alone, ignoring the player's setting (the settings panel shows it as the default). */
+export function osPrefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 /** One `matchMedia` query, reused by every M7 juice effect (and the M3
  * screen shake) so a single OS/browser setting turns off all of the
  * decorative motion at once (OVERNIGHT.md M7-1: "every effect respects
- * prefers-reduced-motion"). Guarded for environments without `matchMedia`
+ * prefers-reduced-motion"). The player's settings-menu choice wins over the OS value.
+ * Guarded for environments without `matchMedia`
  * (the `tests/` harness), where it safely reads as "no preference". */
 export function prefersReducedMotion() {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return motion.reduced !== null ? motion.reduced : osPrefersReducedMotion();
 }

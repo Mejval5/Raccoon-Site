@@ -761,6 +761,19 @@ export function createRenderer(ctx, world) {
         tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = DEEP_FOLIAGE; tg.fillRect(0, 0, t.width, t.height);
         return t;
       });
+      // r38: the blobs are jittered and blurred, so the tile test alone still let a plant stand on a thin or ragged
+      // edge with open water under half of it. The baked blob canvas is read back once (downscaled to 4 px per tile)
+      // and a plant is kept only where the blob is opaque under its whole base.
+      const RS = 4, rc = document.createElement('canvas'); rc.width = W * RS; rc.height = H * RS;
+      const rg = rc.getContext('2d', { willReadFrequently: true });
+      rg.drawImage(c, 0, 0, rc.width, rc.height);
+      let px4 = null;
+      try { px4 = rg.getImageData(0, 0, rc.width, rc.height).data; } catch (e) { px4 = null; }
+      const alphaAt = (wx, wy) => {
+        if (!px4) return 255;
+        const ix = Math.min(rc.width - 1, Math.max(0, Math.floor(wx * RS))), iy = Math.min(rc.height - 1, Math.max(0, Math.floor(wy * RS)));
+        return px4[(iy * rc.width + ix) * 4 + 3];
+      };
       for (let y = 1; y < H - 1; y++) {
         for (let x = 1; x < W - 1; x++) {
           if (world.tileAt(x, y) === 0) continue;
@@ -770,7 +783,14 @@ export function createRenderer(ctx, world) {
           const dyIn = floor ? 1 : -1; // one tile into the rock, and the neighbours of that tile: the mass under the plant is thick
           if (!solid(x, y + dyIn) || !solid(x - 1, y) || !solid(x + 1, y) || !solid(x - 1, y + dyIn) || !solid(x + 1, y + dyIn)) continue;
           const img = (h >>> 8) & 1, ph = 1.5 + ((h >>> 12) % 10) / 10, pw = ph * (deepTint[img].width / deepTint[img].height);
-          deepPlantList.push({ x: x + 0.5, y: floor ? y + 0.15 : y + 0.85, pw, ph, ceil: !floor, img });
+          const by = floor ? y + 0.15 : y + 0.85, inY = floor ? y + 0.55 : y + 0.45; // base line, and a line inside the rock under it
+          let thick = true;
+          for (let o = -1; o <= 1 && thick; o++) {
+            const sxp = x + 0.5 + o * Math.min(0.75, pw * 0.4);
+            if (alphaAt(sxp, by) < 200 || alphaAt(sxp, inY) < 215) thick = false;
+          }
+          if (!thick) continue;
+          deepPlantList.push({ x: x + 0.5, y: by, pw, ph, ceil: !floor, img });
         }
       }
     }

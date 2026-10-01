@@ -157,7 +157,7 @@ export async function runMetaTests(assert) {
     runEvent(r, EV_EXIT); seq.push(levelTitle(r).text);
     runEvent(r, EV_EXIT); seq.push(levelTitle(r).text);
     assert('title: each level start has its card ("Shallows 1-1", 1-2, 1-3)', seq.join() === 'Shallows 1-1,Shallows 1-2,Shallows 1-3');
-    assert('title: the seed shows only for a seeded run', levelTitle(r, true).sub === 'Seed 42' && levelTitle(r, false).sub === '');
+    assert('title: the dive seed shows when asked (always, in the game)', levelTitle(r, true).sub === 'Seed ' + r.diveSeed && levelTitle(r, false).sub === '');
     runEvent(r, EV_EXIT);
     assert('title: no card on the clear screen', r.state === S_END && levelTitle(r) === null);
     assert('title: no card in the tutorial', levelTitle(createRun(1, { tutorialDone: false })) === null);
@@ -243,25 +243,41 @@ export async function runMetaTests(assert) {
     root.remove();
   }
 
-  // --- journal stats page ---
+  // --- journal book (round 38): tabs, locked silhouettes, entry pages with counters, a Progress page ---
   {
     const root = document.createElement('div');
     document.body.appendChild(root);
-    const j = createJournal({ load: () => [], save() {} });
-    const meta = { dives: 6, clears: 1, bestDepth: 4, shells: 77, kills: 21, deaths: { crab: 2, eel: 3 } };
+    const saved = {};
+    const j = createJournal({ load: () => ['creature-urchin', 'place-hub'], save() {}, loadStats: () => ({ 'creature-urchin': [3, 2, 1, 0] }), saveStats(st) { Object.assign(saved, st); } });
+    const meta = { dives: 6, clears: 1, bestDepth: 4, shells: 77, kills: 21, time: 754, deaths: { crab: 2, eel: 3 } };
     const scr = createJournalScreen(root, j, { getStats: () => ({ meta, bestRuns: [runOf(4, 30, 200)] }) });
     scr.show();
-    assert('journal stats: the entries tab shows by default and there is a Stats tab', root.querySelectorAll('.octo-journal-tab').length === 2 && root.textContent.includes('Journal 0/'));
-    scr.setTab('stats');
+    assert('journal book: five tabs and a Progress tab, the Places tab first', root.querySelectorAll('.octo-journal-tab').length === 6 && scr.tab() === 'places');
+    assert('journal book: the header counts found / total', /2 \/ \d+/.test(root.querySelector('.octo-journal-total').textContent));
+    scr.setTab('bestiary');
+    const cards = root.querySelectorAll('.octo-journal-card');
+    const known = root.querySelector('.octo-journal-card[data-id="creature-urchin"]'), locked = root.querySelector('.octo-journal-card[data-id="creature-crab"]');
+    assert('journal book: the Bestiary is a grid of cards, one per creature, with art on each', cards.length === 7 && root.querySelectorAll('canvas.octo-journal-art').length === 7);
+    assert('journal book: a found creature shows its name, an unfound one is a silhouette with ???', known.textContent.includes('Urchin') && !known.classList.contains('octo-journal-unknown') && locked.classList.contains('octo-journal-unknown') && locked.textContent.includes('???') && !locked.textContent.includes('Crab'));
+    known.click();
+    const page = root.querySelector('.octo-journal-page');
+    assert('journal book: tapping a card opens its page with art, name, text and the counters (seen 3, defeated 2, defeated you 1)',
+      !!page && scr.entry() === 'creature-urchin' && page.textContent.includes('Urchin') && page.textContent.includes('Seen3') && page.textContent.includes('Defeated2') && page.textContent.includes('Defeated you1') && page.querySelector('canvas') !== null);
+    root.querySelector('.octo-journal-navsq[aria-label="Next entry"]').click();
+    assert('journal book: the arrow turns the page to the next entry, a locked one shows no description', scr.entry() === 'creature-piranha' && root.querySelector('.octo-journal-page').textContent.includes('???'));
+    scr.showEntry('place-hub');
+    assert('journal book: showEntry jumps to the right tab', scr.tab() === 'places' && scr.entry() === 'place-hub');
+    scr.setTab('items');
+    assert('journal book: Items shows items and loot together', root.querySelectorAll('.octo-journal-card').length === j.tabList('items').length && j.tabList('items').length >= 10);
+    scr.setTab('progress');
     const t = root.querySelector('.octo-journal-body').textContent;
-    assert('journal stats: runs, best depth and total shells', t.includes('Runs') && t.includes('Best depth') && t.includes('Cleared') && t.includes('Total shells') && t.includes('77') && t.includes('Biomes cleared'));
-    assert('journal stats: deaths by cause, most first', t.indexOf('Electric eel') > 0 && t.indexOf('Electric eel') < t.indexOf('Crab') && !/an? (crab|electric eel|piranha)/i.test(t));
-    assert('journal stats: best runs listed', t.includes('1. Cleared, 30 shells, 3:20'));
+    assert('journal book: Progress has completion %, deaths, best depth, play time', t.includes('Journal complete') && t.includes('Deaths5') && t.includes('Best depthCleared') && t.includes('Play time12:34'));
+    assert('journal book: Progress lists deaths by cause (most first, as nouns) and the best runs', t.indexOf('Electric eel') > 0 && t.indexOf('Electric eel') < t.indexOf('Crab') && !/an? (crab|electric eel|piranha)/i.test(t) && t.includes('1. Cleared, 30 shells, 3:20'));
     scr.hide();
     const root2 = document.createElement('div');
     document.body.appendChild(root2);
     createJournalScreen(root2, j, {});
-    assert('journal stats: no tabs without a stats source', root2.querySelector('.octo-journal-tabs').style.display === 'none');
+    assert('journal book: no Progress tab without a stats source', root2.querySelector('.octo-journal-tab[data-tab="progress"]').style.display === 'none');
     root.remove(); root2.remove();
   }
 

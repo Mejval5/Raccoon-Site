@@ -32,8 +32,9 @@ export function shadowStrength(gap) {
  * @param {*} d the props data (createProps().data / props.data)
  * @param {Array} enemies the live enemy list
  * @param {(tx:number,ty:number)=>boolean} isSolid
+ * @param {{x:number,y:number,radius:number,dead?:boolean}|null} octo r38: the octopus gets a faint shadow too when it rests within 0.5 tiles of a floor
  */
-export function drawContactShadows(ctx, camera, cw, ch, d, enemies, isSolid) {
+export function drawContactShadows(ctx, camera, cw, ch, d, enemies, isSolid, octo = null) {
   const ppu = camera.pxPerUnit;
   const sx = (wx) => cw / 2 + (wx - camera.x) * ppu, sy = (wy) => ch / 2 + (wy - camera.y) * ppu;
   const m = 2 * ppu;
@@ -64,5 +65,14 @@ export function drawContactShadows(ctx, camera, cw, ch, d, enemies, isSolid) {
     const x = sx(e.x), y = sy(fy);
     if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
     blob(ctx, x, y + 0.02 * ppu, half * 1.15 * ppu, half * 0.26 * ppu, a);
+  }
+  if (octo && !octo.dead) {
+    const r = octo.radius || 0.45;
+    const fy = floorBelow(isSolid, octo.x, octo.y + r * 0.5, r + 0.6);
+    if (fy === fy) {
+      const a = shadowStrength(fy - (octo.y + r)) * SHADOW_ALPHA;
+      const x = sx(octo.x), y = sy(fy);
+      if (a > 0 && x > -m && x < cw + m && y > -m && y < ch + m) blob(ctx, x, y + 0.02 * ppu, r * 1.05 * ppu, r * 0.26 * ppu, a);
+    }
   }
 }

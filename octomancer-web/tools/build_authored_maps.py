@@ -76,8 +76,8 @@ hub_json = {
     'id': 'hub', 'name': 'The Hub', 'rows': rows(hub),
     'prompts': [
         {'x': 19, 'y': 12, 'r': 10, 'title': 'Welcome to the Shallows',
-         'desktop': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal, and read the sign on the right for your quest.',
-         'touch': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left for your journal, and read the sign on the right for your quest.'},
+         'desktop': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal.',
+         'touch': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal.'},
     ],
     'spawns': [{'type': 'plankton-swarm', 'x': 26.5, 'y': 9.5, 'count': 6}],
 }

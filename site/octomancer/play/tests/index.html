@@ -176,7 +176,11 @@ await runSetPieceTests(assert);
 
 // --- Round 37: game feel (sink, dash recoil, squash, shake) ---
 import { runFeelTests } from './feel.test.js';
+import { runSettingsTests } from './settings.test.js';
 runFeelTests(assert);
+
+// --- Round 38: settings menu, seed override, shop room, shake / puff / shadow fixes ---
+await runSettingsTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

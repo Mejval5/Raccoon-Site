@@ -84,6 +84,7 @@ export function createInput(canvas) {
 
   function onKeyDown(e) {
     if (e.repeat) return;
+    if (e.target && e.target.closest && e.target.closest('[data-octo-modal]')) return; // typing in a menu (settings): not game input
     if (MOVE_KEYS[e.code] || DASH_KEYS.has(e.code) || BOMB_KEYS.has(e.code) || PAUSE_KEYS.has(e.code)) {
       setMode('keyboard');
       keys.add(e.code);
@@ -204,6 +205,7 @@ export function createInput(canvas) {
     snapshot,
     setOverride,
     onModeChange,
+    mode() { return usingTouch ? "touch" : usingMouse ? "mouse" : usingKeyboard ? "keyboard" : ""; },
     setMode,
     setMouseAim,
     debugKeys,

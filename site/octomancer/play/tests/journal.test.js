@@ -1,5 +1,6 @@
 // B1-4 journal tests (journal.js + save.js persistence).
-import { createJournal, ENTRIES, CATEGORIES, creatureId, itemId } from '../js/journal.js';
+import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
+import { ART_IDS, hasArt } from '../js/journal-art.js';
 import { getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, _resetForTests } from '../js/save.js';
 
 export function runJournalTests(assert) {
@@ -28,6 +29,25 @@ export function runJournalTests(assert) {
   assert('journal: a new journal over the same store restores the discoveries', j2.has('place-hub') && j2.has('creature-urchin') && j2.count() === 2);
   const list = j2.list('creature');
   assert('journal: list(cat) marks found and unfound entries', list.length === 7 && list.filter((e) => e.found).length === 1 && list.find((e) => e.id === 'creature-urchin').found);
+
+  // --- round 38: tabs, art, counters ---
+  assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
+  assert('journal tabs: every entry is on exactly one tab and tabOfCat agrees', ENTRIES.every((e) => TABS.filter((t) => t.cats.includes(e.cat)).length === 1 && TABS.find((t) => t.id === tabOfCat(e.cat)).cats.includes(e.cat)));
+  assert('journal art: every entry has a picture (sprite, generated art, item icon or code drawing)', ENTRIES.every((e) => hasArt(e.id)) && ART_IDS.every((id) => ENTRIES.some((e) => e.id === id)));
+  assert('journal: the old quest entries are gone, three people took their place', !ENTRIES.some((e) => e.id.startsWith('quest-')) && ENTRIES.filter((e) => e.cat === 'person').length === 3);
+  assert('journal: death causes map to entries (creature, hazard, bomb, chest, cannon shot)', causeEntryId('crab') === 'creature-crab' && causeEntryId('spikes') === 'hazard-spikes' && causeEntryId('eel') === 'hazard-eel' && causeEntryId('bomb') === 'item-bomb' && causeEntryId('chest') === 'loot-chest' && causeEntryId('shot') === 'creature-cannon' && causeEntryId('unknown') === null);
+  {
+    let savedStats = null, ss = 0;
+    const store2 = { load: () => [], save() {}, loadStats: () => ({ 'item-shell': [0, 0, 0, 5], 'nope': [1, 1, 1, 1] }), saveStats: (st) => { savedStats = st; ss++; } };
+    const jj = createJournal(store2);
+    assert('journal stats: counters load, unknown ids are ignored, a counter implies the entry is found', jj.stat('item-shell', STAT_COLLECTED) === 5 && jj.has('item-shell') && !jj.has('nope'));
+    jj.bump('creature-crab', STAT_KILLED); jj.bump('creature-crab', STAT_KILLED, 2); jj.bump('creature-crab', STAT_SEEN); jj.bump('creature-crab', STAT_KILLED_BY); jj.bump('bogus', STAT_SEEN); jj.bump('creature-crab', 9);
+    assert('journal stats: bump adds, nothing is written until flush', jj.stat('creature-crab', STAT_KILLED) === 3 && jj.stat('creature-crab', STAT_SEEN) === 1 && ss === 0);
+    jj.flush(); jj.flush();
+    assert('journal stats: flush writes only the entries with counters, once', ss === 1 && JSON.stringify(savedStats['creature-crab']) === '[1,3,1,0]' && savedStats['item-shell'][3] === 5 && !('creature-urchin' in savedStats));
+    assert('journal stats: list() carries the counters', jj.list('creature').find((e) => e.id === 'creature-crab').stats.join() === '1,3,1,0');
+    assert('journal stats: tabList and tabProgress follow the tab', jj.tabList('traps').length === 5 && jj.tabProgress('items').found === 1 && jj.tabProgress('items').total === jj.tabList('items').length);
+  }
 
   // --- save.js round trip through a fake localStorage ---
   const mem = new Map();

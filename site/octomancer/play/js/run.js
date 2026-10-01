@@ -45,6 +45,7 @@ export function createRun(seed, opts = {}) {
     seed: seed >>> 0,    // the run seed: every dive derives its own level seed from it
     dives: 0,            // dives started, salts diveSeed
     diveSeed: seed >>> 0,
+    nextSeed: null,      // seed typed in the settings menu for the next dive (null = random); the dive's levels come from it exactly
     tutorialDone: !!opts.tutorialDone,
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
@@ -77,14 +78,15 @@ export function endDive(run, cleared, cause) {
     levelsCleared: run.levelsCleared,
     time: d.time, shells: d.shells, kills: d.kills, quests: d.quests,
     cause: cleared ? '' : d.cause,
-    seed: run.seed,
+    seed: run.diveSeed, // the dive's own seed: typing it in the settings menu replays the same levels
     shortcutNew: false,
   };
   return run.last;
 }
 
 function startDive(run, level = 1) {
-  run.diveSeed = hashSeed2(run.seed, run.dives++);
+  run.diveSeed = run.nextSeed !== null && run.nextSeed !== undefined ? run.nextSeed >>> 0 : hashSeed2(run.seed, run.dives);
+  run.dives++;
   run.state = S_BIOME;
   run.level = level;
   run.levelsCleared = 0;
@@ -141,7 +143,7 @@ export function runEvent(run, ev, cause) {
 }
 
 /** The seed the NEXT dive will use (the hub sign previews that dive's first quest with it). */
-export function nextDiveSeed(run) { return hashSeed2(run.seed, run.dives); }
+export function nextDiveSeed(run) { return run.nextSeed !== null && run.nextSeed !== undefined ? run.nextSeed >>> 0 : hashSeed2(run.seed, run.dives); }
 
 /** What to load for the current state: {kind:'hub'|'tutorial'|'generated'|'end', seed, levelIndex}. */
 export function levelSpec(run) {
@@ -159,7 +161,7 @@ export function levelSpec(run) {
  */
 export function levelTitle(run, seeded = false) {
   if (run.state !== S_BIOME) return null;
-  return { text: stageLabel(run), sub: seeded ? 'Seed ' + run.seed : '' };
+  return { text: stageLabel(run), sub: seeded ? 'Seed ' + run.diveSeed : '' };
 }
 
 /** HUD text, e.g. "Hub", "Tutorial", "Shallows 1-2". */
