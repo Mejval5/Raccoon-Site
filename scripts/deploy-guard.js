@@ -19,6 +19,19 @@ if (branch !== 'master') fail(`this checkout is on "${branch}", not master.`)
 const dirty = git('status', '--porcelain', '--', 'site', 'functions', 'firebase.json')
 if (dirty) fail(`uncommitted changes in deployed files:\n${dirty.split('\n').map((l) => '    ' + l).join('\n')}`)
 
+if (process.env.GITHUB_ACTIONS === 'true') {
+  // CI deploys the exact commit that was pushed. Deploys run one at a time, so if master has moved on
+  // since, the newer commit's run is queued behind this one and will deploy right after it.
+  git('fetch', '--quiet', 'origin', 'master')
+  try {
+    git('merge-base', '--is-ancestor', 'HEAD', 'origin/master')
+  } catch (e) {
+    fail('this commit is not on origin/master.')
+  }
+  console.log(`  Deploy guard OK (CI): master @ ${git('rev-parse', '--short', 'HEAD')}`)
+  process.exit(0)
+}
+
 try {
   git('fetch', '--quiet', 'origin', 'master')
   const behind = git('rev-list', '--count', 'HEAD..origin/master')

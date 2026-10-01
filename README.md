@@ -30,4 +30,13 @@ Copy an `<article class="card">` block in `site/projects/index.html` or `site/ga
 ## Run and deploy
 
 - `run_locally.bat` serves `site/` at http://localhost:8080 (needs Python).
-- `deploy.bat` runs `firebase deploy`.
+- Pushing to `master` (e.g. merging a PR) deploys automatically, see below. `deploy.bat` (`firebase deploy` from a clean, pushed master) is the manual fallback.
+
+## Auto-deploy
+
+`.github/workflows/deploy.yml` runs on every push to `master`. It diffs against the last successful deploy and ships only what changed: `site/` goes to Firebase Hosting, `functions/` is tested (`npm test`) and then deployed function by function (the legacy `sendUsEmail` / `uploadEmail` stay untouched). A run can also be started by hand from the Actions tab, with an option to deploy everything.
+
+It authenticates with a Google Cloud service account whose JSON key is the repository secret `FIREBASE_SERVICE_ACCOUNT`. One-time setup:
+
+1. In [IAM → Service accounts](https://console.cloud.google.com/iam-admin/serviceaccounts?project=website-raccoon), create `github-deploy` and grant it: Firebase Hosting Admin, Cloud Run Viewer, API Keys Viewer, Cloud Functions Admin, Service Account User, Cloud Scheduler Admin, Secret Manager Viewer, Artifact Registry Administrator, Firebase Extensions Viewer.
+2. On that account, Keys → Add key → JSON, and paste the whole file into a new [repository secret](https://github.com/Mejval5/Raccoon-Site/settings/secrets/actions) named `FIREBASE_SERVICE_ACCOUNT`. Then delete the downloaded file.

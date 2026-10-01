@@ -1,0 +1,103 @@
+# Deploys raccoon.website to Firebase whenever master is pushed (e.g. a merged PR).
+# Only what changed since the last successful deploy goes out: site/ -> hosting, functions/ -> Cloud Functions.
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT (a service account JSON key, see README "Auto-deploy").
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      everything:
+        description: Deploy hosting and functions even if nothing changed
+        type: boolean
+        default: false
+
+# One deploy at a time, never cancelled halfway. If several pushes pile up, GitHub keeps only the newest
+# pending run; it still deploys everything since the last successful run, so nothing is skipped.
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIREBASE_PROJECT: website-raccoon
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Work out what changed since the last deploy
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVERYTHING: ${{ inputs.everything }}
+        run: |
+          base=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch master \
+            --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
+          if [ "$EVERYTHING" = "true" ] || [ -z "$base" ] || ! git merge-base --is-ancestor "$base" HEAD; then
+            echo "Deploying everything (base: ${base:-none})"
+            echo "hosting=true" >> "$GITHUB_OUTPUT"
+            echo "functions=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changes since last deploy ($base):"
+          files=$(git diff --name-only "$base" HEAD)
+          echo "$files" | sed 's/^/  /'
+          echo "$files" | grep -qE '^(site/|firebase\.json$)' && echo "hosting=true" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(functions/|firebase\.json$)' && echo "functions=true" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.hosting == 'true' || steps.changes.outputs.functions == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Firebase CLI and credentials
+        if: steps.changes.outputs.hosting == 'true' || steps.changes.outputs.functions == 'true'
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then echo "::error::Repository secret FIREBASE_SERVICE_ACCOUNT is not set"; exit 1; fi
+          npm install -g firebase-tools@14
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Test functions
+        if: steps.changes.outputs.functions == 'true'
+        working-directory: functions
+        run: |
+          npm ci
+          npm test
+
+      # Functions go first so a new hosting rewrite never points at a function that doesn't exist yet.
+      # Deploy them by name: the project still has legacy functions (sendUsEmail, uploadEmail, an old
+      # extension) that a plain `--only functions` would try to delete.
+      - name: Deploy functions
+        if: steps.changes.outputs.functions == 'true'
+        run: |
+          only=$(node -e "console.log(Object.keys(require('./functions')).map((n) => 'functions:' + n).join(','))")
+          echo "Deploying $only"
+          firebase deploy --only "$only" --project "$FIREBASE_PROJECT" --non-interactive
+
+      - name: Deploy hosting
+        if: steps.changes.outputs.hosting == 'true'
+        run: |
+          firebase deploy --only hosting --project "$FIREBASE_PROJECT" --non-interactive \
+            --message "${GITHUB_SHA::7} $(git log -1 --format=%s | cut -c1-100)"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-sa.json"
