@@ -14,6 +14,8 @@ const {
   docToItem,
   normalizeGalleryPath,
   rateLimitState,
+  thumbInfo,
+  validateThumb,
 } = require("../lib/gallery");
 const { compileCheck, countNodes } = require("../lib/slx-compile");
 
@@ -62,7 +64,8 @@ test("docToItem hides the owner hash and marks the caller's own entries", () => 
   const token = newOwnerToken();
   const doc = { name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: { toMillis: () => 2000 }, version: 2, ownerHash: ownerHash(token) };
   const mine = docToItem("id1", doc, token);
-  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true });
+  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true, thumb: null });
+  assert.deepEqual(docToItem("id1", { ...doc, thumb: { v: 5, frames: 24, extra: 1 } }, null).thumb, { v: 5, frames: 24 });
   assert.equal(docToItem("id1", doc, null).mine, false);
   assert.equal("ownerHash" in mine, false);
 });
@@ -78,6 +81,9 @@ test("normalizeGalleryPath accepts the rewrite and the direct function URL", () 
   assert.equal(normalizeGalleryPath("/x/y"), null);
   // at the function's own URL the first segment is the entry id
   assert.equal(normalizeGalleryPath("/abc"), "/abc");
+  assert.equal(normalizeGalleryPath("/api/gallery/abc/thumb"), "/abc/thumb");
+  assert.equal(normalizeGalleryPath("/gallery/abc/thumb/"), "/abc/thumb");
+  assert.equal(normalizeGalleryPath("/api/gallery/abc/other"), null);
 });
 
 test("rateLimitState allows a window of shares and then refuses", () => {
@@ -113,4 +119,20 @@ test("compileCheck runs the real mxslc build: good and bad programs", async () =
   // the second call reuses the loaded module
   const again = await compileCheck("float y = 1.0;\nmaterial m = surfacematerial(standard_surface(base_color = color3{y}));");
   assert.equal(again.ok, true);
+});
+
+test("validateThumb accepts small WebP sprites only", () => {
+  const webp = (n) => Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP"), Buffer.alloc(n)]);
+  assert.deepEqual(validateThumb(webp(100), "24"), { ok: true, frames: 24, mime: "image/webp" });
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(50)]);
+  assert.deepEqual(validateThumb(png, "24"), { ok: true, frames: 24, mime: "image/png" });
+  assert.equal(validateThumb(webp(100), "0").ok, false);
+  assert.equal(validateThumb(webp(100), "65").ok, false);
+  assert.equal(validateThumb(webp(100), "x").ok, false);
+  assert.match(validateThumb(Buffer.from("GIF89a................"), "1").error, /WebP or PNG/);
+  assert.match(validateThumb(webp(700 * 1024), "1").error, /over/);
+  assert.equal(validateThumb(Buffer.alloc(0), "1").ok, false);
+  assert.equal(validateThumb("not a buffer", "1").ok, false);
+  assert.equal(thumbInfo(null), null);
+  assert.deepEqual(thumbInfo({ v: 1 }), { v: 1, frames: 1 });
 });

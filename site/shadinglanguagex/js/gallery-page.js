@@ -1,5 +1,8 @@
-// Gallery page: every shared project (or your own) as a card that compiles and renders a
-// spinning preview on the render threads as it scrolls into view.
+// Gallery page: every shared project (or your own) as a card with a spinning preview.
+// Shared entries carry a preview rendered in the sharer's browser when they shared it, so
+// browsing never compiles anyone's shader. Entries without one (and your local projects)
+// render on demand, on the render threads, with a time limit: one heavy shader must not stall
+// the page for everyone.
 import { $, ago, readJson } from './util.js';
 import { esc } from './highlight.js';
 import { toast } from './log.js';
@@ -8,6 +11,7 @@ import { local } from './projects.js';
 import { createPool } from './render-pool.js';
 
 const THUMB = 256, FRAMES = 24, FPS = 16;
+const LIVE_RENDER_LIMIT_MS = 20000;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const hashStr = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const supported = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined';
@@ -27,6 +31,7 @@ function renderThreads() {
     const tip = !th ? 'starting' : { busy: `thread ${th.n}: compiling`, wait: `thread ${th.n}: waiting for the GPU`, gpu: `thread ${th.n}: rendering on the GPU`, dead: `thread ${th.n}: ${th.error}`, boot: `thread ${th.n}: loading the engines` }[st] || `thread ${th.n}: idle, ${th.done} rendered`;
     html += `<span class="thread ${st}" title="${esc(tip)}"></span>`;
   }
+  if (!pool.started) { host.innerHTML = '<span class="tlabel">previews are rendered when a project is shared</span>'; return; }
   const label = !supported ? 'previews need OffscreenCanvas (Chrome, Edge, Firefox 105+, Safari 17+)'
     : pool.dead ? `render threads failed: ${pool.threads[0].error}`
     : pool.booting ? 'starting render threads' : `${pool.busy} of ${n} threads busy${pool.queue.length ? `, ${pool.queue.length} queued` : ''}`;
@@ -36,6 +41,7 @@ function renderThreads() {
 // ---------------------------------------------------------------- cards
 // Short line on the card; the full breakdown goes in the tooltip.
 function fmtStats(r) {
+  if (r.stored) return { text: `${r.nodes ?? '?'} nodes · rendered when shared`, title: "This preview was rendered in the sharer's browser when they shared it." };
   const work = (r.ms.compile || 0) + (r.ms.gen || 0) + (r.ms.gpu || 0);
   const text = `${r.nodes} nodes · ${(work / 1000).toFixed(1)} s on thread ${r.thread}`;
   const parts = [];
@@ -50,7 +56,7 @@ function makeCard(item) {
   el.className = 'gcard';
   const openHref = item.local ? `../?p=${encodeURIComponent(item.id)}` : `../?g=${encodeURIComponent(item.id)}`;
   el.innerHTML = `
-    <a class="thumb" href="${openHref}" aria-label="Open ${esc(item.name)} in the editor"><canvas width="${THUMB}" height="${THUMB}"></canvas><span class="tstat">${supported ? 'waiting to scroll into view' : 'open to preview'}</span></a>
+    <a class="thumb" href="${openHref}" aria-label="Open ${esc(item.name)} in the editor"><canvas width="${THUMB}" height="${THUMB}"></canvas><span class="tstat">${item.thumb ? 'loading preview…' : 'no stored preview'}</span></a>
     <div class="gbody">
       <div class="gname" title="${esc(item.name)}">${esc(item.name)}</div>
       <div class="gmeta">${item.local ? 'your project' : esc(item.author)} · ${ago(item.updated)}${item.nodes ? ` · ${item.nodes} nodes` : ''}${!item.local && item.mine ? ' <span class="badge mine">yours</span>' : ''}</div>
@@ -58,9 +64,17 @@ function makeCard(item) {
     <div class="gacts">
       <a class="btn" href="${openHref}">${item.local || item.mine ? 'Edit' : 'Open'}</a>
       ${item.local ? '' : '<button class="remix">Remix</button>'}
+      ${item.thumb || !supported ? '' : '<button class="render" title="Compile and render this shader here, on a render thread">Render preview</button>'}
     </div>`;
-  const card = { el, item, key: item.key, canvas: el.querySelector('canvas'), stat: el.querySelector('.tstat'), hash: hashStr(item.src), pending: false };
+  const hash = item.thumb ? `thumb:${item.id}:${item.thumb.v}` : hashStr(item.src);
+  const card = { el, item, key: item.key, canvas: el.querySelector('canvas'), stat: el.querySelector('.tstat'), hash, pending: false, live: false };
   card.ctx = card.canvas.getContext('2d');
+  el.querySelector('.render')?.addEventListener('click', (e) => {
+    e.currentTarget.disabled = true;
+    card.live = true;
+    pool.start();
+    request(card);
+  });
   el.querySelector('.remix')?.addEventListener('click', () => {
     const p = local.add(`${item.name} remix`, item.src);
     toast('Copied into your projects. Opening the editor…');
@@ -88,17 +102,46 @@ function showResult(card, r) {
   const why = { compile: 'does not compile', shader: 'shader generation failed', gpu: 'the GPU rejected the shader', empty: 'nothing to preview', crash: 'render thread crashed' }[r.stage] || 'failed';
   card.stat.textContent = r.error ? `${why}: ${r.error.slice(0, 160)}` : why;
 }
+// A stored preview: one sprite strip, frames side by side, cut into one bitmap per frame.
+async function loadStored(card) {
+  if (card.pending) return;
+  card.pending = true;
+  try {
+    const url = api.thumbUrl(card.item);
+    if (!url) throw new Error('missing');
+    const blob = await (await fetch(url)).blob();
+    const strip = await createImageBitmap(blob);
+    const n = card.item.thumb.frames, w = strip.width / n;
+    const frames = await Promise.all(Array.from({ length: n }, (_, i) => createImageBitmap(strip, Math.round(i * w), 0, Math.round(w), strip.height)));
+    strip.close();
+    const old = cache.get(card.hash);
+    if (old?.frames) for (const f of old.frames) f.close();
+    cache.set(card.hash, { ok: true, stored: true, frames, total: n, nodes: card.item.nodes });
+    showResult(card, cache.get(card.hash));
+    if (!gv.visible.has(card.key)) evict(card);
+  } catch (e) {
+    card.stat.textContent = 'preview could not be loaded';
+  } finally { card.pending = false; animate(); }
+}
+
 function request(card) {
-  if (!supported || pool.dead) return;
   const r = cache.get(card.hash);
-  if (r && (!r.ok || r.frames.length === FRAMES)) { showResult(card, r); return; }
-  if (r?.frames?.length) drawFrame(card, 0); // evicted to one frame: show it while the turntable re-renders
+  if (r && (!r.ok || r.frames.length === (r.total || FRAMES))) { showResult(card, r); return; }
+  if (r?.frames?.length) drawFrame(card, 0); // evicted to one frame: show it while the rest reloads
+  if (card.item.thumb) { loadStored(card); return; }
+  if (!card.live || !supported || pool.dead) return; // no stored preview: render only when asked
   if (card.pending) return;
   card.pending = true;
   card.stat.textContent = 'queued';
   const priority = () => (gv.visible.has(card.key) ? 0 : 1e6) + Math.abs(card.el.getBoundingClientRect().top);
   const onStart = (n) => { for (const c of gv.cards.values()) if (c.hash === card.hash) c.stat.textContent = `rendering on thread ${n}…`; };
+  // Past the limit the shader is too heavy for the GPU here; say so instead of looking frozen.
+  // The compile cannot be cancelled once the GPU has it, so a late result still shows up.
+  const slow = setTimeout(() => {
+    if (card.pending) card.stat.textContent = `still compiling after ${LIVE_RENDER_LIMIT_MS / 1000} s: too heavy to preview here. Open it to see it in the editor.`;
+  }, LIVE_RENDER_LIMIT_MS);
   pool.run(card.hash, { src: card.item.src, opts: { reduceGraph: true }, frames: FRAMES }, priority, onStart).then((res) => {
+    clearTimeout(slow);
     card.pending = false;
     if (res.cancelled) { card.stat.textContent = 'waiting to scroll into view'; return; }
     if (cache.get(card.hash) !== res) { // several cards can show one program
@@ -124,7 +167,7 @@ function onIntersect(entries) {
     const card = gv.cards.get(e.target.dataset.key);
     if (!card) continue;
     if (e.isIntersecting) { gv.visible.add(card.key); request(card); }
-    else { gv.visible.delete(card.key); if (card.pending) pool.cancel(card.hash); else evict(card); }
+    else { gv.visible.delete(card.key); if (card.pending && !card.item.thumb) pool.cancel(card.hash); else evict(card); }
   }
   renderThreads();
   animate();
@@ -191,4 +234,4 @@ $('gv-spin').addEventListener('change', animate);
 
 if (location.hash === '#mine') document.querySelector('#gv-source [data-src="mine"]').click();
 else loadGrid();
-if (supported) pool.start(); else renderThreads();
+renderThreads();

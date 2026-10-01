@@ -8,6 +8,8 @@
 //   POST   /api/gallery          { name, author, src, opts }  -> 201 { item } (+ owner cookie) | 422 { error, line }
 //   PUT    /api/gallery/:id      { name, src, opts }          -> 200 { item } | 403 | 404 | 422
 //   DELETE /api/gallery/:id                                   -> 204 | 403 | 404
+//   PUT    /api/gallery/:id/thumb?frames=N  body: WebP/PNG strip -> 200 { item } | 400 | 403
+//   GET    /api/gallery/:id/thumb?v=<thumb.v>                    -> the image (cached forever)
 import { readJson, storeGet, storeSet, uid, lineOf } from './util.js';
 import { countNodes } from './graph.js';
 import { PRESETS } from './presets.js';
@@ -26,7 +28,33 @@ export const api = {
   create(p) { return req('POST', BASE, p); },
   update(id, p) { return req('PUT', `${BASE}/${id}`, p); },
   remove(id) { return req('DELETE', `${BASE}/${id}`); },
+
+  // Uploads a preview sprite strip (frames side by side) for an entry this browser owns.
+  async uploadThumb(id, blob, frames) {
+    if (mode === 'mock') return req('PUT', `${BASE}/${id}/thumb`, { dataUrl: await blobToDataUrl(blob), frames });
+    const t0 = performance.now();
+    const res = await fetch(`${BASE}/${id}/thumb?frames=${frames}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': blob.type }, body: blob });
+    const data = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
+    notify('PUT', `${BASE}/${id}/thumb`, res.status, performance.now() - t0);
+    if (!res.ok) throw new ApiError(res.status, data);
+    return data;
+  },
+  // Where an entry's stored preview lives, or null when it has none.
+  thumbUrl(item) {
+    if (!item?.thumb) return null;
+    if (mode === 'mock') return storeGet(`mxsl-mock-thumb-${item.id}`);
+    return `${BASE}/${encodeURIComponent(item.id)}/thumb?v=${item.thumb.v}`;
+  },
 };
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
 
 function setMode(m) {
   mode = m;
@@ -106,12 +134,21 @@ const mock = {
     this.save(db);
     return db;
   },
-  async pub(it) { const { ownerHash, ...rest } = it; return { ...rest, mine: ownerHash === await sha256(this.owner()) }; },
+  async pub(it) { const { ownerHash, ...rest } = it; return { thumb: null, ...rest, mine: ownerHash === await sha256(this.owner()) }; },
   async handle(method, path, body) {
     const db = this.load() || await this.seed();
-    const m = /^\/api\/gallery(?:\/([\w-]+))?$/.exec(path);
+    const m = /^\/api\/gallery(?:\/([\w-]+))?(\/thumb)?$/.exec(path);
     if (!m) return [404, { error: 'not found' }];
     const id = m[1];
+    if (m[2]) {
+      const it = db.items[id];
+      if (!it) return [404, { error: 'not found' }];
+      if (it.ownerHash !== await sha256(this.owner())) return [403, { error: 'this browser does not own that entry' }];
+      storeSet(`mxsl-mock-thumb-${id}`, body.dataUrl);
+      it.thumb = { v: Date.now(), frames: body.frames };
+      this.save(db);
+      return [200, { item: await this.pub(it) }];
+    }
     if (method === 'GET' && !id) {
       const items = [];
       for (const it of Object.values(db.items).sort((a, b) => b.updated - a.updated)) items.push(await this.pub(it));
@@ -141,11 +178,12 @@ const mock = {
       const src = String(body.src ?? '');
       const c = await check(src);
       if (!c.ok) return [422, { error: c.error, line: lineOf(c.error) }];
+      if (src !== it.src) { it.thumb = null; storeSet(`mxsl-mock-thumb-${id}`, ''); }
       Object.assign(it, { src, name: clean(body.name, 60) || it.name, nodes: countNodes(c.xml), updated: Date.now(), version: it.version + 1 });
       this.save(db);
       return [200, { item: await this.pub(it) }];
     }
-    if (method === 'DELETE') { delete db.items[id]; this.save(db); return [204, null]; }
+    if (method === 'DELETE') { delete db.items[id]; storeSet(`mxsl-mock-thumb-${id}`, ''); this.save(db); return [204, null]; }
     return [405, { error: 'method not allowed' }];
   },
 };
