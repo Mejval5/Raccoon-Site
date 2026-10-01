@@ -50,3 +50,11 @@ It authenticates with a Google Cloud service account whose JSON key is the repos
 
 1. In [IAM → Service accounts](https://console.cloud.google.com/iam-admin/serviceaccounts?project=website-raccoon), create `github-deploy` and grant it: Firebase Hosting Admin, Cloud Run Viewer, API Keys Viewer, Cloud Functions Admin, Service Account User, Cloud Scheduler Admin, Secret Manager Viewer, Artifact Registry Administrator, Firebase Extensions Viewer.
 2. On that account, Keys → Add key → JSON, and paste the whole file into a new [repository secret](https://github.com/Mejval5/Raccoon-Site/settings/secrets/actions) named `FIREBASE_SERVICE_ACCOUNT`. Then delete the downloaded file.
+
+- `deploy.bat` runs `firebase deploy`.
+
+## Credits
+
+- [ShadingLanguageX](https://github.com/jakethorn/ShadingLanguageX) by Jake Thorn: the language, the `mxslc` compiler and its WebAssembly build behind the playground and gallery at `/shadinglanguagex/`.
+- [MaterialX](https://github.com/AcademySoftwareFoundation/MaterialX): the shader generator the previews use, through its JavaScript build.
+- [three.js](https://threejs.org/) for drawing the previews.
