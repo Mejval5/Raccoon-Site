@@ -3,19 +3,22 @@
 // without touching the main thread. The page only draws the bitmaps it gets back.
 //
 //   { op: 'init', args: { size } }                     -> { op: 'ready', ok, error? }
-//   { id, op: 'render', args: { src, opts, frames, files? } } -> { id, ok: true, frames: ImageBitmap[], nodes, label, ms }
+//   { id, op: 'render', args: { src, opts, frames, files?, view? } } -> { id, ok: true, frames: ImageBitmap[], nodes, label, ms }
 //   files: [{ name, blob }], the project's images for image("name.png")
+//   view:  { geo, env, spin, yaw, pitch, dist } as in the editor; frames turn the camera when it
+//          spins, else step through time; a still shader with no spin gives a single frame
 //                                                      |  { id, ok: false, stage, error, nodes?, ms? }
 import Mxslc from '../lib/JsMxslc.js';
 import MaterialX from '../lib/JsMaterialXGenShader.js';
-import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver } from './mx-shader.js';
+import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver, cleanView, makeViewGeometry, makeScreenCamera, orbitCamera, BACKDROP } from './mx-shader.js';
 import { countNodes } from './graph.js';
 
 const libFile = (name) => new URL('../lib/' + name, import.meta.url).href;
 const errText = (e) => String((e && (e.message || e.error)) || e || 'Unknown error');
 
 let mxc = null, mx = null, g = null, env = null, checker = null, size = 256;
-let canvas = null, renderer = null, scene = null, camera = null, mesh = null;
+let canvas = null, renderer = null, scene = null, camera = null, screenCam = null, mesh = null;
+const geos = {};
 let shaderError = '', frameNo = 0;
 
 // The GPU is shared by every thread and by the page, and the GPU process compiles shaders
@@ -46,12 +49,14 @@ function initGpu() {
   renderer.setSize(size, size, false);
   captureShaderErrors(renderer, (msg) => { shaderError = msg; });
   scene = new THREE.Scene();
-  scene.background = env.bg;
-  camera = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
-  mesh = new THREE.Mesh(prepareGeometry(new THREE.SphereGeometry(1, 96, 48)), new THREE.MeshBasicMaterial({ color: 0x333a48 }));
+  camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100); // same lens as the editor preview
+  screenCam = makeScreenCamera();
+  mesh = new THREE.Mesh(geometry('sphere'), new THREE.MeshBasicMaterial({ color: 0x333a48 }));
   mesh.onBeforeRender = makeUniformUpdater(mesh, performance.now(), () => frameNo);
   scene.add(mesh);
 }
+
+function geometry(geo) { return (geos[geo] ??= makeViewGeometry(geo)); }
 
 async function render(id, args) {
   const textures = await makeTextures(args.files);
@@ -59,7 +64,8 @@ async function render(id, args) {
   finally { disposeTextures(textures); }
 }
 
-async function renderWith(id, { src, opts, frames: n }, resolve) {
+async function renderWith(id, { src, opts, frames: n, view: rawView }, resolve) {
+  const view = cleanView(rawView);
   const ms = {};
   let t = performance.now();
 
@@ -99,15 +105,19 @@ async function renderWith(id, { src, opts, frames: n }, resolve) {
   if (!renderer) initGpu();
   const mat = createMaterial(shader, env, g);
   mesh.material = mat;
+  mesh.geometry = geometry(view.geo);
+  const screen = view.geo === 'screen';
+  scene.background = view.env && !screen ? env.bg : new THREE.Color(BACKDROP);
+  const spin = view.spin && !screen;
+  const animated = !!(mat.uniforms.u_time || mat.uniforms.u_frame);
+  const count = spin || animated ? n : 1; // nothing moves: one frame says it all
   shaderError = '';
   const out = [];
-  for (let i = 0; i < n; i++) {
-    const yaw = 0.6 + (i / n) * Math.PI * 2, pitch = 0.25, dist = 3.6;
-    camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, Math.sin(pitch) * dist, Math.cos(yaw) * Math.cos(pitch) * dist);
-    camera.lookAt(0, 0, 0);
+  for (let i = 0; i < count; i++) {
+    if (!screen) orbitCamera(camera, view.yaw + (spin ? (i / count) * Math.PI * 2 : 0), view.pitch, view.dist);
     frameNo = i;
-    if (mat.uniforms.u_time) mat.uniforms.u_time.value = (i / n) * 4;
-    renderer.render(scene, camera);
+    if (mat.uniforms.u_time) mat.uniforms.u_time.value = (i / count) * 4;
+    renderer.render(scene, screen ? screenCam : camera);
     if (shaderError) break;
     out.push(canvas.transferToImageBitmap());
     if (i === 0) ms.gpu = performance.now() - t;

@@ -200,3 +200,7 @@ dialog code { font: 12px var(--mono); background: var(--sunk); padding: 1px 4px;
 .img-missing { color: var(--accent); font-size: 13px; }
 #dlg-images .err { white-space: pre-wrap; }
 .editor.drop, dialog.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
+
+/* Screen mode: nothing to orbit, so Environment and Spin do not apply */
+.view.screen-mode canvas { cursor: default; }
+.view.screen-mode .pv-bar .check:has(input:disabled) { opacity: .45; }

@@ -8,6 +8,10 @@ import { toast } from './log.js';
 import { syncHeader, renderMine, renderGalleryList, showSideTab } from './projects-ui.js';
 import { renderPreviewSprite } from './preview-sprite.js';
 import { listFiles, filesSignature } from './files.js';
+import { getView } from './preview.js';
+
+// The mode and toggles saved with the entry (the camera only matters for the preview image).
+const entryView = () => { const v = getView(); return { geo: v.geo, env: v.env, spin: v.spin }; };
 
 let ctx = null; // { src, engine, currentOptions }
 
@@ -56,7 +60,8 @@ async function attachPreview(p) {
   const src = p.src;
   $('proj-state').textContent = 'rendering the gallery preview…';
   try {
-    const { blob, frames } = await renderPreviewSprite(src, ctx.currentOptions(), { files: await listFiles(p.id) });
+    // exactly what the preview shows now: its mode, environment, spin and camera angle
+    const { blob, frames } = await renderPreviewSprite(src, ctx.currentOptions(), { files: await listFiles(p.id), view: getView() });
     await api.uploadThumb(id, blob, frames);
     if (p.galleryId === id && p.galleryVersionSrc === src) { p.galleryThumb = true; local.save(); }
     toast(`Gallery preview uploaded (${Math.round(blob.size / 1024)} KB).`);
@@ -83,7 +88,7 @@ async function onShare() {
     btn.textContent = srcChanged || filesChanged ? 'Updating…' : 'Rendering…';
     try {
       if (srcChanged) {
-        await api.update(p.galleryId, { name: p.name, src: p.src, opts: ctx.currentOptions() });
+        await api.update(p.galleryId, { name: p.name, src: p.src, opts: ctx.currentOptions(), view: entryView() });
         p.galleryVersionSrc = p.src; p.galleryThumb = false; local.save();
       }
       if (filesChanged) { await syncFiles(p); p.galleryThumb = false; local.save(); }
@@ -113,7 +118,7 @@ async function onSubmit(e) {
   go.disabled = true; go.textContent = 'Sharing…';
   try {
     const name = $('share-name').value.trim(), author = $('share-author').value.trim();
-    const { item } = await api.create({ name, author, src: p.src, opts: ctx.currentOptions() });
+    const { item } = await api.create({ name, author, src: p.src, opts: ctx.currentOptions(), view: entryView() });
     storeSet('mxsl-author', author);
     Object.assign(p, { name, galleryId: item.id, galleryVersionSrc: p.src, galleryFileAdded: {}, galleryFilesSig: '' });
     local.save();

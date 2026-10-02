@@ -20,13 +20,13 @@ let pool = null;
  * @returns {Promise<{blob: Blob, frames: number}>} the encoded strip, WebP where the browser
  * can encode it and PNG otherwise (Safari). Throws with a readable message on failure.
  */
-export async function renderPreviewSprite(src, opts, { timeoutMs = 45000, files = [] } = {}) {
+export async function renderPreviewSprite(src, opts, { timeoutMs = 45000, files = [], view = null } = {}) {
   if (typeof OffscreenCanvas === 'undefined') throw new Error('this browser cannot render previews off screen');
   pool ??= createPool({ size: 1, thumb: RENDER_SIZE });
   pool.start();
   let timer = 0;
   const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ ok: false, stage: 'timeout' }), timeoutMs); });
-  const res = await Promise.race([pool.run(`share:${Date.now()}`, { src, opts, frames: RENDER_FRAMES, files: files.map(({ name, blob }) => ({ name, blob })) }, () => 0), timeout]);
+  const res = await Promise.race([pool.run(`share:${Date.now()}`, { src, opts, frames: RENDER_FRAMES, files: files.map(({ name, blob }) => ({ name, blob })), view }, () => 0), timeout]);
   clearTimeout(timer);
   if (!res.ok) {
     const why = { timeout: `rendering took over ${Math.round(timeoutMs / 1000)} s`, compile: 'it does not compile', shader: 'shader generation failed', gpu: 'the GPU rejected the shader', empty: 'there is nothing to preview', crash: 'the render thread crashed' }[res.stage] || 'rendering failed';
@@ -35,7 +35,7 @@ export async function renderPreviewSprite(src, opts, { timeoutMs = 45000, files 
   try {
     for (const layout of LAYOUTS) {
       const blob = await pack(res.frames, layout);
-      if (blob.size <= MAX_BYTES) return { blob, frames: layout.frames };
+      if (blob.size <= MAX_BYTES) return { blob, frames: Math.min(layout.frames, res.frames.length) };
     }
     throw new Error('the preview is too large to upload');
   } finally {
@@ -43,7 +43,8 @@ export async function renderPreviewSprite(src, opts, { timeoutMs = 45000, files 
   }
 }
 
-async function pack(frames, { size, frames: n, quality }) {
+async function pack(frames, { size, frames: wanted, quality }) {
+  const n = Math.min(wanted, frames.length); // a still shader renders a single frame
   const canvas = new OffscreenCanvas(size * n, size);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';

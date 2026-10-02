@@ -257,3 +257,44 @@ export function captureShaderErrors(renderer, onError) {
     onError(log.trim().split('\n').slice(0, 6).join('\n') || 'Shader failed to link.');
   };
 }
+
+// ---------------------------------------------------------------- view (what the preview shows)
+// A view is { geo, env, spin, yaw, pitch, dist }. "screen" is a quad that fills the whole view,
+// like Shadertoy: texture coordinates run 0..1 across the image, nothing orbits or spins.
+export const VIEW_GEOS = ['sphere', 'plane', 'knot', 'screen'];
+export const DEFAULT_VIEW = { geo: 'sphere', env: true, spin: true, yaw: 0.6, pitch: 0.25, dist: 4.0 };
+export const BACKDROP = 0x0d1017;
+
+export function cleanView(v) {
+  const out = { ...DEFAULT_VIEW };
+  if (!v || typeof v !== 'object') return out;
+  if (VIEW_GEOS.includes(v.geo)) out.geo = v.geo;
+  if (typeof v.env === 'boolean') out.env = v.env;
+  if (typeof v.spin === 'boolean') out.spin = v.spin;
+  for (const k of ['yaw', 'pitch', 'dist']) if (Number.isFinite(v[k])) out[k] = v[k];
+  out.pitch = Math.max(-1.4, Math.min(1.4, out.pitch));
+  out.dist = Math.max(1.6, Math.min(8, out.dist));
+  return out;
+}
+
+export function makeViewGeometry(geo) {
+  switch (geo) {
+    case 'plane': case 'screen': return prepareGeometry(new THREE.PlaneGeometry(2, 2, 1, 1));
+    case 'knot': return prepareGeometry(new THREE.TorusKnotGeometry(0.62, 0.22, 256, 48));
+    default: return prepareGeometry(new THREE.SphereGeometry(1, 128, 64));
+  }
+}
+
+// The camera for Screen: the 2x2 quad at z = 0 exactly fills it, whatever the aspect.
+export function makeScreenCamera() {
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  cam.position.set(0, 0, 1);
+  cam.lookAt(0, 0, 0);
+  return cam;
+}
+
+export function orbitCamera(cam, yaw, pitch, dist) {
+  const cp = Math.cos(pitch);
+  cam.position.set(Math.sin(yaw) * cp * dist, Math.sin(pitch) * dist, Math.cos(yaw) * cp * dist);
+  cam.lookAt(0, 0, 0);
+}

@@ -1,12 +1,14 @@
 // The 3D preview on the editor page: MaterialX GenShader turns the compiled document into
-// GLSL, three.js draws it on a sphere, plane or knot under the environment light.
+// GLSL, three.js draws it on a sphere, plane or knot under the environment light, or on a
+// quad that fills the view ("screen", like Shadertoy). The view is remembered between visits
+// and new projects start with the last one picked.
 import MaterialX from '../lib/JsMaterialXGenShader.js';
-import { $, libFile } from './util.js';
-import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, prepareGeometry, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver } from './mx-shader.js';
+import { $, libFile, readJson, storeSet } from './util.js';
+import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver, VIEW_GEOS, cleanView, makeViewGeometry, makeScreenCamera, orbitCamera, BACKDROP } from './mx-shader.js';
 
 export const pv = {
   mx: null, g: null, env: null, ready: false,
-  renderer: null, scene: null, camera: null, mesh: null, geos: {}, geo: 'sphere',
+  renderer: null, scene: null, camera: null, screenCam: null, mesh: null, geos: {}, geo: 'sphere',
   checker: null, pendingXml: null, timer: 0, dirty: false, textures: null, resolve: null,
   yaw: 0.6, pitch: 0.25, dist: 4.0, t0: performance.now(), frame: 0, shaderError: '',
 };
@@ -19,11 +21,41 @@ const pvMsg = (text, isErr = false) => {
 const pvStatus = (text) => { $('pv-status').textContent = text; };
 
 function buildGeometries() {
-  pv.geos = {
-    sphere: prepareGeometry(new THREE.SphereGeometry(1, 128, 64)),
-    plane: prepareGeometry(new THREE.PlaneGeometry(2, 2, 1, 1)),
-    knot: prepareGeometry(new THREE.TorusKnotGeometry(0.62, 0.22, 256, 48)),
-  };
+  pv.geos = Object.fromEntries(VIEW_GEOS.map((g) => [g, makeViewGeometry(g)]));
+}
+
+// ---------------------------------------------------------------- view
+const VIEW_KEY = 'slx-view';
+const viewListeners = [];
+export const onViewChange = (cb) => viewListeners.push(cb);
+// What the preview shows right now, camera included (the gallery preview is rendered from it).
+export function getView() {
+  return cleanView({ geo: pv.geo, env: $('pv-env').checked, spin: $('pv-spin').checked, yaw: pv.yaw, pitch: pv.pitch, dist: pv.dist });
+}
+// The view new projects start with: the last one picked (mode and toggles, not the camera).
+export const lastView = () => cleanView(readJson(VIEW_KEY, null));
+
+// Shows a view. persist: also make it the default for new projects (false when just looking
+// at somebody's gallery entry). Listeners hear about it either way.
+export function applyView(v, { persist = true, camera = false } = {}) {
+  const view = cleanView(v);
+  pv.geo = view.geo;
+  $('pv-env').checked = view.env;
+  $('pv-spin').checked = view.spin;
+  if (camera) { pv.yaw = view.yaw; pv.pitch = view.pitch; pv.dist = view.dist; }
+  syncViewControls();
+  if (persist) storeSet(VIEW_KEY, JSON.stringify({ geo: view.geo, env: view.env, spin: view.spin }));
+  for (const cb of viewListeners) cb(getView());
+}
+function syncViewControls() {
+  for (const o of document.querySelectorAll('.seg button')) o.setAttribute('aria-pressed', String(o.dataset.geo === pv.geo));
+  const screen = pv.geo === 'screen';
+  $('pv-env').disabled = screen;
+  $('pv-spin').disabled = screen;
+  $('view-preview').classList.toggle('screen-mode', screen);
+  if (pv.mesh) pv.mesh.geometry = pv.geos[pv.geo];
+  if (pv.scene) pv.scene.background = $('pv-env').checked && !screen && pv.env ? pv.env.bg : new THREE.Color(BACKDROP);
+  pv.dirty = true;
 }
 
 export async function initPreview() {
@@ -34,6 +66,7 @@ export async function initPreview() {
     captureShaderErrors(pv.renderer, (msg) => { pv.shaderError = msg; });
     pv.scene = new THREE.Scene();
     pv.camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100);
+    pv.screenCam = makeScreenCamera();
     pv.checker = makeChecker();
 
     const [env, mx] = await Promise.all([
@@ -41,15 +74,15 @@ export async function initPreview() {
       MaterialX({ locateFile: libFile, print: () => {}, printErr: () => {} }),
     ]);
     pv.env = env;
-    pv.scene.background = $('pv-env').checked ? env.bg : new THREE.Color(0x0d1017);
     pv.scene.backgroundBlurriness = 0;
     pv.mx = mx;
     pv.g = await createGenerator(mx);
 
     buildGeometries();
-    pv.mesh = new THREE.Mesh(pv.geos.sphere, new THREE.MeshBasicMaterial({ color: 0x333a48 }));
+    pv.mesh = new THREE.Mesh(pv.geos[pv.geo], new THREE.MeshBasicMaterial({ color: 0x333a48 }));
     pv.mesh.onBeforeRender = makeUniformUpdater(pv.mesh, pv.t0, () => pv.frame);
     pv.scene.add(pv.mesh);
+    syncViewControls();
     hookControls(canvas);
     new ResizeObserver(resizePreview).observe($('view-preview'));
     resizePreview();
@@ -74,7 +107,7 @@ export function resizePreview() {
 
 function hookControls(canvas) {
   let drag = null;
-  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointerdown', (e) => { if (pv.geo === 'screen') return; drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag) return;
     pv.yaw += (e.clientX - drag.x) * 0.008;
@@ -84,23 +117,22 @@ function hookControls(canvas) {
   });
   canvas.addEventListener('pointerup', () => { drag = null; });
   canvas.addEventListener('pointercancel', () => { drag = null; });
-  canvas.addEventListener('wheel', (e) => { e.preventDefault(); pv.dist = Math.max(1.6, Math.min(8, pv.dist * (1 + e.deltaY * 0.001))); pv.dirty = true; }, { passive: false });
+  canvas.addEventListener('wheel', (e) => { if (pv.geo === 'screen') return; e.preventDefault(); pv.dist = Math.max(1.6, Math.min(8, pv.dist * (1 + e.deltaY * 0.001))); pv.dirty = true; }, { passive: false });
 }
 
 export const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function tick() {
   requestAnimationFrame(tick);
   if ($('view-preview').hidden) return;
-  const spinning = $('pv-spin').checked && !reduceMotion;
+  const screen = pv.geo === 'screen';
+  const spinning = !screen && $('pv-spin').checked && !reduceMotion;
   const animated = !!(pv.mesh.material.uniforms && (pv.mesh.material.uniforms.u_time || pv.mesh.material.uniforms.u_frame));
   if (!pv.dirty && !spinning && !animated) return;
   pv.dirty = false;
   pv.frame++;
   if (spinning) pv.yaw += 0.004;
-  const cp = Math.cos(pv.pitch);
-  pv.camera.position.set(Math.sin(pv.yaw) * cp * pv.dist, Math.sin(pv.pitch) * pv.dist, Math.cos(pv.yaw) * cp * pv.dist);
-  pv.camera.lookAt(0, 0, 0);
-  pv.renderer.render(pv.scene, pv.camera);
+  if (!screen) orbitCamera(pv.camera, pv.yaw, pv.pitch, pv.dist);
+  pv.renderer.render(pv.scene, screen ? pv.screenCam : pv.camera);
   if (pv.shaderError) {
     pvMsg(`The generated GLSL failed to compile on this GPU:\n\n${pv.shaderError}`, true);
     pv.shaderError = '';
@@ -198,7 +230,7 @@ async function renderTarget(target) {
   tmpScene.add(tmpMesh);
   const c0 = performance.now();
   try {
-    if (pv.renderer.compileAsync) await pv.renderer.compileAsync(tmpScene, pv.camera);
+    if (pv.renderer.compileAsync) await pv.renderer.compileAsync(tmpScene, pv.geo === 'screen' ? pv.screenCam : pv.camera);
   } catch (e) { /* errors surface through onShaderError on first draw */ }
   if (token !== compileToken) { mat.dispose(); return; }
   const old = pv.mesh.material;
@@ -215,13 +247,19 @@ $('pv-target').addEventListener('change', () => {
 });
 for (const b of document.querySelectorAll('.seg button')) {
   b.addEventListener('click', () => {
-    for (const o of document.querySelectorAll('.seg button')) o.setAttribute('aria-pressed', String(o === b));
-    if (pv.mesh) pv.mesh.geometry = pv.geos[b.dataset.geo];
-    pv.dirty = true;
-    if (b.dataset.geo === 'plane') { pv.yaw = 0; pv.pitch = 0; $('pv-spin').checked = false; }
+    const geo = b.dataset.geo;
+    if (geo === 'plane') { pv.yaw = 0; pv.pitch = 0; $('pv-spin').checked = false; }
+    applyView({ ...getView(), geo });
   });
 }
-$('pv-env').addEventListener('change', () => {
-  if (pv.scene) pv.scene.background = $('pv-env').checked ? pv.env.bg : new THREE.Color(0x0d1017);
-  pv.dirty = true;
-});
+$('pv-env').addEventListener('change', () => applyView(getView()));
+$('pv-spin').addEventListener('change', () => applyView(getView()));
+
+// start with the last view picked
+{
+  const v = lastView();
+  pv.geo = v.geo;
+  $('pv-env').checked = v.env;
+  $('pv-spin').checked = v.spin;
+  syncViewControls();
+}

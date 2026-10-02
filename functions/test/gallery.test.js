@@ -50,7 +50,10 @@ test("isOwner compares hashes, never raw tokens", () => {
 test("validateSubmission trims, limits and requires fields", () => {
   const ok = validateSubmission({ name: "  My shader ", author: "Dan", src: "float x = 1;", opts: { reduceGraph: false, bogus: 1 } });
   assert.equal(ok.ok, true);
-  assert.deepEqual(ok.data, { name: "My shader", author: "Dan", src: "float x = 1;", opts: { reduceGraph: false } });
+  assert.deepEqual(ok.data, { name: "My shader", author: "Dan", src: "float x = 1;", opts: { reduceGraph: false }, view: null });
+  const withView = validateSubmission({ name: "n", author: "a", src: "x", view: { geo: "screen", env: false, spin: true, extra: 1 } });
+  assert.deepEqual(withView.data.view, { geo: "screen", env: false, spin: true });
+  assert.equal(validateSubmission({ name: "n", author: "a", src: "x", view: { geo: "teapot" } }).data.view, null);
   assert.equal(validateSubmission(null).ok, false);
   assert.equal(validateSubmission({ author: "a", src: "x" }).error, "name is required");
   assert.equal(validateSubmission({ name: "n", src: "x" }).error, "author is required");
@@ -67,7 +70,8 @@ test("docToItem hides the owner hash and marks the caller's own entries", () => 
   const token = newOwnerToken();
   const doc = { name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: { toMillis: () => 2000 }, version: 2, ownerHash: ownerHash(token) };
   const mine = docToItem("id1", doc, token);
-  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true, thumb: null, files: [] });
+  assert.deepEqual(mine, { id: "id1", name: "n", author: "a", src: "s", nodes: 3, created: 1000, updated: 2000, version: 2, mine: true, thumb: null, files: [], view: null });
+  assert.deepEqual(docToItem("id1", { ...doc, view: { geo: "knot", env: true, spin: false } }, null).view, { geo: "knot", env: true, spin: false });
   assert.deepEqual(docToItem("id1", { ...doc, thumb: { v: 5, frames: 24, extra: 1 } }, null).thumb, { v: 5, frames: 24 });
   assert.equal(docToItem("id1", doc, null).mine, false);
   assert.equal("ownerHash" in mine, false);

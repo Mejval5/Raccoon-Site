@@ -81,7 +81,7 @@ function makeCard(item) {
     request(card);
   });
   el.querySelector('.remix')?.addEventListener('click', async () => {
-    const p = local.add(`${item.name} remix`, item.src);
+    const p = local.add(`${item.name} remix`, item.src, item.view ? { view: item.view } : {});
     for (const f of await api.fetchFiles(item)) await putFile(p.id, { ...f, added: Date.now() });
     toast('Copied into your projects. Opening the editor…');
     setTimeout(() => { location.href = `../?p=${encodeURIComponent(p.id)}`; }, 400);
@@ -146,9 +146,11 @@ function request(card) {
   const slow = setTimeout(() => {
     if (card.pending) card.stat.textContent = `still compiling after ${LIVE_RENDER_LIMIT_MS / 1000} s: too heavy to preview here. Open it to see it in the editor.`;
   }, LIVE_RENDER_LIMIT_MS);
-  pool.run(card.hash, { src: card.item.src, opts: { reduceGraph: true }, frames: FRAMES, files: (card.files || []).map(({ name, blob }) => ({ name, blob })) }, priority, onStart).then((res) => {
+  const view = card.item.view || null; // render it the way it was shared (or last viewed)
+  pool.run(card.hash, { src: card.item.src, opts: { reduceGraph: true }, frames: FRAMES, files: (card.files || []).map(({ name, blob }) => ({ name, blob })), view }, priority, onStart).then((res) => {
     clearTimeout(slow);
     card.pending = false;
+    if (res.ok) res.total = res.frames.length; // a still shader comes back as one frame
     if (res.cancelled) { card.stat.textContent = 'waiting to scroll into view'; return; }
     if (cache.get(card.hash) !== res) { // several cards can show one program
       const old = cache.get(card.hash);

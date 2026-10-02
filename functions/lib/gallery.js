@@ -36,6 +36,13 @@ const LIMITS = {
 const FILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}\.(png|jpe?g|webp)$/i;
 
 const OPTION_KEYS = ["reduceGraph", "errorOnMissingGlobals", "errorOnUnusedGlobals"];
+const VIEW_GEOS = ["sphere", "plane", "knot", "screen"];
+
+// How the entry is meant to be looked at: { geo, env, spin }, or null when not given.
+function cleanView(v) {
+  if (!v || typeof v !== "object" || !VIEW_GEOS.includes(v.geo)) return null;
+  return { geo: v.geo, env: v.env !== false, spin: v.spin !== false };
+}
 
 function newOwnerToken() {
   return crypto.randomBytes(32).toString("base64url");
@@ -91,7 +98,7 @@ function validateSubmission(body, { update = false } = {}) {
   if (!name) return { ok: false, error: "name is required" };
   if (!src.trim()) return { ok: false, error: "src is required" };
   if (src.length > LIMITS.src) return { ok: false, error: `source is over ${LIMITS.src.toLocaleString("en")} characters` };
-  const data = { name, src, opts: cleanOptions(body.opts) };
+  const data = { name, src, opts: cleanOptions(body.opts), view: cleanView(body.view) };
   if (!update) {
     const author = cleanText(body.author, LIMITS.author);
     if (!author) return { ok: false, error: "author is required" };
@@ -114,6 +121,7 @@ function docToItem(id, doc, callerToken) {
     mine: isOwner(callerToken, doc),
     thumb: thumbInfo(doc.thumb),
     files: filesInfo(doc.files),
+    view: cleanView(doc.view),
   };
 }
 
@@ -220,6 +228,7 @@ module.exports = {
   isOwner,
   cleanText,
   cleanOptions,
+  cleanView,
   validateSubmission,
   docToItem,
   normalizeGalleryPath,

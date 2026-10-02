@@ -67,7 +67,7 @@ async function previews(ids) {
       if (url.pathname === '/__admin/render.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(renderPage()); return; }
       if (url.pathname === '/__admin/jobs') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ timeoutMs: TIMEOUT_S * 1000, jobs: jobs.map(({ id, name, src, nodes, files }) => ({ id, name, src, nodes, files: files || [] })) }));
+        res.end(JSON.stringify({ timeoutMs: TIMEOUT_S * 1000, jobs: jobs.map(({ id, name, src, nodes, files, view }) => ({ id, name, src, nodes, files: files || [], view: view || null })) }));
         return;
       }
       // an entry's images, fetched from the API for the render page (it cannot reach the API itself)
@@ -126,7 +126,7 @@ for (const job of jobs) {
       const r = await fetch('/__admin/files/' + job.id + '/' + encodeURIComponent(f.name));
       if (r.ok) files.push({ name: f.name, blob: await r.blob() });
     }
-    const { blob, frames } = await renderPreviewSprite(job.src, { reduceGraph: true }, { timeoutMs, files });
+    const { blob, frames } = await renderPreviewSprite(job.src, { reduceGraph: true }, { timeoutMs, files, view: job.view });
     const r = await (await fetch('/__admin/thumb/' + job.id + '?frames=' + frames, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob })).json();
     li.textContent = job.name + ': ' + r.result; li.className = r.result.startsWith('uploaded') ? 'ok' : 'bad';
   } catch (e) {

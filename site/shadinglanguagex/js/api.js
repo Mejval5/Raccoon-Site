@@ -219,7 +219,7 @@ const mock = {
       const c = await check(src);
       if (!c.ok) return [422, { error: c.error, line: lineOf(c.error) }];
       const newId = uid(), now = Date.now();
-      db.items[newId] = { id: newId, name, author, src, nodes: countNodes(c.xml), created: now, updated: now, version: 1, ownerHash: await sha256(this.owner()) };
+      db.items[newId] = { id: newId, name, author, src, nodes: countNodes(c.xml), created: now, updated: now, version: 1, view: body.view || null, ownerHash: await sha256(this.owner()) };
       this.save(db);
       return [201, { item: await this.pub(db.items[newId]) }];
     }
@@ -230,6 +230,7 @@ const mock = {
       const c = await check(src);
       if (!c.ok) return [422, { error: c.error, line: lineOf(c.error) }];
       if (src !== it.src) { it.thumb = null; storeSet(`mxsl-mock-thumb-${id}`, ''); }
+      if (body.view) it.view = body.view;
       Object.assign(it, { src, name: clean(body.name, 60) || it.name, nodes: countNodes(c.xml), updated: Date.now(), version: it.version + 1 });
       this.save(db);
       return [200, { item: await this.pub(it) }];

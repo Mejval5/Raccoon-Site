@@ -824,7 +824,7 @@ exports.gallery = onRequest(
         if (!c.ok) { json(422, { error: c.error, line: c.line }); return; }
 
         const doc = {
-          name: v.data.name, author: v.data.author, src: v.data.src, opts: v.data.opts,
+          name: v.data.name, author: v.data.author, src: v.data.src, opts: v.data.opts, view: v.data.view,
           nodes: c.nodes, created: now, updated: now, version: 1, ownerHash: hash,
         };
         const ref = await col.add(doc);
@@ -925,6 +925,7 @@ exports.gallery = onRequest(
         // A new program makes the old preview wrong: drop it until the page uploads a new one.
         const srcChanged = v.data.src !== doc.src;
         const patch = { name: v.data.name, src: v.data.src, opts: v.data.opts, nodes: c.nodes, updated: Date.now(), version: (doc.version || 1) + 1 };
+        if (v.data.view) patch.view = v.data.view;
         if (srcChanged) patch.thumb = null;
         await ref.update(patch);
         if (srcChanged) await thumbRef.delete();

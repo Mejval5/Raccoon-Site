@@ -9,6 +9,7 @@ import { api } from './api.js';
 import { toast } from './log.js';
 import { initImagesUI, loadImagesFor, currentFiles } from './images-ui.js';
 import { putFile, deleteAllFiles } from './files.js';
+import { applyView, lastView, onViewChange } from './preview.js';
 
 const NEW_PROJECT_SRC = '// New project. Declare a material to see it on the preview.\n\nsurfaceshader surface = standard_surface();\nsurface.base_color = color3{0.8, 0.3, 0.2};\n\nmaterial mat = surfacematerial(surface);\n';
 
@@ -21,6 +22,13 @@ export function initProjectsUI(c) {
   bindHeader();
   bindDropdown();
   initImagesUI({ src: c.src, onChange: () => { syncHeader(); renderMine(); } });
+  // each project remembers how it was last looked at
+  onViewChange((v) => {
+    if (viewing || !cur()) return;
+    const p = cur();
+    const next = { geo: v.geo, env: v.env, spin: v.spin };
+    if (JSON.stringify(p.view) !== JSON.stringify(next)) { p.view = next; local.save(); }
+  });
   // deep links: ?g=<gallery id> opens a shared entry, ?p=<project id> one of yours
   const q = new URLSearchParams(location.search);
   if (q.get('g')) openGallery(q.get('g'));
@@ -63,6 +71,7 @@ export function openLocal(id, compile = true) {
   setCurrent(id);
   ctx.src.value = cur().src;
   setUrl('p', id);
+  applyView(cur().view || lastView(), { persist: false });
   syncHeader(); renderMine();
   if (!$('list-gal').hidden) renderGalleryList();
   if (compile) ctx.doCompile(true);
@@ -76,6 +85,7 @@ export async function openGallery(id) {
     setViewing(item);
     ctx.src.value = item.src;
     setUrl('g', id);
+    if (item.view) applyView(item.view, { persist: false }); // the way its author shared it
     syncHeader(); renderMine(); renderGalleryList();
     ctx.doCompile(true);
     loadImagesFor({ kind: 'gallery', item });
@@ -85,8 +95,9 @@ export async function openGallery(id) {
     openLocal(cur().id, false);
   }
 }
-export function newProject(name, src) {
-  const p = local.add(freshName(name), src);
+export function newProject(name, src, view = null) {
+  const lv = lastView();
+  const p = local.add(freshName(name), src, { view: view || { geo: lv.geo, env: lv.env, spin: lv.spin } });
   openLocal(p.id);
   showSideTab('mine');
   return p;
@@ -115,7 +126,7 @@ function bindHeader() {
   $('remix').addEventListener('click', async () => {
     if (!viewing) return;
     const images = currentFiles(); // the viewed entry's images come along
-    const p = newProject(`${viewing.name} remix`, viewing.src);
+    const p = newProject(`${viewing.name} remix`, viewing.src, viewing.view || null);
     for (const f of images) await putFile(p.id, { name: f.name, blob: f.blob, type: f.type, size: f.size, added: Date.now() });
     if (images.length) await loadImagesFor({ kind: 'local', id: p.id });
     toast(images.length ? `Copied into your projects with its ${images.length} image${images.length > 1 ? 's' : ''}. Edit away.` : 'Copied into your projects. Edit away.');
