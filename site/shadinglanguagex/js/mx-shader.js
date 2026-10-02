@@ -171,17 +171,38 @@ function stageUniforms(stage, checker, usedTextures, resolve) {
 // Generates the GLSL for one element and collects its uniforms. Throws the MaterialX error.
 // resolve(name) -> THREE.Texture | null maps image file names to the project's images;
 // usedTextures lists the names it could not find (shown as the checker).
+// The complete interface makes every unconnected input a uniform, so editing a number only
+// updates a value and the GPU never recompiles. Big shaders (unrolled loops) have thousands of
+// such inputs, past what GPUs allow (often 1024 uniform vectors per stage, and the link fails
+// without a word), so those are regenerated with the reduced interface: constants become
+// literals in the GLSL.
+const MAX_UNIFORMS = 400;
+function countUniforms(shader) {
+  let n = 0;
+  for (const stage of [shader.getStage('vertex'), shader.getStage('pixel')]) {
+    for (const block of Object.values(stage.getUniformBlocks())) n += block.empty() ? 0 : block.size();
+  }
+  return n;
+}
+
 export function generateShader(mx, g, target, checker, resolve = null) {
   const usedTextures = [];
   const opts = g.ctx.getOptions();
   const transparent = mx.isTransparentSurface(target, g.gen.getTarget());
   opts.hwTransparency = transparent;
   opts.shaderInterfaceType = mx.ShaderInterfaceType.SHADER_INTERFACE_COMPLETE;
-  const shader = g.gen.generate(target.getNamePath(), target, g.ctx);
+  let shader = g.gen.generate(target.getNamePath(), target, g.ctx);
+  let reduced = false;
+  if (countUniforms(shader) > MAX_UNIFORMS) {
+    opts.shaderInterfaceType = mx.ShaderInterfaceType.SHADER_INTERFACE_REDUCED;
+    shader = g.gen.generate(target.getNamePath(), target, g.ctx);
+    opts.shaderInterfaceType = mx.ShaderInterfaceType.SHADER_INTERFACE_COMPLETE;
+    reduced = true;
+  }
   const vs = shader.getSourceCode('vertex').replace(/^#version\s+.*\n/, '');
   const fs = shader.getSourceCode('pixel').replace(/^#version\s+.*\n/, '');
   const uniforms = { ...stageUniforms(shader.getStage('vertex'), checker, usedTextures, resolve), ...stageUniforms(shader.getStage('pixel'), checker, usedTextures, resolve) };
-  return { vs, fs, uniforms, transparent, usedTextures };
+  return { vs, fs, uniforms, transparent, usedTextures, reduced };
 }
 
 // The lighting uniforms every generated shader expects, plus the material itself.
@@ -254,7 +275,13 @@ export function listTargets(mx, doc) {
 export function captureShaderErrors(renderer, onError) {
   renderer.debug.onShaderError = (gl, program, vs, fs) => {
     const log = (gl.getShaderInfoLog(fs) || '') + (gl.getShaderInfoLog(vs) || '') + (gl.getProgramInfoLog(program) || '');
-    onError(log.trim().split('\n').slice(0, 6).join('\n') || 'Shader failed to link.');
+    const lines = log.trim().split('\n').filter(Boolean);
+    // errors first: drivers list warnings (often dozens) before the line that actually failed
+    const errors = lines.filter((l) => /error/i.test(l));
+    const shown = (errors.length ? errors : lines).slice(0, 6);
+    if (lines.length > shown.length) shown.push(`(${lines.length - shown.length} more lines in the browser console)`);
+    console.warn('Shader compile log:\n' + log);
+    onError(shown.join('\n') || 'Shader failed to link.');
   };
 }
 

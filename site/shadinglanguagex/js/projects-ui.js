@@ -9,6 +9,7 @@ import { api } from './api.js';
 import { toast } from './log.js';
 import { initImagesUI, loadImagesFor, currentFiles } from './images-ui.js';
 import { putFile, deleteAllFiles } from './files.js';
+import { deleteLocalPreview } from './local-previews.js';
 import { applyView, lastView, onViewChange } from './preview.js';
 
 const NEW_PROJECT_SRC = '// New project. Declare a material to see it on the preview.\n\nsurfaceshader surface = standard_surface();\nsurface.base_color = color3{0.8, 0.3, 0.2};\n\nmaterial mat = surfacematerial(surface);\n';
@@ -138,7 +139,8 @@ function bindHeader() {
   sel.addEventListener('change', () => {
     const p = PRESETS.find(([n]) => n === sel.value);
     sel.value = '';
-    if (p) newProject(p[0].replace(/\.mxsl$/, ''), p[1]);
+    // an example can name the view it is made for (e.g. Screen); otherwise the last one picked
+    if (p) { const proj = newProject(p[0].replace(/\.mxsl$/, ''), p[1], p[2] ? { ...lastView(), ...p[2] } : null); if (p[2]) applyView(proj.view, { persist: false }); }
   });
 }
 
@@ -159,6 +161,7 @@ async function deleteCurrent() {
   });
   if (answer !== 'ok') return;
   await deleteAllFiles(p.id).catch(() => {});
+  await deleteLocalPreview(p.id);
   local.remove(p.id);
   if (!local.list.length) local.add('untitled', NEW_PROJECT_SRC);
   openLocal(local.sorted()[0].id);

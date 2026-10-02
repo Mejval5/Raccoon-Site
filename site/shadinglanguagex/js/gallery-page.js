@@ -10,6 +10,7 @@ import { api } from './api.js';
 import { local } from './projects.js';
 import { createPool } from './render-pool.js';
 import { listFiles, putFile } from './files.js';
+import { getLocalPreview, renderLocalPreview, previewSig } from './local-previews.js';
 
 const THUMB = 256, FRAMES = 24, FPS = 16;
 const LIVE_RENDER_LIMIT_MS = 20000;
@@ -57,7 +58,7 @@ function makeCard(item) {
   el.className = 'gcard';
   const openHref = item.local ? `../?p=${encodeURIComponent(item.id)}` : `../?g=${encodeURIComponent(item.id)}`;
   el.innerHTML = `
-    <a class="thumb" href="${openHref}" aria-label="Open ${esc(item.name)} in the editor"><canvas width="${THUMB}" height="${THUMB}"></canvas><span class="tstat">${item.thumb ? 'loading preview…' : 'no stored preview'}</span></a>
+    <a class="thumb" href="${openHref}" aria-label="Open ${esc(item.name)} in the editor"><canvas width="${THUMB}" height="${THUMB}"></canvas><span class="tstat">${item.thumb || item.local ? 'loading preview…' : 'no stored preview'}</span></a>
     <div class="gbody">
       <div class="gname" title="${esc(item.name)}">${esc(item.name)}</div>
       <div class="gmeta">${item.local ? 'your project' : esc(item.author)} · ${ago(item.updated)}${item.nodes ? ` · ${item.nodes} nodes` : ''}${!item.local && item.mine ? ' <span class="badge mine">yours</span>' : ''}</div>
@@ -65,11 +66,11 @@ function makeCard(item) {
     <div class="gacts">
       <a class="btn" href="${openHref}">${item.local || item.mine ? 'Edit' : 'Open'}</a>
       ${item.local ? '' : '<button class="remix">Remix</button>'}
-      ${item.thumb || !supported ? '' : '<button class="render" title="Compile and render this shader here, on a render thread">Render preview</button>'}
+      ${item.thumb || item.local || !supported ? '' : '<button class="render" title="Compile and render this shader here, on a render thread">Render preview</button>'}
     </div>`;
   // same program with other images renders differently, so the images are part of the key
   const imagesKey = item.local ? (item.filesSig || '') : JSON.stringify((item.files || []).map((f) => [f.name, f.v]));
-  const hash = item.thumb ? `thumb:${item.id}:${item.thumb.v}` : hashStr(`${item.src}|${imagesKey}`);
+  const hash = item.thumb ? `thumb:${item.id}:${item.thumb.v}` : item.local ? `local:${item.id}:${previewSig(item)}` : hashStr(`${item.src}|${imagesKey}`);
   const card = { el, item, key: item.key, canvas: el.querySelector('canvas'), stat: el.querySelector('.tstat'), hash, pending: false, live: false };
   card.ctx = card.canvas.getContext('2d');
   el.querySelector('.render')?.addEventListener('click', async (e) => {
@@ -98,17 +99,54 @@ function showResult(card, r) {
   if (r.ok) {
     const s = fmtStats(r);
     card.el.classList.remove('bad');
-    card.stat.textContent = s.text;
-    card.el.querySelector('.thumb').title = s.title;
+    card.stat.textContent = '';
+    card.stat.hidden = true; // the picture speaks for itself; details are in the console
+    if (!card.logged) { card.logged = true; console.info(`[gallery] ${card.item.name}: ${s.text}${s.title ? ` (${s.title.replace(/\n/g, ', ')})` : ''}`); }
     drawFrame(card, gv.frame);
     return;
   }
+  card.stat.hidden = false;
   card.el.classList.add('bad');
   card.ctx.clearRect(0, 0, THUMB, THUMB);
   const why = { compile: 'does not compile', shader: 'shader generation failed', gpu: 'the GPU rejected the shader', empty: 'nothing to preview', crash: 'render thread crashed' }[r.stage] || 'failed';
   card.stat.textContent = r.error ? `${why}: ${r.error.slice(0, 160)}` : why;
 }
-// A stored preview: one sprite strip, frames side by side, cut into one bitmap per frame.
+// A sprite strip (frames side by side) cut into one bitmap per frame.
+async function stripFrames(blob, n) {
+  const strip = await createImageBitmap(blob);
+  const w = strip.width / n;
+  const frames = await Promise.all(Array.from({ length: n }, (_, i) => createImageBitmap(strip, Math.round(i * w), 0, Math.round(w), strip.height)));
+  strip.close();
+  return frames;
+}
+function showFrames(card, frames) {
+  const old = cache.get(card.hash);
+  if (old?.frames) for (const f of old.frames) f.close();
+  cache.set(card.hash, { ok: true, stored: true, frames, total: frames.length, nodes: card.item.nodes });
+  showResult(card, cache.get(card.hash));
+  if (!gv.visible.has(card.key)) evict(card);
+}
+
+// Your own project: its preview saved in this browser, rendered here when missing or stale.
+async function loadLocal(card) {
+  if (card.pending) return;
+  card.pending = true;
+  const p = card.item;
+  try {
+    const saved = await getLocalPreview(p.id);
+    if (saved) showFrames(card, await stripFrames(saved.blob, saved.frames));
+    if (!saved || saved.sig !== previewSig(p)) {
+      if (!saved) card.stat.textContent = 'rendering a preview…';
+      const rec = await renderLocalPreview(p, p.view || null);
+      showFrames(card, await stripFrames(rec.blob, rec.frames));
+    }
+  } catch (e) {
+    card.stat.hidden = false;
+    card.stat.textContent = `no preview: ${e.message}`;
+  } finally { card.pending = false; animate(); }
+}
+
+// A stored preview of a shared entry.
 async function loadStored(card) {
   if (card.pending) return;
   card.pending = true;
@@ -135,6 +173,7 @@ function request(card) {
   if (r && (!r.ok || r.frames.length === (r.total || FRAMES))) { showResult(card, r); return; }
   if (r?.frames?.length) drawFrame(card, 0); // evicted to one frame: show it while the rest reloads
   if (card.item.thumb) { loadStored(card); return; }
+  if (card.item.local) { loadLocal(card); return; }
   if (!card.live || !supported || pool.dead) return; // no stored preview: render only when asked
   if (card.pending) return;
   card.pending = true;
@@ -175,7 +214,7 @@ function onIntersect(entries) {
     const card = gv.cards.get(e.target.dataset.key);
     if (!card) continue;
     if (e.isIntersecting) { gv.visible.add(card.key); request(card); }
-    else { gv.visible.delete(card.key); if (card.pending && !card.item.thumb) pool.cancel(card.hash); else evict(card); }
+    else { gv.visible.delete(card.key); if (card.pending && !card.item.thumb && !card.item.local) pool.cancel(card.hash); else evict(card); }
   }
   renderThreads();
   animate();

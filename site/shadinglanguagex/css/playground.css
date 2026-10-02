@@ -92,8 +92,6 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gr
 .seg button { border: 0; border-radius: 0; background: transparent; color: #aeb7c7; padding: 4px 10px; font-size: 13px; }
 .seg button + button { border-left: 1px solid rgba(255,255,255,.12); }
 .seg button[aria-pressed="true"] { background: rgba(227,179,65,.92); color: #1b1608; font-weight: 600; }
-.pv-status { position: absolute; left: 0; bottom: 0; right: 0; padding: 22px 12px 9px; color: #c3cad6; font: 12px/1.4 var(--mono); pointer-events: none; background: linear-gradient(transparent, rgba(8,10,14,.82)); }
-.pv-status:empty { display: none; }
 .readout { grid-column: 1 / -1; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); background: var(--panel); }
 .graph { padding: 10px 14px 12px; border-right: 1px solid var(--line); min-width: 0; }
 .graph-top { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -204,3 +202,5 @@ dialog code { font: 12px var(--mono); background: var(--sunk); padding: 1px 4px;
 /* Screen mode: nothing to orbit, so Environment and Spin do not apply */
 .view.screen-mode canvas { cursor: default; }
 .view.screen-mode .pv-bar .check:has(input:disabled) { opacity: .45; }
+
+.log .busy { color: var(--accent); }

@@ -4,6 +4,7 @@
 // and new projects start with the last one picked.
 import MaterialX from '../lib/JsMaterialXGenShader.js';
 import { $, libFile, readJson, storeSet } from './util.js';
+import { logStatus } from './log.js';
 import { THREE, mxMsg, loadEnvironment, makeChecker, createGenerator, generateShader, createMaterial, makeUniformUpdater, listTargets, captureShaderErrors, makeTextures, disposeTextures, textureResolver, VIEW_GEOS, cleanView, makeViewGeometry, makeScreenCamera, orbitCamera, BACKDROP } from './mx-shader.js';
 
 export const pv = {
@@ -18,7 +19,9 @@ const pvMsg = (text, isErr = false) => {
   el.textContent = text || '';
   el.classList.toggle('err', isErr);
 };
-const pvStatus = (text) => { $('pv-status').textContent = text; };
+// Preview details go to the log panel, not over the picture; a running GPU build is yellow.
+let lastStatus = '';
+const pvStatus = (text) => { lastStatus = text; logStatus('preview', text, /compiling shader|building/i.test(text) ? 'busy' : 'm'); };
 
 function buildGeometries() {
   pv.geos = Object.fromEntries(VIEW_GEOS.map((g) => [g, makeViewGeometry(g)]));
@@ -162,7 +165,7 @@ export async function setPreviewImages(files) {
 }
 async function updatePreview(xml) {
   const m = pv.mx;
-  if (xml === lastPreviewXml) return;
+  if (xml === lastPreviewXml) { if (lastStatus) pvStatus(lastStatus); return; } // the compile result cleared the log
   lastPreviewXml = xml;
   const sel = $('pv-target');
   const prevKey = sel.value;

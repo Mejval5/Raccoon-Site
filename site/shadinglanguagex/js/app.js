@@ -1,13 +1,14 @@
 // Editor page entry: wires the editors, the compiler and the preview together.
 import { highlightMxsl, highlightXml } from './highlight.js';
 import { Editor } from './editor.js';
-import { log, clearLog } from './log.js';
+import { log, clearLog, logStatus } from './log.js';
 import { renderGraph } from './graph.js';
 import { $, storeGet, storeSet, lineOf, errText } from './util.js';
 import { engine } from './engine.js';
-import { pv, initPreview, schedulePreview, resizePreview } from './preview.js';
+import { pv, initPreview, schedulePreview, resizePreview, getView } from './preview.js';
 import { cur } from './projects.js';
-import { initProjectsUI } from './projects-ui.js';
+import { initProjectsUI, getViewing } from './projects-ui.js';
+import { scheduleLocalPreview } from './local-previews.js';
 import { initShare } from './share.js';
 
 const src = new Editor($('ed-src'), highlightMxsl);
@@ -30,12 +31,16 @@ function doCompile(manual) {
   setBusy(true);
   if (!inFlight) pump();
 }
-function setBusy(on) { $('compile').textContent = on ? 'Compiling...' : 'Compile ->'; }
+function setBusy(on) {
+  $('compile').textContent = on ? 'Compiling...' : 'Compile ->';
+  logStatus('compile', on ? 'Compiling…' : '', 'busy');
+}
 async function pump() {
   if (!queued) { setBusy(false); return; }
   const job = queued;
   queued = null;
   inFlight = true;
+  logStatus('compile', 'Compiling…', 'busy'); // the previous result may have cleared the log
   try {
     const r = await engine.call('compile', { src: job.src, opts: job.opts });
     if (job.seq === compileSeq) showCompiled(r);
@@ -46,6 +51,8 @@ async function pump() {
   pump();
 }
 function showCompiled(r) {
+  // once the code has been still for a few seconds, refresh this project's saved preview
+  scheduleLocalPreview(() => (getViewing() ? null : cur()), getView);
   clearLog();
   src.setBadLine(0);
   out.setBadLine(0);

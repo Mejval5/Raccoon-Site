@@ -19,6 +19,18 @@ export function log(text, cls = 'm', line = 0, editor = null) {
 }
 export const clearLog = () => { if (logEl) logEl.textContent = ''; };
 
+// One line per key that is replaced rather than appended: "compiling…" while work runs
+// (cls 'busy', shown in yellow), then the outcome. text = '' removes the line.
+export function logStatus(key, text, cls = 'm') {
+  if (!logEl) return;
+  let d = logEl.querySelector(`[data-status="${key}"]`);
+  if (!text) { d?.remove(); return; }
+  if (!d) { d = document.createElement('div'); d.dataset.status = key; logEl.appendChild(d); }
+  d.className = cls;
+  d.textContent = text;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
 let toastTimer = 0;
 export function toast(text, isErr = false) {
   const t = document.getElementById('toast');
