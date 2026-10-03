@@ -20,6 +20,39 @@
   color: var(--sv-ink-2);
 }
 
+/* ---------- Vertical / horizontal toggle ---------- */
+.dary-view {
+  display: inline-flex;
+  margin: 14px auto 0;
+  padding: 3px;
+  border: 1px solid rgba(226, 180, 95, 0.6);
+  border-radius: 999px;
+  background: #fbf6ec;
+}
+.dary-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sv-ink-2);
+  font-family: var(--font-label);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dary-view-btn svg { width: 16px; height: 16px; }
+.dary-view-btn:hover { color: var(--sv-ink); }
+.dary-view-btn[aria-pressed="true"] {
+  background: var(--sv-gold-deep);
+  color: var(--sv-paper);
+}
+.dary-view-btn:focus-visible { outline: 2px solid var(--sv-gold); outline-offset: 2px; }
+
 /* ---------- The window the path scrolls in ---------- */
 .dary-frame {
   position: relative;

@@ -417,13 +417,85 @@
     root = document.getElementById('dary-meter');
     scroller = document.getElementById('dary-path');
     if (!root || !scroller) return false;
+    // ?darypath= wins, then the guest's own pick, then the page's, then ORIENTATION.
     var param = (window.location.search.match(/[?&]darypath=(vertical|horizontal)/) || [])[1];
-    orient = param || root.getAttribute('data-orientation') || ORIENTATION;
+    var saved = null;
+    try { saved = window.localStorage.getItem(VIEW_KEY); } catch (e) { /* storage blocked */ }
+    orient = param || (LAYOUT[saved] ? saved : null) || root.getAttribute('data-orientation') || ORIENTATION;
     if (!LAYOUT[orient]) orient = 'vertical';
-    root.setAttribute('data-orientation', orient);
-    geo = makeGeometry();
 
     var frame = scroller.parentElement; // .dary-frame, position: relative
+    createViewToggle(frame);
+
+    backBtn = el('button', 'dary-back', frame);
+    backBtn.type = 'button';
+    backBtn.hidden = true;
+    backBtn.addEventListener('click', function () { scrollToNow(true); });
+
+    toastEl = el('div', 'dary-toast', frame);
+    toastEl.setAttribute('role', 'status');
+    toastEl.setAttribute('aria-live', 'polite');
+    toastEl.hidden = true;
+
+    if (DEBUG_AMOUNTS) {
+      debugEl = el('span', 'dary-debug-total', frame);
+      debugEl.setAttribute('aria-hidden', 'true');
+    }
+
+    statusEl = el('p', 'dary-sr', frame);
+    statusEl.setAttribute('aria-live', 'polite');
+
+    scroller.addEventListener('scroll', updateBackButton, { passive: true });
+    buildMap();
+    return true;
+  }
+
+  // ---- Vertical / horizontal toggle ------------------------------------------------
+  var VIEW_KEY = 'svatba-dary-view';
+  var VIEW_ICONS = {
+    vertical: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20 C7 17 17 13 12 9 V4"/><path d="M8.5 7 L12 3.5 L15.5 7"/></svg>',
+    horizontal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12 C7 7 11 17 15 12 H20"/><path d="M17 8.5 L20.5 12 L17 15.5"/></svg>'
+  };
+  var viewBtns = {};
+  function createViewToggle(frame) {
+    var wrap = document.createElement('div');
+    wrap.className = 'dary-view';
+    wrap.setAttribute('role', 'group');
+    frame.parentElement.insertBefore(wrap, frame);
+    ['vertical', 'horizontal'].forEach(function (o) {
+      var b = el('button', 'dary-view-btn', wrap);
+      b.type = 'button';
+      b.innerHTML = VIEW_ICONS[o] + '<span></span>';
+      b.addEventListener('click', function () { setOrientation(o); });
+      viewBtns[o] = b;
+    });
+  }
+  function renderViewToggle() {
+    viewBtns.vertical.parentElement.setAttribute('aria-label', t('dary.view.label'));
+    ['vertical', 'horizontal'].forEach(function (o) {
+      viewBtns[o].querySelector('span').textContent = t('dary.view.' + o);
+      viewBtns[o].setAttribute('aria-pressed', String(o === orient));
+    });
+  }
+  function setOrientation(o) {
+    if (!LAYOUT[o] || o === orient) return;
+    try { window.localStorage.setItem(VIEW_KEY, o); } catch (e) { /* only this visit then */ }
+    cancelRealAnim(); // a walk in progress jumps to its end
+    shownAmount = realAmount;
+    orient = o;
+    scroller.scrollTop = 0;
+    scroller.scrollLeft = 0;
+    map.remove();
+    buildMap();
+    renderTexts();
+    scrollToNow(false);
+    updateBackButton();
+  }
+
+  // The map itself: rebuilt from scratch when the orientation changes.
+  function buildMap() {
+    root.setAttribute('data-orientation', orient);
+    geo = makeGeometry();
     map = el('div', 'dary-map', scroller);
     if (orient === 'vertical') map.style.height = geo.length + 'px';
     else map.style.width = geo.length + 'px';
@@ -471,27 +543,6 @@
     avatarEl = el('span', 'dary-avatar', map);
     avatarEl.innerHTML = APRICOT;
     avatarEl.setAttribute('aria-hidden', 'true');
-
-    backBtn = el('button', 'dary-back', frame);
-    backBtn.type = 'button';
-    backBtn.hidden = true;
-    backBtn.addEventListener('click', function () { scrollToNow(true); });
-
-    toastEl = el('div', 'dary-toast', frame);
-    toastEl.setAttribute('role', 'status');
-    toastEl.setAttribute('aria-live', 'polite');
-    toastEl.hidden = true;
-
-    if (DEBUG_AMOUNTS) {
-      debugEl = el('span', 'dary-debug-total', frame);
-      debugEl.setAttribute('aria-hidden', 'true');
-    }
-
-    statusEl = el('p', 'dary-sr', frame);
-    statusEl.setAttribute('aria-live', 'polite');
-
-    scroller.addEventListener('scroll', updateBackButton, { passive: true });
-    return true;
   }
 
   // Texts that depend on the language.
@@ -506,6 +557,7 @@
     map.querySelector('.dary-end').textContent = t('dary.beyond');
     scroller.setAttribute('aria-label', t('dary.path.label'));
     backBtn.textContent = t('dary.backToNow');
+    renderViewToggle();
     shownDone = -1; // refresh the tags and the status line
     render({ silent: true });
   }
