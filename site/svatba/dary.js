@@ -1,50 +1,57 @@
 /*
- * "Gift milestone meter" — a progress meter for the wedding invitation.
+ * "Gift path" — the wedding gift meter, drawn as a Candy Crush style level map.
  *
- * Guests pay into a shared account by QR code; a scheduled function will
- * later read the bank API and write the real total into the database. That
- * pipeline does not exist yet: `loadTotal()` is the single seam it will
- * plug into (see the comment above it), and for now it resolves to
- * DEMO_TOTAL. Everything downstream — the pin on the track, the big amount,
- * which milestones are lit, the panel list — is driven by that one number.
+ * Guests pay into a shared account by QR code; a scheduled function reads the
+ * bank and /api/dary returns the total. That one number decides how far along
+ * the path we are: levels below it are done, the next one is highlighted, the
+ * rest can be explored by scrolling. Money itself is never shown to guests;
+ * DEBUG_AMOUNTS adds small grey amounts for checking the curve and is meant to
+ * be switched off.
  *
- * Two interaction modes, chosen by the MODE constant below:
- *   - 'preview'  (default today): the apricot starts on the real total.
- *     Guests can drag/tap/key it further right to preview what more money
- *     would unlock. On release it glides back to the real total.
- *   - 'readonly' (future): the apricot just sits on the real total, no
- *     dragging. Hover/tap tooltips on the milestones still work in both
- *     modes.
+ * The path is laid out along a main axis (the direction of progress) and a
+ * cross axis (the wiggle). ORIENTATION picks how those map to the screen:
+ *   - 'vertical':   level 1 at the bottom, climbing upwards; scrolls up/down.
+ *   - 'horizontal': level 1 on the left, going right; scrolls sideways.
+ * A page can override it with data-orientation on #dary-meter, and
+ * ?darypath=vertical|horizontal does the same for a quick look.
  *
  * Everything here is self-contained: it reads window.SVATBA_I18N (defined in
  * svatba-i18n.js) and the current <html lang> for translated strings, and
  * never touches svatba.js or the RSVP/captcha code.
  *
  * Layout is never measured at load time (the whole page is display:none
- * until the invite token gate opens) — sizes are only read lazily, inside
- * pointer/tooltip handlers and a ResizeObserver callback.
+ * until the invite token gate opens). Positions are CSS (px along the main
+ * axis, % across it); the only reads of box sizes happen when scrolling the
+ * window, from a ResizeObserver or a scroll/click handler.
  */
 (function () {
   'use strict';
 
-  // ---- Mode + real total ----------------------------------------------------
-  // 'preview' (guests can drag to preview a bigger total) or 'readonly' (once
-  // dragging no longer makes sense — e.g. after the wedding). Flip this one
-  // constant to switch behaviour everywhere.
-  var MODE = 'preview';
+  // ---- Settings ---------------------------------------------------------------
+  var ORIENTATION = 'vertical';
+  // Small grey amounts next to each level plus the raw total in a corner, for
+  // checking the curve. Set to false and no amount appears anywhere.
+  var DEBUG_AMOUNTS = true;
 
-  // Placeholder for the real, shared total until the bank-reading scheduled
-  // function exists. loadTotal() is the one seam that will change: swap its
-  // body for a fetch to a Firestore-backed endpoint (e.g.
-  // `/svatba/api/dary-total`) that returns the latest amount written by that
-  // function. Everything else in this file only ever calls loadTotal() and
-  // setRealTotal() — nothing else needs to know where the number comes from.
+  var LEVEL_COUNT = 50;
+  var MAX_AMOUNT = 2500000;
+  // Level amounts follow MAX_AMOUNT * (i / LEVEL_COUNT) ^ CURVE, rounded to
+  // friendly numbers: >1 makes early steps small and later ones bigger.
+  var CURVE = 1.6;
+
+  // Distances along the main axis are px, across it % of the window.
+  // `focus` is where the next level sits in the window, as a fraction along
+  // the direction of progress (0 = the level 1 end, 1 = the far end).
+  var LAYOUT = {
+    vertical: { step: 118, padStart: 64, padEnd: 130, amp: 30, focus: 0.58 },
+    horizontal: { step: 176, padStart: 70, padEnd: 210, amp: 24, focus: 0.5 }
+  };
+
   var DEMO_TOTAL = 0;
   // On localhost there is no hosting rewrite for /api/dary, so stay on
   // DEMO_TOTAL there (driven only by the test hooks below). Everywhere else,
-  // ask the backend; on any failure (not deployed yet, offline, a 403, ...)
-  // resolve to null so the caller can silently keep the last known total —
-  // this never throws and never logs.
+  // ask the backend; on any failure (offline, a 403, ...) resolve to null so
+  // the caller silently keeps the last known total. Never throws, never logs.
   function loadTotal() {
     var host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
@@ -65,10 +72,7 @@
   var GIFT_IBAN = '';
   var GIFT_ACCOUNT_LABEL = '';
 
-  // ---- Milestone data ---------------------------------------------------------
-  // Amounts in CZK. Evenly spaced along the track: milestone i sits at
-  // (i + 1) / (N + 1) of the track width, leaving a small tail at the end
-  // for the "beyond the last milestone" range.
+  // ---- Icons ------------------------------------------------------------------
   var ICON = {
     // cat head with a small treat
     catTreat:
@@ -227,193 +231,417 @@
       '</svg>'
   };
 
-  // Amounts in CZK. `major` marks the six milestones whose amount also gets a
-  // small label on the track itself (desktop only) — every milestone, major
-  // or not, still shows its amount in the hover/tap card and the list below.
-  var MILESTONES = [
-    { amount: 1000, key: 'm1', icon: ICON.scratchingPost },
-    { amount: 2000, key: 'm2', icon: ICON.catTreat },
-    { amount: 3000, key: 'm3', icon: ICON.d20Die },
-    { amount: 5000, key: 'm4', icon: ICON.resinDrop, major: true },
-    { amount: 10000, key: 'm5', icon: ICON.threeCats },
-    { amount: 20000, key: 'm6', icon: ICON.lawnmower },
-    { amount: 35000, key: 'm7', icon: ICON.workshop },
-    { amount: 50000, key: 'm8', icon: ICON.waveSun, major: true },
-    { amount: 65000, key: 'm9', icon: ICON.robotVacuum },
-    { amount: 80000, key: 'm10', icon: ICON.apricotTree },
-    { amount: 120000, key: 'm11', icon: ICON.plane },
-    { amount: 200000, key: 'm12', icon: ICON.houseDoor, major: true },
-    { amount: 300000, key: 'm13', icon: ICON.catCrown },
-    { amount: 400000, key: 'm14', icon: ICON.hotTub },
-    { amount: 500000, key: 'm15', icon: ICON.champagneToast, major: true },
-    { amount: 750000, key: 'm16', icon: ICON.wallBricks },
-    { amount: 1000000, key: 'm17', icon: ICON.grapes, major: true },
-    { amount: 1200000, key: 'm18', icon: ICON.roof },
-    { amount: 1600000, key: 'm19', icon: ICON.garage },
-    { amount: 2000000, key: 'm20', icon: ICON.houseHeart, major: true }
+  // ---- Levels -----------------------------------------------------------------
+  // One icon per level; texts are dary.l<N>.title / .text in svatba-i18n.js.
+  var LEVEL_ICONS = [
+    'scratchingPost', 'catTreat', 'd20Die', 'resinDrop', 'threeCats', 'lawnmower', 'workshop', 'waveSun', 'robotVacuum', 'apricotTree',
+    'plane', 'houseDoor', 'catCrown', 'catTreat', 'd20Die', 'hotTub', 'houseDoor', 'champagneToast', 'catCrown', 'workshop',
+    'apricotTree', 'plane', 'lawnmower', 'wallBricks', 'threeCats', 'resinDrop', 'grapes', 'grapes', 'apricotTree', 'hotTub',
+    'lawnmower', 'roof', 'threeCats', 'waveSun', 'robotVacuum', 'apricotTree', 'd20Die', 'garage', 'houseDoor', 'threeCats',
+    'waveSun', 'roof', 'houseHeart', 'catCrown', 'houseDoor', 'plane', 'grapes', 'grapes', 'catTreat', 'houseHeart'
   ];
 
-  // Breakpoints for the piecewise-linear position <-> amount mapping.
-  // Node i (0-based) sits at pct = (i + 1) * SEG_PCT; BREAKPOINTS[0] is the
-  // left end (0 CZK), BREAKPOINTS[1..N] are the milestone amounts,
-  // BREAKPOINTS[N + 1] is the "beyond the last milestone" amount at the
-  // right end of the track.
-  var BREAKPOINTS = [0].concat(MILESTONES.map(function (m) { return m.amount; })).concat([2500000]);
-  var MAX_AMOUNT = 2500000;
-  var SEGMENTS = MILESTONES.length + 1;
-  var SEG_PCT = 100 / SEGMENTS;
+  function niceRound(x) {
+    var unit = x < 10000 ? 1000 : x < 100000 ? 5000 : x < 1000000 ? 10000 : 50000;
+    return Math.max(unit, Math.round(x / unit) * unit);
+  }
+  var LEVELS = [];
+  (function () {
+    var prev = 0;
+    for (var i = 1; i <= LEVEL_COUNT; i++) {
+      var amount = i === LEVEL_COUNT ? MAX_AMOUNT : niceRound(MAX_AMOUNT * Math.pow(i / LEVEL_COUNT, CURVE));
+      if (amount <= prev) amount = prev + 1000; // keep it strictly increasing whatever CURVE is
+      LEVELS.push({ n: i, amount: amount, icon: ICON[LEVEL_ICONS[i - 1]] || ICON.catTreat });
+      prev = amount;
+    }
+  })();
 
-  // ---- State ---------------------------------------------------------------
-  var root, track, trackWrap, fill, handle, nodesWrap, amountValueEl, previewTagEl, panelEl, pinEl, tooltipEl, chipEl;
-  var displayPct = 0;     // what the handle/fill/nodes currently show
-  var realPct = 0;        // where the real total sits on the track
+  // How far a total gets us: `done` levels reached, `frac` of the way to the next.
+  function progressFor(amount) {
+    var done = 0;
+    while (done < LEVELS.length && amount >= LEVELS[done].amount) done++;
+    if (done === LEVELS.length) return { done: done, frac: 0 };
+    var from = done ? LEVELS[done - 1].amount : 0;
+    var to = LEVELS[done].amount;
+    return { done: done, frac: Math.max(0, Math.min(1, (amount - from) / (to - from))) };
+  }
+
+  // ---- State ------------------------------------------------------------------
+  var root, scroller, map, levelsEl, svgEl, trailEl, doneEl, avatarEl, backBtn, statusEl, debugEl, toastEl, toastTimer = null;
+  var orient = ORIENTATION, geo;
+  var shownAmount = 0;     // what the path currently shows (animates towards realAmount)
   var realAmount = 0;
-  var isPreviewing = false;
-  var litState = [];
-  var dragging = false;
-  var snapbackRaf = null;
-  var realAnimRaf = null;  // rAF handle for the live-increase pin/fill animation
+  var shownDone = -1;
+  var realAnimRaf = null;
   var hasLoadedTotal = false;
+  var hasScrolledToNow = false;
   var pollTimer = null;
-  var toastEl, toastTimer = null;
 
-  // ---- i18n helpers ---------------------------------------------------------
+  // ---- i18n helpers -------------------------------------------------------------
   function currentLang() {
     return document.documentElement.lang || 'cs';
   }
   function dict(lang) {
     return (window.SVATBA_I18N && window.SVATBA_I18N[lang]) || {};
   }
-  function t(key) {
-    var lang = currentLang();
-    var d = dict(lang);
-    if (d[key] != null) return d[key];
-    var cs = dict('cs');
-    return cs[key] != null ? cs[key] : key;
+  function t(key, vars) {
+    var d = dict(currentLang());
+    var s = d[key] != null ? d[key] : dict('cs')[key] != null ? dict('cs')[key] : key;
+    if (vars) s = s.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : m; });
+    return s;
   }
   function localeTag(lang) {
     if (lang === 'en') return 'en-GB';
     if (lang === 'fr') return 'fr-FR';
     return 'cs-CZ';
   }
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-  function prefersReducedMotion() {
-    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }
-  function isMobileLayout() {
-    return !!(window.matchMedia && window.matchMedia('(max-width: 699px)').matches);
-  }
-
-  function roundToHundred(amount) {
-    return Math.round(amount / 100) * 100;
-  }
-  // The big amount: digits in the display serif, the currency (Kč / CZK) set small in the label font.
-  // Cormorant's "č" carries a very tall floating háček that looks broken at display size.
-  function renderAmount(el, amount) {
-    var rounded = roundToHundred(amount);
-    var parts;
-    try {
-      parts = new Intl.NumberFormat(localeTag(currentLang()), { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).formatToParts(rounded);
-    } catch (e) {
-      parts = [{ type: 'integer', value: String(rounded) }, { type: 'literal', value: ' ' }, { type: 'currency', value: 'Kč' }];
-    }
-    el.textContent = '';
-    parts.forEach(function (p) {
-      if (p.type === 'currency') {
-        var cur = document.createElement('span');
-        cur.className = 'dary-amount-currency';
-        cur.textContent = p.value;
-        el.appendChild(cur);
-      } else {
-        el.appendChild(document.createTextNode(p.value));
-      }
-    });
-  }
   function formatAmount(amount) {
-    var rounded = roundToHundred(amount);
+    var rounded = Math.round(amount / 100) * 100;
     try {
-      return new Intl.NumberFormat(localeTag(currentLang()), {
-        style: 'currency',
-        currency: 'CZK',
-        maximumFractionDigits: 0
-      }).format(rounded);
+      return new Intl.NumberFormat(localeTag(currentLang()), { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(rounded);
     } catch (e) {
       return rounded + ' Kč';
     }
   }
-
-  // ---- Position <-> amount mapping -----------------------------------------
-  function pctToAmount(pct) {
-    pct = Math.max(0, Math.min(100, pct));
-    var idx = Math.min(SEGMENTS - 1, Math.floor(pct / SEG_PCT));
-    var p0 = idx * SEG_PCT;
-    var p1 = p0 + SEG_PCT;
-    var a0 = BREAKPOINTS[idx];
-    var a1 = BREAKPOINTS[idx + 1];
-    var frac = p1 === p0 ? 0 : (pct - p0) / (p1 - p0);
-    return a0 + (a1 - a0) * frac;
+  function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
-  function amountToPct(amount) {
-    amount = Math.max(0, Math.min(MAX_AMOUNT, amount));
-    for (var i = 0; i < SEGMENTS; i++) {
-      var a0 = BREAKPOINTS[i];
-      var a1 = BREAKPOINTS[i + 1];
-      if (amount <= a1 || i === SEGMENTS - 1) {
-        var frac = a1 === a0 ? 0 : (amount - a0) / (a1 - a0);
-        return i * SEG_PCT + frac * SEG_PCT;
+
+  // ---- Geometry -------------------------------------------------------------------
+  // Point k: 0 is the start, 1..LEVEL_COUNT the levels. `s` runs along the main
+  // axis in px, `c` across it in % (a gentle zigzag that never sits dead centre,
+  // so every label has room on one side).
+  function makeGeometry() {
+    var L = LAYOUT[orient];
+    var length = L.padStart + LEVEL_COUNT * L.step + L.padEnd;
+    var pts = [];
+    for (var k = 0; k <= LEVEL_COUNT; k++) {
+      pts.push({ s: L.padStart + k * L.step, c: 50 + L.amp * Math.sin((k + 0.5) * Math.PI / 3) });
+    }
+    return { step: L.step, length: length, pts: pts };
+  }
+  // (s, c) -> SVG user units. Vertical: x = c, y grows downwards so level 1 is at the bottom.
+  function toXY(s, c) {
+    return orient === 'vertical' ? [c, geo.length - s] : [s, c];
+  }
+  function fmt(p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }
+  // The cubic between points k and k+1, in (s, c): flat tangents along the main axis.
+  function bezier(k) {
+    var a = geo.pts[k], b = geo.pts[k + 1], h = geo.step / 2;
+    return [[a.s, a.c], [a.s + h, a.c], [b.s - h, b.c], [b.s, b.c]];
+  }
+  function lerp(p, q, u) { return [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u]; }
+  // First part (0..u) of a cubic, by de Casteljau.
+  function splitBezier(b, u) {
+    var p01 = lerp(b[0], b[1], u), p12 = lerp(b[1], b[2], u), p23 = lerp(b[2], b[3], u);
+    var p012 = lerp(p01, p12, u), p123 = lerp(p12, p23, u);
+    return [b[0], p01, p012, lerp(p012, p123, u)];
+  }
+  function curveTo(b) {
+    return ' C ' + fmt(toXY(b[1][0], b[1][1])) + ', ' + fmt(toXY(b[2][0], b[2][1])) + ', ' + fmt(toXY(b[3][0], b[3][1]));
+  }
+  // Path from the start through `upto` whole segments plus `u` of the next one.
+  function pathD(upto, u) {
+    var p0 = geo.pts[0];
+    var d = 'M ' + fmt(toXY(p0.s, p0.c));
+    for (var k = 0; k < upto && k < LEVEL_COUNT; k++) d += curveTo(bezier(k));
+    if (upto < LEVEL_COUNT && u > 0) d += curveTo(splitBezier(bezier(upto), u));
+    return d;
+  }
+  function positionOf(progress) {
+    if (progress.done >= LEVEL_COUNT) {
+      var last = geo.pts[LEVEL_COUNT];
+      return { s: last.s, c: last.c };
+    }
+    var end = splitBezier(bezier(progress.done), progress.frac)[3];
+    return { s: end[0], c: end[1] };
+  }
+  // Absolutely positions an element's centre (via CSS translate) on (s, c).
+  function place(el, s, c) {
+    if (orient === 'vertical') {
+      el.style.left = c + '%';
+      el.style.top = (geo.length - s) + 'px';
+    } else {
+      el.style.left = s + 'px';
+      el.style.top = c + '%';
+    }
+  }
+  // Labels go on the side of the dot with more room.
+  var DOT_GAP = 26;
+  function placeLabel(el, s, c) {
+    el.className = 'dary-label';
+    if (orient === 'vertical') {
+      el.style.top = (geo.length - s) + 'px';
+      if (c >= 50) {
+        el.classList.add('is-left');
+        el.style.left = '4px';
+        el.style.right = 'calc(' + (100 - c) + '% + ' + DOT_GAP + 'px)';
+      } else {
+        el.classList.add('is-right');
+        el.style.left = 'calc(' + c + '% + ' + DOT_GAP + 'px)';
+        el.style.right = '4px';
+      }
+    } else {
+      el.style.left = s + 'px';
+      if (c < 50) {
+        el.classList.add('is-below');
+        el.style.top = 'calc(' + c + '% + ' + DOT_GAP + 'px)';
+      } else {
+        el.classList.add('is-above');
+        el.style.bottom = 'calc(' + (100 - c) + '% + ' + DOT_GAP + 'px)';
       }
     }
-    return 100;
   }
 
-  // ---- DOM setup -------------------------------------------------------------
+  // ---- DOM ------------------------------------------------------------------------
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var APRICOT =
+    '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<defs><radialGradient id="dary-apricot-grad" cx="35%" cy="30%" r="75%">' +
+    '<stop offset="0%" stop-color="#ffcf8a"></stop><stop offset="55%" stop-color="#f5a55a"></stop><stop offset="100%" stop-color="#e07b39"></stop>' +
+    '</radialGradient></defs>' +
+    '<circle cx="16" cy="17" r="12" fill="url(#dary-apricot-grad)"></circle>' +
+    '<path d="M16,7 C14.5,10 14.5,13 16,16" fill="none" stroke="#c96a30" stroke-width="1" stroke-linecap="round" opacity=".55"></path>' +
+    '<path d="M17,6 C19,3 22.5,2.7 24,4 C22,5 19.5,5.6 17,6 Z" fill="#6f9b52"></path>' +
+    '</svg>';
+  var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5 L10 17 L19 7"/></svg>';
+
+  function el(tag, cls, parent) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
   function createDom() {
     root = document.getElementById('dary-meter');
-    if (!root) return false;
-    track = document.getElementById('dary-track');
-    trackWrap = track ? track.parentElement : null;
-    fill = document.getElementById('dary-track-fill');
-    handle = document.getElementById('dary-handle');
-    nodesWrap = document.getElementById('dary-nodes');
-    amountValueEl = document.getElementById('dary-amount-value');
-    panelEl = document.getElementById('dary-panel');
-    chipEl = root.querySelector('.dary-chip');
-    return !!(track && trackWrap && fill && handle && nodesWrap && amountValueEl && panelEl);
-  }
+    scroller = document.getElementById('dary-path');
+    if (!root || !scroller) return false;
+    var param = (window.location.search.match(/[?&]darypath=(vertical|horizontal)/) || [])[1];
+    orient = param || root.getAttribute('data-orientation') || ORIENTATION;
+    if (!LAYOUT[orient]) orient = 'vertical';
+    root.setAttribute('data-orientation', orient);
+    geo = makeGeometry();
 
-  function createPreviewTag() {
-    var amountWrap = amountValueEl.parentElement; // .dary-amount
-    previewTagEl = document.createElement('span');
-    previewTagEl.className = 'dary-preview-tag';
-    previewTagEl.hidden = true;
-    // Placed right after the big amount, before the "raised" label.
-    amountValueEl.insertAdjacentElement('afterend', previewTagEl);
-  }
+    var frame = scroller.parentElement; // .dary-frame, position: relative
+    map = el('div', 'dary-map', scroller);
+    if (orient === 'vertical') map.style.height = geo.length + 'px';
+    else map.style.width = geo.length + 'px';
 
-  function createPin() {
-    pinEl = document.createElement('div');
-    pinEl.className = 'dary-real-pin';
-    pinEl.setAttribute('aria-hidden', 'true');
-    track.appendChild(pinEl);
-  }
+    svgEl = document.createElementNS(SVG_NS, 'svg');
+    svgEl.setAttribute('class', 'dary-trail');
+    svgEl.setAttribute('aria-hidden', 'true');
+    svgEl.setAttribute('preserveAspectRatio', 'none');
+    svgEl.setAttribute('viewBox', orient === 'vertical' ? '0 0 100 ' + geo.length : '0 0 ' + geo.length + ' 100');
+    trailEl = document.createElementNS(SVG_NS, 'path');
+    trailEl.setAttribute('class', 'dary-trail-todo');
+    trailEl.setAttribute('d', pathD(LEVEL_COUNT, 0));
+    doneEl = document.createElementNS(SVG_NS, 'path');
+    doneEl.setAttribute('class', 'dary-trail-done');
+    svgEl.appendChild(trailEl);
+    svgEl.appendChild(doneEl);
+    map.appendChild(svgEl);
 
-  // The "Právě přibyl dar!" toast, anchored to the big amount. A single
-  // shared element (like the tooltip), shown whenever the real total jumps
-  // up while the page is open.
-  function createToast() {
-    toastEl = document.createElement('div');
-    toastEl.className = 'dary-toast';
+    var start = el('span', 'dary-start', map);
+    place(start, geo.pts[0].s, geo.pts[0].c);
+    start.setAttribute('aria-hidden', 'true');
+
+    levelsEl = el('ol', 'dary-levels', map);
+    LEVELS.forEach(function (lv, i) {
+      var p = geo.pts[i + 1];
+      var li = el('li', 'dary-level is-future', levelsEl);
+      li.setAttribute('data-level', String(lv.n));
+      var dot = el('span', 'dary-dot', li);
+      dot.innerHTML = '<span class="dary-dot-icon">' + lv.icon + '</span><span class="dary-dot-check">' + CHECK + '</span>';
+      place(dot, p.s, p.c);
+      var label = el('div', 'dary-label', li);
+      placeLabel(label, p.s, p.c);
+      var kicker = el('span', 'dary-kicker', label);
+      el('span', 'dary-kicker-level', kicker);
+      el('span', 'dary-tag', kicker);
+      if (DEBUG_AMOUNTS) el('span', 'dary-debug', kicker).textContent = formatAmount(lv.amount);
+      el('span', 'dary-label-title', label);
+      el('span', 'dary-label-text', label);
+    });
+
+    var endCap = el('p', 'dary-end', map);
+    var endPt = geo.pts[LEVEL_COUNT];
+    place(endCap, endPt.s + LAYOUT[orient].padEnd * 0.6, 50);
+
+    avatarEl = el('span', 'dary-avatar', map);
+    avatarEl.innerHTML = APRICOT;
+    avatarEl.setAttribute('aria-hidden', 'true');
+
+    backBtn = el('button', 'dary-back', frame);
+    backBtn.type = 'button';
+    backBtn.hidden = true;
+    backBtn.addEventListener('click', function () { scrollToNow(true); });
+
+    toastEl = el('div', 'dary-toast', frame);
     toastEl.setAttribute('role', 'status');
     toastEl.setAttribute('aria-live', 'polite');
     toastEl.hidden = true;
-    amountValueEl.parentElement.appendChild(toastEl); // .dary-amount (position:relative)
+
+    if (DEBUG_AMOUNTS) {
+      debugEl = el('span', 'dary-debug-total', frame);
+      debugEl.setAttribute('aria-hidden', 'true');
+    }
+
+    statusEl = el('p', 'dary-sr', frame);
+    statusEl.setAttribute('aria-live', 'polite');
+
+    scroller.addEventListener('scroll', updateBackButton, { passive: true });
+    return true;
   }
+
+  // Texts that depend on the language.
+  function renderTexts() {
+    var items = levelsEl.children;
+    for (var i = 0; i < items.length; i++) {
+      var n = i + 1;
+      items[i].querySelector('.dary-kicker-level').textContent = t('dary.level', { n: n });
+      items[i].querySelector('.dary-label-title').textContent = t('dary.l' + n + '.title');
+      items[i].querySelector('.dary-label-text').textContent = t('dary.l' + n + '.text');
+    }
+    map.querySelector('.dary-end').textContent = t('dary.beyond');
+    scroller.setAttribute('aria-label', t('dary.path.label'));
+    backBtn.textContent = t('dary.backToNow');
+    shownDone = -1; // refresh the tags and the status line
+    render({ silent: true });
+  }
+
+  // ---- Drawing the current progress --------------------------------------------------
+  function render(opts) {
+    opts = opts || {};
+    var prog = progressFor(shownAmount);
+    doneEl.setAttribute('d', pathD(prog.done, prog.frac));
+    var pos = positionOf(prog);
+    place(avatarEl, pos.s, pos.c);
+    if (debugEl) debugEl.textContent = formatAmount(realAmount);
+    if (prog.done === shownDone) return;
+
+    var items = levelsEl.children;
+    for (var i = 0; i < items.length; i++) {
+      var li = items[i];
+      var state = i < prog.done ? 'done' : i === prog.done ? 'next' : 'future';
+      var was = li.getAttribute('data-state');
+      if (was === state) continue;
+      li.setAttribute('data-state', state);
+      li.className = 'dary-level is-' + state;
+      li.querySelector('.dary-tag').textContent = state === 'done' ? t('dary.done') : state === 'next' ? t('dary.nextLabel') : '';
+      if (state === 'next') li.setAttribute('aria-current', 'step');
+      else li.removeAttribute('aria-current');
+      if (state === 'done' && was && was !== 'done' && !opts.silent) playLightUp(li);
+    }
+    shownDone = prog.done;
+    statusEl.textContent = prog.done >= LEVEL_COUNT
+      ? t('dary.statusAll', { total: LEVEL_COUNT })
+      : t('dary.status', { done: prog.done, total: LEVEL_COUNT, title: t('dary.l' + (prog.done + 1) + '.title') });
+  }
+
+  function playLightUp(li) {
+    if (prefersReducedMotion()) return;
+    var dot = li.querySelector('.dary-dot');
+    li.classList.remove('is-lighting');
+    void li.offsetWidth; // restart the animation cleanly
+    li.classList.add('is-lighting');
+    var ring = el('span', 'dary-ring', dot);
+    var sparks = [];
+    var sparkCount = 6 + Math.floor(Math.random() * 3);
+    for (var i = 0; i < sparkCount; i++) {
+      var spark = el('span', 'dary-spark', dot);
+      var angle = (Math.PI * 2 * i) / sparkCount + (Math.random() * 0.5 - 0.25);
+      var dist = 16 + Math.random() * 10;
+      spark.style.setProperty('--dx', (Math.cos(angle) * dist).toFixed(1) + 'px');
+      spark.style.setProperty('--dy', (Math.sin(angle) * dist).toFixed(1) + 'px');
+      sparks.push(spark);
+    }
+    window.setTimeout(function () {
+      li.classList.remove('is-lighting');
+      ring.remove();
+      sparks.forEach(function (s) { s.remove(); });
+    }, 650);
+  }
+
+  // ---- Scrolling the window ----------------------------------------------------------
+  // Main-axis position s -> the scroll offset that puts it at FOCUS along the window.
+  function scrollTargetFor(s) {
+    var focus = LAYOUT[orient].focus;
+    if (orient === 'vertical') return geo.length - s - scroller.clientHeight * (1 - focus);
+    return s - scroller.clientWidth * focus;
+  }
+  function nowS() {
+    var prog = progressFor(shownAmount);
+    var k = Math.min(LEVEL_COUNT, prog.done + 1);
+    return geo.pts[k].s; // the next level (or the last one)
+  }
+  function getScroll() { return orient === 'vertical' ? scroller.scrollTop : scroller.scrollLeft; }
+  function setScroll(v) {
+    if (orient === 'vertical') scroller.scrollTop = v;
+    else scroller.scrollLeft = v;
+  }
+  // Our own eased scroll: native smooth scrolling is skipped by some browsers
+  // (and fights the page's scroll-behavior), this always runs.
+  var scrollRaf = null;
+  function animateScroll(target, ms) {
+    if (scrollRaf) cancelAnimationFrame(scrollRaf);
+    scrollRaf = null;
+    var from = getScroll();
+    if (!ms || prefersReducedMotion() || document.hidden || Math.abs(target - from) < 2) {
+      setScroll(target);
+      return;
+    }
+    var start = null;
+    function step(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / ms);
+      setScroll(from + (target - from) * (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2));
+      scrollRaf = p < 1 ? requestAnimationFrame(step) : null;
+    }
+    scrollRaf = requestAnimationFrame(step);
+  }
+  function scrollToNow(smooth) {
+    if (!scroller.clientHeight) return false; // not laid out yet (page still hidden)
+    animateScroll(Math.max(0, scrollTargetFor(nowS())), smooth ? 700 : 0);
+    return true;
+  }
+  // While the apricot walks, keep it in view.
+  function followAvatar() {
+    if (!scroller.clientHeight) return;
+    var s = positionOf(progressFor(shownAmount)).s;
+    var target = Math.max(0, scrollTargetFor(s));
+    var cur = getScroll();
+    setScroll(cur + (target - cur) * 0.12);
+  }
+  // "Back to where we are" shows once the next level and the apricot are both out of view.
+  function updateBackButton() {
+    if (!scroller.clientHeight) return;
+    var lo, hi;
+    if (orient === 'vertical') {
+      hi = geo.length - scroller.scrollTop;
+      lo = hi - scroller.clientHeight;
+    } else {
+      lo = scroller.scrollLeft;
+      hi = lo + scroller.clientWidth;
+    }
+    var s = nowS(), a = positionOf(progressFor(shownAmount)).s, m = 30;
+    var inView = function (x) { return x > lo + m && x < hi - m; };
+    backBtn.hidden = inView(s) || inView(a);
+  }
+  function initResizeObserver() {
+    var onSize = function () {
+      if (!hasScrolledToNow && hasLoadedTotal && scrollToNow(false)) hasScrolledToNow = true;
+      updateBackButton();
+    };
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', onSize);
+      return;
+    }
+    new ResizeObserver(onSize).observe(scroller);
+  }
+
+  // ---- Live-increase toast ------------------------------------------------------------
   function showGiftToast() {
-    if (!toastEl) return;
     toastEl.textContent = t('dary.live.toast');
     toastEl.hidden = false;
     void toastEl.offsetWidth; // restart the fade cleanly if a gift arrives again quickly
@@ -425,309 +653,77 @@
     }, 3000);
   }
 
-  function createTooltip() {
-    tooltipEl = document.createElement('div');
-    tooltipEl.id = 'dary-tooltip';
-    tooltipEl.className = 'dary-tooltip';
-    tooltipEl.setAttribute('role', 'tooltip');
-    tooltipEl.hidden = true;
-    // A SIBLING of trackWrap (not a child): trackWrap has a fixed height sized
-    // just for the track itself, so an in-flow child on phones would overlap
-    // it instead of sitting below it. Placed right after trackWrap, inside
-    // `root` (a .paper card, already position:relative), which both gives the
-    // desktop floating bubble a positioning context and lets the mobile
-    // static card fall naturally below the track in the document flow.
-    trackWrap.insertAdjacentElement('afterend', tooltipEl);
+  // ---- Real total ---------------------------------------------------------------------
+  function clampAmount(amount) {
+    return Math.max(0, Math.min(MAX_AMOUNT, Number(amount) || 0));
   }
-
-  function renderNodes() {
-    nodesWrap.innerHTML = '';
-    var majorSeen = 0; // alternates above/below among the MAJOR nodes only
-    for (var i = 0; i < MILESTONES.length; i++) {
-      var m = MILESTONES[i];
-      var pct = (i + 1) * SEG_PCT;
-      var node = document.createElement('div');
-      node.className = 'dary-node';
-      node.style.left = pct + '%';
-      node.setAttribute('data-index', String(i));
-
-      var dot = document.createElement('span');
-      dot.className = 'dary-node-dot';
-      dot.innerHTML = m.icon;
-      dot.setAttribute('aria-describedby', 'dary-tooltip');
-      node.appendChild(dot);
-
-      // Only the six `major` milestones get a track label (desktop only,
-      // hidden on phones via CSS either way) — every milestone still shows
-      // its amount in the hover/tap card and the reached/next list.
-      if (m.major) {
-        node.classList.add(majorSeen % 2 === 0 ? 'label-above' : 'label-below');
-        majorSeen++;
-        var label = document.createElement('span');
-        label.className = 'dary-node-amount';
-        label.textContent = formatAmount(m.amount);
-        node.appendChild(label);
-      }
-
-      nodesWrap.appendChild(node);
-      wireNodeTooltip(i, dot);
-    }
-  }
-
-  function renderNodeLabels() {
-    var nodeEls = nodesWrap.children;
-    for (var i = 0; i < nodeEls.length && i < MILESTONES.length; i++) {
-      var label = nodeEls[i].querySelector('.dary-node-amount');
-      if (label) label.textContent = formatAmount(MILESTONES[i].amount);
-    }
-  }
-
-  // ---- Light-up animation (pop + expanding ring + sparkles) -----------------
-  function playLightUp(nodeEl) {
-    if (prefersReducedMotion()) return;
-    var dot = nodeEl.querySelector('.dary-node-dot');
-    if (!dot) return;
-
-    nodeEl.classList.remove('is-lighting');
-    void nodeEl.offsetWidth; // force reflow so the animation restarts cleanly
-    nodeEl.classList.add('is-lighting');
-
-    var ring = document.createElement('span');
-    ring.className = 'dary-node-ring';
-    dot.appendChild(ring);
-
-    var sparkCount = 6 + Math.floor(Math.random() * 3); // 6-8
-    var sparks = [];
-    for (var i = 0; i < sparkCount; i++) {
-      var spark = document.createElement('span');
-      spark.className = 'dary-spark';
-      var angle = (Math.PI * 2 * i) / sparkCount + (Math.random() * 0.5 - 0.25);
-      var dist = 13 + Math.random() * 9;
-      spark.style.setProperty('--dx', (Math.cos(angle) * dist).toFixed(1) + 'px');
-      spark.style.setProperty('--dy', (Math.sin(angle) * dist).toFixed(1) + 'px');
-      dot.appendChild(spark);
-      sparks.push(spark);
-    }
-
-    window.setTimeout(function () {
-      nodeEl.classList.remove('is-lighting');
-      ring.remove();
-      sparks.forEach(function (s) { s.remove(); });
-    }, 650);
-  }
-
-  // ---- Detail panel -----------------------------------------------------------
-  // Top: the next goal as a faded row with the amount still missing. Below it: every milestone
-  // already reached, newest first (the newest one is featured). Rows are added and removed
-  // incrementally, so only a newly reached milestone animates in and dragging stays smooth.
-  var panelBuilt = false;
-  var shownCount = 0;   // how many reached milestones are in the list
-  var nextShown = -2;   // index shown in the "next" row; -1 = everything reached
-  var nextBox, emptyEl, reachedLabel, reachedList;
-
-  function milestoneInner(idx) {
-    var m = MILESTONES[idx];
-    return (
-      '<div class="dary-row-icon">' + m.icon + '</div>' +
-      '<div class="dary-row-body">' +
-      '<div class="dary-row-heading">' +
-      '<h3 class="dary-row-title">' + escapeHtml(t('dary.' + m.key + '.title')) + '</h3>' +
-      '<span class="dary-row-amount">' + escapeHtml(formatAmount(m.amount)) + '</span>' +
-      '</div>' +
-      '<p class="dary-row-desc">' + escapeHtml(t('dary.' + m.key + '.text')) + '</p>' +
-      '</div>'
-    );
-  }
-
-  function buildPanel() {
-    panelEl.innerHTML =
-      '<div class="dary-next"></div>' +
-      '<p class="dary-panel-empty"></p>' +
-      '<p class="dary-reached-label"></p>' +
-      '<ol class="dary-reached"></ol>';
-    nextBox = panelEl.querySelector('.dary-next');
-    emptyEl = panelEl.querySelector('.dary-panel-empty');
-    reachedLabel = panelEl.querySelector('.dary-reached-label');
-    reachedList = panelEl.querySelector('.dary-reached');
-    emptyEl.textContent = t('dary.none');
-    reachedLabel.textContent = t('dary.reached');
-    shownCount = 0;
-    nextShown = -2;
-    panelBuilt = true;
-  }
-
-  function updatePanel(amount, litArr) {
-    var fresh = !panelBuilt;
-    if (fresh) buildPanel();
-
-    var count = 0;
-    while (count < litArr.length && litArr[count]) count++;
-    var animate = !fresh && !prefersReducedMotion();
-
-    var nextIdx = count < MILESTONES.length ? count : -1;
-    if (nextIdx !== nextShown) {
-      if (nextIdx < 0) {
-        nextBox.className = 'dary-next is-beyond';
-        nextBox.innerHTML = '<p class="dary-beyond">' + escapeHtml(t('dary.beyond')) + '</p>';
-      } else {
-        nextBox.className = 'dary-next';
-        nextBox.innerHTML =
-          '<p class="dary-next-label">' + escapeHtml(t('dary.nextLabel')) + '</p>' +
-          '<div class="dary-row is-next">' + milestoneInner(nextIdx) + '</div>' +
-          '<p class="dary-next-missing"></p>';
-      }
-      nextShown = nextIdx;
-    }
-    if (nextIdx >= 0) {
-      var missing = nextBox.querySelector('.dary-next-missing');
-      if (missing) missing.textContent = t('dary.next').replace('{amount}', formatAmount(Math.max(0, MILESTONES[nextIdx].amount - amount)));
-    }
-
-    emptyEl.hidden = count > 0;
-    reachedLabel.hidden = count === 0;
-
-    while (shownCount < count) {
-      var li = document.createElement('li');
-      li.className = 'dary-row' + (animate ? ' is-new' : '');
-      li.innerHTML = milestoneInner(shownCount);
-      reachedList.insertBefore(li, reachedList.firstChild);
-      shownCount++;
-    }
-    while (shownCount > count) {
-      reachedList.removeChild(reachedList.firstChild);
-      shownCount--;
-    }
-  }
-
-  // ---- Core render ------------------------------------------------------------
-  function render(opts) {
-    opts = opts || {};
-    var amount = pctToAmount(displayPct);
-
-    fill.style.width = displayPct + '%';
-    handle.style.left = displayPct + '%';
-    renderAmount(amountValueEl, amount);
-    if (previewTagEl) {
-      previewTagEl.hidden = !isPreviewing;
-      if (isPreviewing) previewTagEl.textContent = t('dary.previewTag');
-    }
-
-    var rounded = roundToHundred(amount);
-    handle.setAttribute('aria-valuenow', String(rounded));
-    handle.setAttribute('aria-valuetext', formatAmount(amount));
-
-    var nodeEls = nodesWrap.children;
-    var newLit = [];
-    for (var i = 0; i < MILESTONES.length; i++) {
-      newLit[i] = amount >= MILESTONES[i].amount - 0.5;
-    }
-    for (i = 0; i < nodeEls.length && i < MILESTONES.length; i++) {
-      var el = nodeEls[i];
-      var wasLit = !!litState[i];
-      var isLit = newLit[i];
-      if (isLit && !wasLit && !opts.silent) playLightUp(el);
-      el.classList.toggle('is-lit', isLit);
-    }
-    litState = newLit;
-
-    updatePanel(amount, newLit);
-  }
-
-  function setDisplayPct(pct, opts) {
-    displayPct = Math.max(0, Math.min(100, pct));
-    render(opts);
-  }
-
-  // ---- Real total (the eventual shared/bank-fed number) -----------------------
-  function positionPin() {
-    if (pinEl) pinEl.style.left = realPct + '%';
-  }
-  function setRealTotal(amount) {
-    realAmount = Math.max(0, Math.min(MAX_AMOUNT, Number(amount) || 0));
-    realPct = amountToPct(realAmount);
-    positionPin();
-    if (!isPreviewing) {
-      displayPct = realPct;
-      render({ silent: true });
-    }
-  }
-
-  // ---- Live updates: the real total increasing while the page is open --------
-  // Used by both the 60s poll and the localhost test hook, so both paths
-  // behave identically: the pin (and, unless a guest is mid-preview, the
-  // fill/handle too) glides forward over REAL_INCREASE_MS so any newly
-  // passed milestones play their normal light-up effect, plus the toast.
-  var REAL_INCREASE_MS = 1200;
   function cancelRealAnim() {
     if (realAnimRaf) {
       cancelAnimationFrame(realAnimRaf);
       realAnimRaf = null;
     }
   }
+  function setRealTotal(amount) {
+    cancelRealAnim();
+    realAmount = shownAmount = clampAmount(amount);
+    render({ silent: true });
+  }
+  // The apricot walks forward along the path; each level it passes lights up
+  // in turn, and the window follows to the new next level.
+  var REAL_INCREASE_MS = 1600;
   function animateRealIncrease(newAmount) {
     cancelRealAnim();
-    var newPct = amountToPct(newAmount);
-    if (prefersReducedMotion()) {
-      realAmount = newAmount;
-      realPct = newPct;
-      positionPin();
-      if (!isPreviewing) {
-        displayPct = newPct;
-        render();
-      }
-      showGiftToast();
+    var from = shownAmount;
+    realAmount = newAmount;
+    showGiftToast();
+    // A hidden tab gets no animation frames: jump straight to the result.
+    if (prefersReducedMotion() || document.hidden) {
+      shownAmount = newAmount;
+      render();
+      scrollToNow(false);
+      updateBackButton();
       return;
     }
-    var startAmount = realAmount;
-    var startPct = realPct;
     var startTime = null;
-    function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
+    function ease(x) { return 1 - Math.pow(1 - x, 3); }
     function step(ts) {
       if (startTime === null) startTime = ts;
-      var progress = Math.min(1, (ts - startTime) / REAL_INCREASE_MS);
-      var eased = easeOutCubic(progress);
-      realAmount = startAmount + (newAmount - startAmount) * eased;
-      realPct = startPct + (newPct - startPct) * eased;
-      positionPin();
-      if (!isPreviewing) {
-        displayPct = realPct;
-        render();
-      }
-      if (progress < 1) {
+      var p = Math.min(1, (ts - startTime) / REAL_INCREASE_MS);
+      shownAmount = from + (newAmount - from) * ease(p);
+      render();
+      followAvatar();
+      if (p < 1) {
         realAnimRaf = requestAnimationFrame(step);
       } else {
-        realAmount = newAmount;
-        realPct = newPct;
-        positionPin();
-        if (!isPreviewing) {
-          displayPct = newPct;
-          render();
-        }
+        shownAmount = newAmount;
+        render();
         realAnimRaf = null;
+        scrollToNow(true);
       }
     }
     realAnimRaf = requestAnimationFrame(step);
-    showGiftToast();
   }
-  // Single seam for both the poller and the test hook: the very first value
-  // ever received just jumps (setRealTotal), an increase after that animates,
-  // anything else (equal, or a downward admin correction) jumps quietly.
+  // Single seam for both the poller and the test hook: the first value just
+  // jumps there, an increase after that animates, anything else (equal, or a
+  // downward admin correction) jumps quietly.
   function applyRealTotalUpdate(amount) {
-    var newAmount = Math.max(0, Math.min(MAX_AMOUNT, Number(amount) || 0));
+    var newAmount = clampAmount(amount);
     if (!hasLoadedTotal) {
       setRealTotal(newAmount);
       hasLoadedTotal = true;
+      if (scrollToNow(false)) hasScrolledToNow = true;
       return;
     }
     if (newAmount > realAmount + 0.5) {
       animateRealIncrease(newAmount);
     } else if (Math.abs(newAmount - realAmount) > 0.5) {
-      cancelRealAnim();
       setRealTotal(newAmount);
+      scrollToNow(true);
     }
+    updateBackButton();
   }
 
-  // ---- Polling for a live-updating total --------------------------------------
+  // ---- Polling for a live-updating total ------------------------------------------------
   var POLL_MS = 60000;
   function clearPollTimer() {
     if (pollTimer) {
@@ -824,337 +820,32 @@
     if (copyBtn) copyBtn.addEventListener('click', function () { copyAccountNumber(copyBtn); });
   }
 
-  // ---- Preview mode: drag away from the real total, then glide back ----------
-  function beginPreview() {
-    if (MODE !== 'preview') return false;
-    if (snapbackRaf) {
-      cancelAnimationFrame(snapbackRaf);
-      snapbackRaf = null;
-    }
-    isPreviewing = true;
-    return true;
-  }
-
-  function animateDisplayTo(targetPct, duration, onDone) {
-    duration = duration || 450;
-    if (prefersReducedMotion()) {
-      displayPct = targetPct;
-      render();
-      if (onDone) onDone();
-      return;
-    }
-    var startPct = displayPct;
-    var delta = targetPct - startPct;
-    if (Math.abs(delta) < 0.05) {
-      displayPct = targetPct;
-      render();
-      if (onDone) onDone();
-      return;
-    }
-    var startTime = null;
-    function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
-    function step(ts) {
-      if (startTime === null) startTime = ts;
-      var elapsed = ts - startTime;
-      var progress = Math.min(1, elapsed / duration);
-      displayPct = startPct + delta * easeOutCubic(progress);
-      render();
-      if (progress < 1) {
-        snapbackRaf = requestAnimationFrame(step);
-      } else {
-        displayPct = targetPct;
-        render();
-        snapbackRaf = null;
-        if (onDone) onDone();
-      }
-    }
-    snapbackRaf = requestAnimationFrame(step);
-  }
-
-  function endPreviewAndSnapBack() {
-    if (!isPreviewing) return;
-    animateDisplayTo(realPct, 450, function () {
-      isPreviewing = false;
-      render({ silent: true });
-    });
-  }
-
-  // ---- Pointer + keyboard interaction ----------------------------------------
-  function pctFromClientX(clientX) {
-    // Layout is measured lazily, right here, never cached — the section can
-    // still be display:none at load time behind the invite token gate.
-    var rect = track.getBoundingClientRect();
-    if (rect.width <= 0) return displayPct;
-    var pct = ((clientX - rect.left) / rect.width) * 100;
-    return Math.max(0, Math.min(100, pct));
-  }
-
-  // Nearest milestone to a given page X, by track position — purely
-  // geometric, so it works regardless of how densely the (up to 20) node
-  // hit-areas overlap on a narrow phone, and regardless of which exact
-  // element the touch actually landed on.
-  function nearestMilestoneIndex(clientX) {
-    var rect = track.getBoundingClientRect();
-    if (rect.width <= 0) return -1;
-    var pct = ((clientX - rect.left) / rect.width) * 100;
-    var best = -1;
-    var bestDist = Infinity;
-    for (var i = 0; i < MILESTONES.length; i++) {
-      var nodePct = (i + 1) * SEG_PCT;
-      var d = Math.abs(pct - nodePct);
-      if (d < bestDist) {
-        bestDist = d;
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  function onPointerDown(e) {
-    // Recorded regardless of MODE, so a touch tap still opens a milestone's
-    // card in readonly mode even though nothing below moves the handle.
-    if (e.pointerType === 'touch') {
-      touchTapStart = { x: e.clientX, y: e.clientY };
-    }
-    if (!beginPreview()) return; // readonly mode: the track never drags
-    if (typeof e.button === 'number' && e.button !== 0) return;
-    dragging = true;
-    handle.classList.add('is-dragging');
-    if (track.setPointerCapture) {
-      try { track.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    }
-    setDisplayPct(pctFromClientX(e.clientX));
-    handle.focus();
-    e.preventDefault();
-  }
-  function onPointerMove(e) {
-    if (!dragging) return;
-    setDisplayPct(pctFromClientX(e.clientX));
-  }
-  function onPointerUp(e) {
-    if (e.pointerType === 'touch' && touchTapStart) {
-      var dx = e.clientX - touchTapStart.x;
-      var dy = e.clientY - touchTapStart.y;
-      touchTapStart = null;
-      if (Math.sqrt(dx * dx + dy * dy) <= 8) {
-        // A tap, not a drag: open the nearest milestone's card. In preview
-        // mode the drag logic below (if `dragging`) may ALSO move the
-        // preview to this spot — both happening together is intended.
-        var idx = nearestMilestoneIndex(e.clientX);
-        if (idx !== -1) {
-          var anchorDot = nodesWrap.children[idx] && nodesWrap.children[idx].querySelector('.dary-node-dot');
-          if (anchorDot) toggleTooltip(idx, anchorDot, 4000);
-        }
-      }
-    }
-    if (!dragging) return;
-    dragging = false;
-    handle.classList.remove('is-dragging');
-    if (track.releasePointerCapture) {
-      try { track.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    }
-    endPreviewAndSnapBack();
-  }
-
-  function onKeyDown(e) {
-    if (MODE !== 'preview') return;
-    if (e.key === 'Escape') {
-      endPreviewAndSnapBack();
-      e.preventDefault();
-      return;
-    }
-    var step = 1;
-    var big = 10;
-    var moved = true;
-    switch (e.key) {
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        beginPreview();
-        setDisplayPct(displayPct - step);
-        break;
-      case 'ArrowRight':
-      case 'ArrowUp':
-        beginPreview();
-        setDisplayPct(displayPct + step);
-        break;
-      case 'PageDown':
-        beginPreview();
-        setDisplayPct(displayPct - big);
-        break;
-      case 'PageUp':
-        beginPreview();
-        setDisplayPct(displayPct + big);
-        break;
-      case 'Home':
-        beginPreview();
-        setDisplayPct(0);
-        break;
-      case 'End':
-        beginPreview();
-        setDisplayPct(100);
-        break;
-      default:
-        moved = false;
-    }
-    if (moved) e.preventDefault();
-  }
-  function onHandleBlur() {
-    endPreviewAndSnapBack();
-  }
-
-  // ---- Milestone hover/tap tooltips (both modes) ------------------------------
-  var activeTooltipIndex = -1;
-  var tooltipTimer = null;
-  var touchTapStart = null; // { x, y } — set in onPointerDown, consumed in onPointerUp
-
-  function clearTooltipTimer() {
-    if (tooltipTimer) {
-      window.clearTimeout(tooltipTimer);
-      tooltipTimer = null;
-    }
-  }
-
-  function hideTooltip() {
-    if (activeTooltipIndex === -1) return;
-    tooltipEl.hidden = true;
-    tooltipEl.style.cssText = '';
-    activeTooltipIndex = -1;
-    clearTooltipTimer();
-  }
-
-  function positionTooltip(anchorEl) {
-    if (isMobileLayout()) {
-      // Phones: a full-width static card under the track (see CSS); no
-      // floating-bubble math needed, just let it flow in the document.
-      tooltipEl.style.cssText = '';
-      return;
-    }
-    // Positioned relative to `root` (the .paper card, position:relative), not
-    // trackWrap — tooltipEl is now a sibling of trackWrap, not its child (see
-    // createTooltip), so its own absolute-positioning ancestor is the card.
-    var cardRect = root.getBoundingClientRect();
-    var dotRect = anchorEl.getBoundingClientRect();
-    var tRect = tooltipEl.getBoundingClientRect();
-    var centerX = dotRect.left + dotRect.width / 2 - cardRect.left;
-    var left = centerX - tRect.width / 2;
-    var maxLeft = cardRect.width - tRect.width - 4;
-    if (left < 4) left = 4;
-    if (maxLeft > 4 && left > maxLeft) left = maxLeft;
-    var top = dotRect.top - cardRect.top - tRect.height - 12;
-    if (top < 0) top = dotRect.bottom - cardRect.top + 12; // flip below if no room above
-    tooltipEl.style.left = left + 'px';
-    tooltipEl.style.top = top + 'px';
-  }
-
-  function showTooltip(idx, anchorEl) {
-    var m = MILESTONES[idx];
-    tooltipEl.innerHTML =
-      '<div class="dary-tooltip-icon">' + m.icon + '</div>' +
-      '<div class="dary-tooltip-body">' +
-      '<p class="dary-tooltip-amount">' + escapeHtml(formatAmount(m.amount)) + '</p>' +
-      '<h4 class="dary-tooltip-title">' + escapeHtml(t('dary.' + m.key + '.title')) + '</h4>' +
-      '<p class="dary-tooltip-desc">' + escapeHtml(t('dary.' + m.key + '.text')) + '</p>' +
-      '</div>';
-    tooltipEl.hidden = false;
-    activeTooltipIndex = idx;
-    positionTooltip(anchorEl);
-  }
-
-  function toggleTooltip(idx, anchorEl, autoDismissMs) {
-    if (activeTooltipIndex === idx) {
-      hideTooltip();
-      return;
-    }
-    clearTooltipTimer();
-    showTooltip(idx, anchorEl);
-    if (autoDismissMs) tooltipTimer = window.setTimeout(hideTooltip, autoDismissMs);
-  }
-
-  // Mouse-only hover; touch taps are handled once, geometrically, by
-  // nearestMilestoneIndex() inside onPointerDown/onPointerUp — with up to 20
-  // nodes packed into a 360px track their enlarged hit areas overlap quite a
-  // bit, so "nearest to where the finger landed" is more reliable than
-  // relying on exactly which element the touch happened to hit.
-  function wireNodeTooltip(idx, dot) {
-    dot.addEventListener('pointerenter', function (e) {
-      if (e.pointerType === 'touch') return;
-      clearTooltipTimer();
-      showTooltip(idx, dot);
-    });
-    dot.addEventListener('pointerleave', function (e) {
-      if (e.pointerType === 'touch') return;
-      hideTooltip();
-    });
-  }
-
-  function initTooltipDismissal() {
-    // Tap/click anywhere outside the tooltip and outside a node dot dismisses it.
-    document.addEventListener('pointerdown', function (e) {
-      if (activeTooltipIndex === -1) return;
-      if (tooltipEl.contains(e.target)) return;
-      if (e.target.closest && e.target.closest('.dary-node-dot')) return;
-      hideTooltip();
-    }, true);
-  }
-
-  // ---- Lazy layout hook (ResizeObserver, no cached sizes anywhere) -----------
-  function initResizeObserver() {
-    if (typeof ResizeObserver === 'undefined') return;
-    var ro = new ResizeObserver(function () {
-      // Node/handle/pin positions are plain CSS percentages, so a resize
-      // never needs a stored width — this just keeps everything else (aria
-      // text, panel, an open tooltip's position) in sync, without reading or
-      // caching any box size itself outside of this callback.
-      render({ silent: true });
-      if (activeTooltipIndex !== -1) {
-        var anchor = nodesWrap.children[activeTooltipIndex] && nodesWrap.children[activeTooltipIndex].querySelector('.dary-node-dot');
-        if (anchor) positionTooltip(anchor);
-      }
-    });
-    ro.observe(track);
-  }
-
-  // ---- Language changes --------------------------------------------------------
+  // ---- Language changes -----------------------------------------------------------------
   function initLangObserver() {
     var mo = new MutationObserver(function (mutations) {
       for (var i = 0; i < mutations.length; i++) {
         if (mutations[i].attributeName === 'lang') {
-          onLangChange();
+          renderTexts();
           return;
         }
       }
     });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   }
-  function onLangChange() {
-    renderNodeLabels();
-    panelBuilt = false; // rebuild the panel text in the new language (without replaying animations)
-    render({ silent: true });
-    if (activeTooltipIndex !== -1) {
-      var anchor = nodesWrap.children[activeTooltipIndex] && nodesWrap.children[activeTooltipIndex].querySelector('.dary-node-dot');
-      if (anchor) showTooltip(activeTooltipIndex, anchor);
-    }
-  }
 
-  // ---- Test-only hooks (localhost only, mockup value entry) -------------------
+  // ---- Test-only hooks (localhost only) ----------------------------------------------------
   function exposeTestHook() {
     var host = window.location.hostname;
     if (host !== 'localhost' && host !== '127.0.0.1') return;
-    // Sets the REAL (shared) total — what loadTotal() will eventually return.
-    // Routed through applyRealTotalUpdate() so it exercises the exact same
-    // animate-on-increase + toast path as a real 60s poll would.
+    // Sets the real (shared) total, through the same path a 60 s poll takes.
     window.__daryMeterSetTotal = function (amount) {
       applyRealTotalUpdate(amount);
     };
-    // Sets the PREVIEW position directly, without scheduling the snap-back —
-    // handy for screenshots of a specific preview state.
-    window.__daryMeterSet = function (amount) {
-      isPreviewing = true;
-      setDisplayPct(amountToPct(Number(amount) || 0));
+    // The computed level amounts, for checking the curve.
+    window.__daryMeterLevels = function () {
+      return LEVELS.map(function (lv) { return lv.amount; });
     };
-    // Debug-only: the exact SPD string the QR block currently encodes (or
-    // null while GIFT_IBAN is empty), so a test can compare it directly
-    // instead of only decoding the rendered QR image.
+    // The exact SPD string the QR block encodes (null while GIFT_IBAN is empty).
     window.__daryMeterSpdString = function () {
       return GIFT_IBAN ? spdString() : null;
     };
@@ -1162,32 +853,13 @@
 
   function init() {
     if (!createDom()) return;
-    createPreviewTag();
-    createPin();
-    createTooltip();
-    createToast();
-    renderNodes();
     initQrBlock();
-
-    chipEl && (chipEl.hidden = MODE !== 'preview');
-    handle.setAttribute('aria-valuemax', String(MAX_AMOUNT));
-
-    track.addEventListener('pointerdown', onPointerDown);
-    track.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
-    handle.addEventListener('keydown', onKeyDown);
-    handle.addEventListener('blur', onHandleBlur);
-
-    initTooltipDismissal();
+    renderTexts();
     initResizeObserver();
     initLangObserver();
     exposeTestHook();
-
-    setDisplayPct(0, { silent: true });
     loadTotal().then(function (amount) {
-      setRealTotal(amount || 0);
-      hasLoadedTotal = true;
+      applyRealTotalUpdate(amount || 0);
       startPolling();
     });
   }

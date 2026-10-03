@@ -1,228 +1,201 @@
-/* "Gift milestone meter" — mockup progress meter for the wedding invitation.
+/* "Gift path" — the wedding gift meter as a Candy Crush style level map.
    Lives on the cream .paper card, so all colours are ink/gold-deep-on-cream,
-   not the pale-on-night palette used elsewhere on the page (sky, footer). */
+   not the pale-on-night palette used elsewhere on the page (sky, footer).
+   dary.js positions everything (px along the path, % across it); this file
+   only styles it, for both data-orientation="vertical" and "horizontal". */
 
 .dary-meter {
   text-align: center;
 }
-
-.dary-chip {
-  display: inline-block;
-  margin: 0 0 14px;
-  padding: 6px 16px;
-  border: 1px dashed rgba(122, 82, 19, 0.5);
-  border-radius: 999px;
-  font-family: var(--font-label);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sv-gold-deep);
-}
-@media (max-width: 420px) {
-  .dary-chip { padding: 5px 12px; font-size: 0.6rem; letter-spacing: 0.08em; }
-}
-
 .dary-meter h2 { text-align: center; }
 .dary-meter > p.dary-intro {
   max-width: 52ch;
   margin-inline: auto;
   text-align: center;
 }
-
-/* ---------- Amount display ---------- */
-.dary-amount {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin: 22px 0 4px;
-}
-.dary-amount-value {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums lining-nums;
-  font-size: clamp(2.1rem, 7vw, 3rem);
-  font-weight: 500;
-  line-height: 1;
-  color: var(--sv-gold-deep);
-}
-.dary-amount-currency {
-  font-family: var(--font-label);
-  font-size: 0.42em;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  margin: 0 0.12em;
-  vertical-align: 0.55em;
-}
-.dary-amount-label {
-  font-family: var(--font-label);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+.dary-meter > p.dary-hint {
+  margin: 6px auto 0;
+  font-size: 0.82rem;
+  font-style: italic;
   color: var(--sv-ink-2);
 }
 
-/* The small "náhled / preview / aperçu" tag shown next to the big amount
-   only while a guest is actively previewing a bigger total than the real one. */
-.dary-preview-tag {
-  display: inline-block;
-  margin: 2px 0 0;
-  padding: 2px 10px;
-  border: 1px solid rgba(122, 82, 19, 0.4);
-  border-radius: 999px;
-  font-family: var(--font-label);
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sv-gold-deep);
-  background: rgba(226, 180, 95, 0.14);
-}
-
-/* ---------- Track + nodes + handle ---------- */
-.dary-track-wrap {
+/* ---------- The window the path scrolls in ---------- */
+.dary-frame {
   position: relative;
-  margin: 12px 6px 6px;
-  height: 116px;
+  width: min(100%, 560px);
+  margin: 18px auto 8px;
 }
+/* On phones the vertical path stays narrower than the card, so a swipe
+   beside it still scrolls the page. */
 @media (max-width: 699px) {
-  .dary-track-wrap { height: 60px; margin: 10px 2px 4px; }
+  [data-orientation="vertical"] .dary-frame { width: 78%; }
+}
+[data-orientation="horizontal"] .dary-frame { width: 100%; }
+
+.dary-path {
+  position: relative;
+  height: min(62vh, 640px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(226, 180, 95, 0.55);
+  border-radius: 18px;
+  background-color: #fbf6ec;
+  background-image: radial-gradient(rgba(122, 82, 19, 0.07) 1px, transparent 1.2px);
+  background-size: 18px 18px;
+  box-shadow: inset 0 0 24px rgba(122, 82, 19, 0.08);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 82, 19, 0.35) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+}
+[data-orientation="horizontal"] .dary-path {
+  height: 340px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: auto;
+  overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+}
+.dary-path:focus-visible {
+  outline: 2px solid var(--sv-gold);
+  outline-offset: 3px;
 }
 
-.dary-track {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 6px;
-  transform: translateY(-50%);
-  touch-action: none;
-  cursor: pointer;
-}
+.dary-map { position: relative; width: 100%; }
+[data-orientation="horizontal"] .dary-map { width: auto; height: 100%; }
 
-.dary-track-base,
-.dary-track-fill {
+.dary-trail {
   position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  border-radius: 999px;
-}
-.dary-track-base {
+  inset: 0;
   width: 100%;
-  background: rgba(122, 82, 19, 0.25);
-}
-.dary-track-fill {
-  width: 0%;
-  overflow: hidden;
-  background: linear-gradient(90deg, #ecc478, var(--sv-gold), #f5a55a);
-  transition: width 0.08s linear;
-}
-.dary-track-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-  background-size: 60% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.5;
-  animation: dary-shimmer 2.6s linear infinite;
-  mix-blend-mode: screen;
-}
-@keyframes dary-shimmer {
-  0% { background-position: -60% 0; }
-  100% { background-position: 160% 0; }
-}
-
-/* The real (shared) total's fixed position on the track: a small gold pin/notch,
-   independent of wherever the apricot handle currently sits while previewing.
-   A thin stem topped with a small ball, z-indexed ABOVE the handle (3), so the
-   ball head still peeks out above the apricot even when they land on the same
-   spot (i.e. whenever nobody is actively previewing a bigger total). */
-.dary-real-pin {
-  position: absolute;
-  top: 50%;
-  left: 0%;
-  width: 2px;
-  height: 15px;
-  background: var(--sv-gold-deep);
-  transform: translate(-50%, -100%);
-  filter: drop-shadow(0 1px 2px rgba(43, 20, 4, 0.35));
+  height: 100%;
+  overflow: visible;
   pointer-events: none;
-  z-index: 4;
 }
-.dary-real-pin::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--sv-gold-deep);
-  border: 1.5px solid var(--sv-paper);
-  transform: translate(-50%, -55%);
+.dary-trail path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
-@media (max-width: 699px) {
-  .dary-real-pin { height: 11px; }
-  .dary-real-pin::before { width: 7px; height: 7px; }
+.dary-trail-todo {
+  stroke: rgba(122, 82, 19, 0.38);
+  stroke-width: 3;
+  stroke-dasharray: 1 9;
+}
+.dary-trail-done {
+  stroke: var(--sv-gold);
+  stroke-width: 7;
+  filter: drop-shadow(0 0 3px rgba(226, 180, 95, 0.7));
 }
 
-.dary-nodes {
-  position: absolute;
-  inset: 0;
+.dary-levels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-/* Only the dot is in flow, so every dot sits centred on the track; the price label hangs above or
-   below it (alternating, so neighbours never collide). */
-.dary-node {
+
+/* ---------- Dots ---------- */
+.dary-dot,
+.dary-start,
+.dary-avatar,
+.dary-end {
   position: absolute;
-  top: 50%;
   transform: translate(-50%, -50%);
+}
+.dary-start {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--sv-gold);
+  border: 2px solid var(--sv-gold-deep);
+}
+.dary-dot {
   z-index: 2;
-}
-.dary-node .dary-node-amount {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.dary-node.label-below .dary-node-amount { top: calc(100% + 9px); }
-.dary-node.label-above .dary-node-amount { bottom: calc(100% + 9px); }
-
-.dary-node-dot {
-  position: relative;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  border: 1.5px solid rgba(43, 34, 48, 0.35);
-  background: rgba(255, 255, 255, 0.5);
-  color: rgba(43, 34, 48, 0.45);
-  cursor: pointer;
-  transition: width 0.25s ease, height 0.25s ease, background 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+  border: 2px solid rgba(122, 82, 19, 0.3);
+  background: #fffaf2;
+  color: rgba(43, 34, 48, 0.42);
+  transition: width 0.3s ease, height 0.3s ease, background 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
-.dary-node-dot svg { width: 11px; height: 11px; }
+.dary-dot-icon { display: grid; place-items: center; }
+.dary-dot-icon svg { width: 18px; height: 18px; }
+.dary-dot-check {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sv-gold-deep);
+  color: var(--sv-paper);
+}
+.dary-dot-check svg { width: 10px; height: 10px; }
 
-.dary-node.is-lit .dary-node-dot {
-  width: 21px;
-  height: 21px;
+.dary-level.is-done .dary-dot {
   background: var(--sv-gold);
   border-color: var(--sv-gold-deep);
-  color: var(--sv-paper);
-  box-shadow: 0 0 0 3px rgba(226, 180, 95, 0.25), 0 0 12px rgba(226, 180, 95, 0.6);
+  color: #fffaf2;
+  box-shadow: 0 0 0 3px rgba(226, 180, 95, 0.22);
 }
-.dary-node.is-lit .dary-node-dot svg { width: 12px; height: 12px; }
+.dary-level.is-done .dary-dot-check { display: grid; }
 
-.dary-node.is-lighting .dary-node-dot { animation: dary-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.dary-level.is-next .dary-dot {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--sv-gold-deep);
+  background: radial-gradient(circle at 35% 30%, #ffd9a0, var(--sv-apricot) 60%, #e07b39);
+  color: #fffaf2;
+  box-shadow: 0 0 0 4px rgba(245, 165, 90, 0.3), 0 0 18px rgba(245, 165, 90, 0.7);
+}
+.dary-level.is-next .dary-dot-icon svg { width: 24px; height: 24px; }
+.dary-level.is-next .dary-dot::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 2px solid var(--sv-apricot);
+  animation: dary-pulse 1.9s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes dary-pulse {
+  0% { scale: 0.85; opacity: 0.9; }
+  100% { scale: 1.45; opacity: 0; }
+}
+
+/* The apricot: where we are right now, between the last done level and the next. */
+.dary-avatar {
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -88%);
+  filter: drop-shadow(0 2px 2px rgba(58, 38, 20, 0.35));
+  animation: dary-bob 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.dary-avatar svg { display: block; width: 100%; height: 100%; }
+@keyframes dary-bob {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -3px; }
+}
+
+/* ---------- Light-up when a level is reached ---------- */
+.dary-level.is-lighting .dary-dot { animation: dary-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes dary-pop {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.35); }
-  100% { transform: scale(1); }
+  0% { scale: 1; }
+  40% { scale: 1.35; }
+  100% { scale: 1; }
 }
-
-.dary-node-ring {
+.dary-ring {
   position: absolute;
   inset: -2px;
   border-radius: 50%;
@@ -235,17 +208,15 @@
   0% { transform: scale(1); opacity: 0.9; }
   100% { transform: scale(2.4); opacity: 0; }
 }
-
 .dary-spark {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 4px;
-  height: 4px;
-  margin: -2px;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px;
   border-radius: 50%;
   background: var(--sv-gold);
-  opacity: 1;
   animation: dary-spark 0.6s ease-out forwards;
   pointer-events: none;
 }
@@ -254,236 +225,157 @@
   100% { transform: translate(var(--dx, 12px), var(--dy, -12px)) scale(0.3); opacity: 0; }
 }
 
-.dary-node-amount {
+/* ---------- Labels ---------- */
+.dary-label {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  text-align: left;
+  line-height: 1.25;
+  transition: opacity 0.3s ease, background 0.3s ease;
+}
+.dary-label.is-left,
+.dary-label.is-right { transform: translateY(-50%); }
+.dary-label.is-left { text-align: right; align-items: flex-end; }
+.dary-label.is-right { align-items: flex-start; }
+.dary-label.is-above,
+.dary-label.is-below {
+  width: 158px;
+  margin-left: -79px;
+  text-align: center;
+  align-items: center;
+}
+
+.dary-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
   font-family: var(--font-label);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sv-gold-deep);
-  white-space: nowrap;
 }
-@media (max-width: 699px) {
-  /* Track labels are a desktop-only thing regardless of `major` (see JS);
-     this is just a defensive backstop. */
-  .dary-node-amount { display: none; }
-  /* Up to 20 dots share very little width on a phone — no room for icons
-     (they still live in the tap card and the list). Plain small dots
-     instead, gold + a faint glow once lit. A transparent ::before enlarges
-     the actual tap target to >=24px well past the visible dot; neighbouring
-     targets are allowed to overlap a little (nearestMilestoneIndex() in
-     dary.js resolves a tap to whichever dot's centre is actually closest,
-     so the overlap never picks the "wrong" milestone). */
-  .dary-node-dot svg { display: none; }
-  .dary-node-dot {
-    width: 9px;
-    height: 9px;
-    background: rgba(255, 255, 255, 0.6);
-  }
-  .dary-node-dot::before {
-    content: '';
-    position: absolute;
-    inset: -7.5px;
-  }
-  .dary-node.is-lit .dary-node-dot {
-    width: 10px;
-    height: 10px;
-    box-shadow: 0 0 0 1.5px rgba(226, 180, 95, 0.3), 0 0 4px rgba(226, 180, 95, 0.55);
-  }
+.dary-label.is-left .dary-kicker { justify-content: flex-end; }
+.dary-label.is-above .dary-kicker,
+.dary-label.is-below .dary-kicker { justify-content: center; }
+.dary-tag:empty { display: none; }
+.dary-tag { white-space: nowrap; }
+.dary-level.is-next .dary-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--sv-wine);
+  color: var(--sv-paper);
+}
+.dary-debug {
+  font-family: var(--font-body);
+  font-size: 0.6rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #9a8f95;
+}
+.dary-label-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--sv-ink);
+}
+.dary-label-text {
+  font-size: 0.76rem;
+  color: var(--sv-ink-2);
 }
 
-/* Draggable apricot handle. Visible fruit is ~30px; the element itself is a
-   44px square so the tap/click target meets the minimum on phones. */
-.dary-handle {
+.dary-level.is-future .dary-label { opacity: 0.6; }
+.dary-level.is-done .dary-label-title { color: #4a3a2c; }
+.dary-level.is-next .dary-label {
+  z-index: 4;
+  background: rgba(255, 250, 242, 0.94);
+  box-shadow: 0 0 0 1px rgba(226, 180, 95, 0.8), 0 4px 14px rgba(58, 38, 20, 0.12);
+}
+.dary-level.is-next .dary-label-title { font-size: 0.95rem; }
+
+@media (max-width: 420px) {
+  .dary-label { padding: 4px 6px; }
+  .dary-kicker { letter-spacing: 0.06em; }
+  .dary-label-title { font-size: 0.8rem; }
+  .dary-label-text { font-size: 0.72rem; }
+  .dary-level.is-next .dary-label-title { font-size: 0.86rem; }
+}
+
+/* "…and then just cats": past the last level. */
+.dary-end {
+  width: 72%;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-style: italic;
+  color: var(--sv-gold-deep);
+  text-align: center;
+}
+[data-orientation="horizontal"] .dary-end { width: 170px; }
+
+/* ---------- Over the window: back button, toast, debug total ---------- */
+.dary-back {
   position: absolute;
-  top: 50%;
-  left: 0%;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  cursor: grab;
-  touch-action: none;
-  z-index: 3;
-  transition: left 0.08s linear;
-  border-radius: 50%;
+  z-index: 6;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sv-wine);
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(58, 38, 20, 0.25);
+  cursor: pointer;
 }
-.dary-handle svg {
-  width: 30px;
-  height: 30px;
-  filter: drop-shadow(0 4px 8px rgba(43, 20, 4, 0.35));
-  transition: transform 0.15s ease, filter 0.15s ease;
-}
-.dary-handle.is-dragging { cursor: grabbing; }
-.dary-handle.is-dragging svg {
-  transform: scale(1.14);
-  filter: drop-shadow(0 6px 14px rgba(43, 20, 4, 0.45));
-}
-.dary-handle:focus-visible {
-  outline: 2px solid var(--sv-ink);
-  outline-offset: 4px;
-}
+.dary-back:hover { background: var(--sv-wine-hover); }
+.dary-back[hidden] { display: none; }
 
-/* ---------- Milestone tooltip (hover on desktop, tap on touch) ---------- */
-/* A single shared element, repositioned/repopulated per milestone. Desktop:
-   a floating paper bubble above the node, clamped inside the card. Phones:
-   a static full-width card that falls in flow right under the track. */
-.dary-tooltip {
+.dary-debug-total {
   position: absolute;
   z-index: 5;
-  width: 220px;
-  max-width: calc(100vw - 64px);
-  padding: 12px 14px;
-  background: var(--sv-paper);
-  border: 1px solid rgba(122, 82, 19, 0.5);
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(20, 8, 4, 0.28);
-  text-align: left;
+  top: 8px;
+  right: 12px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.6rem;
+  color: #9a8f95;
   pointer-events: none;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.dary-tooltip-icon {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--sv-gold);
-  color: var(--sv-paper);
-}
-.dary-tooltip-icon svg { width: 15px; height: 15px; }
-.dary-tooltip-body { flex: 1 1 auto; min-width: 0; }
-.dary-tooltip-amount {
-  margin: 0 0 2px;
-  font-family: var(--font-label);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--sv-gold-deep);
-}
-.dary-tooltip-title { margin: 0 0 2px; font-style: italic; font-size: 1rem; color: var(--sv-ink); }
-.dary-tooltip-desc { margin: 0; font-size: 0.85rem; color: var(--sv-ink-2); }
-
-@media (max-width: 699px) {
-  .dary-tooltip {
-    position: static;
-    width: auto;
-    max-width: none;
-    margin: 12px 0 0;
-  }
 }
 
-/* ---------- Detail panel: next goal + everything reached ---------- */
-.dary-panel {
-  margin-top: 14px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(226, 180, 95, 0.35);
-  text-align: left;
-}
-
-.dary-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.dary-row-icon {
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--sv-gold);
-  color: var(--sv-paper);
-}
-.dary-row-icon svg { width: 17px; height: 17px; }
-.dary-row-body { flex: 1 1 auto; min-width: 0; }
-.dary-row-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 2px 10px;
-}
-.dary-row-title { font-style: italic; font-size: 1.08rem; line-height: 1.25; margin: 2px 0 1px; color: var(--sv-ink); }
-.dary-row-amount {
-  flex: none;
-  font-family: var(--font-label);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--sv-gold-deep);
+.dary-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
-}
-.dary-row-desc { margin: 0; font-size: 0.92rem; color: var(--sv-ink-2); }
-
-/* Next goal: faded, dashed, with the live "still missing" line. */
-.dary-next { margin-bottom: 18px; }
-.dary-next-label,
-.dary-reached-label {
-  margin: 0 0 8px;
-  font-family: var(--font-label);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--sv-gold-deep);
-}
-.dary-row.is-next {
-  padding: 10px 12px;
-  border: 1.5px dashed rgba(122, 82, 19, 0.35);
-  border-radius: 10px;
-  opacity: 0.8;
-}
-.dary-row.is-next .dary-row-icon { background: transparent; color: var(--sv-ink-2); border: 1.5px solid rgba(43, 34, 48, 0.3); }
-.dary-next-missing {
-  margin: 8px 0 0;
-  font-family: var(--font-label);
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--sv-gold-deep);
-}
-.dary-beyond { margin: 0; font-style: italic; font-size: 1.05rem; color: var(--sv-gold-deep); text-align: center; }
-
-/* Everything reached, newest first; the newest one is featured. */
-.dary-reached { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.dary-reached .dary-row:first-child {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(226, 180, 95, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(226, 180, 95, 0.35);
-}
-.dary-reached .dary-row:first-child .dary-row-icon { width: 40px; height: 40px; box-shadow: 0 0 0 4px rgba(226, 180, 95, 0.22), 0 0 12px rgba(226, 180, 95, 0.5); }
-.dary-reached .dary-row:first-child .dary-row-icon svg { width: 22px; height: 22px; }
-.dary-reached .dary-row:first-child .dary-row-title { font-size: 1.3rem; }
-.dary-reached .dary-row:first-child .dary-row-desc { font-size: 1rem; color: var(--sv-ink); }
-.dary-reached .dary-row:not(:first-child) { padding: 0 14px; }
-
-.dary-row.is-new { animation: dary-row-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-@keyframes dary-row-in {
-  from { opacity: 0; translate: 0 -10px; }
-  to { opacity: 1; translate: 0 0; }
-}
-
-.dary-panel-empty {
-  margin: 0 0 4px;
-  font-style: italic;
-  color: var(--sv-ink-2);
-  text-align: center;
+  border: 0;
 }
 
 /* ---------- Live-update toast ---------- */
-/* "Právě přibyl dar!" — shown briefly near the big amount whenever the
+/* "Právě přibyl dar!" — shown briefly at the top of the window whenever the
    real total jumps up while the page is open (a poll, or the test hook). */
 .dary-toast {
   position: absolute;
-  top: 100%;
+  top: 12px;
   left: 50%;
-  margin-top: 6px;
   padding: 5px 14px;
   border-radius: 999px;
   background: var(--sv-gold-deep);
@@ -495,7 +387,7 @@
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 4px);
+  transform: translate(-50%, -4px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 6;
 }
@@ -508,7 +400,7 @@
     font-size: 0.64rem;
     padding: 4px 12px;
     white-space: normal;
-    max-width: 88vw;
+    max-width: 88%;
     text-align: center;
   }
 }
@@ -603,14 +495,12 @@
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .dary-track-fill::after { animation: none; opacity: 0; }
-  .dary-node.is-lighting .dary-node-dot { animation: none; }
-  .dary-node-ring,
+  .dary-level.is-next .dary-dot::after,
+  .dary-avatar,
+  .dary-level.is-lighting .dary-dot { animation: none; }
+  .dary-ring,
   .dary-spark { display: none; }
-  .dary-row.is-new { animation: none; }
-  .dary-handle,
-  .dary-track-fill,
-  .dary-node-dot,
-  .dary-panel,
+  .dary-dot,
+  .dary-label,
   .dary-toast { transition: none; }
 }
