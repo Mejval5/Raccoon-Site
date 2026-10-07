@@ -3,7 +3,7 @@
 // pixels, after enemies and bombs and before the octopus.
 
 import { artImg } from './v2-art.js';
-import { drawWhirlpoolCode, drawWhirlpoolSprite, portalPlace, portalFrame, PORTAL_SQUASH } from './portal-draw.js';
+import { drawWhirlpoolCode, drawWhirlpoolSprite, portalPlace, portalFrame, portalTouch, portalKey, idleHeightPx, PORTAL_SQUASH, PORTAL_SEAT } from './portal-draw.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
@@ -59,20 +59,23 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
   const pf = cullFlags('portals', 8);
   let pi = 0;
   function ring(tx, ty, label, tint, plank) {
-    const ex0 = sx(tx + 0.5), ey0 = sy(ty + 0.5);
+    const key = portalKey(tx, ty);
+    portalTouch(key, time); // r44: the portal 'appears' (its Rise starts) when the level does, wherever the camera is
     if (!visibleAt(pf, pi++ & 7, tx + 0.5, ty + 0.5, 4)) return; // r43: a portal far from the camera is not animated or drawn
     const pl = m.tileAt ? portalPlace(m.tileAt, tx, ty) : { flat: false, w: 2, cx: tx + 0.5, floorY: ty + 1, cy: ty + 0.5 };
     const wpx = pl.w * ppu, ex = sx(pl.cx);
-    const hIdle = wpx * 0.97 * (pl.flat ? PORTAL_SQUASH : 1);
+    const hIdle = idleHeightPx(wpx, pl.flat ? PORTAL_SQUASH : 1); // the idle whirlpool's visible height
     const floorPx = sy(pl.floorY);
-    const cy = pl.flat ? floorPx - hIdle / 2 - ppu * 0.08 : sy(pl.cy);
+    // r44: every frame is seated by its own visible bottom: on the floor line (lying) or on the bottom of the upright idle one
+    const seatY = pl.flat ? floorPx + ppu * PORTAL_SEAT : sy(pl.cy) + hIdle / 2;
+    const cy = seatY - hIdle / 2; // the centre of the idle whirlpool
     const d = m.octoX === undefined ? 99 : Math.hypot(m.octoX - (tx + 0.5), m.octoY - (ty + 0.5));
-    const frame = portalFrame(tx + ',' + ty, time, d < 2.0, d > 3.2);
+    const frame = portalFrame(key, time, d < 2.0, d > 3.2);
     const spriteTint = tint === 'violet' ? 'warm' : tint === 'amber' ? 'gold' : 'none';
-    if (!drawWhirlpoolSprite(ctx, ex, cy, wpx, pl.flat ? PORTAL_SQUASH : 1, frame, spriteTint)) {
+    if (!drawWhirlpoolSprite(ctx, ex, seatY, wpx, pl.flat ? PORTAL_SQUASH : 1, frame, spriteTint)) {
       // the sheet has not loaded: the code-drawn whirlpool, as a fallback
       const r = ppu * 1.45;
-      drawWhirlpoolCode(ctx, ex, pl.flat ? cy : sy(pl.cy), pl.flat ? r : r * 0.8, time, { tint, flat: pl.flat, phase: tx * 0.7 });
+      drawWhirlpoolCode(ctx, ex, cy, pl.flat ? r : r * 0.8, time, { tint, flat: pl.flat, phase: tx * 0.7 });
     } else {
       // bubbles rising from the pool, only through water tiles
       ctx.save();
@@ -80,7 +83,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       for (let i = 0; i < 6; i++) {
         const p = (time * 0.35 + i / 6 + tx * 0.13) % 1;
         const bx = ex + Math.sin(i * 2.7 + tx) * wpx * 0.36 + Math.sin(time * 2 + i) * ppu * 0.05;
-        const by = (pl.flat ? floorPx - hIdle * 0.5 : sy(pl.cy)) - p * ppu * 1.7;
+        const by = cy - p * ppu * 1.7;
         if (!water(bx, by)) continue;
         ctx.globalAlpha = Math.min(1, p * 6) * (1 - p) * 0.7;
         ctx.fillStyle = 'rgba(200,235,250,0.25)'; ctx.strokeStyle = 'rgba(225,245,255,0.9)';
@@ -90,30 +93,27 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
     }
     if (!label || !(ex > 0 && ex < cw && cy > 0 && cy < ch)) return;
     const hr = hintRect(ctx.canvas, performance.now());
-    const topY = pl.flat ? cy - hIdle / 2 : cy - wpx / 2;  // the rim of the whirlpool
+    const topY = cy - hIdle / 2;  // the rim of the whirlpool
     pendingLabels.push(() => {
       if (plank) {
-        // the shortcut ring's name on a small wooden sign (65% of the old size) standing on the floor rim BESIDE the
-        // ring (away from a wall), its post running down to the rim, never planted in the ring
+        // r44: the shortcut ring's name on a small wooden sign (65% of the old size) directly ABOVE its own ring, like the Dive label
+        // (beside the ring, both signs leaned in towards the Dive well and it was unclear which ring each one named); a short post
+        // runs from the plank down to just above the rim
         const S = 0.65;
-        const free = (dx) => !m.tileAt || (m.tileAt(tx + dx, ty) === 0 && m.tileAt(tx + dx + (dx > 0 ? 1 : -1), ty) === 0);
-        const side = free(2) || !free(-2) ? 1 : -1;
-        const px = ex + side * 1.9 * ppu;
-        const rimY = floorPx; // top edge of the floor under the ring
-        const ph = ppu * 0.56 * S, signY = rimY - ppu * 1.7;
+        const ph = ppu * 0.56 * S, signY = topY - ppu * 0.3 - ph / 2;
         ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.32 * S))}px Quicksand, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const tw = ctx.measureText(label).width, pw = tw + ppu * 0.5 * S;
-        const inHint = inRect(hr, px, signY);
-        if (!inHint && signY > 0 && px > -pw && px < cw + pw) {
+        const inHint = inRect(hr, ex, signY);
+        if (!inHint && signY - ph / 2 > 0 && ex > -pw && ex < cw + pw) {
           ctx.lineJoin = 'round';
-          const postW = Math.max(2, ppu * 0.1 * S);
+          const postW = Math.max(2, ppu * 0.1 * S), postTop = signY + ph / 2 - 1, postBot = topY + ppu * 0.04;
           ctx.fillStyle = '#6b4a22'; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = Math.max(1, ppu * 0.04);
-          ctx.fillRect(px - postW / 2, signY + ph / 2 - 1, postW, rimY - (signY + ph / 2) + 1);
-          ctx.strokeRect(px - postW / 2, signY + ph / 2 - 1, postW, rimY - (signY + ph / 2) + 1);
+          ctx.fillRect(ex - postW / 2, postTop, postW, postBot - postTop);
+          ctx.strokeRect(ex - postW / 2, postTop, postW, postBot - postTop);
           ctx.lineWidth = Math.max(2, ppu * 0.07 * S); ctx.fillStyle = '#c99a5a';
-          ctx.beginPath(); ctx.roundRect(px - pw / 2, signY - ph / 2, pw, ph, ppu * 0.1 * S); ctx.fill(); ctx.stroke();
-          ctx.fillStyle = '#3a2410'; ctx.fillText(label, px, signY + 1);
+          ctx.beginPath(); ctx.roundRect(ex - pw / 2, signY - ph / 2, pw, ph, ppu * 0.1 * S); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#3a2410'; ctx.fillText(label, ex, signY + 1);
         }
       } else {
         const ly = topY - ppu * 0.32; // just above the whirlpool's rim

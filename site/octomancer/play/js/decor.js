@@ -432,12 +432,16 @@ export function findPlantAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
   for (let ty = 1; ty < chunkH - 1; ty++) {
     for (let tx = 1; tx < chunkW - 1; tx++) {
       if (chunk.tiles[ty * chunkW + tx] === 0) continue; // must itself be solid
+      const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
+      // r44: the cheap gates first (the hash, then open water on the growing side: most solid tiles are inside the rock); the keep-outs and the
+      // enemy-slot scan, which cost a pass over the chunk's spawns per tile, only for the few tiles that passed them. Same set as before: every test must pass.
+      if (h % 3 !== 0 && h % (chunk.v2 ? 5 : 7) !== 0) continue;
+      if (chunk.tiles[(ty - 1) * chunkW + tx] !== 0 && chunk.tiles[(ty + 1) * chunkW + tx] !== 0) continue;
       const nf = chunk.plantFree; // v2: the shop stall (counter span plus a margin) grows no foliage
       if (nf && tx >= nf.x0 && tx < nf.x1 && ty >= nf.y0 && ty < nf.y1) continue;
       const pf = chunk.plantKeepOut; // round 27: no foliage behind the exit ring or the hub journal board
       if (pf && pf.some((r) => tx >= r.x0 && tx < r.x1 && ty >= r.y0 && ty < r.y1)) continue;
       if (nearEnemySlot(chunk, tx, ty)) continue; // round-13 review: no plant on an urchin/cannon/horns
-      const h = hash2(chunkIndex * 733 + tx * 131, ty * 977 + chunkIndex);
       const openAbove = chunk.tiles[(ty - 1) * chunkW + tx] === 0;
       const openBelow = chunk.tiles[(ty + 1) * chunkW + tx] === 0;
       // Round-17 fix (Daniel's screenshot review: "a vine placed in a
