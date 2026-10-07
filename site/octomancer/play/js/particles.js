@@ -8,22 +8,25 @@ import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION } from
 import { offScreenFar } from './cull.js';
 
 const POOL_SIZE = 256;
+const INK_COLOR = '#150d1c';
+const GOO_COLORS = ['#c0485e', '#e0607a'];
 
 export function createParticles() {
   const pool = new Array(POOL_SIZE);
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1 };
+    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1, sticky: false, stuck: false };
   }
   let cursor = 0;
   let shake = 0; // current screen-shake magnitude, world units (endless)
   let fxAmp = 0, fxT = 0, fxDur = SHAKE_DURATION; // v2 feel shake: peak amplitude (px), time left (s) and the duration it was started with
 
   function spawnOne(x, y, vx, vy, life, size, color) {
-    if (offScreenFar(x, y, 2)) return; // r43: nothing is spawned far off screen (AnimationLOD: the particles are switched off with the renderer)
+    if (offScreenFar(x, y, 2)) return null; // r43: nothing is spawned far off screen (AnimationLOD: the particles are switched off with the renderer)
     const p = pool[cursor];
     cursor = (cursor + 1) % POOL_SIZE; // ring buffer: oldest slot is reused first
     p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
-    p.life = life; p.maxLife = life; p.size = size; p.color = color;
+    p.life = life; p.maxLife = life; p.size = size; p.color = color; p.sticky = false; p.stuck = false;
+    return p;
   }
 
   return {
@@ -72,6 +75,13 @@ export function createParticles() {
         spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.09, 'rgba(20,15,30,0.75)');
       }
     },
+    /** Section 14: an ink jet blob bursting on rock or a creature: a few dark droplets. */
+    inkSplat(x, y) {
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2, speed = 0.6 + Math.random() * 1.3;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.25 + Math.random() * 0.15, 0.05 + Math.random() * 0.03, i & 1 ? 'rgba(26,16,48,0.85)' : 'rgba(58,42,92,0.8)');
+      }
+    },
     /** M7-1: a bright sparkle on any pickup (plankton/shell), colour
      * matching what was collected. */
     pickupSparkle(x, y, color = '#dff3ff') {
@@ -117,11 +127,41 @@ export function createParticles() {
         spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed - 0.5, 0.35 + Math.random() * 0.2, 0.05, i % 2 ? '#8a7a6a' : '#5f5348');
       }
     },
-    /** v2: shake the screen by up to `px` pixels for `dur` s (fades out linearly over `dur`). Ignored under reduced motion or with shake off. */
-    shakeFx(px, dur = SHAKE_DURATION) {
+    /** v2: shake the screen by up to `px` pixels for `dur` s (fades out linearly over `dur`). Ignored under reduced motion or with shake off.
+     * `max` caps the peak (SHAKE_MAX_PX by default; a splat passes its own bigger one). */
+    shakeFx(px, dur = SHAKE_DURATION, max = SHAKE_MAX_PX) {
       if (prefersReducedMotion() || !shakeEnabled() || px <= 0) return;
       const cur = fxT > 0 ? fxAmp * (fxT / fxDur) : 0;
-      if (px >= cur) { fxAmp = Math.min(px, SHAKE_MAX_PX); fxT = dur; fxDur = dur; }
+      if (px >= cur) { fxAmp = Math.min(px, max); fxT = dur; fxDur = dur; }
+    },
+    /**
+     * V2-PLAN 16: a body flattened by a boulder at (x, y): a burst of dark ink and pink-red goo, and `chunks` bits of octopus that
+     * fly out and STICK where they hit rock (update(dt, isSolid) stops a sticky chunk in the first solid tile and keeps it
+     * a few seconds). Under reduced motion the chunks are simply left lying around the spot, nothing flies.
+     */
+    splatBurst(x, y, chunks = 8) {
+      const calm = prefersReducedMotion();
+      if (!calm) {
+        for (let i = 0; i < 40; i++) { // ink and goo, thrown mostly sideways along the floor and up
+          const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.7, speed = 1.5 + Math.random() * 5;
+          spawnOne(x + (Math.random() - 0.5) * 0.5, y, Math.cos(a) * speed, Math.sin(a) * speed * 0.8, 0.45 + Math.random() * 0.5, 0.035 + Math.random() * 0.05, i % 3 ? INK_COLOR : GOO_COLORS[i % 2]);
+        }
+      }
+      const n = Math.max(6, Math.min(10, chunks));
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.9, speed = 3 + Math.random() * 5;
+        const p = spawnOne(x + (calm ? (i - n / 2) * 0.15 : 0), y, calm ? 0 : Math.cos(a) * speed, calm ? 0 : Math.sin(a) * speed, 4 + Math.random() * 1.5, 0.055 + Math.random() * 0.045, i % 2 ? '#c05060' : '#904050');
+        if (p) { p.sticky = true; p.stuck = calm; }
+      }
+    },
+    /** V2-PLAN 16: a shock on the octopus: short yellow-white sparks flung out and a small twitch of the screen. */
+    shockSparks(x, y) {
+      if (prefersReducedMotion()) return;
+      for (let i = 0; i < 16; i++) {
+        const a = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 4;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.18 + Math.random() * 0.22, 0.045 + Math.random() * 0.03, i % 3 ? '#fff58a' : '#ffffe6');
+      }
+      this.shakeFx(2.5, 0.18);
     },
     /** v2: the current shake offset in screen pixels (|x|, |y| <= SHAKE_MAX_PX). */
     shakePx() {
@@ -136,7 +176,8 @@ export function createParticles() {
       const t = performance.now() * 0.05;
       return { x: Math.sin(t) * shake, y: Math.cos(t * 1.3) * shake };
     },
-    update(dt) {
+    /** @param {(tx:number,ty:number)=>boolean} [isSolid] tile test (world points): sticky chunks stop where they enter rock */
+    update(dt, isSolid = null) {
       if (shake > 0) shake = Math.max(0, shake - dt * 1.8);
       if (fxT > 0) fxT = Math.max(0, fxT - dt);
       for (let i = 0; i < POOL_SIZE; i++) {
@@ -144,6 +185,14 @@ export function createParticles() {
         if (!p.active) continue;
         p.life -= dt;
         if (p.life <= 0) { p.active = false; continue; }
+        if (p.sticky) {
+          if (p.stuck) continue;
+          const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+          if (isSolid && isSolid(nx, ny)) { p.stuck = true; p.vx = p.vy = 0; p.life = Math.min(p.life, 3 + (i % 5) * 0.2); continue; } // stays where it hit, a few seconds
+          p.x = nx; p.y = ny;
+          p.vx *= 0.97; p.vy = p.vy * 0.97 + 15 * dt; // a heavy chunk: it arcs down fast (no floaty bits hanging in the water)
+          continue;
+        }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.vx *= 0.92; p.vy *= 0.92;

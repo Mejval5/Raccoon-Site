@@ -59,7 +59,7 @@
 // flat at this art style's resolution; a loud grain was fighting the video
 // look as much as the wrong base colour was.
 
-import { updateCamera, worldToScreen, computePxPerUnit } from './camera.js';
+import { updateCamera, updateDeathCamera, worldToScreen, computePxPerUnit } from './camera.js';
 import { acquireCanvas, releaseCanvas, sharedCanvas } from './canvas-pool.js';
 import { visibleAt, visibleObj, cullFlags, cullFrame, cullEnd } from './cull.js';
 import { drawOctopus } from './octopus-draw.js';
@@ -68,6 +68,7 @@ import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeF
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
+import { SHELL_SIZE } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
 import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_DRAW_ORDER, getTileDrawHook } from './materials.js';
@@ -162,7 +163,7 @@ function getSharedArt() {
     // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates only (reuses decor.js's bush2 art)
     clusterBush: loadImage(ASSET('decor-bush2.webp')),
     foliage: loadImage(ASSET('foliage.webp')), // r46: every original foliage sprite on one sheet (data/foliage.json)
-    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')) },
+    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')), kinds: [null, loadImage(ASSET('shell-cowrie.webp')), loadImage(ASSET('shell-conch.webp')), loadImage(ASSET('shell-nautilus.webp')), loadImage(ASSET('shell-pearl.webp'))] }, // kinds: by value (shells.js)
     noise,
     deepTint: null,
   };
@@ -1408,6 +1409,7 @@ export function createRenderer(ctx, world) {
   // dominates); fill everything outside the level's tile-x range with the
   // same rock fill + noise the walls use, so it reads as more cave rather
   // than open water.
+  let outerAll = false; // the death camera is on: fill past the top and bottom of the level as well
   function drawOuterRock(canvasW, canvasH) {
     const left = worldToScreen(camera, canvasW, canvasH, 0, 0).x;
     const right = worldToScreen(camera, canvasW, canvasH, chunkW, 0).x;
@@ -1430,12 +1432,15 @@ export function createRenderer(ctx, world) {
       return;
     }
     ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
-    if (left > 0) ctx.fillRect(0, 0, left, canvasH);
-    if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
-    if (rockNoisePattern) {
-      ctx.fillStyle = rockNoisePattern;
+    // the death camera (V2-PLAN 14) may look past the top or bottom of the level under the death panel: rock there too
+    const top = outerAll ? worldToScreen(camera, canvasW, canvasH, 0, 0).y : 0;
+    const bottom = outerAll ? worldToScreen(camera, canvasW, canvasH, 0, world.height).y : canvasH;
+    for (let pass = 0; pass < (rockNoisePattern ? 2 : 1); pass++) {
+      if (pass === 1) ctx.fillStyle = rockNoisePattern;
       if (left > 0) ctx.fillRect(0, 0, left, canvasH);
       if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
+      if (top > 0) ctx.fillRect(0, 0, canvasW, top);
+      if (bottom < canvasH) ctx.fillRect(0, bottom, canvasW, canvasH - bottom);
     }
     ctx.restore();
   }
@@ -1453,8 +1458,9 @@ export function createRenderer(ctx, world) {
         ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       } else if (it.type === 'shell') {
-        const img = shellImgs.blue;
-        const size = camera.pxPerUnit * 0.7;
+        const kindImg = it.sk ? shellImgs.kinds[it.sk] : null; // V2: the currency kinds (cowrie, conch, nautilus, pearl); endless keeps the blue shell
+        const img = kindImg || shellImgs.blue;
+        const size = camera.pxPerUnit * (kindImg ? SHELL_SIZE[it.sk] : 0.7);
         ctx.save();
         ctx.globalAlpha = 0.85 + 0.15 * Math.sin(time * 5);
         if (img.complete && img.naturalWidth) ctx.drawImage(img, s.x - size / 2, s.y - size / 2, size, size);
@@ -1479,14 +1485,19 @@ export function createRenderer(ctx, world) {
   }
 
   function drawOcto(o, alpha, canvasW, canvasH, time) {
+    if (o.hidden) { o.__drawn = null; return; } // r45: gone into a whirlpool
     const ix = o.prevX + (o.x - o.prevX) * alpha;
     const iy = o.prevY + (o.y - o.prevY) * alpha;
     const s = worldToScreen(camera, canvasW, canvasH, ix, iy);
+    // r45: going into a whirlpool (main.js stepEntry): the turn and the scale come from the scripted pose, interpolated like the position
+    const e = o.entry;
+    const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
+    const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
+    o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
     ctx.save();
     ctx.translate(s.x, s.y);
-    ctx.rotate((o.angle * Math.PI) / 180);
-    const swallow = o.entering || 0; // r44: going into a whirlpool: shrinks to 15% and fades out (main.js stepEntry)
-    const sc = camera.pxPerUnit * (1 - 0.85 * swallow);
+    ctx.rotate((rot * Math.PI) / 180);
+    const sc = camera.pxPerUnit * k;
     ctx.scale(sc, sc);
     o.__t = time;
     o.__speed = Math.hypot(o.vx, o.vy);
@@ -1503,7 +1514,7 @@ export function createRenderer(ctx, world) {
     // image at that alpha, which is exactly an "x-ray" look. Passing the
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
-    const octoAlpha = (o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1) * (1 - swallow);
+    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
     drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }
@@ -1544,7 +1555,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1564,7 +1575,10 @@ export function createRenderer(ctx, world) {
       // r40: an optional lean of the camera target (the pool keeps its pedestal in view); the octopus's own pull-back clamp still applies
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
-      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      // V2-PLAN 14: a dead octopus is framed in the part of the screen the death panel leaves free
+      if (deathFocus) updateDeathCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, deathFocus, deathFocus.strict);
+      else updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      outerAll = !!deathFocus;
       if (warmOnly && warmGroup < 0) return; // r44: a frame behind the dark screen that main.js uses to run the simulation's first updates: nothing to set up or draw
       if (warmOnly && warmGroup <= 0) {
         // r43: the screen is dark while a new level's first view bakes: do only the set-up (plant anchors, the deep rock, the wall

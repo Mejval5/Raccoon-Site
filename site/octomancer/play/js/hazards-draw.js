@@ -1,9 +1,11 @@
-// Hazard drawing (hazards.js), all code-drawn shapes (no sprites this round). Called from main.js's v2 extra
-// draw hook, in device pixels, after enemies and bombs and before the octopus. Reads the flat hazard arrays.
+// Hazard drawing (hazards.js). Called from main.js's v2 extra draw hook, in device pixels, after enemies and bombs and before
+// the octopus. Reads the flat hazard arrays. r46: the jet's rock chimney, the spine strip, the eel and the anemone are sprites
+// (js/sprites.js, generated in Milan's style) animated by transforms; the code shapes stay as the fallback until the atlas loads.
 
-import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_HALF_LEN, SPIKE_REACH, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT } from './hazards.js';
-import { prefersReducedMotion } from './config.js';
+import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_REACH, SPIKE_COUNT, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT, spikeSpan } from './hazards.js';
+import { prefersReducedMotion, DEATH_DURATION } from './config.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
+import { drawSprite, drawSpriteSlice, spriteRect } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -28,7 +30,7 @@ export function drawHazards(ctx, camera, cw, ch, d, time, isSolid) {
     switch (d.kind[i]) {
       case HZ_JET: drawJet(ctx, sx, sy, ppu, d.dx[i], d.dy[i], d.len[i], time, i); break;
       case HZ_SPIKES: drawSpikes(ctx, sx, sy, ppu, d.dx[i], d.dy[i], isSolid, d.x[i], d.y[i]); break;
-      case HZ_ROCK: if (d.state[i] !== 3) drawRock(ctx, sx, sy, ppu, d.state[i], time, i, d.v[i], isSolid, d.x[i], d.y[i], d.a[i]); break;
+      case HZ_ROCK: if (d.state[i] !== 3 && d.state[i] < 5) drawRock(ctx, sx, sy, ppu, d.state[i], time, i, d.v[i], isSolid, d.x[i], d.y[i], d.a[i]); break;
       case HZ_EEL: drawEel(ctx, sx, sy, ppu, d.state[i], d.r[i], d.t[i], time, isSolid, d.x[i], d.y[i]); break;
       case HZ_ANEMONE: drawAnemone(ctx, sx, sy, ppu, time, i); break;
       default: break;
@@ -76,6 +78,8 @@ function drawJet(ctx, sx, sy, ppu, dx, dy, len, time, seed) {
     ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill(); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  // r46: a rock chimney growing out of the wall face, its mouth along the stream
+  if (drawSprite(ctx, 'vent', 0.3 * ppu, 0, 0, 0.78 * ppu, 1, 0.5)) { ctx.restore(); return; }
   // nozzle block on the wall face
   const nw = 0.42 * ppu, nh = 0.95 * ppu;
   ctx.fillStyle = '#2b5f6e';
@@ -90,37 +94,138 @@ function drawJet(ctx, sx, sy, ppu, dx, dy, len, time, seed) {
 }
 
 // ---- spike wall: a steel strip on the rock face with a row of pale spikes ----
-const CORNER_INSET = 0.22; // tiles: where the strip ends at a convex rock corner, plate and spikes stop this far short of it
+const spanOut = { lo: 0, hi: 0 };
+
+let tileSolid = null; // spikeSpan takes tile coordinates; the callers' isSolid takes world points
+const spanSolid = (tx, ty) => tileSolid(tx, ty);
 function drawSpikes(ctx, sx, sy, ppu, dx, dy, isSolid, wx, wy) {
-  const half = SPIKE_HALF_LEN;
-  // a strip end is at a convex corner when the rock layer behind the strip stops there (no rock beyond the end)
-  let lo = -half, hi = half;
-  if (isSolid) {
-    const tx = -dy, ty = dx;
-    if (!isSolid(Math.floor(wx - dx - tx * 2), Math.floor(wy - dy - ty * 2))) lo += CORNER_INSET;
-    if (!isSolid(Math.floor(wx - dx + tx * 2), Math.floor(wy - dy + ty * 2))) hi -= CORNER_INSET;
-  }
+  // the strip ends where the hit test does (hazards.js spikeSpan): QA P4 had drawn tips outside the hitbox
+  tileSolid = isSolid;
+  const { lo, hi } = spikeSpan(dx, dy, wx, wy, isSolid ? spanSolid : null, spanOut);
   ctx.save();
   ctx.translate(sx - dx * 0.5 * ppu, sy - dy * 0.5 * ppu); // centre of the face
   ctx.rotate(Math.atan2(dy, dx)); // +x = out of the rock
+  if (spriteRect('spines')) { // r46: bone-white urchin spines on a crusty coral base; the sprite's up is +x here
+    ctx.rotate(Math.PI / 2);
+    drawSprite(ctx, 'spines', (lo + hi) / 2 * ppu, 0.08 * ppu, (hi - lo) * ppu, (SPIKE_REACH + 0.1) * ppu);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = '#4d6278';
   ctx.strokeStyle = '#223445';
   ctx.lineWidth = Math.max(1, ppu * 0.04);
   ctx.beginPath(); ctx.rect(-0.04 * ppu, lo * ppu, 0.2 * ppu, (hi - lo) * ppu); ctx.fill(); ctx.stroke();
-  const count = 6, step = (hi - lo) / count;
-  for (let k = 0; k < count; k++) {
-    const cy = (lo + step * (k + 0.5)) * ppu, hw = step * 0.44 * ppu;
-    const g = ctx.createLinearGradient(0.15 * ppu, 0, SPIKE_REACH * ppu, 0);
-    g.addColorStop(0, '#9fb4c6');
-    g.addColorStop(1, '#f2f8fc');
+  const count = SPIKE_COUNT, step = (hi - lo) / count;
+  for (let k = 0; k < count; k++) spikeTip(ctx, (lo + step * (k + 0.5)) * ppu, step * 0.44 * ppu, ppu, SPIKE_REACH);
+  ctx.restore();
+}
+/** One spike in the strip's frame (+x out of the rock): a pale cone from the plate to its tip at `reach` tiles. */
+function spikeTip(ctx, cy, hw, ppu, reach) {
+  const g = ctx.createLinearGradient(0.15 * ppu, 0, reach * ppu, 0);
+  g.addColorStop(0, '#9fb4c6');
+  g.addColorStop(1, '#f2f8fc');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(0.14 * ppu, cy - hw);
+  ctx.lineTo(reach * ppu, cy);
+  ctx.lineTo(0.14 * ppu, cy + hw);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+
+// ---- V2-PLAN 16: the skewered octopus (drawn after the body) ----
+const INK = '#150d1c', INK_EDGE = '#0b0610';
+/**
+ * Two or three spike tips stand THROUGH the pinned body and a dark ink leak dribbles down from each wound. Called after the
+ * octopus is drawn when octo.deathStyle === 'impale'. Finds the strip the body is pinned on.
+ */
+export function drawImpaleOverlay(ctx, camera, cw, ch, octo, d, t, isSolid) {
+  if (!octo || !octo.dead || octo.deathStyle !== 'impale' || !d) return;
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < d.n; i++) {
+    if (d.kind[i] !== HZ_SPIKES) continue;
+    const dd = Math.hypot(d.x[i] - octo.pinX, d.y[i] - octo.pinY);
+    if (dd < bd) { bd = dd; best = i; }
+  }
+  if (best < 0 || bd > 3) return;
+  const ppu = camera.pxPerUnit, dx = d.dx[best], dy = d.dy[best];
+  tileSolid = isSolid;
+  const { lo, hi } = spikeSpan(dx, dy, d.x[best], d.y[best], isSolid ? spanSolid : null, spanOut);
+  const fx = d.x[best] - dx * 0.5, fy = d.y[best] - dy * 0.5;
+  const c = (octo.pinX - fx) * -dy + (octo.pinY - fy) * dx; // where along the strip the body hangs
+  const step = (hi - lo) / SPIKE_COUNT;
+  const j = Math.max(1, Math.min(SPIKE_COUNT - 1, Math.round((c - lo) / step))); // the body hangs on the gap between spikes j-1 and j
+  ctx.save();
+  ctx.translate(cw / 2 + (fx - camera.x) * ppu, ch / 2 + (fy - camera.y) * ppu);
+  const rot = Math.atan2(dy, dx);
+  ctx.rotate(rot);
+  ctx.strokeStyle = '#223445';
+  ctx.lineWidth = Math.max(1, ppu * 0.04);
+  const age = Math.max(0, Math.min(1, (DEATH_DURATION - octo.deathTimer) / DEATH_DURATION)); // 0..1 over the death second, then it stays
+  const calm = prefersReducedMotion();
+  const wounds = [];
+  const NT = 2; // the head is about a spike gap tall: the two spikes beside the pin go through it
+  for (let n = 0; n < NT; n++) {
+    const cy = lo + step * (j - 1 + n + 0.5);
+    // the tip standing out of the far side of the body: a dark wound ring where the flesh closes round it, then the tip
+    const bx = 0.5, tip = 0.88, hw = 0.085;
+    ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.ellipse(bx * ppu, cy * ppu, 0.07 * ppu, 0.13 * ppu, 0, 0, TAU); ctx.fill();
+    const g = ctx.createLinearGradient(bx * ppu, 0, tip * ppu, 0);
+    g.addColorStop(0, '#aebfcf'); g.addColorStop(1, '#f2f8fc');
     ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(0.14 * ppu, cy - hw);
-    ctx.lineTo(SPIKE_REACH * ppu, cy);
-    ctx.lineTo(0.14 * ppu, cy + hw);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx * ppu, (cy - hw) * ppu); ctx.lineTo(tip * ppu, cy * ppu); ctx.lineTo(bx * ppu, (cy + hw) * ppu); ctx.closePath(); ctx.fill(); ctx.stroke();
+    wounds.push(bx * ppu, (cy + 0.1) * ppu);
   }
   ctx.restore();
+  // ink leak: runs down the screen from each wound (a dribble that grows over the first second, then keeps creeping)
+  const cosr = Math.cos(rot), sinr = Math.sin(rot);
+  for (let n = 0; n < NT; n++) {
+    const lx = wounds[n * 2], ly = wounds[n * 2 + 1];
+    const wx = cw / 2 + (fx - camera.x) * ppu + lx * cosr - ly * sinr;
+    const wy = ch / 2 + (fy - camera.y) * ppu + lx * sinr + ly * cosr;
+    const len = (0.1 + 0.2 * age + 0.03 * n + (calm ? 0 : 0.03 * Math.sin(t * 2 + n))) * ppu; // short: the three leaks stay three
+    const w0 = 0.045 * ppu;
+    ctx.fillStyle = INK; ctx.strokeStyle = INK_EDGE; ctx.lineWidth = Math.max(1, ppu * 0.02);
+    ctx.beginPath();
+    ctx.moveTo(wx - w0, wy);
+    ctx.quadraticCurveTo(wx - w0 * 0.7 + Math.sin(n * 2.1) * 0.05 * ppu, wy + len * 0.6, wx - w0 * 0.3, wy + len);
+    ctx.arc(wx, wy + len, w0 * 0.55, Math.PI, 0, true); // rounded drip end
+    ctx.quadraticCurveTo(wx + w0 * 0.7 + Math.sin(n * 2.1) * 0.05 * ppu, wy + len * 0.6, wx + w0, wy);
+    ctx.closePath(); ctx.fill();
+    if (!calm) { // a falling drop under the end
+      const u = (t * 0.9 + n * 0.37) % 1;
+      ctx.beginPath(); ctx.arc(wx, wy + len + (0.15 + u * 0.5) * ppu, w0 * 0.5 * (1 - u * 0.5), 0, TAU); ctx.fill();
+    }
+  }
+}
+
+// ---- V2-PLAN 16: the boulder that flattened the octopus, drawn AFTER the body so it sits on top of the pancake ----
+/**
+ * Draws every boulder that came down on the octopus (state 5 falling with it, 6 resting on it). Smears of ink and pink-red goo
+ * run from under it along the floor on both sides, so the pancake reads as crushed, not as a flat sticker.
+ */
+export function drawSplatRock(ctx, camera, cw, ch, d, t, octo = null) {
+  const ppu = camera.pxPerUnit;
+  for (let i = 0; i < d.n; i++) {
+    if (d.kind[i] !== HZ_ROCK || d.state[i] < 5) continue;
+    const sx = cw / 2 + (d.x[i] - camera.x) * ppu, sy = ch / 2 + (d.y[i] - camera.y) * ppu;
+    if (sx < -2 * ppu || sx > cw + 2 * ppu || sy < -2 * ppu || sy > ch + 2 * ppu) continue;
+    const flat = octo && octo.flat > 0 ? octo.flat : 0;
+    const resting = d.state[i] === 6;
+    if (resting && flat > 0.3) { // goo seeping out from under it, along the floor, both ways
+      const floorY = cw ? ch / 2 + (d.b[i] - camera.y) * ppu : sy + 0.5 * ppu;
+      const reach = (0.7 + 0.5 * flat) * ppu;
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = INK;
+        ctx.beginPath(); ctx.ellipse(sx + side * reach * 0.7, floorY - 0.03 * ppu, reach * 0.42, 0.05 * ppu, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#c0485e';
+        ctx.beginPath(); ctx.ellipse(sx + side * reach * 0.62, floorY - 0.05 * ppu, reach * 0.26, 0.032 * ppu, 0, 0, TAU); ctx.fill();
+      }
+    }
+    // the boulder sits a hair into the pancake, dust settling on it for a moment after the hit
+    // resting on the pancake: it sits a little high (the pancake is under it) and a touch off level
+    drawBoulder(ctx, sx, sy + 0.01 * ppu - (resting ? 0.1 * flat * ppu : 0), 0.5 * ppu, i, resting ? 0.07 * flat : 0);
+  }
 }
 
 // ---- falling rock: a loose boulder, grey-brown and faceted (not the blue of the cave walls) ----
@@ -240,8 +345,16 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(sx, sy, 1.3 * ppu, 0, TAU); ctx.fill();
   }
-  // body: a wavy vertical line, drawn as two strokes (dark outline, teal body) plus yellow dashes
   const seg = 9, half = EEL_HALF_BODY * ppu;
+  if (spriteRect('eel')) {
+    // r46: the eel sprite cut into horizontal slices, each shifted by the same travelling wave the code body used
+    const top = sy - half - 0.25 * ppu, hgt = 2 * half + 0.35 * ppu, wid = hgt * 50 / 240 * 1.4, n = 16; // a little plumper than the sprite: it read too thin on dark water
+    for (let k = 0; k < n; k++) {
+      const u = k / n, wave = Math.sin(time * 5 + u * 5) * 0.13 * ppu;
+      drawSpriteSlice(ctx, 'eel', u, u + 1 / n, sx + wave - wid / 2, top + u * hgt, wid, hgt / n + 0.6);
+    }
+  } else {
+  // body: a wavy vertical line, drawn as two strokes (dark outline, teal body) plus yellow dashes
   const path = () => {
     ctx.beginPath();
     for (let k = 0; k <= seg; k++) {
@@ -262,6 +375,7 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
   ctx.beginPath(); ctx.arc(hx, hy, 0.19 * ppu, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx + 0.06 * ppu, hy - 0.03 * ppu, 0.06 * ppu, 0, TAU); ctx.fill();
   ctx.fillStyle = '#10202e'; ctx.beginPath(); ctx.arc(hx + 0.075 * ppu, hy - 0.03 * ppu, 0.03 * ppu, 0, TAU); ctx.fill();
+  }
   // the ring: a jagged circle growing out of the eel, stopped by rock (the same cover the shock's damage check uses)
   if (ring > 0) {
     const fade = Math.max(0, 1 - ring / EEL_RING_MAX);
@@ -313,6 +427,14 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
 // ---- anemone cluster: a low base and swaying pink tentacles ----
 function drawAnemone(ctx, sx, sy, ppu, time, seed) {
   const floor = sy + 0.5 * ppu;
+  if (spriteRect('anemone')) { // r46: the sprite, swaying by a skew about its base
+    ctx.save();
+    ctx.translate(sx, floor + 0.04 * ppu);
+    ctx.transform(1, 0, -Math.sin(time * 1.7 + seed) * 0.16, 1, 0, 0);
+    drawSprite(ctx, 'anemone', 0, 0, 1.35 * ppu);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = '#7a2352';
   ctx.beginPath(); ctx.ellipse(sx, floor - 0.06 * ppu, 0.56 * ppu, 0.16 * ppu, 0, 0, TAU); ctx.fill();
   ctx.lineCap = 'round';

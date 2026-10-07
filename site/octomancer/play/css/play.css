@@ -81,6 +81,8 @@ body {
 .octo-btn.is-active {
   background: rgba(255,255,255,0.32);
 }
+.octo-btn.is-empty { opacity: 0.45; }
+
 
 /* --- HUD bar (hearts + score/depth/bombs), M4-1 --- */
 .octo-hud-bar {
@@ -267,7 +269,7 @@ body {
 
 /* --- v2 (?v2=1): stage label, tutorial prompts, toasts, journal screen, end screen --- */
 .octo-hud-stage { color: #fff; font-weight: 700; }
-.octo-hud-shells { display: inline-flex; align-items: center; gap: 3px; color: #ffe38a; font-weight: 700; }
+.octo-hud-shells { display: inline-flex; align-items: center; gap: 3px; color: #f1e4c3; font-weight: 700; }
 .octo-hud-items { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; align-self: flex-start; max-width: 100%; }
 .octo-hud-item { width: 20px; height: 20px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
 .octo-hud-shell-icon { width: 15px; height: 15px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
@@ -299,8 +301,8 @@ body {
   padding: 8px 16px;
   border-radius: 999px;
   background: rgba(6, 22, 34, 0.86);
-  border: 1px solid rgba(255, 227, 138, 0.55);
-  color: #ffe38a;
+  border: 1px solid rgba(124, 240, 208, 0.45);
+  color: #f1e4c3;
   font: 700 13px 'Quicksand', sans-serif;
   white-space: nowrap;
   pointer-events: none;
@@ -347,8 +349,8 @@ body {
 .octo-summary-besthead { font: 700 12px 'Quicksand', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7cf0d0; margin-top: 6px; text-align: left; }
 .octo-summary-best { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; text-align: left; font-size: 13px; }
 .octo-summary-bestrun { padding: 2px 10px; border-radius: 8px; opacity: .85; }
-.octo-summary-bestrun.is-new { background: rgba(255, 227, 138, 0.18); color: #ffe38a; opacity: 1; font-weight: 700; }
-.octo-summary-note { font-size: 13px; font-weight: 700; color: #ffe38a; margin-top: 4px; }
+.octo-summary-bestrun.is-new { background: rgba(124, 240, 208, 0.14); color: #f1e4c3; opacity: 1; font-weight: 700; }
+.octo-summary-note { font-size: 13px; font-weight: 700; color: #f1e4c3; margin-top: 4px; }
 .octo-stat-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 14px; }
 .octo-stat-row b { color: #fff; }
 
@@ -375,7 +377,7 @@ body {
 .octo-set-row { padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 2px; }
 .octo-set-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .octo-set-label { font-size: 14px; font-weight: 700; color: #fff; }
-.octo-set-out { font-size: 13px; font-weight: 700; color: #ffe38a; font-variant-numeric: tabular-nums; }
+.octo-set-out { font-size: 13px; font-weight: 700; color: #f1e4c3; font-variant-numeric: tabular-nums; }
 .octo-set-hint { font-size: 12px; opacity: .72; line-height: 1.3; }
 .octo-set-range { width: 100%; height: 44px; margin: 0; background: transparent; accent-color: #3fd6a8; cursor: pointer; touch-action: pan-y; -webkit-appearance: none; appearance: none; }
 .octo-set-range::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.22); }
@@ -574,3 +576,59 @@ body {
 
 /* a full-screen panel (settings, journal) hides the HUD row under it: the hearts and stats never peek out or show through */
 #hud.octo-modal-open > .octo-hud-bar, #hud.octo-modal-open > .octo-toast, #hud.octo-modal-open > .octo-title, #hud.octo-modal-open > .octo-speech { visibility: hidden; }
+
+/* --- death screen (V2-PLAN 14, Spelunky style): the world keeps running behind it and the ragdoll body stays in view.
+   A light tint with a clear hole around the body (--bx/--by/--hole, set every frame by main.js), the panel on the right
+   (desktop) or a bottom sheet (phones, portrait and landscape). The panel size is fixed per layout, so main.js can frame
+   the body in the free part of the screen from the moment of death, before the panel fades in. */
+.octo-go-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.octo-gameover-overlay.octo-death-ui {
+  --bx: 50%; --by: 50%; --hole: 90px;
+  justify-content: flex-end; align-items: center;
+  padding: calc(64px + var(--safe-t)) calc(14px + var(--safe-r)) calc(14px + var(--safe-b)) calc(14px + var(--safe-l));
+  background: radial-gradient(circle at var(--bx) var(--by), rgba(4, 12, 18, 0) 0, rgba(4, 12, 18, 0) var(--hole), rgba(4, 12, 18, 0.3) calc(var(--hole) * 2.6));
+  transition: opacity .4s ease;
+}
+.octo-gameover-overlay.octo-death-ui.is-pending { opacity: 0; visibility: hidden; transition: none; }
+.octo-death-ui .octo-overlay-panel {
+  width: min(380px, 34vw); max-width: none; max-height: 100%; box-sizing: border-box;
+  padding: 18px 20px; gap: 8px; justify-content: flex-start;
+  background: rgba(10, 28, 42, 0.9);
+}
+.octo-death-ui .octo-summary { width: 100%; }
+.octo-death-ui .octo-go-actions { position: sticky; bottom: -18px; margin-bottom: -18px; padding: 8px 0 18px; background: linear-gradient(rgba(10, 28, 42, 0), rgb(10, 28, 42) 10px); }
+.octo-death-ui .octo-credit { display: none; }
+/* nothing else of the HUD floats over the body or shows through the panel (toasts, the controls line, prompts, title cards) */
+#hud.octo-death-open > .octo-toast, #hud.octo-death-open > .octo-controls-help, #hud.octo-death-open > .octo-prompt, #hud.octo-death-open > .octo-title, #hud.octo-death-open .octo-hotbar { visibility: hidden; }
+/* phones: a bottom sheet of fixed height; the stat rows go two to a line so it all fits */
+@media (max-width: 700px), (max-height: 520px) {
+  .octo-gameover-overlay.octo-death-ui { align-items: flex-end; justify-content: center; padding: 0 var(--safe-r) 0 var(--safe-l); }
+  .octo-death-ui .octo-overlay-panel {
+    width: 100%; height: 47dvh; max-height: none; border-radius: 16px 16px 0 0; border-bottom: none;
+    padding: 12px 14px 0; gap: 6px; background: rgba(10, 28, 42, 0.92);
+  }
+  .octo-death-ui .octo-summary { width: min(100%, 460px); gap: 4px; }
+  .octo-death-ui .octo-banner { width: min(100%, 300px); align-self: center; }
+  .octo-death-ui .octo-summary-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .octo-death-ui .octo-summary-row { font-size: 13px; padding: 2px 8px; gap: 6px; min-width: 0; }
+  .octo-death-ui .octo-summary-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .octo-death-ui .octo-summary-best { font-size: 12px; }
+  .octo-death-ui .octo-go-actions { width: min(100%, 460px); flex-direction: row; gap: 8px; bottom: 0; margin-top: auto; margin-bottom: 0; padding: 8px 0 calc(10px + var(--safe-b)); }
+  .octo-death-ui .octo-go-actions .octo-btn-wide { flex: 1; padding: 10px 12px; }
+}
+/* landscape phone: a low sheet in columns (summary | best runs | buttons) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .octo-death-ui .octo-overlay-panel {
+    height: 50dvh; padding: 8px 12px 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 150px; column-gap: 12px; align-items: start; align-content: start;
+  }
+  .octo-death-ui .octo-summary { display: contents; }
+  .octo-death-ui .octo-banner { grid-column: 1; grid-row: 1; width: 220px; justify-self: start; align-self: start; }
+  .octo-death-ui .octo-banner-text { font-size: 15px; }
+  .octo-death-ui .octo-summary-headline { grid-column: 1; grid-row: 2; text-align: left; font-size: 13px; margin: 0; }
+  .octo-death-ui .octo-summary-rows { grid-column: 1; grid-row: 3; }
+  .octo-death-ui .octo-summary-row { font-size: 12px; }
+  .octo-death-ui .octo-summary-besthead { grid-column: 2; grid-row: 1; margin: 0 0 2px; align-self: end; }
+  .octo-death-ui .octo-summary-best { grid-column: 2; grid-row: 2 / span 2; }
+  .octo-death-ui .octo-summary-note { grid-column: 2; grid-row: 4; font-size: 12px; }
+  .octo-death-ui .octo-go-actions { grid-column: 3; grid-row: 1 / span 3; width: 100%; flex-direction: column; position: sticky; top: 0; margin-top: 0; padding: 4px 0 0; background: none; }
+}

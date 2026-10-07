@@ -1,6 +1,8 @@
 // Code-drawn icons for the carried items (round 32): used by the HUD (small canvases), the shop pedestals and the
 // hidden-pocket items. drawItemIcon(ctx, id, cx, cy, r) draws inside a circle of radius r around (cx, cy).
 
+import { drawSprite, spriteAspect, onSpritesReady } from './sprites.js';
+
 const TAU = Math.PI * 2;
 
 // Sprites for the items that have one (generated, Milan style: img/v2/, octomancer-web/ASSETS.md). They load the first
@@ -10,6 +12,7 @@ const SPRITES = { goggles: 'item-goggles.webp' };
 const sprites = {};
 let artVersion = 0;
 export function itemArtVersion() { return artVersion; }
+onSpritesReady(() => { artVersion++; }); // r46: the atlas icons (flippers, lantern, lodestone, bomb bag, heart container) arrived
 function sprite(id) {
   if (!SPRITES[id] || typeof Image === 'undefined') return null;
   let img = sprites[id];
@@ -26,6 +29,14 @@ function outline(ctx, r, fill, stroke) {
 }
 
 export function drawItemIcon(ctx, id, x, y, r) {
+  // r46: the generated Milan-style icons (sprites.js); the code drawings below stay as the fallback until the atlas has loaded
+  if (id === 'lantern') {
+    const g = ctx.createRadialGradient(x, y + r * 0.15, r * 0.05, x, y + r * 0.15, r * 1.1); // its own soft light
+    g.addColorStop(0, 'rgba(255,226,150,0.45)'); g.addColorStop(1, 'rgba(255,200,110,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y + r * 0.15, r * 1.1, 0, TAU); ctx.fill();
+  }
+  const a = spriteAspect(id), d = 2 * r * 0.98;
+  if (drawSprite(ctx, id, x, y, a >= 1 ? d : d * a, a >= 1 ? d / a : d, 0.5, 0.5)) return;
   ctx.save();
   ctx.translate(x, y);
   const img = sprite(id);
@@ -47,6 +58,24 @@ export function drawItemIcon(ctx, id, x, y, r) {
       ctx.beginPath(); ctx.arc(s * r * 0.47, r * 0.12, r * 0.3, 0, TAU); ctx.fill();
     }
     ctx.fillStyle = '#4e4c18'; ctx.beginPath(); ctx.arc(0, r * 0.14, r * 0.12, 0, TAU); ctx.fill();
+  } else if (id === 'siphon') {
+    // the Siphon Shell: a hollow spiral shell (a whelk), its long siphon canal pointing down-left, the octopus drinks through it
+    outline(ctx, r, '#d9c7a4', '#3a2a18');
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.92, r * 0.78); // the siphon tip
+    ctx.quadraticCurveTo(-r * 0.55, r * 0.55, -r * 0.35, r * 0.62);
+    ctx.bezierCurveTo(r * 0.25, r * 0.85, r * 0.95, r * 0.35, r * 0.82, -r * 0.25);
+    ctx.bezierCurveTo(r * 0.72, -r * 0.75, r * 0.2, -r * 0.98, -r * 0.12, -r * 0.62);
+    ctx.bezierCurveTo(-r * 0.55, -r * 0.2, -r * 0.6, r * 0.25, -r * 0.62, r * 0.42);
+    ctx.quadraticCurveTo(-r * 0.75, r * 0.6, -r * 0.92, r * 0.78);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // the whorls: a spiral of growth lines toward the apex, and the dark open mouth
+    ctx.strokeStyle = '#8a6f4a'; ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.beginPath();
+    for (let k = 0; k <= 36; k++) { const t = k / 36, a = -0.6 + t * 4.4, rr = r * (0.62 - t * 0.5); const px = r * 0.28 + Math.cos(a) * rr, py = -r * 0.12 + Math.sin(a) * rr * 0.85; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+    ctx.stroke();
+    ctx.fillStyle = '#5a3f2a'; ctx.beginPath(); ctx.ellipse(-r * 0.1, r * 0.3, r * 0.2, r * 0.32, 0.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(160,200,120,0.75)'; ctx.beginPath(); ctx.arc(-r * 0.86, r * 0.74, r * 0.09, 0, TAU); ctx.fill(); // a drop of juice at the tip
   } else if (id === 'flippers') {
     // a pair of fins: two leaf shapes side by side
     outline(ctx, r, '#f59a2a', '#4a2406'); // orange: cyan vanished against the Shallows water on a pedestal

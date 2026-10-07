@@ -116,6 +116,36 @@ export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, wo
   else cam.y = worldH / 2;
 }
 
+/**
+ * V2-PLAN 14, the death ragdoll: frame the dead body in the free part of the screen (the death panel covers the rest).
+ * `focus` = {x0, y0, x1, y1}: that free rect in canvas px; `strict`: the panel is up, so the body must never leave the
+ * rect (before that the camera only eases there). No look-ahead. BoundCam is applied to the free rect rather than the
+ * whole view: the free part stays inside the world where it fits, and the covered part may run past the world edge.
+ */
+export function updateDeathCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt, focus, strict) {
+  cam.pxPerUnit = computePxPerUnit(canvasW, canvasH);
+  const ppu = cam.pxPerUnit;
+  // the free rect's edges relative to the camera centre, in world units
+  const l = (focus.x0 - canvasW / 2) / ppu, r = (focus.x1 - canvasW / 2) / ppu;
+  const t = (focus.y0 - canvasH / 2) / ppu, b = (focus.y1 - canvasH / 2) / ppu;
+  // the camera centre that puts the body in the middle of the free rect
+  let tx = targetX - (l + r) / 2, ty = targetY - (t + b) / 2;
+  tx = worldW > r - l ? clampNum(tx, -l, worldW - r) : worldW / 2 - (l + r) / 2;
+  ty = worldH > b - t ? clampNum(ty, -t, worldH - b) : worldH / 2 - (t + b) / 2;
+  if (!cam.initialized) { cam.x = tx; cam.y = ty; cam.initialized = true; }
+  else {
+    const k = 1 - Math.exp(-CAMERA_FOLLOW_RATE * Math.max(0, dt));
+    cam.x += (tx - cam.x) * k;
+    cam.y += (ty - cam.y) * k;
+  }
+  if (strict) {
+    // the body (its offset from the camera centre is target - cam) stays inside the free rect, a margin in from its edges
+    const mx = Math.min((r - l) * 0.25, 2.5), my = Math.min((b - t) * 0.25, 2.5);
+    cam.x = clampNum(cam.x, targetX - r + mx, targetX - l - mx);
+    cam.y = clampNum(cam.y, targetY - b + my, targetY - t - my);
+  }
+}
+
 /** World-space (units) -> canvas-space (device px) for the current camera. */
 export function worldToScreen(cam, canvasW, canvasH, wx, wy) {
   return {

@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Octomancer art gallery</title>
+<style>
+  body { margin: 0; background: #163247; color: #e8f4f8; font: 12px/1.3 sans-serif; }
+  #g { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; }
+  figure { margin: 0; background: #1f4a63; border-radius: 4px; }
+  figcaption { padding: 2px 4px; max-width: 216px; }
+  canvas { display: block; }
+</style></head>
+<body>
+<!-- Every code-drawn or sprite-drawn character, prop, item and hazard of the game, drawn by the game's own draw functions at the
+     real desktop scale (ppu 72 = a 1440 px wide window; ?ppu=144 for DPR 2). Review page for the art pass (round 46); no test. -->
+<div id="g"></div>
+<script type="module">
+import { drawDiver, drawCritter, drawCollector, drawCage, drawTank } from '../js/v2-props-draw.js';
+import { drawPool, drawPoolHost } from '../js/pool-draw.js';
+import { drawLoot } from '../js/loot-draw.js';
+import { drawItemIcon } from '../js/items-draw.js';
+import { drawHazards } from '../js/hazards-draw.js';
+import { entryArt, preloadArt, onArtReady } from '../js/journal-art.js';
+import { ensureV2Art } from '../js/v2-art.js';
+import { cullReset } from '../js/cull.js';
+import { PL_IDLE, PL_ACTIVE, PL_WON, PL_DONE } from '../js/pool.js';
+import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_DONE, ST_RATTLE, ST_BURST, POCKET_BOMB, POCKET_HEART, POCKET_ITEM } from '../js/loot.js';
+import { HZ_JET, HZ_SPIKES, HZ_EEL, HZ_ANEMONE } from '../js/hazards.js';
+import { ITEM_IDS } from '../js/items.js';
+import { drawNpcs, registerNpcCorpses } from '../js/npcs-draw.js';
+import { NPC_CAP, HARPOON_CAP, ST_AIM, ST_MOVE } from '../js/npcs.js';
+
+const q = new URLSearchParams(location.search);
+const PPU = +(q.get('ppu') || 72), T = +(q.get('t') || 0.6);
+const W = 3, H = 3; // tiles per cell
+const g = document.getElementById('g');
+const cells = [];
+function cell(name, draw, w = W, h = H) {
+  const c = document.createElement('canvas'); c.width = w * PPU; c.height = h * PPU;
+  const f = document.createElement('figure'); f.dataset.name = name; f.appendChild(c);
+  const cap = document.createElement('figcaption'); cap.textContent = name; f.appendChild(cap); g.appendChild(f);
+  cells.push({ c, draw, w, h });
+}
+// camera centred on the cell: world (0, 0) is the cell centre; the floor line is at world y = 1 (one tile under the centre)
+const cam = () => ({ x: 0, y: 0, pxPerUnit: PPU });
+function floor(ctx, w, h) { ctx.fillStyle = '#2d5a6e'; ctx.fillRect(0, (h / 2 + 1) * PPU, w * PPU, PPU); }
+function lootData(list) {
+  const n = list.length, f = (k) => Float32Array.from(list.map((o) => o[k] || 0));
+  return { n, kind: Uint8Array.from(list.map((o) => o.kind)), state: Uint8Array.from(list.map((o) => o.state || 0)), x: f('x'), y: f('y'), t: f('t'), aux: f('aux'), count: f('count'), item: f('item'),
+    ni: 0, ix: [], iy: [], itaken: [], ikind: [], iid: [], nr: 0, rx: [], ry: [], rstate: [], rt: [] };
+}
+function itemData(list) { const d = lootData([]); d.ni = list.length; d.ix = list.map((o) => o.x); d.iy = list.map((o) => o.y); d.itaken = list.map(() => 0); d.ikind = list.map((o) => o.kind); d.iid = list.map((o) => o.id || 0); return d; }
+function hazData(list) {
+  const n = list.length, f = (k, dflt = 0) => Float32Array.from(list.map((o) => o[k] ?? dflt));
+  return { n, kind: Uint8Array.from(list.map((o) => o.kind)), x: f('x'), y: f('y'), dx: f('dx'), dy: f('dy'), len: f('len', 4), state: Uint8Array.from(list.map((o) => o.state || 0)), r: f('r'), t: f('t'), v: f('v'), a: f('a') };
+}
+const solidBelow = (tx, ty) => ty >= 1;
+
+cell('Quill (collector)', (x, cw, ch) => drawCollector(x, cam(), cw, ch, 0, 1, T, false));
+cell('Quill + lantern', (x, cw, ch) => drawCollector(x, cam(), cw, ch, -0.6, 1, T, true));
+cell('Marlo (hub, freed)', (x, cw, ch) => drawDiver(x, cam(), cw, ch, 0, 1, T, true, false));
+cell('Marlo (sealed)', (x, cw, ch) => drawDiver(x, cam(), cw, ch, 0, 1, T, false, true));
+cell('Pip caged', (x, cw, ch) => drawCritter(x, cam(), cw, ch, 0, 0.45, false, T, 1, ''));
+cell('Pip free + broken cage', (x, cw, ch) => { drawCage(x, cam(), cw, ch, 0, 1, 1.25, 1.15, true); drawCritter(x, cam(), cw, ch, 0.9, -0.3, true, T, 0, ''); });
+cell('Pip mama caged', (x, cw, ch) => drawCritter(x, cam(), cw, ch, 0, 0.3, false, T, 1, 'mama'));
+cell('Marlo tank', (x, cw, ch) => drawTank(x, cam(), cw, ch, 0, 0.6, T, true));
+const poolSt = (state) => ({ plan: { x: 0.85, y: 0, floorY: 0 }, state, t: 3, flash: 0, rise: 0, chestOpen: 0 });
+cell('Pool host + die (idle)', (x, cw, ch) => { drawPool(x, cam(), cw, ch, poolSt(PL_IDLE), 99, T); drawPoolHost(x, cam(), cw, ch, poolSt(PL_IDLE), T, 2); }, 4, 3.2);
+cell('Pool (wager on)', (x, cw, ch) => { drawPool(x, cam(), cw, ch, poolSt(PL_ACTIVE), 99, T); drawPoolHost(x, cam(), cw, ch, poolSt(PL_ACTIVE), T, 2); }, 4, 3.2);
+cell('Pool prize (won)', (x, cw, ch) => { drawPool(x, cam(), cw, ch, poolSt(PL_WON), 99, T); }, 4, 3.2);
+cell('Clam, pot', (x, cw, ch) => drawLoot(x, cam(), cw, ch, lootData([{ kind: LK_CLAM, x: -0.7, y: 0.5 }, { kind: LK_POT, x: 0.7, y: 0.5 }]), T));
+cell('Chest closed / open', (x, cw, ch) => drawLoot(x, cam(), cw, ch, lootData([{ kind: LK_CHEST, x: -0.7, y: 0.5 }, { kind: LK_CHEST, x: 0.7, y: 0.5, state: ST_DONE }]), T));
+cell('Chest trap rattle / burst', (x, cw, ch) => drawLoot(x, cam(), cw, ch, lootData([{ kind: LK_CHEST, x: -0.75, y: 0.5, state: ST_RATTLE }, { kind: LK_CHEST, x: 0.75, y: 0.5, state: ST_BURST, t: 0.3 }]), T));
+cell('Relic on pedestal', (x, cw, ch) => drawLoot(x, cam(), cw, ch, lootData([{ kind: LK_RELIC, x: 0, y: 0.5 }]), T));
+cell('Hidden pocket cue', (x, cw, ch) => { x.fillStyle = '#3c5d73'; x.fillRect(cw / 2 - PPU, ch / 2 - PPU, 2 * PPU, 2 * PPU); drawLoot(x, cam(), cw, ch, lootData([{ kind: LK_POCKET, x: 0, y: 0 }]), 1.2); });
+cell('Pocket bomb / heart / item', (x, cw, ch) => drawLoot(x, cam(), cw, ch, itemData([{ kind: POCKET_BOMB, x: -0.9, y: 0 }, { kind: POCKET_HEART, x: 0, y: 0 }, { kind: POCKET_ITEM, x: 0.9, y: 0, id: ITEM_IDS.indexOf('lantern') + 1 }]), T));
+const ITEMS = ['flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer'];
+cell('Items (pocket size r 0.3)', (x, cw, ch) => ITEMS.forEach((id, i) => drawItemIcon(x, id, (0.4 + (i % 3) * 1.1) * PPU, (0.8 + Math.floor(i / 3) * 1.3) * PPU, 0.3 * PPU)), 3.4, 3);
+cell('Items (HUD r 15 px)', (x) => ITEMS.forEach((id, i) => drawItemIcon(x, id, 22 + i * 40, 30, 15)), 3, 1);
+cell('Spike wall (floor)', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_SPIKES, x: 0, y: 0.5, dx: 0, dy: -1 }]), T, solidBelow));
+cell('Current jet', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_JET, x: -1.2, y: 0, dx: 1, dy: 0, len: 3 }]), T), 4, 3);
+cell('Eel (calm / charging)', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_EEL, x: -0.6, y: 0 }, { kind: HZ_EEL, x: 0.7, y: 0, state: 1, t: 2.8 }]), T));
+cell('Anemone', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_ANEMONE, x: 0, y: 0.5 }]), T));
+// r46 x damage model: the people turned hostile (Marlo aiming his harpoon) and as corpses lying rotated
+function npcSys(list) {
+  const f = () => new Float32Array(NPC_CAP), d = { used: new Uint8Array(NPC_CAP), hostile: new Uint8Array(NPC_CAP), who: new Uint8Array(NPC_CAP), x: f(), y: f(), state: new Uint8Array(NPC_CAP), t: f(), aimT: f(), aimAng: f(), reload: f(), vx: f(), face: new Int8Array(NPC_CAP), flash: f(), aimLen: f() };
+  list.forEach((o, i) => { d.used[i] = 1; d.hostile[i] = 1; d.who[i] = o.who; d.x[i] = o.x; d.y[i] = o.y; d.state[i] = o.st || ST_MOVE; d.face[i] = o.face || 1; d.aimT[i] = 0.5; d.aimAng[i] = 0.3; d.aimLen[i] = 3; });
+  return { data: d, talks: Array.from({ length: NPC_CAP }, () => ({ text: '' })), harpoons: { on: new Uint8Array(HARPOON_CAP) } };
+}
+cell('Hostile Marlo (aiming) / Pip', (x, cw, ch) => drawNpcs(x, cam(), cw, ch, npcSys([{ who: 1, x: -0.8, y: 1, st: ST_AIM }, { who: 2, x: 0.9, y: 0 }]), T, { x: 3, y: 0 }), 3.4, 3);
+cell('Hostile Quill / host', (x, cw, ch) => drawNpcs(x, cam(), cw, ch, npcSys([{ who: 3, x: -0.8, y: 1 }, { who: 4, x: 0.9, y: 1 }]), T, { x: 3, y: 0 }), 3.4, 3);
+const CORPSE = {}; registerNpcCorpses((k, fn) => { CORPSE[k] = fn; });
+cell('Corpses (Marlo, Pip, Quill, host)', (x, cw, ch) => Object.values(CORPSE).forEach((fn, i) => fn(x, (0.5 + i) * PPU * 1.05, ch - PPU * 1.35, PPU, i % 2 ? Math.PI / 2 : -Math.PI / 2, 1, 1)), 4.4, 3);
+const PLATES = ['person-collector', 'person-diver', 'person-critter', 'person-keeper', 'loot-chest', 'loot-clam', 'loot-pot', 'loot-relic', 'loot-pocket', 'item-flippers', 'item-lantern', 'item-magnet', 'item-bombbag', 'item-heartcontainer', 'item-bomb', 'item-bombpack', 'item-plankton', 'hazard-jet', 'hazard-spikes', 'hazard-eel', 'hazard-anemone', 'hazard-rock', 'creature-fish', 'prop-fossil', 'prop-boulder'];
+const PX = +(q.get('plate') || 96);
+cell('Journal plates', (x) => PLATES.forEach((id, i) => { const cx = (i % 9) * (PX + 6) + 3, cy = Math.floor(i / 9) * (PX + 6) + 3; x.fillStyle = '#e9dcbc'; x.fillRect(cx, cy, PX, PX); x.drawImage(entryArt(id, PX, false), cx, cy); }), 9 * (PX + 6) / PPU, 3 * (PX + 6) / PPU);
+
+function drawAll() {
+  cullReset();
+  for (const { c, draw, w, h } of cells) {
+    const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height);
+    x.fillStyle = '#1f4a63'; x.fillRect(0, 0, c.width, c.height);
+    floor(x, w, h); x.save(); draw(x, c.width, c.height); x.restore();
+  }
+}
+let pending = 0;
+const redraw = () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; drawAll(); }); };
+ensureV2Art(redraw); onArtReady(redraw); preloadArt();
+drawAll();
+setTimeout(() => { drawAll(); window.__galleryReady = true; }, 1500);
+</script>
+</body></html>

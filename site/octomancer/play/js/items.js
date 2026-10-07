@@ -9,12 +9,13 @@
 //   bombbag          +3 bombs now and +1 max bombs (stacks)
 //   heartcontainer   +1 max heart and heals 1 (stacks)
 //   goggles          Sea-glass Goggles: see buried treasure and hidden pockets through the rock (embed.js, embed-draw.js)
+//   siphon           the Siphon Shell (section 14): drink the fish juice that beaten creatures leak (within 2 tiles)
 //
 // Found in chests and hidden pockets (loot.js) and sold in the shop (data/shop-items.json, effect "carry").
 
 import { HEART_MAX, BOMB_MAX } from './config.js';
 
-export const ITEM_IDS = ['flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer', 'goggles'];
+export const ITEM_IDS = ['flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer', 'goggles', 'siphon'];
 export const ITEM_DEFS = {
   flippers: { name: 'Flippers', blurb: '+20% swim speed', max: 1 },
   lantern: { name: 'Lantern', blurb: 'a larger light radius', max: 1 },
@@ -22,6 +23,7 @@ export const ITEM_DEFS = {
   bombbag: { name: 'Bomb bag', blurb: '+3 bombs and +1 max bombs', max: 2 },
   heartcontainer: { name: 'Heart container', blurb: '+1 max heart', max: 2 },
   goggles: { name: 'Sea-glass goggles', blurb: 'you see what is buried in the rock', max: 1 },
+  siphon: { name: 'Siphon Shell', blurb: 'drink the fish juice beaten creatures leak', max: 1 },
 };
 
 export const FLIPPER_MUL = 1.2;
@@ -29,6 +31,7 @@ export const MAGNET_R = 3;
 export const LIGHT_BASE = 4.5;      // tiles of clear sight in the dim Shallows
 export const LIGHT_LANTERN = 8.5;
 export const BOMBBAG_BOMBS = 3;
+export const SIPHON_R = 2; // tiles: leaked fish juice this close is drawn in through the Siphon Shell
 
 export function isItem(id) { return Object.prototype.hasOwnProperty.call(ITEM_DEFS, id); }
 export function itemCount(items, id) { let n = 0; for (let i = 0; i < items.length; i++) if (items[i] === id) n++; return n; }
@@ -47,6 +50,7 @@ export function applyCarried(octo, items) {
   octo.magnetR = hasItem(items, 'magnet') ? MAGNET_R : 0;
   octo.lightR = hasItem(items, 'lantern') ? LIGHT_LANTERN : LIGHT_BASE;
   octo.seeBuried = hasItem(items, 'goggles');
+  octo.siphonR = hasItem(items, 'siphon') ? SIPHON_R : 0;
   if (octo.hearts > octo.heartMax) octo.hearts = octo.heartMax;
   if (octo.bombs > octo.bombMax) octo.bombs = octo.bombMax;
 }

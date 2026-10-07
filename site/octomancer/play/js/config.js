@@ -83,9 +83,33 @@ export const MAX_SUBSTEPS = 8;
 // --- M3: health, bombs, enemies (OVERNIGHT.md §4 M3-1/M3-2) ---
 export const HEART_MAX = 3;
 export const HURT_INVULN = 1.0; // s
-export const HURT_KNOCKBACK = 6; // u/s, away from the hurt source
+export const HURT_KNOCKBACK = 9; // u/s, away from the hurt source (V2-PLAN 16: one hit = one heart plus a strong knockback; was 6)
+// --- V2-PLAN 16, damage tiers ---
+// instant: spikes (impaled, pinned on the tips), a falling boulder (splat, flattened under it), a giant clam's snap, the
+//          Beholder, a tentacle that finishes its pull; hearts and invulnerability are ignored
+// one hit: one heart, a strong knockback (HURT_KNOCKBACK) and HURT_INVULN of invulnerability
+// heavy:   a harpoon: HEAVY_HIT_DMG hearts and HEAVY_KNOCKBACK
+// incapacitation: one heart and STUN_S of no control: the body goes limp (sinks, bounces off rock, tumbles), then recovers
+export const HEAVY_HIT_DMG = 2;
+export const HEAVY_KNOCKBACK = 13; // u/s
+export const STUN_S = 1.25;        // s of lost control (Daniel: about 1-1.5 s)
+export const STUN_INVULN_EXTRA = 0.5; // s of invulnerability after the octopus gets control back
+export const STUN_SINK = 2.6;      // u/s^2: the limp body sinks like a dropped thing
+export const STUN_DRAG = 1.8;      // 1/s: a little less drag than a swimming octopus, so a slam carries it into the rock
+export const STUN_KNOCKBACK = 6;   // u/s: the knock of an incapacitating hit (the limp body drifts further than a swimming one)
+export const STUN_BOUNCE = 0.45;   // restitution off rock while limp
+export const STUN_SPIN = 6;        // rad/s of tumble at the hit, decays
+export const STUN_RECOVER = 0.35;  // s at the end of a stun in which the body rights itself (still no control)
+export const IMPALE_DEPTH = 0.32;  // tiles: how far past the spike face the skewered body's centre sits
+export const SPLAT_HITSTOP = 0.14; // s the sim freezes on a splat
+export const SPLAT_SHAKE_PX = 13;  // px of screen shake on a splat (above SHAKE_MAX_PX on purpose)
 export const HURT_RAGDOLL = 0.4; // s, "the original's ragdoll spin"
-export const DEATH_DURATION = 1.0; // s of ink-burst before the gameover event
+export const DEATH_DURATION = 1.5; // s of ragdoll before the death screen (gameover event) slides in
+// death ragdoll (V2-PLAN 14): the dead octopus is a physics body (props.js PK_BODY); enemies and hazards keep hitting it
+export const BODY_HIT_COOL = 0.3;  // s between two hits that count on the dead body (a piranha resting on it does not buzz)
+export const BODY_KNOCK = 5.5;     // u/s velocity change of a hit, away from the source
+export const BODY_LIFT = 1.4;      // u/s extra upward kick of a hit, so the body hops instead of grinding the floor
+export const BODY_SPIN = 9;        // rad/s of spin a hit adds
 
 export const BOMB_START = 3;
 export const BOMB_MAX = 5;

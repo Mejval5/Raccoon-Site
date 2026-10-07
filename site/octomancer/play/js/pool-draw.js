@@ -1,10 +1,12 @@
-// The Challenge Pool's drawing (pool.js), round 40: a carved stone basin in the plinth with a stone die for the pedestal (it rattles while the
-// wager runs), the wager as five hovering shells (no shop price pill), a ring of pips that burns down during the wager and the prize chest
-// once it is won; plus the host, a pufferfish in a top hat (drawPoolHost, after the octopus). Device pixels.
+// The Challenge Pool's drawing (pool.js), round 40: a carved stone basin in the plinth with a standing rune stone for the pedestal (it
+// rattles while the wager runs; r46: it was a die), the wager as five hovering shells (no shop price pill), a ring of glowing specks that
+// burns down during the wager and the prize (r46: a giant clam, drawChest) once it is won; plus the host (r46: Milan's sea horse, was a
+// code-drawn pufferfish in a top hat; drawPoolHost, after the octopus). Natural light only: sea-green glow, no gold. Device pixels.
 
 import { PL_IDLE, PL_ACTIVE, PL_WON, PL_LOST, PL_DONE, POOL_COST, POOL_SECONDS, RISE_S } from './pool.js';
 import { drawChest } from './loot-draw.js';
 import { ST_INTACT, ST_DONE } from './loot.js';
+import { drawSprite, spriteRect } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const shellImg = new Image();
@@ -17,12 +19,12 @@ function drawBasin(ctx, cx, fy, ppu, lw, dim, active, time) {
   ctx.beginPath(); ctx.ellipse(cx, fy - ppu * 0.03, rw, rh, 0, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = dim ? '#262c35' : '#232a36';
   ctx.beginPath(); ctx.ellipse(cx, fy - ppu * 0.06, rw * 0.8, rh * 0.68, 0, 0, TAU); ctx.fill();
-  if (!dim) { // the hollow glows gold, faster while the wager runs
-    const g = 0.18 + 0.12 * Math.sin(time * (active ? 7 : 2.4));
-    ctx.fillStyle = 'rgba(255,206,100,' + g + ')'; ctx.beginPath(); ctx.ellipse(cx, fy - ppu * 0.07, rw * 0.7, rh * 0.58, 0, 0, TAU); ctx.fill();
+  if (!dim) { // the hollow glows a faint sea-green, faster while the wager runs
+    const g = 0.16 + 0.1 * Math.sin(time * (active ? 7 : 2.4));
+    ctx.fillStyle = 'rgba(130,230,200,' + g.toFixed(3) + ')'; ctx.beginPath(); ctx.ellipse(cx, fy - ppu * 0.07, rw * 0.7, rh * 0.58, 0, 0, TAU); ctx.fill();
   }
   // chisel marks round the rim: short ticks between the two outlines
-  ctx.strokeStyle = dim ? '#383e48' : '#b9c3d0'; ctx.lineWidth = Math.max(1, ppu * 0.035); ctx.lineCap = 'butt';
+  ctx.strokeStyle = dim ? '#383e48' : '#4f5966'; ctx.lineWidth = Math.max(1, ppu * 0.035); ctx.lineCap = 'butt'; // r46: dark chisel marks (pale ones read as rivets)
   ctx.beginPath();
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * TAU;
@@ -63,9 +65,9 @@ export function drawPool(ctx, camera, cw, ch, st, shells, time) {
     ctx.save(); ctx.beginPath(); ctx.rect(cx - ppu * 2, fy - ppu * 4, ppu * 4, ppu * 4 + ppu * 0.05); ctx.clip();
     drawChest(ctx, cx, fy - ppu * 0.5 + rise * ppu * 0.7, ppu * 1.15, time, 7, st.state === PL_DONE ? ST_DONE : ST_INTACT, 0, 0);
     ctx.restore();
-    if (st.state === PL_WON) { // the prize glows
-      const g = ctx.createRadialGradient(cx, fy - ppu * 0.5, ppu * 0.1, cx, fy - ppu * 0.5, ppu * 1.4);
-      g.addColorStop(0, 'rgba(255,230,140,0.4)'); g.addColorStop(1, 'rgba(255,230,140,0)');
+    if (st.state === PL_WON) { // the prize glows faintly
+      const g = ctx.createRadialGradient(cx, fy - ppu * 0.5, ppu * 0.1, cx, fy - ppu * 0.5, ppu * 1.3);
+      g.addColorStop(0, 'rgba(150,235,215,0.3)'); g.addColorStop(1, 'rgba(150,235,215,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, fy - ppu * 0.5, ppu * 1.4, 0, TAU); ctx.fill();
     }
     ctx.restore();
@@ -73,10 +75,14 @@ export function drawPool(ctx, camera, cw, ch, st, shells, time) {
   }
   const dim = st.state === PL_LOST;
   drawBasin(ctx, cx, fy, ppu, lw, dim, st.state === PL_ACTIVE, time);
-  // the pedestal is a stone die, rattling while the wager runs
+  // the pedestal is a standing rune stone (r46; the die without a sprite), rattling while the wager runs
   const rattle = st.state === PL_ACTIVE;
-  const face = rattle ? 1 + (Math.floor(time * 4 + st.t * 3) * 7 % 6) : 5;
-  drawDie(ctx, cx + (rattle ? Math.sin(time * 38) * ppu * 0.025 : 0), fy - ppu * 0.12 - (rattle ? Math.abs(Math.sin(time * 9)) * ppu * 0.05 : 0), ppu * 0.72, face, lw, dim);
+  const px = cx + (rattle ? Math.sin(time * 38) * ppu * 0.025 : 0), pby = fy - ppu * 0.12 - (rattle ? Math.abs(Math.sin(time * 9)) * ppu * 0.05 : 0);
+  if (spriteRect('stone')) {
+    if (dim) ctx.globalAlpha = 0.6;
+    drawSprite(ctx, 'stone', px, pby + ppu * 0.06, 0, ppu * 0.82);
+    ctx.globalAlpha = 1;
+  } else drawDie(ctx, px, pby, ppu * 0.72, rattle ? 1 + (Math.floor(time * 4 + st.t * 3) * 7 % 6) : 5, lw, dim);
   if (st.state === PL_IDLE) {
     // the wager: five shells hovering in an arc over the die (the cost, counted, no text and no price tag)
     const afford = shells >= POOL_COST, flash = st.flash > 0;
@@ -91,19 +97,19 @@ export function drawPool(ctx, camera, cw, ch, st, shells, time) {
       else { ctx.fillStyle = '#7fc4ff'; ctx.beginPath(); ctx.arc(sx, sy, sz * 0.4, 0, TAU); ctx.fill(); }
       ctx.globalAlpha = 1;
     }
-    // a slim dashed gold arc under the shells ties them to the die
-    ctx.strokeStyle = flash ? '#ff6a5a' : 'rgba(255,214,110,' + (afford ? 0.55 : 0.25) + ')'; ctx.lineWidth = Math.max(1, ppu * 0.035);
+    // a slim dashed arc of pale water under the shells ties them to the stone
+    ctx.strokeStyle = flash ? '#ff6a5a' : 'rgba(170,235,220,' + (afford ? 0.45 : 0.2) + ')'; ctx.lineWidth = Math.max(1, ppu * 0.035);
     ctx.setLineDash([ppu * 0.08, ppu * 0.1]);
     ctx.beginPath(); ctx.arc(cx, fy - ppu * 1.5, ppu * 0.78, Math.PI * 0.12, Math.PI * 0.88); ctx.stroke();
     ctx.setLineDash([]);
   } else if (st.state === PL_ACTIVE) {
-    // the wager is on: a ring of pips round the die, one per second, going out
+    // the wager is on: a ring of glowing specks round the stone, one per second, going out
     const n = POOL_SECONDS, left = Math.ceil(st.t);
     const cy = fy - ppu * 0.75;
     for (let i = 0; i < n; i++) {
       const a = -Math.PI / 2 + (i / n) * TAU, on = i < left;
       const rx = cx + Math.cos(a) * ppu * 0.95, ry = cy + Math.sin(a) * ppu * 0.95;
-      ctx.fillStyle = on ? 'rgba(255,214,110,' + (0.75 + 0.25 * Math.sin(time * 6 + i)) + ')' : 'rgba(90,100,110,0.45)';
+      ctx.fillStyle = on ? 'rgba(160,250,225,' + (0.7 + 0.25 * Math.sin(time * 6 + i)).toFixed(3) + ')' : 'rgba(90,100,110,0.45)';
       ctx.beginPath(); ctx.arc(rx, ry, Math.max(1.6, ppu * 0.06), 0, TAU); ctx.fill();
     }
   }
@@ -126,7 +132,18 @@ export function drawPoolHost(ctx, camera, cw, ch, st, time, lookX) {
   const bob = Math.sin(time * 1.9) * k * 0.025;
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.42, ppu * 0.07, 0, 0, TAU); ctx.fill();
+  if (!st.noShadow) { ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.42, ppu * 0.07, 0, 0, TAU); ctx.fill(); } // st.noShadow: a corpse
+  if (spriteRect('host')) {
+    // r46: Milan's sea horse, hovering just over the floor: it faces the octopus, bobs, hops and sways when it cheers, droops when lost
+    const lost = st.state === PL_LOST, cheer = st.state === PL_ACTIVE || st.state === PL_WON;
+    const sway = cheer ? Math.sin(time * 8) * 0.08 : lost ? 0.12 : Math.sin(time * 1.3) * 0.03;
+    if (lost) ctx.globalAlpha = 0.85;
+    ctx.translate(cx, fy - ppu * 0.08 - hop + bob);
+    ctx.rotate(sway);
+    drawSprite(ctx, 'host', 0, 0, 0, k * (lost ? 1.08 : 1.15), 0.5, 1, 0, lookX > p.x - 1.7);
+    ctx.restore();
+    return;
+  }
   ctx.translate(cx, fy - hop);
   ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;
   ctx.fillStyle = '#c4622a'; // feet

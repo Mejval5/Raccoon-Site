@@ -1,12 +1,14 @@
-// Loot drawing (loot.js): code-drawn clams, pots, hidden-pocket cues, the relic on its pedestal, pocket items,
-// the trap burst and the chase rocks; chests use the generated chest sprites (img/v2/, js/v2-art.js).
+// Loot drawing (loot.js): clams, pots, the giant clam (the 'chest'), the stone idol (the relic) and the carried items are
+// sprites from the r46 atlas (js/sprites.js, generated in Milan's style), with the old code drawings as the fallback until it
+// has loaded; hidden-pocket cues, pocket items, the trap burst and the chase rocks are code. Natural cues only (r46, Daniel's
+// rule): no sparkle stars or glints, a faint glow from inside, drifting bubbles and bioluminescent specks instead.
 // Called from main.js's v2 extra draw hook, in device pixels, before the octopus.
 
 import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_RATTLE, ST_BURST, SPIKE_RADIUS, POCKET_BOMB, POCKET_ITEM } from './loot.js';
 import { itemFromCode } from './items.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
-import { artImg } from './v2-art.js';
+import { drawSprite, spriteRect } from './sprites.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
@@ -42,9 +44,10 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
     const x = sx(d.ix[i]), y = sy(d.iy[i]) + Math.sin(time * 2.4 + i) * 0.06 * ppu;
     if (d.ikind[i] === POCKET_BOMB) drawBombItem(ctx, x, y, ppu);
     else if (d.ikind[i] === POCKET_ITEM) {
-      const gl = ctx.createRadialGradient(x, y, 0.05 * ppu, x, y, 0.7 * ppu);
-      gl.addColorStop(0, 'rgba(255,240,170,0.45)'); gl.addColorStop(1, 'rgba(255,240,170,0)');
-      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 0.7 * ppu, 0, TAU); ctx.fill();
+      const gl = ctx.createRadialGradient(x, y, 0.05 * ppu, x, y, 0.6 * ppu);
+      gl.addColorStop(0, 'rgba(150,235,215,0.3)'); gl.addColorStop(1, 'rgba(150,235,215,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 0.6 * ppu, 0, TAU); ctx.fill();
+      specks(ctx, x, y, ppu, time, i);
       drawItemIcon(ctx, itemFromCode(d.iid[i]), x, y, 0.3 * ppu);
     } else drawHeartItem(ctx, x, y, ppu);
   }
@@ -70,9 +73,14 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
   }
 }
 
-// ---- clam: two ribbed halves, a hinge and a glint inside ----
+// ---- clam: the scallop sprite (r46); the fallback is two ribbed halves and a hinge ----
 function drawClam(ctx, x, y, ppu, time, seed) {
   const floor = y + 0.5 * ppu - 0.05 * ppu;
+  if (spriteRect('clam')) { // r46: a scallop with a slow breath
+    ctx.save(); ctx.translate(x, floor + 0.04 * ppu); ctx.scale(1, 1 + Math.sin(time * 1.6 + seed) * 0.03);
+    drawSprite(ctx, 'clam', 0, 0, 0.78 * ppu); ctx.restore();
+    return;
+  }
   const w = 0.5 * ppu, h = 0.38 * ppu;
   ctx.save();
   ctx.translate(x, floor);
@@ -121,6 +129,7 @@ function drawClam(ctx, x, y, ppu, time, seed) {
 // ---- pot: a terracotta amphora ----
 function drawPot(ctx, x, y, ppu, seed) {
   const floor = y + 0.5 * ppu - 0.04 * ppu;
+  if (drawSprite(ctx, 'pot', x, floor + 0.03 * ppu, 0, 0.8 * ppu, 0.5, 1, 0, seed % 2 === 1)) return; // r46: a barnacled amphora
   ctx.save();
   ctx.translate(x, floor);
   ctx.lineJoin = 'round';
@@ -143,25 +152,40 @@ function drawPot(ctx, x, y, ppu, seed) {
   ctx.restore();
 }
 
-// ---- chest: the generated sprite (code fallback), shaking while a spike trap rattles, spikes when it bursts ----
+// ---- chest (r46): a giant barnacled clam, shut or creaked open with a faint glow from inside; it shudders while a trap rattles ----
+const CLAM_W = 1.0; // tiles: the shut clam's width (the open one is drawn at the same pixel scale)
 export function drawChest(ctx, x, y, ppu, time, seed, st, t, trap) {
   const open = st !== ST_INTACT;
-  const img = artImg(open ? 'chestOpen' : 'chestClosed');
   const foot = y + 0.5 * ppu - 0.08 * ppu;
   const shake = st === ST_RATTLE ? Math.sin(time * 90) * 0.04 * ppu : 0;
-  if (img) {
-    const dw = ppu * 0.95, dh = dw * (img.naturalHeight / img.naturalWidth);
-    ctx.drawImage(img, x + shake - dw / 2, foot - dh, dw, dh);
-    if (!open) glint(ctx, x + dw * 0.2, foot - dh * 0.75, ppu * 0.8, 0.4 + 0.4 * (0.5 + 0.5 * Math.sin(time * 3 + seed)));
+  const k = CLAM_W * ppu / 161;  // device px per atlas px (the shut clam is 161 px wide)
+  if (spriteRect('clamShut')) {
+    if (open) {
+      const g = ctx.createRadialGradient(x, foot - 0.3 * ppu, 0.05 * ppu, x, foot - 0.3 * ppu, 0.75 * ppu);
+      g.addColorStop(0, 'rgba(160,240,220,0.32)'); g.addColorStop(1, 'rgba(160,240,220,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, foot - 0.3 * ppu, 0.75 * ppu, 0, TAU); ctx.fill();
+      drawSprite(ctx, 'clamOpen', x + shake, foot + 0.06 * ppu, 170 * k, 173 * k);
+    } else {
+      // shut: it breathes, and now and then a bubble slips out between its lips
+      ctx.save(); ctx.translate(x + shake, foot + 0.06 * ppu);
+      ctx.scale(1, 1 + Math.sin(time * 1.3 + seed) * 0.025 + (st === ST_RATTLE ? Math.abs(Math.sin(time * 40)) * 0.06 : 0));
+      drawSprite(ctx, 'clamShut', 0, 0, 161 * k, 107 * k); ctx.restore();
+      const u = (time * 0.45 + hash(seed * 3.7)) % 1;
+      if (u < 0.6) {
+        const v = u / 0.6, bx = x + (hash(seed * 1.3) - 0.5) * 0.4 * ppu + Math.sin(v * 9) * 0.04 * ppu, by = foot - 0.32 * ppu - v * 0.7 * ppu;
+        ctx.globalAlpha = 1 - v; ctx.strokeStyle = 'rgba(220,245,255,0.85)'; ctx.lineWidth = Math.max(1, 0.025 * ppu);
+        ctx.beginPath(); ctx.arc(bx, by, (0.035 + 0.03 * v) * ppu, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    }
   } else {
-    const w = ppu * 0.8, h = ppu * 0.5;
-    ctx.lineJoin = 'round'; ctx.fillStyle = open ? '#9c6a24' : '#c98a2c'; ctx.strokeStyle = '#3a2410'; ctx.lineWidth = Math.max(1.5, ppu * 0.06);
-    ctx.beginPath(); ctx.roundRect(x + shake - w / 2, foot - h, w, h, ppu * 0.1); ctx.fill(); ctx.stroke();
+    const w = ppu * 0.8, h = ppu * 0.45;
+    ctx.lineJoin = 'round'; ctx.fillStyle = open ? '#8f7f9a' : '#9d8fa8'; ctx.strokeStyle = '#2a2030'; ctx.lineWidth = Math.max(1.5, ppu * 0.06);
+    ctx.beginPath(); ctx.ellipse(x + shake, foot - h / 2, w / 2, h / 2, 0, 0, TAU); ctx.fill(); ctx.stroke();
   }
   if (st === ST_BURST) { // a ring of spikes bursting out, then drawing back
     const k = Math.min(1, (0.5 - t) / 0.12) * Math.min(1, t / 0.15 + 0.2); // out fast, in at the end
     const len = SPIKE_RADIUS * 0.85 * ppu * k;
-    ctx.fillStyle = '#eaf4fb'; ctx.strokeStyle = '#223445'; ctx.lineWidth = Math.max(1, ppu * 0.03);
+    ctx.fillStyle = '#efe5cc'; ctx.strokeStyle = '#3a2a1c'; ctx.lineWidth = Math.max(1, ppu * 0.03); // bone-white urchin spines
     const cy = foot - 0.3 * ppu;
     for (let a = 0; a < 12; a++) {
       const ang = (a / 12) * TAU;
@@ -172,20 +196,23 @@ export function drawChest(ctx, x, y, ppu, time, seed, st, t, trap) {
       ctx.lineTo(x + s * 0.06 * ppu, cy - c * 0.06 * ppu);
       ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-  } else if (st === ST_RATTLE) { // warning sparks
-    ctx.fillStyle = '#ff7a5a';
+  } else if (st === ST_RATTLE) { // warning: red silt puffing out of the shuddering lips
+    ctx.fillStyle = 'rgba(200,80,60,0.8)';
     for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(x + Math.cos(time * 40 + k * 1.6) * 0.45 * ppu, foot - 0.3 * ppu + Math.sin(time * 40 + k * 1.6) * 0.3 * ppu, Math.max(1.5, 0.04 * ppu), 0, TAU); ctx.fill(); }
   }
 }
 
-function glint(ctx, gx, gy, ppu, alpha) {
-  ctx.fillStyle = `rgba(255,248,200,${alpha})`;
-  ctx.beginPath(); ctx.moveTo(gx, gy - ppu * 0.2); ctx.lineTo(gx + ppu * 0.05, gy - ppu * 0.05); ctx.lineTo(gx + ppu * 0.2, gy);
-  ctx.lineTo(gx + ppu * 0.05, gy + ppu * 0.05); ctx.lineTo(gx, gy + ppu * 0.2); ctx.lineTo(gx - ppu * 0.05, gy + ppu * 0.05);
-  ctx.lineTo(gx - ppu * 0.2, gy); ctx.lineTo(gx - ppu * 0.05, gy - ppu * 0.05); ctx.closePath(); ctx.fill();
+/** r46: a few slow bioluminescent specks drifting round (x, y): the natural cue that replaced the sparkle star. */
+function specks(ctx, x, y, ppu, time, seed, alpha = 1) {
+  for (let k = 0; k < 3; k++) {
+    const ph = time * (0.5 + 0.15 * k) + hash(seed * 7 + k) * TAU;
+    const px = x + Math.cos(ph) * (0.22 + 0.1 * k) * ppu, py = y + Math.sin(ph * 1.3) * 0.18 * ppu - 0.05 * ppu;
+    ctx.fillStyle = 'rgba(170,255,230,' + ((0.35 + 0.35 * Math.sin(time * 2 + k * 2.1 + seed)) * alpha).toFixed(3) + ')';
+    ctx.beginPath(); ctx.arc(px, py, Math.max(1, 0.03 * ppu), 0, TAU); ctx.fill();
+  }
 }
 
-// ---- hidden pocket: a solid rock tile with a hairline crack and a slow glint ----
+// ---- hidden pocket: a solid rock tile with a hairline crack and a bubble seeping out now and then ----
 function drawPocketCue(ctx, x, y, ppu, time, seed) {
   const x0 = x - ppu / 2, y0 = y - ppu / 2;
   ctx.save();
@@ -202,10 +229,14 @@ function drawPocketCue(ctx, x, y, ppu, time, seed) {
   ctx.moveTo(x0 + ppu * (0.5 + 0.08 * fx), y0 + ppu * 0.5);
   ctx.lineTo(x0 + ppu * (0.5 + 0.28 * fx), y0 + ppu * 0.44);
   ctx.stroke();
-  // a slow glint: only bright for a moment every few seconds
+  // now and then a tiny bubble seeps out of the crack (r46: replaced the sparkle star)
   const u = ((time * 0.33 + hash(seed * 7.1)) % 1);
-  const a = Math.max(0, Math.sin(u * Math.PI * 1.3) - 0.2) * 0.85;
-  if (a > 0.02) glint(ctx, x0 + ppu * (0.5 + 0.08 * fx), y0 + ppu * 0.5, ppu * 0.7, a);
+  if (u < 0.5) {
+    const v = u / 0.5;
+    ctx.globalAlpha = 0.85 * (1 - v); ctx.strokeStyle = 'rgba(220,245,255,0.9)'; ctx.lineWidth = Math.max(1, ppu * 0.02);
+    ctx.beginPath(); ctx.arc(x0 + ppu * (0.5 + 0.08 * fx) + Math.sin(v * 8) * 0.03 * ppu, y0 + ppu * (0.45 - 0.35 * v), (0.03 + 0.02 * v) * ppu, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
 
@@ -221,22 +252,14 @@ function drawRelic(ctx, x, y, ppu, time, present) {
   ctx.beginPath(); ctx.roundRect(x - 0.3 * ppu, floor - 0.42 * ppu, 0.6 * ppu, 0.14 * ppu, 0.03 * ppu); ctx.fill(); ctx.stroke();
   if (present) {
     const bob = Math.sin(time * 2) * 0.03 * ppu, cy = floor - 0.42 * ppu - 0.3 * ppu + bob;
-    const gl = ctx.createRadialGradient(x, cy, 0.05 * ppu, x, cy, 0.9 * ppu);
-    gl.addColorStop(0, 'rgba(255,230,120,0.5)'); gl.addColorStop(1, 'rgba(255,230,120,0)');
-    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, cy, 0.9 * ppu, 0, TAU); ctx.fill();
-    // an idol: a tall faceted drop with two side fins
-    ctx.fillStyle = '#e9b73a'; ctx.strokeStyle = '#5a3b08';
-    ctx.beginPath();
-    ctx.moveTo(x, cy - 0.3 * ppu); ctx.lineTo(x + 0.17 * ppu, cy - 0.05 * ppu); ctx.lineTo(x + 0.11 * ppu, cy + 0.26 * ppu);
-    ctx.lineTo(x - 0.11 * ppu, cy + 0.26 * ppu); ctx.lineTo(x - 0.17 * ppu, cy - 0.05 * ppu); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#f7d96a';
-    ctx.beginPath(); ctx.moveTo(x, cy - 0.3 * ppu); ctx.lineTo(x + 0.17 * ppu, cy - 0.05 * ppu); ctx.lineTo(x, cy + 0.02 * ppu); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#c4902a';
-    ctx.beginPath(); ctx.moveTo(x - 0.17 * ppu, cy - 0.05 * ppu); ctx.lineTo(x - 0.3 * ppu, cy - 0.16 * ppu); ctx.lineTo(x - 0.12 * ppu, cy + 0.12 * ppu); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + 0.17 * ppu, cy - 0.05 * ppu); ctx.lineTo(x + 0.3 * ppu, cy - 0.16 * ppu); ctx.lineTo(x + 0.12 * ppu, cy + 0.12 * ppu); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#3a2410';
-    ctx.beginPath(); ctx.arc(x - 0.05 * ppu, cy - 0.04 * ppu, 0.022 * ppu, 0, TAU); ctx.arc(x + 0.05 * ppu, cy - 0.04 * ppu, 0.022 * ppu, 0, TAU); ctx.fill();
-    glint(ctx, x + 0.22 * ppu, cy - 0.22 * ppu, ppu * 0.8, 0.5 + 0.4 * Math.sin(time * 4));
+    const gl = ctx.createRadialGradient(x, cy, 0.05 * ppu, x, cy, 0.8 * ppu); // a faint sea-green glow, no gold
+    gl.addColorStop(0, 'rgba(150,235,210,0.28)'); gl.addColorStop(1, 'rgba(150,235,210,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, cy, 0.8 * ppu, 0, TAU); ctx.fill();
+    if (!drawSprite(ctx, 'idol', x, floor - 0.4 * ppu + bob, 0, 0.62 * ppu)) {
+      ctx.fillStyle = '#8fa58a'; ctx.strokeStyle = '#26301f';
+      ctx.beginPath(); ctx.ellipse(x, cy, 0.2 * ppu, 0.26 * ppu, 0, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    specks(ctx, x, cy, ppu, time, 5, 0.8);
   }
   ctx.restore();
 }
@@ -251,6 +274,7 @@ export function drawBombItem(ctx, x, y, ppu) {
 }
 
 export function drawHeartItem(ctx, x, y, ppu) {
+  if (drawSprite(ctx, 'heart', x, y, 0.46 * ppu, 0, 0.5, 0.5)) return; // Milan's UI heart
   const r = 0.2 * ppu;
   ctx.fillStyle = '#ff5a6e'; ctx.strokeStyle = '#6b1222'; ctx.lineWidth = Math.max(1.5, r * 0.18);
   ctx.beginPath();

@@ -8,7 +8,7 @@
 //     (same padded-window trace world.js does per chunk), lazily, and each
 //     band's outline is kept until a bomb changes it; a bomb retraces only
 //     the band(s) its tiles touch;
-//   - tiles hold material ids (materials.js); bombs break every material but bedrock (the border and its outcrops);
+//   - tiles hold material ids (materials.js); bombs break every material but bedrock (the border and its outcrops), the shop frame included;
 //   - render.js draws one layer per material present in a band, each from the outline of the tiles of that
 //     material's priority or higher (getLayerOutline), lowest first, so a higher material's edge overlaps a lower one.
 //
@@ -81,6 +81,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
   const shopRect = level.shop || null;
   function inShop(x, y) { return shopRect !== null && x >= shopRect.x0 && x < shopRect.x1 && y >= shopRect.y0 && y < shopRect.y1; }
+  // 2026-10-07: the shop is ordinary breakable world (Spelunky: bombing the stall is how you anger the keeper). Every shop
+  // tile broken is counted, so main.js can tell the stall was damaged. When the Materials owner's shop-frame material
+  // (timber / masonry) lands, its tiles break the same way: only the border (isBedrock) is unbreakable.
+  let shopBroken = 0;
 
   let deepestY = startY;
 
@@ -221,21 +225,27 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !border(x, y) && !inShop(x, y) && MAT_BOMBABLE[tileAt(x, y)] === 1;
+      return !border(x, y) && MAT_BOMBABLE[tileAt(x, y)] === 1;
     },
-    /** Bomb break: every material but bedrock (the border and its outcrops). */
+    /** Shop tiles broken on this level so far (main.js: a change angers the shopkeepers). */
+    get shopTilesBroken() { return shopBroken; },
+    /** Whether tile (tx, ty) is part of the shop room (its frame, floor, walls). */
+    inShop(tx, ty) { return inShop(Math.floor(tx), Math.floor(ty)); },
+    /** Bomb break: every material but bedrock (the border and its outcrops); the shop frame (timber, masonry) too. */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (border(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
+      if (border(x, y)) return false;
       if (!MAT_BOMBABLE[tiles[y * W + x]]) return false;
       setTile(x, y, 0);
+      if (inShop(x, y)) shopBroken++; // the stall breaks like any rock: its pedestals fall, the keeper is angered (main.js, shop.js)
       return true;
     },
     /** A falling boulder smashes a wooden platform or a bone block it lands on. False for anything else. */
     smashTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (border(x, y) || inShop(x, y) || !MAT_BOULDER_BREAKS[tileAt(x, y)]) return false;
+      if (border(x, y) || !MAT_BOULDER_BREAKS[tileAt(x, y)]) return false;
       setTile(x, y, 0);
+      if (inShop(x, y)) shopBroken++; // a smashed beam of the stall counts like a bombed one
       return true;
     },
     /** Material id at a tile (0 water). */

@@ -198,7 +198,7 @@ export function whirlpoolReady() { return !!artBitmap('whirlpool'); }
 const M_APPEAR = 0, M_IDLE = 1, M_NEAR = 2, M_ENTER = 3, M_SWALLOW = 4, M_GONE = 5;
 const states = new Map();
 export const BOUNCE_S = (BOUNCE[1] - BOUNCE[0]) / FPS, RISE_S = (RISE[1] - RISE[0]) / FPS;
-/** How long the entry sequence takes from the moment the octopus touches the whirlpool: the Bounce, then the swallow. */
+/** The shortest the whirlpool's part of an entry takes: the Bounce, then the swallow (r45: main.js's entry is 1.5 s, the idle loop fills the gap). */
 export const ENTRY_S = BOUNCE_S + RISE_S;
 export const portalKey = (tx, ty) => tx + ',' + ty;
 let held = false;
@@ -212,8 +212,9 @@ function stateOf(key, time) {
 }
 /** Make the state exist (so the appear clock starts) even if the portal is not drawn this frame (it is far off screen). */
 export function portalTouch(key, time) { stateOf(key, time); }
-/** The octopus has touched this portal: play the Bounce now whatever it was doing, then the swallow. */
-export function portalEnter(key, time) { const st = stateOf(key, time); st.mode = M_ENTER; st.t0 = time; st.entered = time; }
+/** The octopus has touched this portal: play the Bounce now whatever it was doing, then the swallow. r45: with `total` (the entry's length,
+ *  1.5 s) the idle loop plays between the Bounce and the swallow so that the swallow ends exactly when the entry does. */
+export function portalEnter(key, time, total = ENTRY_S) { const st = stateOf(key, time); st.mode = M_ENTER; st.t0 = time; st.entered = time; st.hold = Math.max(0, total - ENTRY_S); }
 /** Which mode a portal is in, as a word (tests). */
 export function portalMode(key) { const st = states.get(key); return st ? ['appear', 'idle', 'near', 'enter', 'swallow', 'gone'][st.mode] : null; }
 /** Frame index in the sheet for a portal at `key`, given the time and whether the octopus is near / far. */
@@ -224,12 +225,14 @@ export function portalFrame(key, time, near, far) {
   if (st.mode === M_APPEAR && time - st.t0 >= RISE_S) { st.mode = M_IDLE; st.armed = !!near; }
   if (st.mode === M_IDLE) { if (st.armed) { if (far) st.armed = false; } else if (near) { st.mode = M_NEAR; st.t0 = time; } }
   if (st.mode === M_NEAR && time - st.t0 >= BOUNCE_S) { st.mode = M_IDLE; st.armed = true; } // straight back to the idle loop
-  if (st.mode === M_ENTER && time - st.t0 >= BOUNCE_S) { st.mode = M_SWALLOW; st.t0 += BOUNCE_S; }
+  if (st.mode === M_ENTER && time - st.t0 >= BOUNCE_S + (st.hold || 0)) { st.mode = M_SWALLOW; st.t0 += BOUNCE_S + (st.hold || 0); }
   if (st.mode === M_SWALLOW && time - st.t0 >= RISE_S) st.mode = M_GONE;
   const el = time - st.t0;
   switch (st.mode) {
     case M_APPEAR: return RISE[0] + Math.min(RISE[1] - RISE[0] - 1, Math.floor(el * FPS));
-    case M_NEAR: case M_ENTER: return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor(el * FPS));
+    case M_ENTER: if (el >= BOUNCE_S) return IDLE[0] + (Math.floor((el - BOUNCE_S) * FPS) % (IDLE[1] - IDLE[0])); // r45: the idle loop until the swallow
+      return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor(el * FPS));
+    case M_NEAR: return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor(el * FPS));
     case M_SWALLOW: return RISE[1] - 1 - Math.min(RISE[1] - RISE[0] - 1, Math.floor(el * FPS));
     case M_GONE: return RISE[0];
     default: return IDLE[0] + (Math.floor(time * FPS) % (IDLE[1] - IDLE[0]));

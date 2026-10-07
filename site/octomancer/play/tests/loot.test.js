@@ -323,14 +323,14 @@ export async function runLootTests(assert) {
     assert(`draw: the eel ring breaks into pieces where rock stands in its way (${clipped} pieces with rock vs ${count(moves)} without)`, clipped > count(moves));
     // spike strip at a convex corner: the plate is inset
     const plates = [];
-    const rec3 = new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient' ? () => grad : (...a) => { if (k === 'rect') plates.push(a); }), set: () => true });
+    const rec3 = new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient' ? () => grad : (...a) => { if (k === 'rect') plates.push(a[3]); else if (k === 'drawImage' && a.length === 9) plates.push(a[7]); }), set: () => true }); // r46: the spine sprite's drawn length, or the plate rect's
     const hz2 = createHazards(); hz2.add({ type: 'hazard', hk: 2, x: 2.5, y: 2.5, dx: 0, dy: -1, len: 3 });
     const floorRock = (x, y) => y >= 3 && x >= 1 && x < 4; // rock under the strip, ending exactly at both ends (a ledge)
     drawHazards(rec3, { x: 2.5, y: 2.5, pxPerUnit: 100 }, 600, 400, hz2.data, 0, (x, y) => floorRock(x, y));
     const snug = [];
-    const rec4 = new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient' ? () => grad : (...a) => { if (k === 'rect') snug.push(a); }), set: () => true });
+    const rec4 = new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient' ? () => grad : (...a) => { if (k === 'rect') snug.push(a[3]); else if (k === 'drawImage' && a.length === 9) snug.push(a[7]); }), set: () => true });
     drawHazards(rec4, { x: 2.5, y: 2.5, pxPerUnit: 100 }, 600, 400, hz2.data, 0, (x, y) => y >= 3);
-    assert(`draw: a spike plate that ends at a convex ledge corner is shorter than one on continuous rock (${plates[0] && plates[0][3].toFixed(0)} vs ${snug[0] && snug[0][3].toFixed(0)} px)`, plates.length === 1 && snug.length === 1 && plates[0][3] < snug[0][3] - 30);
+    assert(`draw: a spike plate that ends at a convex ledge corner is shorter than one on continuous rock (${plates[0] && plates[0].toFixed(0)} vs ${snug[0] && snug[0].toFixed(0)} px)`, plates.length === 1 && snug.length === 1 && plates[0] < snug[0] - 30);
   }
 
   // ---- round-30 fix: an idle octopus at the start keeps all its hearts for 5 s on every Shallows level ----

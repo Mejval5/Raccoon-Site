@@ -234,7 +234,7 @@ export function createLoot(props = null) {
         if (pid < 0) { d.rstate[i] = 3; continue; }
         const pd = props.data;
         d.rx[i] = pd.x[pid]; d.ry[i] = pd.y[pid]; d.rt[i] -= dt;
-        if (!octo.dead && Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85 && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
+        if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85 && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
           if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
         }
         if ((pd.grounded[pid] && Math.hypot(pd.vx[pid], pd.vy[pid]) < 1.5) || pd.state[pid] !== PS_FREE || d.rt[i] <= 0) {
@@ -244,7 +244,7 @@ export function createLoot(props = null) {
       } else if (d.rstate[i] === 2) {
         d.rv[i] = Math.min(ROCK_MAXV, d.rv[i] + ROCK_GRAV * dt);
         d.ry[i] += d.rv[i] * dt;
-        if (!octo.dead && Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
+        if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
           if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
         }
         if (world.tileAt(Math.floor(d.rx[i]), Math.floor(d.ry[i] + ROCK_RADIUS)) !== 0) {
@@ -330,7 +330,7 @@ export function createLoot(props = null) {
           if (d.t[i] <= 0) {
             d.state[i] = ST_BURST; d.t[i] = SPIKE_BURST_TIME;
             events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i] });
-            if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
+            if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
               if (hurtOctopus(octo, d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
             }
           }

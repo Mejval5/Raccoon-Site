@@ -10,8 +10,6 @@ const FILES = {
   sign: 'shop-sign.webp',
   pedestal: 'shop-pedestal.webp',
   counter: 'shop-counter.webp',     // left cap | stretchable middle | right cap
-  chestClosed: 'chest-closed.webp',
-  chestOpen: 'chest-open.webp',
   crackVault: 'crack-vault.webp',
   crackWall: 'crack-wall.webp',
   board: 'hub-board.webp',

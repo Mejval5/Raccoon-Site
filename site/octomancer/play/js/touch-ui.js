@@ -1,4 +1,4 @@
-// Floating touch joystick (left half of the screen) + Dash/Bomb buttons
+// Floating touch joystick (left half of the screen) + Jet/Dash/Bomb/Spell buttons
 // (bottom-right, inside safe areas). Pointer Events, touch-action:none.
 // Controls appear on first touch, hide on first keyboard input.
 // OVERNIGHT.md §2 "Input", M0-2.
@@ -21,16 +21,24 @@ export function createTouchUI(root, input, field = root) {
   base.className = 'octo-stick-base';
   const nub = document.createElement('div');
   nub.className = 'octo-stick-nub';
-  const dashBtn = document.createElement('div');
-  dashBtn.className = 'octo-btn';
-  dashBtn.id = 'octo-dash-btn';
-  dashBtn.textContent = 'Dash';
-  const bombBtn = document.createElement('div');
-  bombBtn.className = 'octo-btn';
-  bombBtn.id = 'octo-bomb-btn';
-  bombBtn.textContent = 'Bomb';
+  // The action buttons, bottom right in a 2 x 2 block (the stick owns the left half): Dash | Jet on the bottom row, Bomb | Spell
+  // above. Jet (the ink jet) sits in the corner, under the thumb. `btn` is the input.touch button each one presses.
+  const BUTTONS = [
+    { id: 'octo-dash-btn', label: 'Dash', btn: 'dash', col: 1, row: 0 },
+    { id: 'octo-attack-btn', label: 'Jet', btn: 'attack', col: 0, row: 0 },
+    { id: 'octo-bomb-btn', label: 'Bomb', btn: 'bomb', col: 1, row: 1 },
+    { id: 'octo-spell-btn', label: 'Spell', btn: 'spell', col: 0, row: 1 },
+  ];
+  const btnEls = BUTTONS.map((b) => {
+    const e = document.createElement('div');
+    e.className = 'octo-btn' + (b.btn === 'spell' ? ' octo-btn-spell' : '');
+    e.id = b.id;
+    e.textContent = b.label;
+    return e;
+  });
+  const spellBtn = btnEls[3];
 
-  for (const el of [base, nub, dashBtn, bombBtn]) {
+  for (const el of [base, nub, ...btnEls]) {
     el.style.display = 'none';
     root.appendChild(el);
   }
@@ -43,14 +51,14 @@ export function createTouchUI(root, input, field = root) {
   sizeStick(nub, stickRadius * 0.5);
 
   function layoutButtons() {
-    const btnSize = 64;
+    const btnSize = 60, gap = 12;
     const safeR = 16; // extra margin beyond env() safe area, in px
-    dashBtn.style.width = dashBtn.style.height = btnSize + 'px';
-    bombBtn.style.width = bombBtn.style.height = btnSize + 'px';
-    dashBtn.style.right = `calc(env(safe-area-inset-right, 0px) + ${safeR + btnSize + 16}px)`;
-    dashBtn.style.bottom = `calc(env(safe-area-inset-bottom, 0px) + ${safeR}px)`;
-    bombBtn.style.right = `calc(env(safe-area-inset-right, 0px) + ${safeR}px)`;
-    bombBtn.style.bottom = `calc(env(safe-area-inset-bottom, 0px) + ${safeR}px)`;
+    BUTTONS.forEach((b, i) => {
+      const e = btnEls[i];
+      e.style.width = e.style.height = btnSize + 'px';
+      e.style.right = `calc(env(safe-area-inset-right, 0px) + ${safeR + b.col * (btnSize + gap)}px)`;
+      e.style.bottom = `calc(env(safe-area-inset-bottom, 0px) + ${safeR + b.row * (btnSize + gap)}px)`;
+    });
   }
   layoutButtons();
   window.addEventListener('resize', layoutButtons);
@@ -58,12 +66,16 @@ export function createTouchUI(root, input, field = root) {
   function show() {
     if (visible) return;
     visible = true;
-    dashBtn.style.display = 'flex';
-    bombBtn.style.display = 'flex';
+    for (const e of btnEls) e.style.display = 'flex';
   }
   function hide() {
     visible = false;
-    for (const el of [base, nub, dashBtn, bombBtn]) el.style.display = 'none';
+    for (const el of [base, nub, ...btnEls]) el.style.display = 'none';
+  }
+  let spellReady = null;
+  /** Whether the jar holds a cast for the selected spell (the Spell button is dimmed when it does not). */
+  function setSpell(ready) {
+    if (ready !== spellReady) { spellReady = ready; spellBtn.classList.toggle('is-empty', !ready); }
   }
 
   let stickPointerId = null;
@@ -119,8 +131,8 @@ export function createTouchUI(root, input, field = root) {
     if (e.cancelable) e.preventDefault();
     show();
     input.setMode('touch');
-    if (e.target === dashBtn) { pressBtn(dashBtn, input.touch.dash); capture(dashBtn, e.pointerId); return; }
-    if (e.target === bombBtn) { pressBtn(bombBtn, input.touch.bomb); capture(bombBtn, e.pointerId); return; }
+    const bi = btnEls.indexOf(e.target);
+    if (bi >= 0) { pressBtn(btnEls[bi], input.touch[BUTTONS[bi].btn]); capture(btnEls[bi], e.pointerId); return; }
     if (stickPointerId === null && stickStart(e.clientX, e.clientY)) {
       stickPointerId = e.pointerId;
       capture(e.target, e.pointerId);
@@ -131,8 +143,8 @@ export function createTouchUI(root, input, field = root) {
   }
   function endPointer(e) {
     if (e.pointerId === stickPointerId) { stickEnd(); stickPointerId = null; }
-    if (e.target === dashBtn) releaseBtn(dashBtn, input.touch.dash);
-    if (e.target === bombBtn) releaseBtn(bombBtn, input.touch.bomb);
+    const bi = btnEls.indexOf(e.target);
+    if (bi >= 0) releaseBtn(btnEls[bi], input.touch[BUTTONS[bi].btn]);
   }
   for (const el of field === root ? [root] : [root, field]) {
     el.addEventListener('pointerdown', onDown, { passive: false });
@@ -143,5 +155,5 @@ export function createTouchUI(root, input, field = root) {
 
   input.onModeChange((mode) => { if (mode === 'keyboard' || mode === 'mouse') hide(); });
 
-  return { show, hide };
+  return { show, hide, setSpell };
 }
