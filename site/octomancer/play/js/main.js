@@ -53,7 +53,10 @@ import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_
 import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
-import { fetchShopItems, createShopState, shopStep, shopBlast } from './shop.js';
+import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
+import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
+import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
+import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
 import { drawContactShadows } from './feel-draw.js';
 import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, prefersReducedMotion, setMotionSettings, osPrefersReducedMotion } from './config.js';
@@ -244,6 +247,9 @@ let quest = null;
 let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed after the level's first enemy update
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
+let keepers = createKeepers(); // 2026-10-07: this level's shopkeepers (the stall's, a guard at the exit), shopkeeper.js
+let shopBrokenSeen = 0;        // world.shopTilesBroken already answered with aggro
+const wareEvents = [];
 let poolSts = []; // r39: this level's Challenge Pools (pool.js), one per pool room
 let tutState = createTutorialState();
 let story = getStory(); // the stage of Marlo, Pip and Quill, relics handed over, pool wagers (save.js): who waits in the hub
@@ -594,6 +600,7 @@ function step(dt) {
     questClear = null;
   }
   if (V2) { syncBody(); props.step(dt, world, octo, enemies.all()); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -613,7 +620,7 @@ function step(dt) {
   }
   bombs.update(dt, world, octo, enemies);
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
-    inkJet.update(dt, world, enemies.all(), (e, d) => enemies.hurt(e, d));
+    inkJet.update(dt, world, inkTargets(), inkHurt); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
     for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]);
     inkClouds.update(dt);
     stepJuice(dt);
@@ -623,7 +630,11 @@ function step(dt) {
     const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
-    if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS);
+    if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props);
+    if (V2 && run.state === S_BIOME) {
+      if (keepers.n) bombKeepers(keepers, ev.x, ev.y, BOMB_RADIUS);
+      if (world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
+    }
     if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS); }
   }
   for (const ev of enemies.events) {
@@ -637,6 +648,10 @@ function step(dt) {
       bodyJuice(ev.x, ev.y, ev.kind, dropCount(seed, runKills));
       journal.bump(creatureId(ev.kind), STAT_KILLED);
     }
+  }
+  if (V2 && run.state === S_BIOME) {
+    if ((world.shopTilesBroken | 0) !== shopBrokenSeen) { shopBrokenSeen = world.shopTilesBroken | 0; shopAggro('shop'); } // his stall was damaged
+    handleKeeperEvents();
   }
   particles.update(dt);
   if (snap.bomb.pressed) {
@@ -915,6 +930,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   });
   sim.time = 0;
   entry = null;
+  keepers = createKeepers(); shopBrokenSeen = 0; // the old level's keepers never step in the new world (setupLevelExtras places this level's)
   runKills = 0;
   liveScore = 0;
   trailTimer = 0;
@@ -1101,14 +1117,17 @@ function stepV2(snap) {
     if (questUpdate(quest, octo, world, STEP)) payQuest();
     if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
+    if (shopSt) shopSt.keeperCalm = shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n && keepers.mode[shopSt.keeperIdx] === KM_CALM;
     const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
     if (ev) onShopEvent(ev);
+    if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP)) onShopEvent(we); }
     if (poolSts.length) {
       hazards.setPoolGain(poolSts.some((ps) => ps.state === PL_ACTIVE) ? 1 : POOL_IDLE_VENT); // r40: the vents only blow weakly until a wager runs
       const busy = poolSts.some((ps) => ps.state === PL_ACTIVE); // one wager at a time
       for (const ps of poolSts) { if (busy && ps.state === PL_IDLE) continue; for (const pe of poolStep(ps, octo, run.shells, STEP)) onPoolEvent(pe, ps); }
     }
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
+    if ((seeTick & 15) === 4) for (let i = 0; i < keepers.n; i++) if (keepers.mode[i] !== KM_DEAD && Math.hypot(octo.x - keepers.x[i], octo.y - keepers.y[i]) < 9) discover('person-keeper');
     if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
       siphonSpot.taken = true;
       if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
@@ -1220,6 +1239,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
+    if (shopSt) drawLooseWares(c, camera, cw, ch, shopSt, props, t);
+    if (keepers.n) drawKeepers(c, camera, cw, ch, keepers, t); // hostile keepers and their claws (under the octopus, like the enemies)
     let pk = 0;
     for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
   }
@@ -1400,8 +1421,96 @@ function setupLevelExtras() {
     }
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
     poolSts = planPools(world.level).map(createPoolState);
+    setupKeepers(spec);
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
   }
+}
+
+// --- 2026-10-07: shopkeepers and Spelunky aggro (shopkeeper.js, shop-aggro.js) ---
+/** This level's keepers: the stall's own (calm, or hostile at his post when the run is angry) and, in an angry run, maybe one waiting by the exit. */
+function setupKeepers(spec) {
+  keepers = createKeepers();
+  shopBrokenSeen = world.shopTilesBroken | 0;
+  if (shopSt) {
+    const seat = keeperSeat(world.level.shop);
+    shopSt.keeperIdx = addKeeper(keepers, seat.x, seat.y, run.shopAggro ? KM_WAIT : KM_CALM, 1);
+    shopSt.keeperCalm = !run.shopAggro;
+    shopSt.free = run.shopAggro;
+  }
+  const lv = world.level;
+  if (run.shopAggro && exitGuardWaits(spec.seed, spec.levelIndex) && lv.exitX >= 0) {
+    const spot = guardSpot(world.tileAt, lv.exitX, lv.exitY);
+    if (spot) addKeeper(keepers, spot.x, spot.y, KM_WAIT, 0);
+  }
+}
+
+/**
+ * Spelunky aggro: every shopkeeper turns on the octopus for the rest of the dive (run.shopAggro, kept across levels, reset
+ * by a new dive). The keepers on this level come after it at once; the stall's wares cost nothing now.
+ * Registered for other modules as shop-aggro.js shopAggro(reason). Returns true when this call angered them.
+ */
+function shopAggro(reason) {
+  if (!V2 || !run || run.state !== S_BIOME) return false;
+  const first = !run.shopAggro;
+  run.shopAggro = true;
+  angerAll(keepers);
+  if (shopSt) { shopSt.free = true; shopSt.keeperCalm = false; }
+  if (!first) return false;
+  run.shopAggroWhy = String(reason || 'hurt');
+  journal.bump('person-keeper', STAT_KILLED); // the entry's "Angered" counter
+  discover('person-keeper');
+  ui.showToast(reason === 'theft' ? 'Thief! The shopkeeper is coming for you' : reason === 'shop' ? 'You wrecked his stall. The shopkeeper is coming for you' : 'The shopkeeper is furious', 3200);
+  return true;
+}
+setShopHooks({
+  aggro: shopAggro,
+  hit: (x, y, r, kind, dmg, fx, fy) => (V2 && run && run.state === S_BIOME ? hitKeepersAt(keepers, x, y, r, kind, dmg, fx, fy) : 0),
+  angry: () => !!(run && run.shopAggro),
+});
+
+// the ink jet's target list: the enemies plus one reusable stand-in per live shopkeeper (inkjet.js reads x, y, radius, hp, dead)
+const keeperProxies = [];
+function inkTargets() {
+  const list = enemies.all();
+  if (!(run && run.state === S_BIOME) || !keepers.n) return list;
+  for (let i = 0; i < keepers.n; i++) {
+    if (keepers.mode[i] === KM_DEAD) continue;
+    const p = keeperProxies[i] || (keeperProxies[i] = { keeper: true, i: 0, x: 0, y: 0, radius: KEEPER_R, hp: 1, dead: false });
+    p.i = i; p.x = keepers.x[i]; p.y = keepers.y[i]; p.hp = keepers.hp[i]; p.dead = false;
+    list.push(p);
+  }
+  return list;
+}
+function inkHurt(e, d) {
+  if (!e.keeper) { enemies.hurt(e, d); return; }
+  hitKeeper(keepers, e.i, HIT_INK, d, octo.x, octo.y);
+  e.dead = keepers.mode[e.i] === KM_DEAD;
+}
+
+/** What the keepers did this step: hits on them anger the run, a dead keeper leaves his shells, claws whoosh. */
+function handleKeeperEvents() {
+  const evs = keepers.events;
+  for (let n = 0; n < evs.length; n++) {
+    const ev = evs[n];
+    switch (ev.type) {
+      case 'hurt':
+        if (ev.kind === HIT_BOMB || ev.kind === HIT_HEAVY) particles.deathPoof(ev.x, ev.y, '#f2a66a');
+        else particles.bouncePuff(ev.x, ev.y - 0.3, 0, -1); // it glanced off his shell
+        shopAggro('hurt');
+        break;
+      case 'killed':
+        particles.deathPoof(ev.x, ev.y, '#e8622a'); particles.bombDebris(ev.x, ev.y);
+        dropShells(10, ev.x, ev.y);
+        if (shopSt && ev.shop) shopSt.free = true;
+        run.dive.kills++;
+        shopAggro('kill');
+        break;
+      case 'clawLaunch': sfx.dash(); break;
+      case 'octoHit': particles.shakeFx(SHAKE_HURT_PX * 1.6); break;
+      default: break;
+    }
+  }
+  evs.length = 0;
 }
 
 /** An encounter ended well: shells, a quiet line, the People entry, and the person's story moves up one stage. */
@@ -1580,6 +1689,15 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
 }
 
 function onShopEvent(ev) {
+  if (ev.type === 'fell') { particles.bombDebris(ev.x, ev.y + 0.5); return; }
+  if (ev.type === 'knocked') { particles.bouncePuff(ev.x, ev.y, 0, -1); return; }
+  if (ev.type === 'stolen') {
+    if (ev.item.journal) discover(ev.item.journal);
+    sfx.chime();
+    if (!ev.free && !run.shopAggro) shopAggro('theft'); // picked up without paying
+    else ui.showToast('Took ' + ev.item.name + (ev.item.effect === 'carry' ? ', ' + ev.item.blurb : ''));
+    return;
+  }
   if (ev.type === 'bought') {
     run.shells = ev.shells;
     ui.showToast('Bought ' + ev.item.name + ' for ' + ev.price + ' shells' + (ev.item.effect === 'carry' ? ', ' + ev.item.blurb : ''));
@@ -1739,7 +1857,8 @@ window.__octo = {
       shells: run ? run.shells : 0,
       items: run ? run.items.slice() : [],
       quest: quest ? { id: quest.plan.id, status: quest.status, progress: quest.progress, goal: quest.goal, following: quest.following, pos: Array.from(quest.plan.pos) } : null,
-      shop: shopSt ? { keeper: [shopSt.keeperX, shopSt.keeperY], px: Array.from(shopSt.px), stock: Array.from(shopSt.stock, (i) => shopSt.items[i].id), sold: Array.from(shopSt.sold) } : null,
+      shop: shopSt ? { keeper: [shopSt.keeperX, shopSt.keeperY], px: Array.from(shopSt.px), stock: Array.from(shopSt.stock, (i) => shopSt.items[i].id), sold: Array.from(shopSt.sold), ware: Array.from(shopSt.ware), pid: Array.from(shopSt.pid), pedGone: Array.from(shopSt.pedGone), stolen: shopSt.stolen, free: shopSt.free, keeperCalm: shopSt.keeperCalm, rect: [world.level.shop.x0, world.level.shop.y0, world.level.shop.x1, world.level.shop.y1] } : null,
+      shopAggro: run ? { on: run.shopAggro, why: run.shopAggroWhy } : null,
       story: { ...story },
       pool: poolSts.map((ps) => ({ state: ps.state, t: ps.t, x: ps.plan.x, y: ps.plan.y, floorY: ps.plan.floorY, x0: ps.plan.x0, y0: ps.plan.y0, seen: ps.seen })),
       pockets: world.level.nPockets ? Array.from(world.level.pockets) : [],
@@ -1758,6 +1877,22 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
     return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
   },
+  /** 2026-10-07: the level's shopkeepers (mode name, position, hp, tell, claws) for tests and review. */
+  keepers() {
+    const k = keepers, out = [];
+    for (let i = 0; i < k.n; i++) out.push({ i, mode: MODE_NAMES[k.mode[i]], shop: k.shop[i] === 1, x: k.x[i], y: k.y[i], vx: k.vx[i], vy: k.vy[i], hp: k.hp[i], tell: k.tell[i], stun: k.stun[i], cool: k.cool[i], claws: [0, 1].map((s) => ({ st: k.cst[i * 2 + s], x: k.cx[i * 2 + s], y: k.cy[i * 2 + s] })) });
+    return { list: out, launches: k.launches };
+  },
+  /** Test hook: anger the shopkeepers as shop-aggro.js shopAggro(reason) would. */
+  shopAggro(reason) { return shopAggro(reason || 'test'); },
+  /** Test hook: hit keeper i ('ink' | 'dash' | 'bomb' | 'heavy', damage before his resistance); returns the damage dealt. */
+  hitKeeper(i, kind, dmg) { return hitKeeper(keepers, i, { ink: HIT_INK, dash: HIT_DASH, bomb: HIT_BOMB, heavy: HIT_HEAVY }[kind] || HIT_INK, dmg, octo.x, octo.y); },
+  /** Test hook: stop / restart the real-time loop without the pause overlay (frame-by-frame captures with stepDraw). */
+  freeze(on) { loop.setPaused(!!on); return loop.paused; },
+  /** Test hook: n fixed steps, then draw one frame (works while frozen). */
+  stepDraw(n) { loop.manualStep(n | 0); render(0, 16); return sim.time; },
+  /** Test hook: break a tile as a bomb would (no blast), e.g. the floor under a pedestal. */
+  breakTile(tx, ty) { return world.breakTile(tx, ty); },
   /** v2: the buried treasure of this level (embed.js): tile, kind, tier / item code, state (0 buried, 1 loose, 2 taken), position. */
   embedded() {
     const d = embedded.data, out = [];

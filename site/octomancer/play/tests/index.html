@@ -196,6 +196,9 @@ await runPerf43Tests(assert);
 import { runPortalTests } from './portal.test.js';
 await runPortalTests(assert);
 
+// --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
+import { runShopTests } from './shop.test.js';
+await runShopTests(assert);
 // --- Buried treasure and the Sea-glass Goggles ---
 import { runEmbedTests } from './embed.test.js';
 await runEmbedTests(assert);
