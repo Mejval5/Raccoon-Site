@@ -188,6 +188,10 @@ await runSettingsTests(assert);
 import { runPerf43Tests } from './perf43.test.js';
 await runPerf43Tests(assert);
 
+// --- Round 44: portal states, seating, tint, the two sheets ---
+import { runPortalTests } from './portal.test.js';
+await runPortalTests(assert);
+
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
