@@ -1,6 +1,7 @@
 // v2 run flow (V2-PLAN section 10, B1-1), behind ?v2=1. A tiny flat state machine, no DOM:
 //
-//   hub -> tutorial -> biome1 L1 -> L2 -> L3 -> end screen -> hub
+//   hub -> tutorial -> biome1 L1 -> L2 -> L3 -> [rest grotto] -> end screen -> hub
+//   (the rest grotto, section 14: a calm room with a spring that refills hearts and juice and a stall; on when createRun gets rest:true)
 //   death anywhere returns to the hub.
 //
 // The tutorial is played once (the save remembers it); after that the hub entrance goes
@@ -8,8 +9,9 @@
 
 import { hashSeed2 } from './rng.js';
 
-export const S_HUB = 0, S_TUTORIAL = 1, S_BIOME = 2, S_END = 3;
-export const STATE_NAMES = ['hub', 'tutorial', 'biome1', 'end'];
+export const S_HUB = 0, S_TUTORIAL = 1, S_BIOME = 2, S_END = 3, S_REST = 4;
+export const STATE_NAMES = ['hub', 'tutorial', 'biome1', 'end', 'rest'];
+export const REST_NAME = 'The Still Grotto';
 export const BIOME_LEVELS = 3;
 export const BIOME_NAME = 'Shallows';
 
@@ -40,7 +42,7 @@ function newDive(level) {
   return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, cause: '', over: false };
 }
 
-/** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean, shortcut3?:boolean}} [opts] */
+/** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean, shortcut3?:boolean, juiceStart?:number, rest?:boolean}} [opts] */
 export function createRun(seed, opts = {}) {
   return {
     state: S_HUB,
@@ -53,6 +55,10 @@ export function createRun(seed, opts = {}) {
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
+    juice: 0,            // fish juice droplets in the jar (spells.js): kept between levels, reset by a death or a new dive
+    juiceStart: opts.juiceStart | 0, // droplets every dive starts with (spells.js juiceStart(): one cast)
+    rest: !!opts.rest,   // the zone ends in the rest grotto (S_REST) before the clear screen
+    hotbar: null,        // the spell hotbar (hotbar.js), made by main.js; a new dive or a death starts a fresh one
     deaths: 0,
     shortcut3: !!opts.shortcut3, // Marlo's hub ring to Shallows 1-3 (story.marlo >= 3 in save.js)
     shortcut: !!opts.shortcut, // the hub ring to Shallows 1-2: unlocked by finishing the biome once (persisted by save.js)
@@ -96,6 +102,8 @@ function startDive(run, level = 1) {
   run.levelsCleared = 0;
   run.shells = 0;
   run.items = [];
+  run.juice = run.juiceStart;
+  run.hotbar = null;
   run.dive = newDive(level);
   run.last = null;
 }
@@ -109,6 +117,7 @@ export function runEvent(run, ev, cause) {
     run.deaths++;
     if (run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
     run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
+    run.juice = 0; run.hotbar = null;
     return true;
   }
   switch (run.state) {
@@ -135,6 +144,7 @@ export function runEvent(run, ev, cause) {
       if (ev !== EV_EXIT) return false;
       run.levelsCleared++;
       if (run.level < BIOME_LEVELS) { run.level++; if (run.level > run.dive.reached) run.dive.reached = run.level; }
+      else if (run.rest) { run.state = S_REST; } // the zone's last level: rest first (run.level stays the last level)
       else {
         const sum = endDive(run, true);
         sum.shortcutNew = !run.shortcut; // first clear: the hub ring unlocks
@@ -142,6 +152,14 @@ export function runEvent(run, ev, cause) {
         run.state = S_END; run.level = 0;
       }
       return true;
+    case S_REST: {
+      if (ev !== EV_EXIT) return false;
+      const sum = endDive(run, true);
+      sum.shortcutNew = !run.shortcut;
+      run.shortcut = true;
+      run.state = S_END; run.level = 0;
+      return true;
+    }
     case S_END:
       if (ev !== EV_CONTINUE) return false;
       run.state = S_HUB; run.level = 0;
@@ -160,6 +178,7 @@ export function levelSpec(run) {
     case S_HUB: return { kind: 'hub', seed: run.seed, levelIndex: 0 };
     case S_TUTORIAL: return { kind: 'tutorial', seed: run.seed, levelIndex: 0 };
     case S_BIOME: return { kind: 'generated', seed: run.diveSeed, levelIndex: run.level - 1 };
+    case S_REST: return { kind: 'rest', seed: run.diveSeed, levelIndex: 0 };
     default: return { kind: 'end', seed: run.seed, levelIndex: 0 };
   }
 }
@@ -179,11 +198,12 @@ export function stageLabel(run) {
     case S_HUB: return 'Hub';
     case S_TUTORIAL: return 'Tutorial';
     case S_BIOME: return BIOME_NAME + ' 1-' + run.level;
+    case S_REST: return REST_NAME;
     default: return BIOME_NAME + ' cleared';
   }
 }
 
 /** True while a playable world is loaded (the end screen is an overlay over the last level). */
 export function isPlaying(run) { return run.state !== S_END; }
-/** Hub and tutorial: no Beholder timer, no enemies. */
-export function isSafeState(run) { return run.state === S_HUB || run.state === S_TUTORIAL; }
+/** Hub, tutorial and the rest grotto: no Beholder timer, no enemies. */
+export function isSafeState(run) { return run.state === S_HUB || run.state === S_TUTORIAL || run.state === S_REST; }

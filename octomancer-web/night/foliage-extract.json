@@ -1,0 +1,1764 @@
+{
+ "foreground": [
+  {
+   "name": "FoliagePattern01",
+   "hFlip": true,
+   "vFlip": false,
+   "grid": [
+    " ",
+    ".",
+    "#"
+   ],
+   "items": [
+    {
+     "name": "FoliagePlant5",
+     "PositionOffset": [
+      0.0,
+      -0.38
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.4,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant5Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant5.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        -0.22
+       ],
+       "scale": [
+        0.1,
+        0.1
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        2.6100001
+       ],
+       "scale": [
+        5.5,
+        5.5
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant5.png",
+       "x0": -0.199,
+       "x1": 0.215,
+       "y0": -0.262,
+       "y1": 0.344
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant8",
+     "PositionOffset": [
+      0.0,
+      -0.38
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.4,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant8Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant8_2.png"
+     ],
+     "rootScale": [
+      0.33,
+      0.33
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        -0.016,
+        0.387
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.016,
+        -0.746
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant8_2.png",
+       "x0": -0.074,
+       "x1": 0.074,
+       "y0": -0.257,
+       "y1": 0.02
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant9",
+     "PositionOffset": [
+      0.0,
+      -0.28
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.4,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant9Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant9.png"
+     ],
+     "rootScale": [
+      0.33,
+      0.33
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.051,
+        -1.061
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        -0.051,
+        0.614
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant9.png",
+       "x0": -0.079,
+       "x1": 0.079,
+       "y0": -0.359,
+       "y1": 0.064
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant24",
+     "PositionOffset": [
+      0.0,
+      -0.28
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      -0.05,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.4,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant24Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant24.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        -0.032,
+        0.352
+       ],
+       "scale": [
+        0.55,
+        0.55
+       ]
+      },
+      {
+       "pos": [
+        0.032,
+        -0.302
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant24.png",
+       "x0": -0.258,
+       "x1": 0.259,
+       "y0": -0.324,
+       "y1": 0.424
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant1",
+     "PositionOffset": [
+      0.0,
+      -0.58
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.8,
+     "MaxSpawned": 3.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant1Wobble.prefab",
+     "sprites": [
+      "Sprites/Background/Plant1.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        -0.08,
+        2.48
+       ],
+       "scale": [
+        0.25,
+        0.25
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant1.png",
+       "x0": -0.724,
+       "x1": 0.564,
+       "y0": -0.044,
+       "y1": 5.004
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant2",
+     "PositionOffset": [
+      0.0,
+      -0.68
+     ],
+     "RandomOffsetRangeX": [
+      -0.25,
+      0.25
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.7,
+     "MaxSpawned": 3.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant2Wobble.prefab",
+     "sprites": [
+      "Sprites/Background/Plant2.png"
+     ],
+     "rootScale": [
+      0.5,
+      0.5
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        0.136,
+        3.1239998
+       ],
+       "scale": [
+        0.5,
+        0.5
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant2.png",
+       "x0": -0.331,
+       "x1": 0.467,
+       "y0": -0.014,
+       "y1": 3.138
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "FoliagePattern02",
+   "hFlip": true,
+   "vFlip": false,
+   "grid": [
+    "#",
+    ".",
+    "."
+   ],
+   "items": [
+    {
+     "name": "FoliagePlant12",
+     "PositionOffset": [
+      0.0,
+      0.17
+     ],
+     "RandomOffsetRangeX": [
+      -0.1,
+      0.1
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.7,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant12Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant12.png"
+     ],
+     "rootScale": [
+      0.6,
+      0.6
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.023,
+        0.706
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        -0.018,
+        -0.927
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant12.png",
+       "x0": -0.292,
+       "x1": 0.298,
+       "y0": -0.715,
+       "y1": 0.45
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant13",
+     "PositionOffset": [
+      0.0,
+      0.245
+     ],
+     "RandomOffsetRangeX": [
+      -0.05,
+      0.05
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.7,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant13Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant13.png"
+     ],
+     "rootScale": [
+      0.015,
+      0.015
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        -0.9,
+        24.4
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        1.7,
+        -30.1
+       ],
+       "scale": [
+        27.0,
+        27.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant13.png",
+       "x0": -0.136,
+       "x1": 0.16,
+       "y0": -0.547,
+       "y1": 0.376
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant26",
+     "PositionOffset": [
+      0.0,
+      0.56
+     ],
+     "RandomOffsetRangeX": [
+      -0.05,
+      0.05
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.7,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Plant26Anim.prefab",
+     "sprites": [],
+     "rootScale": [
+      0.015,
+      0.015
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Plant26Animation_character_data.creature_pack.bytes",
+       "x0": -0.407,
+       "x1": 0.372,
+       "y0": -0.151,
+       "y1": 0.149
+      }
+     ]
+    },
+    {
+     "name": "FoliageGreenranha",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -0.2,
+      0.2
+     ],
+     "RandomOffsetRangeY": [
+      -0.2,
+      0.2
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Greeranha.prefab",
+     "sprites": [],
+     "rootScale": [
+      0.2,
+      0.2
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        1.72,
+        -3.05
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:GreeranhaAnimation_character_data.bytes",
+       "x0": -0.242,
+       "x1": 0.224,
+       "y0": -0.157,
+       "y1": 0.207
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "FoliagePattern03",
+   "hFlip": true,
+   "vFlip": false,
+   "grid": [
+    " .#"
+   ],
+   "items": [
+    {
+     "name": "FoliagePlant25",
+     "PositionOffset": [
+      0.455,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeY": [
+      -0.1,
+      0.1
+     ],
+     "RotationOffset": 0.0,
+     "FlipOnX": 0.0,
+     "FlipOnY": 0.0,
+     "SpawnChance": 0.9,
+     "MaxSpawned": 15.0,
+     "DontSpawnOnEdge": 0.0,
+     "IgnoreSafeAreas": 0.0,
+     "FailChance": 0.0,
+     "prefab": "Prefabs/Foliage/Foreground/Plant25Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/uNPC25.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        0.75,
+        0.75
+       ]
+      },
+      {
+       "pos": [
+        -0.094999984,
+        -0.018
+       ],
+       "scale": [
+        1.0000001,
+        0.9999999
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:uNPC25.png",
+       "x0": -0.214,
+       "x1": 0.214,
+       "y0": -0.307,
+       "y1": 0.307
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant7",
+     "PositionOffset": [
+      0.31,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeY": [
+      -0.1,
+      0.1
+     ],
+     "RotationOffset": 0.0,
+     "FlipOnX": 0.0,
+     "FlipOnY": 0.0,
+     "SpawnChance": 0.7,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": 0.0,
+     "IgnoreSafeAreas": 0.0,
+     "FailChance": 0.0,
+     "prefab": "Prefabs/Foliage/Foreground/Plant7Anim.prefab",
+     "sprites": [
+      "Sprites/NPCs/Plant7Tint.png"
+     ],
+     "rootScale": [
+      0.55,
+      0.55
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.189,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "sprite:Plant7Tint.png",
+       "x0": -0.113,
+       "x1": 0.321,
+       "y0": -0.248,
+       "y1": 0.248
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "FoliagePattern04",
+   "hFlip": true,
+   "vFlip": false,
+   "grid": [
+    "..",
+    "##"
+   ],
+   "items": [
+    {
+     "name": "FoliageCritter2",
+     "PositionOffset": [
+      0.0,
+      -0.06
+     ],
+     "RandomOffsetRangeX": [
+      -0.45,
+      0.45
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Critter2.prefab",
+     "sprites": [],
+     "rootScale": [
+      -0.03,
+      0.03
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Critter2_character_dataCreaturePack.bytes",
+       "x0": -0.451,
+       "x1": -0.258,
+       "y0": -0.094,
+       "y1": 0.087
+      }
+     ]
+    },
+    {
+     "name": "FoliageCritter1",
+     "PositionOffset": [
+      0.0,
+      1.5
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Critter1.prefab",
+     "sprites": [],
+     "rootScale": [
+      0.06,
+      0.06
+     ],
+     "rootRotZ": -0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Critter1_character_dataCreaturePack.bytes",
+       "x0": -0.193,
+       "x1": 0.175,
+       "y0": -0.114,
+       "y1": 0.131
+      }
+     ]
+    },
+    {
+     "name": "FoliageCritter4",
+     "PositionOffset": [
+      0.0,
+      -0.1
+     ],
+     "RandomOffsetRangeX": [
+      -0.8,
+      0.8
+     ],
+     "RandomOffsetRangeY": [
+      -0.8,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Critter4.prefab",
+     "sprites": [],
+     "rootScale": [
+      0.66,
+      0.66
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        0.06,
+        0.06
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Critter4Export_character_data_creature_pack.bytes",
+       "x0": -0.147,
+       "x1": 0.16,
+       "y0": -0.087,
+       "y1": 0.06
+      }
+     ]
+    },
+    {
+     "name": "FoliageCritter7",
+     "PositionOffset": [
+      -0.68,
+      -0.08
+     ],
+     "RandomOffsetRangeX": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Critter7.prefab",
+     "sprites": [],
+     "rootScale": [
+      0.66,
+      0.66
+     ],
+     "rootRotZ": 0.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        0.039999995,
+        0.039999995
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Critter5_character_dataCreature_pack.bytes",
+       "x0": -0.109,
+       "x1": 0.095,
+       "y0": -0.033,
+       "y1": 0.126
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "FoliagePattern05",
+   "hFlip": true,
+   "vFlip": false,
+   "grid": [
+    ".#",
+    ".#"
+   ],
+   "items": [
+    {
+     "name": "FoliageCritter6",
+     "PositionOffset": [
+      0.08,
+      0.52
+     ],
+     "RandomOffsetRangeX": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeY": [
+      0.0,
+      0.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.65,
+     "MaxSpawned": 5.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Foreground/Critter6.prefab",
+     "sprites": [],
+     "rootScale": [
+      -0.66,
+      0.66
+     ],
+     "rootRotZ": 180.0,
+     "children": [
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        1.0,
+        1.0
+       ]
+      },
+      {
+       "pos": [
+        0.0,
+        0.0
+       ],
+       "scale": [
+        0.039999995,
+        0.039999995
+       ]
+      }
+     ],
+     "worldBoxes": [
+      {
+       "art": "creature:Critter5_character_dataCreature_pack.bytes",
+       "x0": -0.033,
+       "x1": 0.126,
+       "y0": -0.109,
+       "y1": 0.095
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "background": [
+  {
+   "name": "BackgroundPattern1",
+   "hFlip": false,
+   "vFlip": false,
+   "grid": null,
+   "items": [
+    {
+     "name": "FoliageHole01",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.8,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Hole01.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Background/Hole01.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -0.0,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Hole01.png",
+       "x0": -3.0,
+       "x1": 3.0,
+       "y0": -2.995,
+       "y1": 2.995
+      }
+     ]
+    },
+    {
+     "name": "FoliageHole02",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.8,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Hole02.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Background/Hole02.png"
+     ],
+     "rootScale": [
+      0.8,
+      0.8
+     ],
+     "rootRotZ": -0.0,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Hole02.png",
+       "x0": -2.352,
+       "x1": 2.352,
+       "y0": -2.364,
+       "y1": 2.364
+      }
+     ]
+    },
+    {
+     "name": "FoliagePlant20",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/uNPC20.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 30.0,
+     "sprites": [
+      "Sprites/NPCs/Greyscaled/uNPC20.png"
+     ],
+     "rootScale": [
+      1.0679526,
+      1.0679526
+     ],
+     "rootRotZ": 45.0,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:uNPC20.png",
+       "x0": -0.332,
+       "x1": 0.332,
+       "y0": -0.332,
+       "y1": 0.332
+      }
+     ]
+    },
+    {
+     "name": "FoliageRock23",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 15.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/uNPC23.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 30.0,
+     "sprites": [
+      "Sprites/NPCs/uNPC23.png"
+     ],
+     "rootScale": [
+      0.8,
+      0.8
+     ],
+     "rootRotZ": 119.5,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:uNPC23.png",
+       "x0": -0.42,
+       "x1": 0.42,
+       "y0": -0.387,
+       "y1": 0.387
+      }
+     ]
+    },
+    {
+     "name": "FoliageRock23_Solo",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 15.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/uNPC23Solo.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 30.0,
+     "sprites": [
+      "Sprites/NPCs/uNPC23Solo.png"
+     ],
+     "rootScale": [
+      0.9,
+      0.9
+     ],
+     "rootRotZ": -30.62,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:uNPC23Solo.png",
+       "x0": -0.401,
+       "x1": 0.401,
+       "y0": -0.444,
+       "y1": 0.444
+      }
+     ]
+    },
+    {
+     "name": "Rune1",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune1.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune1.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -21.98,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune1.png",
+       "x0": -0.271,
+       "x1": 0.271,
+       "y0": -0.315,
+       "y1": 0.315
+      }
+     ]
+    },
+    {
+     "name": "Rune2",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune2.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune2.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -0.29,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune2.png",
+       "x0": -0.171,
+       "x1": 0.171,
+       "y0": -0.271,
+       "y1": 0.271
+      }
+     ]
+    },
+    {
+     "name": "Rune3",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune3.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune3.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": 61.27,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune3.png",
+       "x0": -0.392,
+       "x1": 0.392,
+       "y0": -0.429,
+       "y1": 0.429
+      }
+     ]
+    },
+    {
+     "name": "Rune4",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune4.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune4.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -0.0,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune4.png",
+       "x0": -0.26,
+       "x1": 0.26,
+       "y0": -0.385,
+       "y1": 0.385
+      }
+     ]
+    },
+    {
+     "name": "Rune5",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune5.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune5.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -41.19,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune5.png",
+       "x0": -0.373,
+       "x1": 0.373,
+       "y0": -0.375,
+       "y1": 0.375
+      }
+     ]
+    },
+    {
+     "name": "Rune6",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": null,
+     "FlipOnX": null,
+     "FlipOnY": null,
+     "SpawnChance": 0.5,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": null,
+     "IgnoreSafeAreas": null,
+     "FailChance": null,
+     "prefab": "Prefabs/Foliage/Background/Rune6.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 180.0,
+     "sprites": [
+      "Sprites/Runes/Rune6.png"
+     ],
+     "rootScale": [
+      1.0,
+      1.0
+     ],
+     "rootRotZ": -58.14,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:Rune6.png",
+       "x0": -0.488,
+       "x1": 0.488,
+       "y0": -0.476,
+       "y1": 0.476
+      }
+     ]
+    },
+    {
+     "name": "Eye",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": 0.0,
+     "FlipOnX": 0.0,
+     "FlipOnY": 0.0,
+     "SpawnChance": 0.8,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": 0.0,
+     "IgnoreSafeAreas": 0.0,
+     "FailChance": 0.0,
+     "prefab": "Prefabs/Foliage/Background/Eye.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 30.0,
+     "sprites": [
+      "Sprites/Background/EyeBlue.png"
+     ],
+     "rootScale": [
+      0.9,
+      0.9
+     ],
+     "rootRotZ": -30.62,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:EyeBlue.png",
+       "x0": -1.578,
+       "x1": 1.578,
+       "y0": -1.578,
+       "y1": 1.578
+      }
+     ]
+    },
+    {
+     "name": "Eye1",
+     "PositionOffset": [
+      0.0,
+      0.0
+     ],
+     "RandomOffsetRangeX": [
+      -1.0,
+      1.0
+     ],
+     "RandomOffsetRangeY": [
+      -1.0,
+      1.0
+     ],
+     "RotationOffset": 0.0,
+     "FlipOnX": 0.0,
+     "FlipOnY": 0.0,
+     "SpawnChance": 0.8,
+     "MaxSpawned": 10.0,
+     "DontSpawnOnEdge": 0.0,
+     "IgnoreSafeAreas": 0.0,
+     "FailChance": 0.0,
+     "prefab": "Prefabs/Foliage/Background/Eye1.prefab",
+     "randomizeScale": true,
+     "scalePct": [
+      50.0,
+      250.0
+     ],
+     "randomizeRotation": true,
+     "maxDegree": 30.0,
+     "sprites": [
+      "Sprites/Background/EyeBlue2.png"
+     ],
+     "rootScale": [
+      0.9,
+      0.9
+     ],
+     "rootRotZ": -30.62,
+     "children": [],
+     "worldBoxes": [
+      {
+       "art": "sprite:EyeBlue2.png",
+       "x0": -3.156,
+       "x1": 3.156,
+       "y0": -3.156,
+       "y1": 3.156
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
