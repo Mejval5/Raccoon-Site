@@ -20,6 +20,7 @@ import {
   SWIM_ACCEL_CAP_EXP, DASH_IMPULSE, DASH_COOLDOWN,
   DASH_RECOIL, DASH_BOUNCE_MIN, DASH_BOUNCE_WINDOW, LAND_SQUASH_MIN,
   HEART_MAX, HURT_INVULN, HURT_KNOCKBACK, HURT_RAGDOLL, DEATH_DURATION,
+  BODY_HIT_COOL, BODY_KNOCK, BODY_LIFT, BODY_SPIN,
   BOMB_START, BOMB_MAX,
 } from './config.js';
 import { applyImpulse, applyDrag, integrateWithCollision, len, clamp, contact } from './physics.js';
@@ -46,6 +47,16 @@ export function createOctopus(x, y) {
     dead: false,
     deathTimer: 0,
     gameoverEmitted: false,
+    // --- ragdoll (V2-PLAN 14): while limp the body is a prop (main.js syncs it, props.js PK_BODY). Death is a limp state
+    // that never ends; enterRagdoll(o, seconds, cause) / exitRagdoll(o) are the general form (a short incapacitation). ---
+    limp: false,  // no control: the body is thrown about by physics
+    limpT: 0,     // s of limp left (Infinity: dead)
+    limpCause: '', // why ('death', or a special one such as 'impaled' / 'splat': octopus-draw.js setRagdollPose draws it)
+    bodyIdx: -1,  // index of the body in props, -1 = none (endless mode, or not dead)
+    spin: 0,      // rad/s, visual roll of the limp body
+    hitCool: 0,   // s until the next hit on the body counts
+    hitFlash: 0,  // 0..1 white flash of the last hit, decays
+    bodyHits: 0,  // hits taken while dead (main.js turns a new one into a puff, a thud and a little shake)
     bombs: BOMB_START,
     // --- carried items (items.js applyCarried sets these; defaults are the plain octopus) ---
     heartMax: HEART_MAX,
@@ -68,7 +79,8 @@ export function createOctopus(x, y) {
  * invulnerability, 0.4s ragdoll/angry state. A no-op while already
  * invulnerable or dead (OVERNIGHT.md M3-2: "no second loss within 1s"). */
 export function hurtOctopus(o, fromX, fromY, cause) {
-  if (o.invulnTimer > 0 || o.dead) return false;
+  if (o.dead) return hitBody(o, fromX, fromY);
+  if (o.invulnTimer > 0) return false;
   o.cause = cause || 'unknown'; // what last hurt it: the death screen names the killer (run.js CAUSE_TEXT)
   o.hearts = Math.max(0, o.hearts - 1);
   const dx = o.x - fromX, dy = o.y - fromY;
@@ -83,19 +95,57 @@ export function hurtOctopus(o, fromX, fromY, cause) {
   return true;
 }
 
-/** Instant kill (Beholder touch): bypasses invulnerability entirely. */
-export function killOctopus(o, cause) {
-  if (o.dead) return;
+/** Instant kill (Beholder touch): bypasses invulnerability entirely. `pose` (V2-PLAN 14): the ragdoll cause that draws the
+ * body ('death' = X eyes; a special death such as 'impaled' or 'splat' registered with octopus-draw.js setRagdollPose). */
+export function killOctopus(o, cause, pose = 'death') {
+  if (o.dead) { hitBody(o, o.x, o.y + 0.3); return; }
   if (cause) o.cause = cause;
   o.hearts = 0;
   o.dead = true;
   o.deathTimer = DEATH_DURATION;
   o.swimming = false;
+  enterRagdoll(o, Infinity, pose);
+}
+
+/**
+ * Go limp for `seconds` (Infinity = for good, as on death): no swim, no dash, the body becomes a physics prop in v2
+ * (main.js), the eyes close and the tentacles hang. `cause` names the pose and effects: 'death' (X eyes), 'stun' (closed
+ * eyes), or a special one registered with octopus-draw.js setRagdollPose ('impaled', 'splat', ...). Calling it again while
+ * limp extends the time (never shortens it) and replaces the cause.
+ */
+export function enterRagdoll(o, seconds, cause = 'stun') {
+  o.limp = true;
+  o.limpT = Math.max(o.limpT || 0, seconds);
+  o.limpCause = cause;
+  o.swimming = false;
+}
+
+/** Back in control (a no-op once dead). main.js removes the body prop on the next step and the octopus swims on from there. */
+export function exitRagdoll(o) {
+  if (o.dead) return;
+  o.limp = false; o.limpT = 0; o.limpCause = '';
+  o.spin = 0;
+}
+
+/** Something hit the dead body: no damage (it is dead), a knock away from (fromX, fromY) with a little lift, some spin
+ * and a white flash. At most one hit per BODY_HIT_COOL. Returns true when the hit counted. */
+export function hitBody(o, fromX, fromY) {
+  if (!o.dead || o.hitCool > 0) return false;
+  let dx = o.x - fromX, dy = o.y - fromY;
+  const d = len(dx, dy);
+  if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
+  o.vx += dx * BODY_KNOCK;
+  o.vy += dy * BODY_KNOCK - BODY_LIFT;
+  o.spin += (dx >= 0 ? 1 : -1) * BODY_SPIN;
+  o.hitCool = BODY_HIT_COOL;
+  o.hitFlash = 1;
+  o.bodyHits++;
+  return true;
 }
 
 /** Try to place a bomb: consumes one from the stock. Returns true if placed. */
 export function tryUseBomb(o) {
-  if (o.bombs <= 0 || o.dead) return false;
+  if (o.bombs <= 0 || o.dead || o.limp) return false;
   o.bombs--;
   return true;
 }
@@ -216,11 +266,18 @@ export function stepOctopus(o, input, dt, grid) {
 
   if (o.invulnTimer > 0) o.invulnTimer = Math.max(0, o.invulnTimer - dt);
   if (o.hurtTimer > 0) { o.hurtTimer = Math.max(0, o.hurtTimer - dt); if (o.hurtTimer === 0) o.hurting = false; }
-  if (o.dead) {
-    // Death: limp tentacles / fading, no input, 1s ink burst then `gameover`
-    // (M4 wires the real overlay; main.js's __octo state exposes the flag).
+  if (o.hitCool > 0) o.hitCool = Math.max(0, o.hitCool - dt);
+  if (o.hitFlash > 0) o.hitFlash = Math.max(0, o.hitFlash - dt * 4);
+  if (o.limp && !o.dead) { o.limpT -= dt; if (o.limpT <= 0) exitRagdoll(o); }
+  if (o.dead || o.limp) {
+    // Limp (V2-PLAN 14): no input. Dead: the 1.5 s of ragdoll before the `gameover` event and the death screen.
     if (o.deathTimer > 0) o.deathTimer = Math.max(0, o.deathTimer - dt);
+    if (o.dead) { o.hurting = false; o.hurtTimer = 0; }
+    o.swimming = false;
+    // v2: the body is a prop (main.js steps it with the other props and copies it back here)
+    if (o.bodyIdx >= 0) return;
     applyDrag(o, OCTO_LINEAR_DRAG, dt);
+    if (o.feel && o.sink) o.vy += o.sink * dt;
     integrateWithCollision(o, dt, grid);
     return;
   }

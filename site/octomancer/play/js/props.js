@@ -10,23 +10,24 @@
 //          PS_REST  settled, asleep (skipped until something wakes it: a blast, a tile change, a hit)
 //          PS_HELD  attached to a support tile (a clam on a wall, a chest on a ledge); lets go when the tile goes
 //
-// The octopus itself is not a prop: bombs are pushed by it (pushByOctopus), nothing else is.
+// The live octopus is not a prop: bombs are pushed by it (pushByOctopus), nothing else is. The DEAD octopus is one
+// (PK_BODY, V2-PLAN 14): main.js adds it on death and copies it back to the octopus record every step (the ragdoll).
 
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
 
-export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7;
+export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7, PK_BODY = 9; // 8 is PK_FIND (Buried treasure owner)
 export const PS_FREE = 0, PS_REST = 1, PS_HELD = 2;
-export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 'rubble'];
+export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 'rubble', 'find', 'body'];
 
 // per kind (index = PK_*): sink acceleration u/s^2, linear drag 1/s (terminal sink speed = grav / drag),
 // restitution, rolling friction 1/s (tangential damping while touching), mass, default radius, no-roll slope
-const GRAV = new Float32Array([0, 3.6, 4.5, 5, 8, 7, 16, 6]);
-const DRAG = new Float32Array([0, 1.6, 2.4, 2.4, 2.0, 2.0, 1.45, 2.5]);
-const REST = new Float32Array([0, 0.5, 0.25, 0.3, 0.1, 0.25, 0.12, 0.35]);
-const ROLL = new Float32Array([0, 0.2, 1.5, 2.2, 3.5, 2.5, 3.0, 2.0]);
-const MASS = new Float32Array([0, 1, 1.2, 0.8, 4, 3, 6, 0.2]);
-const STICK = new Float32Array([0, 0.2, 0.25, 0.3, 0.6, 0.45, 0.5, 0.35]); // |slope sine| below which a slow prop stays put
-export const PROP_RADIUS = new Float32Array([0, 0.32, 0.38, 0.4, 0.5, 0.5, 0.5, 0.13]);
+const GRAV = new Float32Array([0, 3.6, 4.5, 5, 8, 7, 16, 6, 4.5, 4.2]);
+const DRAG = new Float32Array([0, 1.6, 2.4, 2.4, 2.0, 2.0, 1.45, 2.5, 2.4, 1.4]);
+const REST = new Float32Array([0, 0.5, 0.25, 0.3, 0.1, 0.25, 0.12, 0.35, 0.25, 0.45]);
+const ROLL = new Float32Array([0, 0.2, 1.5, 2.2, 3.5, 2.5, 3.0, 2.0, 1.5, 0.4]);
+const MASS = new Float32Array([0, 1, 1.2, 0.8, 4, 3, 6, 0.2, 1.2, 1.5]);
+const STICK = new Float32Array([0, 0.2, 0.25, 0.3, 0.6, 0.45, 0.5, 0.35, 0.25, 0.3]); // |slope sine| below which a slow prop stays put
+export const PROP_RADIUS = new Float32Array([0, 0.32, 0.38, 0.4, 0.5, 0.5, 0.5, 0.13, 0.38, 0.45]);
 
 export const MAX_SPEED = 14;
 const BOUNCE_MIN = 0.9;        // u/s of impact speed below which nothing bounces
@@ -103,6 +104,7 @@ export function createProps(cap = DEFAULT_CAP) {
     for (let i = 0; i < d.n; i++) {
       if (!d.alive[i]) continue;
       const k = d.kind[i];
+      if (k === PK_BODY) continue; // the dead octopus: bomb.js shoves it with the octopus's own blast impulse
       let dx = d.x[i] - x, dy = d.y[i] - y;
       let dist = Math.hypot(dx, dy);
       if (dist > reach) continue;

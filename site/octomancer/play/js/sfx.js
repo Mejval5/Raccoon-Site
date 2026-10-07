@@ -69,6 +69,8 @@ export function createSfx(audio) {
     /** r41: level teardown: drop pending notes and stop every live source. */
     stopAll() { for (const id of timers) clearTimeout(id); timers.clear(); audio.stopSfx(); },
     hurt() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
+    /** V2-PLAN 14: something hit the dead body: a soft low thump. */
+    thud() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 120, sweep: 55, dur: 0.12, type: 'triangle', gain: 0.2 })); },
     bomb() {
       play((ctx, dest) => {
         noiseBurst(audio, ctx, dest, { dur: 0.35, gain: 0.35, filterFreq: 1200 });

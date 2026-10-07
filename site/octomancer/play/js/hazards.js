@@ -182,7 +182,6 @@ export function createHazards(props = null) {
         if (d.t[i] <= 0) { d.state[i] = 2; props.release(pid); pd.vy[pid] = 0.5; }
         return;
       }
-      if (octo.dead) return;
       const x = d.x[i], y = d.y[i];
       if (Math.abs(octo.x - x) >= ROCK_TRIGGER_HALF || octo.y <= y + 0.8 || octo.y >= d.a[i] + 1.5) return;
       const tx = Math.floor(x);
@@ -194,11 +193,11 @@ export function createHazards(props = null) {
     if (st !== 2 && st !== 4) return;
     d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
     const sp = Math.hypot(pd.vx[pid], pd.vy[pid]);
-    if (st === 2 && !octo.dead && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
+    if (st === 2 && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
     const landed = (pd.grounded[pid] && sp < 1.5) || pd.state[pid] !== PS_FREE;
     if (!landed) return;
     // never settle on top of the octopus: wait (state 4) until it swims clear
-    if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
+    if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
     d.state[i] = 3;
     const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i]);
     props.remove(pid); d.pid[i] = -1;
@@ -210,7 +209,6 @@ export function createHazards(props = null) {
     if (props && d.pid[i] >= 0) { updateRockProp(i, dt, octo, world); return; }
     const st = d.state[i];
     if (st === 0) {
-      if (octo.dead) return;
       const x = d.x[i], y = d.y[i];
       if (Math.abs(octo.x - x) >= ROCK_TRIGGER_HALF || octo.y <= y + 0.8 || octo.y >= d.a[i] + 1.5) return;
       const tx = Math.floor(x);
@@ -224,11 +222,11 @@ export function createHazards(props = null) {
       if (st === 2) {
         d.v[i] = Math.min(ROCK_MAX_FALL, d.v[i] + ROCK_GRAVITY * dt);
         d.y[i] = Math.min(d.a[i], d.y[i] + d.v[i] * dt);
-        if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
+        if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
       }
       if (d.y[i] >= d.a[i]) {
         // never settle on top of the octopus: wait (state 4) until it swims clear
-        if (!octo.dead && Math.hypot(d.x[i] - octo.x, d.a[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; d.y[i] = d.a[i]; return; }
+        if (Math.hypot(d.x[i] - octo.x, d.a[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; d.y[i] = d.a[i]; return; }
         d.state[i] = 3; d.y[i] = d.a[i];
         const tx = Math.floor(d.x[i]), ty = Math.floor(d.a[i]);
         if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
@@ -252,7 +250,6 @@ export function createHazards(props = null) {
       d.r[i] += EEL_RING_SPEED * dt;
       if (d.r[i] > EEL_RING_MAX) d.r[i] = 0;
     }
-    if (octo.dead) return;
     const ex = d.x[i], ey = d.y[i];
     const dist = Math.hypot(octo.x - ex, octo.y - ey);
     if (d.r[i] > 0 && Math.abs(dist - d.r[i]) < 0.3 + octo.radius * 0.8 && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), ex, ey, octo.x, octo.y)) hurt(octo, i, ex, ey);
@@ -285,11 +282,11 @@ export function createHazards(props = null) {
       }
       for (let i = 0; i < d.n; i++) {
         switch (d.kind[i]) {
-          case HZ_JET: if (!octo.dead) updateJet(i, dt, octo); break;
-          case HZ_SPIKES: if (!octo.dead) updateSpikes(i, octo); break;
+          case HZ_JET: updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
+          case HZ_SPIKES: updateSpikes(i, octo); break;
           case HZ_ROCK: updateRock(i, dt, octo, world); break;
           case HZ_EEL: updateEel(i, dt, octo, world); break;
-          case HZ_ANEMONE: if (!octo.dead) updateAnemone(i, octo); break;
+          case HZ_ANEMONE: updateAnemone(i, octo); break;
           default: break;
         }
       }

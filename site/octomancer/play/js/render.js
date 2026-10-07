@@ -59,7 +59,7 @@
 // flat at this art style's resolution; a loud grain was fighting the video
 // look as much as the wrong base colour was.
 
-import { updateCamera, worldToScreen, computePxPerUnit } from './camera.js';
+import { updateCamera, updateDeathCamera, worldToScreen, computePxPerUnit } from './camera.js';
 import { acquireCanvas, releaseCanvas, sharedCanvas } from './canvas-pool.js';
 import { visibleAt, visibleObj, cullFlags, cullFrame, cullEnd } from './cull.js';
 import { drawOctopus } from './octopus-draw.js';
@@ -1288,17 +1288,21 @@ export function createRenderer(ctx, world) {
   // dominates); fill everything outside the level's tile-x range with the
   // same rock fill + noise the walls use, so it reads as more cave rather
   // than open water.
+  let outerAll = false; // the death camera is on: fill past the top and bottom of the level as well
   function drawOuterRock(canvasW, canvasH) {
     const left = worldToScreen(camera, canvasW, canvasH, 0, 0).x;
     const right = worldToScreen(camera, canvasW, canvasH, chunkW, 0).x;
     ctx.save();
     ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
-    if (left > 0) ctx.fillRect(0, 0, left, canvasH);
-    if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
-    if (rockNoisePattern) {
-      ctx.fillStyle = rockNoisePattern;
+    // the death camera (V2-PLAN 14) may look past the top or bottom of the level under the death panel: rock there too
+    const top = outerAll ? worldToScreen(camera, canvasW, canvasH, 0, 0).y : 0;
+    const bottom = outerAll ? worldToScreen(camera, canvasW, canvasH, 0, world.height).y : canvasH;
+    for (let pass = 0; pass < (rockNoisePattern ? 2 : 1); pass++) {
+      if (pass === 1) ctx.fillStyle = rockNoisePattern;
       if (left > 0) ctx.fillRect(0, 0, left, canvasH);
       if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
+      if (top > 0) ctx.fillRect(0, 0, canvasW, top);
+      if (bottom < canvasH) ctx.fillRect(0, bottom, canvasW, canvasH - bottom);
     }
     ctx.restore();
   }
@@ -1398,7 +1402,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1418,7 +1422,10 @@ export function createRenderer(ctx, world) {
       // r40: an optional lean of the camera target (the pool keeps its pedestal in view); the octopus's own pull-back clamp still applies
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
-      updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      // V2-PLAN 14: a dead octopus is framed in the part of the screen the death panel leaves free
+      if (deathFocus) updateDeathCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, deathFocus, deathFocus.strict);
+      else updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      outerAll = !!deathFocus;
       if (warmOnly && warmGroup <= 0) {
         // r43: the screen is dark while a new level's first view bakes: do only the set-up (plant anchors, the deep rock, the wall
         // cells) and draw nothing, so these frames stay cheap

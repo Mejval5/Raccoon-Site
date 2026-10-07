@@ -85,7 +85,12 @@ export const HEART_MAX = 3;
 export const HURT_INVULN = 1.0; // s
 export const HURT_KNOCKBACK = 6; // u/s, away from the hurt source
 export const HURT_RAGDOLL = 0.4; // s, "the original's ragdoll spin"
-export const DEATH_DURATION = 1.0; // s of ink-burst before the gameover event
+export const DEATH_DURATION = 1.5; // s of ragdoll before the death screen (gameover event) slides in
+// death ragdoll (V2-PLAN 14): the dead octopus is a physics body (props.js PK_BODY); enemies and hazards keep hitting it
+export const BODY_HIT_COOL = 0.3;  // s between two hits that count on the dead body (a piranha resting on it does not buzz)
+export const BODY_KNOCK = 5.5;     // u/s velocity change of a hit, away from the source
+export const BODY_LIFT = 1.4;      // u/s extra upward kick of a hit, so the body hops instead of grinding the floor
+export const BODY_SPIN = 9;        // rad/s of spin a hit adds
 
 export const BOMB_START = 3;
 export const BOMB_MAX = 5;

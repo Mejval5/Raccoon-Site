@@ -67,8 +67,8 @@ export function createBombs(props = null) {
     }
     enemies.killInRadius(b.x, b.y, r);
     if (props && enemies.knockInRadius) enemies.knockInRadius(b.x, b.y, r * BLAST_REACH, ENEMY_BLAST_IMPULSE, ENEMY_STUN);
-    if (!octo.dead && dist(octo.x, octo.y, b.x, b.y) <= r) hurtOctopus(octo, b.x, b.y, 'bomb');
-    if (props && !octo.dead) {
+    if (dist(octo.x, octo.y, b.x, b.y) <= r) hurtOctopus(octo, b.x, b.y, 'bomb'); // dead: a hit on the body (flash, knock)
+    if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
       if (d < reach) {
         const f = (1 - d / reach) * OCTO_BLAST_IMPULSE;

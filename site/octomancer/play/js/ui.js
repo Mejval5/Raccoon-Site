@@ -253,7 +253,14 @@ export function createUI(root, handlers) {
   const goCredit = el('div', 'octo-credit', CREDIT_TEXT);
   const goSummary = createSummaryBlock(); // v2: the run summary replaces the score lines
   goSummary.el.style.display = 'none';
-  gameover.panel.append(goTitle, goSummary.el, goScore, goBest, restartBtn, exitBtn, goCredit);
+  const goActions = el('div', 'octo-go-actions'); // V2-PLAN 14: stays in view at the bottom of the side panel / sheet
+  goActions.append(restartBtn, exitBtn);
+  gameover.panel.append(goTitle, goSummary.el, goScore, goBest, goActions, goCredit);
+  // V2-PLAN 14: the death screen is a side panel (desktop) or a bottom sheet (phones) over a light tint with a clear hole
+  // around the body, which keeps simulating. It is laid out (hidden) at the moment of death so the camera can frame the
+  // body in the free part of the screen before the panel fades in.
+  let goRect = null;
+  window.addEventListener('resize', () => { goRect = null; });
   restartBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
   exitBtn.addEventListener('click', () => handlers.onExit && handlers.onExit());
 
@@ -324,7 +331,25 @@ export function createUI(root, handlers) {
     showControlsHelp() { controlsHelp.style.display = ''; },
     showPause() { pause.overlayEl.style.display = 'flex'; },
     hidePause() { pause.overlayEl.style.display = 'none'; },
-    isGameOverShown() { return gameover.overlayEl.style.display !== 'none'; },
+    isGameOverShown() { return gameover.overlayEl.style.display !== 'none' && !gameover.overlayEl.classList.contains('is-pending'); },
+    /** The octopus just died: lay the death screen out, invisible, so its rect is known before it shows. */
+    prepareGameOver() {
+      gameover.overlayEl.classList.add('octo-death-ui', 'is-pending'); // v2 only (endless keeps the centred card)
+      root.classList.add('octo-death-open');
+      gameover.overlayEl.style.display = 'flex';
+      goRect = null;
+    },
+    /** The death panel's rect in CSS px ({left, top, right, bottom, width, height}), or null when the death screen is not laid out. */
+    gameOverPanelRect() {
+      if (gameover.overlayEl.style.display === 'none') return null;
+      if (!goRect) { const r = gameover.panel.getBoundingClientRect(); goRect = { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; }
+      return goRect;
+    },
+    /** Where the clear hole in the tint is (CSS px, the body's screen position) and its radius. */
+    setDeathFocus(x, y, r) {
+      const st = gameover.overlayEl.style;
+      st.setProperty('--bx', x.toFixed(0) + 'px'); st.setProperty('--by', y.toFixed(0) + 'px'); st.setProperty('--hole', r.toFixed(0) + 'px');
+    },
     showGameOver(score, best, detail) {
       api.hideTitle();
       goScore.textContent = `Score ${score}`;
@@ -333,9 +358,11 @@ export function createUI(root, handlers) {
       goSummary.el.style.display = detail ? '' : 'none';
       if (detail) goSummary.set(detail);
       gameover.overlayEl.style.display = 'flex';
+      gameover.overlayEl.classList.remove('is-pending');
       gameover.panel.scrollTop = 0;
+      goRect = null;
     },
-    hideGameOver() { gameover.overlayEl.style.display = 'none'; },
+    hideGameOver() { gameover.overlayEl.style.display = 'none'; gameover.overlayEl.classList.remove('is-pending'); root.classList.remove('octo-death-open'); goRect = null; },
     focusRestart() { restartBtn.focus({ preventScroll: true }); },
   };
   return api;

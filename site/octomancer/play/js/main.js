@@ -11,7 +11,7 @@ import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
 import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
-import { screenToWorld } from './camera.js';
+import { screenToWorld, worldToScreen } from './camera.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { isBaked } from './octopus-draw.js';
@@ -25,6 +25,7 @@ import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
 import { createProps, PROP_NAMES } from './props.js';
+import { createRagdoll } from './ragdoll.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
@@ -410,8 +411,10 @@ function step(dt) {
       if (V2) { v2Event(EV_DEATH); return; }
       resetWorld(Math.floor(Math.random() * 1e9));
       window.dispatchEvent(new CustomEvent('restart'));
+      return;
     }
-    return;
+    if (!V2) return; // endless: the world stops under the game-over card
+    // v2 (V2-PLAN 14): the world keeps running behind the death panel; the body bounces about until the player chooses
   }
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
@@ -422,6 +425,7 @@ function step(dt) {
     else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
   }
   stepOctopus(octo, snap, dt, world);
+  if (V2) updateRagdoll();
   if (octo.dashedThisStep) {
     sfx.dash();
     particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
@@ -440,7 +444,7 @@ function step(dt) {
   world.update(octo.y);
   if (V2 && !octo.dead) stepV2(snap);
   const resident = world.residentChunks();
-  pickups.update(dt, sim.time, octo, resident, world);
+  pickups.update(dt, sim.time, octo.dead ? NOBODY : octo, resident, world); // a dead body collects nothing
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#ffe38a' : '#9dffd8';
     particles.pickupSparkle(ev.x, ev.y, color);
@@ -449,6 +453,10 @@ function step(dt) {
   if (octo.hearts < prevHearts) {
     sfx.hurt();
     if (V2) { particles.shakeFx(SHAKE_HURT_PX); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); }
+  }
+  if (octo.bodyHits !== prevBodyHits) { // the dead body took a hit (V2-PLAN 14): a puff, a thud, a little shake (none with reduced motion)
+    prevBodyHits = octo.bodyHits;
+    particles.deathPoof(octo.x, octo.y, '#ffd9e0'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12);
   }
   if (V2 && octo.bouncedThisStep) { particles.bouncePuff(octo.bounceX, octo.bounceY, octo.bounceNx, octo.bounceNy); particles.shakeFx(1.5, 0.12); }
   prevHearts = octo.hearts;
@@ -459,7 +467,7 @@ function step(dt) {
     enemies.despawnNear(questClear.x, questClear.y, QUEST_CLEAR_R);
     questClear = null;
   }
-  if (V2) props.step(dt, world, octo, enemies.all()); // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { syncBody(); props.step(dt, world, octo, enemies.all()); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -508,6 +516,7 @@ function step(dt) {
     if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); journal.bump('item-bomb', STAT_COLLECTED); tutorialActed(tutState); }
   }
 
+  if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
   const depth = Math.max(0, world.depth() - world.startY);
   liveScore = computeScore(depth, pickups.totals, runKills);
 
@@ -519,6 +528,17 @@ function step(dt) {
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
 }
+// --- V2-PLAN 14: the ragdoll (js/ragdoll.js): a limp or dead octopus is a physics body the world keeps throwing about
+const NOBODY = { x: -1e6, y: -1e6, vx: 0, vy: 0, radius: 0, magnetR: 0, dead: true }; // what pickups see once the octopus is dead
+let prevBodyHits = 0;
+let ragdoll = createRagdoll();
+function updateRagdoll() {
+  ragdoll.update(octo, props);
+  // dead: the death screen is laid out now (invisible) so the camera frames the body before the panel shows
+  if (octo.dead && !octo.deathLaidOut) { octo.deathLaidOut = true; if (!ui.isGameOverShown()) ui.prepareGameOver(); }
+}
+function syncBody(dt = 0) { ragdoll.sync(octo, props, dt); }
+
 /** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys (unit
  * vector); with no direction a short toss forward (the last swim direction) and a little down, never up. */
 function bombAim(snap) {
@@ -613,9 +633,15 @@ function render(alpha, frameMs) {
     dreadLevel,
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     postOctoDraw: V2 ? v2People : null,
-    followBias: V2 && run.state === S_BIOME ? poolCameraBias() : null,
+    followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : null,
+    deathFocus: V2 && octo.dead ? deathFocus(w, h) : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
+  if (V2 && octo.dead) { // the clear hole in the death tint follows the body
+    const a = octo.prevX + (octo.x - octo.prevX) * alpha, b = octo.prevY + (octo.y - octo.prevY) * alpha;
+    const p = worldToScreen(renderer.camera, w, h, a, b);
+    ui.setDeathFocus(p.x / dpr, p.y / dpr, renderer.camera.pxPerUnit * 1.6 / dpr);
+  }
   ui.updateHud({
     hearts: octo.hearts, heartMax: octo.heartMax,
     bombs: octo.bombs,
@@ -625,6 +651,19 @@ function render(alpha, frameMs) {
     items: V2 ? run.items : undefined,
   });
   debug.tick();
+}
+
+/** V2-PLAN 14: the part of the canvas (device px) the death panel leaves free, below the HUD row: the camera frames the
+ * body there. `strict` once the panel shows. */
+const HUD_ROW_CSS = 56;
+function deathFocus(w, h) {
+  const r = ui.gameOverPanelRect();
+  if (!r) return null;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x0 = 0, y0 = HUD_ROW_CSS, x1 = vw, y1 = vh;
+  if (r.width < vw * 0.8) x1 = Math.max(vw * 0.3, r.left - 8); // a side panel
+  else y1 = Math.max(y0 + 80, r.top - 8);                      // a bottom sheet
+  return { x0: x0 * dpr, y0: y0 * dpr, x1: x1 * dpr, y1: y1 * dpr, strict: ui.isGameOverShown() };
 }
 
 let hudStage = V2 ? stageLabel(run) : undefined;
@@ -663,6 +702,8 @@ function resetWorld(newSeed, prebuilt = null) {
   hitStop = 0;
   dreadLevel = 0;
   prevHearts = octo.hearts;
+  prevBodyHits = 0;
+  ragdoll = createRagdoll();
   ui.hideGameOver();
   ui.hideEnd();
   ui.setPrompt(null);
@@ -1293,12 +1334,24 @@ window.__octo = {
     applyPaused();
     return loop.paused;
   },
-  kill(cause) {
+  kill(cause, wait = false) {
     // Force game over, for scripted checks of the overlay/restart without
-    // waiting on an enemy or the Beholder.
+    // waiting on an enemy or the Beholder. `wait`: keep the 1.5 s of ragdoll before the death screen (V2-PLAN 14).
     killOctopus(octo, cause);
-    octo.deathTimer = 0; // skip the 1s ink-burst wait for the test
+    if (!wait) octo.deathTimer = 0; // skip the wait for the test
     return true;
+  },
+  /** V2-PLAN 14: the dead body (null while alive): position, velocity, angle, hits taken, prop state (0 free, 1 asleep),
+   * its screen position and the death panel's rect (CSS px), and whether the death screen shows. */
+  body() {
+    if (!octo.dead) return null;
+    const i = octo.bodyIdx, d = props.data;
+    const p = worldToScreen(renderer.camera, canvas.width, canvas.height, octo.x, octo.y);
+    return {
+      x: octo.x, y: octo.y, vx: octo.vx, vy: octo.vy, angle: octo.angle, hits: octo.bodyHits, idx: i, state: i >= 0 ? d.state[i] : -1,
+      inRock: world.isSolid(octo.x, octo.y), screenX: p.x / dpr, screenY: p.y / dpr, rCss: octo.radius * renderer.camera.pxPerUnit / dpr,
+      panel: ui.gameOverPanelRect(), shown: ui.isGameOverShown(), viewW: window.innerWidth, viewH: window.innerHeight,
+    };
   },
   restart() {
     resetWorld(Math.floor(Math.random() * 1e9));
@@ -1310,6 +1363,7 @@ window.__octo = {
   /** Debug: place the octopus (tests, screenshots). */
   teleport(x, y) {
     octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0;
+    ragdoll.place(octo, props, x, y);
     return { x, y };
   },
   /** v2 only: level info for tests/review. */
