@@ -9,7 +9,7 @@ import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
@@ -19,9 +19,12 @@ import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
-import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
+import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
 import { drawLoot } from './loot-draw.js';
+import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
+import { drawEmbedded, drawPocketReveal } from './embed-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
+import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
 import { createProps, PROP_NAMES } from './props.js';
@@ -32,7 +35,7 @@ import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBe
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
   createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, BIOME_LEVELS, BIOME_NAME,
-  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL, EV_ENTER_SHORTCUT3, SHORTCUT3_LEVEL,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, S_REST, REST_NAME, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL, EV_ENTER_SHORTCUT3, SHORTCUT3_LEVEL,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
 import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN } from './journal.js';
@@ -49,7 +52,7 @@ import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
-import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_DEAD, MODE_NAMES } from './shopkeeper.js';
+import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
@@ -62,6 +65,14 @@ import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
 import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool } from './canvas-pool.js';
 import { cullStats, visibleAt, cullFlags, cullView } from './cull.js';
+import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
+import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
+import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
+import { createHotbarUI } from './hotbar-ui.js';
+import { createInventoryUI } from './inventory-ui.js';
+import { drawItemIcon } from './items-draw.js';
+import { drawSpring, springReach } from './spring-draw.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -78,7 +89,8 @@ const SINK_PARAM = (() => { const v = params.get('sink'); const n = v === null |
 let sinkNow = SINK_PARAM !== null ? SINK_PARAM : getSettings().sink;
 // M1-0 combat spike: ?auto=1 turns on enemy hp and Ink Jet auto-fire (js/autofire.js).
 const AUTO = params.get('auto') === '1';
-if (AUTO) setHpMode(true);
+// v2 (section 14): the ink jet is the octopus's attack, so creatures have hit points (urchins, horns and the Beholder have none)
+if (AUTO || params.get('endless') !== '1') setHpMode(true);
 let autofire = AUTO ? createAutofire() : null;
 // V2-PLAN M1-4/M1-5 and section 10: ?v2=1 plays the Biome 1 run (hub -> tutorial ->
 // Shallows 1-1..1-3 -> end screen, js/run.js) through the single-level world
@@ -89,18 +101,19 @@ let authoredJson = null;
 let run = null;
 let questTable = null;
 let shopItems = [];
+setFoliageTable(await fetchFoliage()); // r46: every original foliage kind, its offsets and spawn rules (data/foliage.json)
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
   setPatternTable(await fetchPatterns());
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   shopItems = await fetchShopItems();
-  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut(), shortcut3: getStory().marlo >= DIVER_RUNS });
+  run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut(), shortcut3: getStory().marlo >= DIVER_RUNS, juiceStart: juiceStart(), rest: true });
   run.nextSeed = seedFromText(getSettings().seed); // the seed typed in the settings menu for the next dive (null = random)
   const at = params.get('at');
   if (at === 'tutorial') run.state = S_TUTORIAL;
   else if (at === 'end') run.state = S_END;
-  else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); }
+  else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); run.juice = run.juiceStart; }
 }
 /**
  * r43: the same world as makeWorld, built in three tasks (generate the level, place its spawns, assemble the world) with a
@@ -155,6 +168,7 @@ function makeWorld(runSeed) {
   const spec = levelSpec(run);
   if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.hub) });
   if (spec.kind === 'tutorial') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.tutorial) });
+  if (spec.kind === 'rest') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.rest) });
   return createLevelWorld(spec.seed, spec.levelIndex);
 }
 
@@ -188,6 +202,7 @@ const touchUI = createTouchUI(touchRoot, input, canvas); // the canvas takes the
 input.onModeChange((mode) => {
   if (mode === 'touch') ui.hideControlsHelp();
   else ui.showControlsHelp();
+  hotbarUI.setCompact(mode === 'touch'); // phones: the small bar at the top (the buttons own the bottom right, the stick the left)
 });
 
 // --- Simulation state ---
@@ -204,8 +219,16 @@ let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubb
 let hazards = createHazards(V2 ? props : null);
 if (V2) enemies.setHazardData(hazards.data);
 let loot = createLoot(V2 ? props : null);
+let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
 let bombs = createBombs(V2 ? props : null);
 let particles = createParticles();
+// section 14: fish juice droplets, ink clouds and the ink jet of this level (spells.js, inkjet.js)
+let juiceDrops = createJuiceDrops();
+let inkClouds = createInkClouds();
+let inkJet = createInkJet();
+if (V2) enemies.setInkClouds(inkClouds);
+let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
+let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
 let autoDiveOn = false;
 let godMode = false; // test hook only (__octo.god): scripted playthroughs ignore enemy contact
 let runKills = 0; // enemies killed this run, for score (OVERNIGHT.md M4-1)
@@ -286,7 +309,7 @@ const journalScreen = createJournalScreen(hudEl, journal, {
   reducedMotion: prefersReducedMotion,
 });
 /** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
-function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen()); }
+function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen); }
 // settings menu (round 38): every change applies at once and is persisted by save.js
 function applySetting(key, v) {
   switch (key) {
@@ -310,6 +333,37 @@ const settingsPanel = createSettingsPanel(hudEl, {
   onResetProgress() { resetProgress(); setTimeout(() => location.reload(), 700); },
   onOpenJournal() { settingsPanel.hide(); journalScreen.show(); },
 });
+// section 14: the hotbar (spells, bombs, the juice jar) and the inventory panel (Tab / I, pauses the game)
+const hotbarUI = createHotbarUI(hudEl, { onSelect(i) { if (V2) selectIndex(hotbar(), i); } });
+if (!V2) hotbarUI.setVisible(false);
+hotbarUI.setCompact(isCoarsePointer());
+let inventoryOpen = false;
+function inventoryState() {
+  return { ...hotbarState(), items: run.items.slice(), spellRow: spellById, touch: input.mode() === 'touch' };
+}
+function hotbarState() {
+  const hb = hotbar();
+  return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast };
+}
+const inventoryUI = createInventoryUI(hudEl, {
+  onClose() { closeInventory(); },
+  onMove(from, to) { moveSlot(hotbar(), from, to); inventoryUI.refresh(inventoryState()); },
+  onSelect(i) { selectIndex(hotbar(), i); inventoryUI.refresh(inventoryState()); },
+});
+function openInventory() {
+  if (!V2 || inventoryOpen || octo.dead || transitioning || settingsPanel.isOpen() || journalScreen.isOpen() || ui.isEndShown()) return false;
+  inventoryOpen = true; ui.setPrompt(null);
+  inventoryUI.show(inventoryState());
+  applyPaused(); syncModal();
+  return true;
+}
+function closeInventory() {
+  if (!inventoryOpen) return false;
+  inventoryOpen = false;
+  inventoryUI.hide();
+  applyPaused(); syncModal();
+  return true;
+}
 let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 function announceJournal() {
   for (const id of journal.takeNew()) {
@@ -325,7 +379,7 @@ function discover(id) {
 }
 window.addEventListener('pagehide', () => journal.flush());
 function discoverStatePlace() {
-  discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : null);
+  discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : run.state === S_REST ? 'place-rest' : null);
 }
 
 // Manual (Esc/button) and automatic (hidden tab/blur) pause are tracked
@@ -335,8 +389,8 @@ let manualPaused = false;
 let autoPaused = false;
 function applyPaused() {
   const wasPaused = loop.paused;
-  const isPaused = manualPaused || autoPaused || settingsOpen;
-  const showOverlay = isPaused && !settingsOpen; // the settings panel is its own overlay
+  const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen;
+  const showOverlay = isPaused && !settingsOpen && !inventoryOpen; // the settings panel and the inventory are their own overlays
   if (isPaused === wasPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); return; }
   loop.setPaused(isPaused);
   if (isPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); window.dispatchEvent(new CustomEvent('pause')); }
@@ -353,6 +407,13 @@ let keyboardSeen = false;
 window.addEventListener('keydown', () => { keyboardSeen = true; });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && settingsPanel.isOpen()) { settingsPanel.hide(); return; }
+  if (e.code === 'Escape' && inventoryOpen) { closeInventory(); return; }
+  // Tab / I: the inventory (handled here, not in step(): the game is paused while it is open, so step() never runs then)
+  if ((e.code === 'Tab' || e.code === 'KeyI') && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && V2) {
+    const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+    if (!typing) { e.preventDefault(); if (inventoryOpen) closeInventory(); else openInventory(); }
+    return;
+  }
   if (e.code === 'Escape' && V2 && journalScreen.isOpen()) { journalScreen.hide(); return; }
   if (e.code !== 'Escape' || octo.dead) return;
   manualPaused = !manualPaused;
@@ -361,17 +422,11 @@ window.addEventListener('keydown', (e) => {
 
 const autoDive = { path: [], recalc: 0 };
 
-// Round-8 item 4: mouse aim. `input.mouse.x/y` are the raw tracked cursor
-// position (canvas buffer px, set by input.js's own listeners); turning
-// that into the octopus's swim direction needs the octopus's current
-// position and the camera, so it's computed here each fixed step (not in
-// input.js, which has neither) and handed back via `setMouseAim`.
-const MOUSE_FULL_THRUST_DIST = 3; // world units: cursor this far (or further) from the octopus is full thrust, closer scales down
-
 // r44: entering a whirlpool. The octopus is pulled to the centre of the whirlpool while it shrinks and fades (octo.entering 0..1), the
 // whirlpool plays its Bounce (forced) and then swallows it (the Rise, reversed); only then does the level change (v2Event, which
 // starts the screen fade). ENTRY_S = BOUNCE_S + RISE_S = 1.33 s after the octopus touched the whirlpool.
-const NO_INPUT = { move: { x: 0, y: 0 }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false }, mode: 'keyboard' };
+const NO_PRESS = { pressed: false, held: false };
+const NO_INPUT = { move: { x: 0, y: 0 }, dash: NO_PRESS, bomb: NO_PRESS, pause: NO_PRESS, attack: NO_PRESS, spell: NO_PRESS, inventory: NO_PRESS, cycle: 0, select: -1, src: { attack: 'key', spell: 'key', bomb: 'key' }, mode: 'keyboard' };
 let entry = null; // {ev, cx, cy, x0, y0, t, wall} while the sequence runs
 const ENTRY_PULL_S = 0.7; // the octopus reaches the centre this long after touching the whirlpool
 function beginEntry(ev, tx, ty) {
@@ -401,13 +456,6 @@ function stepEntry(dt) {
 
 function step(dt) {
   sim.time += dt;
-  if (input.mouse.active) {
-    const worldAim = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
-    const dx = worldAim.x - octo.x, dy = worldAim.y - octo.y;
-    const dist = Math.hypot(dx, dy);
-    const thrust = Math.min(1, dist / MOUSE_FULL_THRUST_DIST);
-    input.setMouseAim(dist > 1e-4 ? (dx / dist) * thrust : 0, dist > 1e-4 ? (dy / dist) * thrust : 0);
-  }
   let snap = input.snapshot();
   if (autoDiveOn) {
     // __octo.autoDive(true): a small bounded BFS through the tile grid
@@ -428,7 +476,8 @@ function step(dt) {
       dx = clampAxis(tx - octo.x);
       dy = clampAxis(ty - octo.y) || 1;
     }
-    snap = { move: { x: dx, y: dy }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } };
+    const off = { pressed: false, held: false };
+    snap = { move: { x: dx, y: dy }, dash: off, bomb: off, pause: off, attack: off, spell: off, inventory: off, cycle: 0, select: -1, src: { attack: 'key', spell: 'key', bomb: 'key' }, mode: 'keyboard' };
   }
   sim.lastInput = snap;
 
@@ -453,14 +502,16 @@ function step(dt) {
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
-  if (V2 && run.state === S_BIOME && !octo.dead) run.dive.time += dt; // the run summary's clock
+  if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) run.dive.time += dt; // the run summary's clock
   if (entry) snap = NO_INPUT; // r44: the octopus is going into a whirlpool: no swimming, dashing or bombs
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
     else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
   }
+  if (Math.hypot(snap.move.x, snap.move.y) > 0.25) { const l = Math.hypot(snap.move.x, snap.move.y); lastAim = { x: snap.move.x / l, y: snap.move.y / l }; }
   stepOctopus(octo, snap, dt, world);
   if (entry) stepEntry(dt);
+  if (V2 && !octo.dead && !entry) stepCombat(snap, dt);
   if (octo.dashedThisStep) {
     sfx.dash();
     particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
@@ -507,7 +558,7 @@ function step(dt) {
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
     }
   }
-  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); }
+  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -518,6 +569,12 @@ function step(dt) {
     audio.setBeholderDread(dreadLevel);
   }
   bombs.update(dt, world, octo, enemies);
+  if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
+    inkJet.update(dt, world, inkTargets(), inkHurt); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
+    for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]);
+    inkClouds.update(dt);
+    stepJuice(dt);
+  }
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
     const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
@@ -538,6 +595,7 @@ function step(dt) {
       run.dive.kills++;
       // kills drop shells (about 2 in 3)
       if (killDropRoll(runKills) < 0.67) pickups.dropShell(ev.x, ev.y);
+      bodyJuice(ev.x, ev.y, ev.kind, dropCount(seed, runKills));
       journal.bump(creatureId(ev.kind), STAT_KILLED);
     }
   }
@@ -570,7 +628,7 @@ function step(dt) {
 /** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys (unit
  * vector); with no direction a short toss forward (the last swim direction) and a little down, never up. */
 function bombAim(snap) {
-  if (snap.mode === 'mouse' && input.mouse.seen) {
+  if (snap.src && snap.src.bomb === 'mouse' && input.mouse.seen) {
     const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
     const dx = w.x - octo.x, dy = w.y - octo.y, l = Math.hypot(dx, dy);
     if (l > 0.4) return { x: dx / l, y: dy / l };
@@ -579,6 +637,73 @@ function bombAim(snap) {
   if (l > 0.25) return { x: m.x / l, y: m.y / l };
   return { x: (octo.throwDir || 1) * IDLE_TOSS_X, y: IDLE_TOSS_Y };
 }
+// --- section 14: the ink jet, spells, the hotbar and fish juice ---
+/** The run's hotbar (a new dive or a death starts a fresh one with the starting spell). */
+function hotbar() { if (!run.hotbar) run.hotbar = createHotbar(); return run.hotbar; }
+/** The cursor as a world point, or null when the mouse has not been seen. */
+function cursorWorld() {
+  if (!input.mouse.seen) return null;
+  return screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
+}
+const SPELL_REACH = 3; // tiles: a spell aimed with the mouse lands at the cursor, at most this far out (and short of rock)
+/** Where a spell goes: toward the cursor (mouse), else on the octopus. */
+function spellTarget(snap) {
+  const w = snap.src && snap.src.spell === 'mouse' ? cursorWorld() : null;
+  if (!w) return { x: octo.x, y: octo.y };
+  const dx = w.x - octo.x, dy = w.y - octo.y, d = Math.hypot(dx, dy);
+  if (d < 1e-3) return { x: octo.x, y: octo.y };
+  const reach = Math.min(d, SPELL_REACH), ux = dx / d, uy = dy / d;
+  let x = octo.x, y = octo.y;
+  for (let t = 0.2; t <= reach + 1e-6; t += 0.2) { // march out and stop short of the first rock
+    const nx = octo.x + ux * t, ny = octo.y + uy * t;
+    if (world.isSolid(nx, ny)) break;
+    x = nx; y = ny;
+  }
+  return { x, y };
+}
+/** One step of the octopus's own actions: hotbar switching, the ink jet, casting the selected spell. */
+function stepCombat(snap, dt) {
+  const hb = hotbar();
+  if (snap.select >= 0) selectIndex(hb, snap.select);
+  for (let k = snap.cycle | 0; k !== 0; k -= Math.sign(k)) selectNext(hb, Math.sign(k));
+  if (snap.attack.held || snap.attack.pressed) { // pressed too: a quick tap (key down and up between two steps) still fires
+    let dir = lastAim;
+    const src = snap.src ? snap.src.attack : 'key';
+    if (src === 'mouse') { const w = cursorWorld(); if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) dir = { x: w.x - octo.x, y: w.y - octo.y }; }
+    else if (src === 'touch') dir = autoAim(octo, enemies.all(), solidForSight, lastAim.x >= 0 ? 1 : -1);
+    if (src === 'touch' && dir.y === 0 && Math.abs(lastAim.y) > 0.5) dir = lastAim; // nothing to aim at: the facing direction, up or down too
+    if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; }
+  }
+  if (snap.spell.pressed) {
+    const id = selectedSpell(hb);
+    const at = spellTarget(snap);
+    const r = castSpell(run, id, { clouds: inkClouds, x: at.x, y: at.y, vx: octo.vx, vy: octo.vy });
+    if (r === CAST_OK) {
+      const row = spellById(id);
+      sfx.inkPuff();
+      runStats.spellsCast++;
+      if (row && row.journal) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); }
+    } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
+  }
+}
+/**
+ * A beaten creature's body leaks its fish juice: a slow trickle of droplets from where it died (nothing pops out of it).
+ * The one place juice enters a level: retarget it to the physics corpse's own hook (onCorpse) once corpses exist.
+ */
+function bodyJuice(x, y, kind, n) { juiceDrops.leak(x, y, n); }
+/** Fish juice droplets: pulled in within JUICE.magnetR, poured into the jar on touch (a full jar leaves them be). */
+function stepJuice(dt) {
+  slurpCool = Math.max(0, slurpCool - dt);
+  juiceDrops.update(dt, octo, world, juiceCap() - run.juice);
+  const ev = juiceDrops.events;
+  if (!ev.collected) return;
+  addJuice(run, ev.collected);
+  for (let i = 0; i < ev.n; i++) particles.pickupSparkle(ev.xy[i * 2], ev.xy[i * 2 + 1], '#a98ad8');
+  if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
+  discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
+}
+const runStats = { shots: 0, spellsCast: 0, empty: 0 }; // test hook counters (__octo.combat())
+
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
 /** Bounded 4-connected BFS from the octopus's current tile to the nearest
@@ -672,6 +797,11 @@ function render(alpha, frameMs) {
     shells: V2 ? run.shells : undefined,
     items: V2 ? run.items : undefined,
   });
+  if (V2) {
+    hotbarUI.update(hotbarState());
+    const row = spellById(selectedSpell(hotbar()));
+    touchUI.setSpell(!!row && run.juice >= row.cost * JUICE.perCast);
+  }
   debug.tick();
 }
 
@@ -701,9 +831,14 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     hazards = createHazards(V2 ? props : null);
     if (V2) enemies.setHazardData(hazards.data);
     loot = createLoot(V2 ? props : null);
+    embedded = createEmbedded(V2 ? props : null);
     if (AUTO) autofire = createAutofire();
     bombs = createBombs(V2 ? props : null);
     particles = createParticles();
+    juiceDrops = createJuiceDrops();
+    inkClouds = createInkClouds();
+    inkJet = createInkJet();
+    if (V2) enemies.setInkClouds(inkClouds);
   });
   sim.time = 0;
   entry = null;
@@ -804,7 +939,7 @@ function v2Event(ev) {
     if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
     timed('arrive', () => { if (run.state === S_HUB) arriveInHub(); });
     timed('reset', () => resetWorld(0, nextWorld, true));
-    if (run.state === S_BIOME && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     timed('discover', () => discoverStatePlace());
     if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
@@ -835,6 +970,7 @@ function v2Event(ev) {
 
 /** Level title card at each level start: "Shallows 1-2", plus the seed on a seeded run (?seed=). */
 function showLevelTitle() {
+  if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
   const t = levelTitle(run, true);
   if (t) ui.showTitle(t.text, t.sub);
 }
@@ -853,7 +989,7 @@ function summaryDetail(sum, rank) {
 
 /** The octopus just died in a dive: close the dive (cause from octopus.js), record it, return the death screen's detail. */
 function deathDetail() {
-  if (run.state !== S_BIOME) return undefined;
+  if (run.state !== S_BIOME && run.state !== S_REST) return undefined;
   const sum = run.dive.over && run.last ? run.last : endDive(run, false, octo.cause);
   journal.bump(causeEntryId(octo.cause), STAT_KILLED_BY);
   journal.flush();
@@ -902,7 +1038,13 @@ function stepV2(snap) {
     }
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
     if ((seeTick & 15) === 4) for (let i = 0; i < keepers.n; i++) if (keepers.mode[i] !== KM_DEAD && Math.hypot(octo.x - keepers.x[i], octo.y - keepers.y[i]) < 9) discover('person-keeper');
+    if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
+      siphonSpot.taken = true;
+      if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
+      particles.pickupSparkle(siphonSpot.x, siphonSpot.y, '#cfe0b0'); sfx.chime();
+    }
   }
+  if (run.state === S_REST) stepRest();
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
@@ -1002,6 +1144,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
+    drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: !!octo.seeBuried, tileAt: world.tileAt });
+    if (octo.seeBuried) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
@@ -1010,11 +1154,24 @@ function v2Extra(c, camera, w2s, cw, ch) {
     let pk = 0;
     for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
   }
+  if (run.state === S_REST) {
+    if (restSpring) drawSpring(c, camera, cw, ch, restSpring.x, restSpring.y, t, restSpring.used);
+    if (shopSt && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
+  }
+  if (siphonSpot && !siphonSpot.taken && visibleAt(cullFlags('siphon', 1), 0, siphonSpot.x, siphonSpot.y, 1)) {
+    const ppu = camera.pxPerUnit;
+    drawItemIcon(c, 'siphon', cw / 2 + (siphonSpot.x - camera.x) * ppu, ch / 2 + (siphonSpot.y - 0.08 + Math.sin(t * 1.4) * 0.03 - camera.y) * ppu, ppu * 0.36);
+  }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+  drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t, JUICE.life);
+  inkJet.draw(c, camera, cw, ch, t);
+  drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
 }
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
+  drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
+  if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
   if (run.state === S_BIOME) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
@@ -1036,6 +1193,27 @@ function takeCarried(id, x, y) {
     ui.showToast('Already carried: +3 shells');
   }
   particles.pickupSparkle(x, y, '#fff2a0'); sfx.chime();
+}
+/** Buried treasure (embed.js): a find dropped out of broken rock, or was taken. */
+function handleEmbedEvents() {
+  for (const ev of embedded.takeEvents()) {
+    if (ev.type === 'released') {
+      discover('loot-buried');
+      journal.bump('loot-buried', STAT_COLLECTED);
+      continue;
+    }
+    if (ev.ek === EK_SHELL) {
+      const v = shellValue(ev.sub);
+      gainShells(run, v);
+      discover('item-shell'); journal.bump('item-shell', STAT_COLLECTED);
+      particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
+      if (v > 1) ui.showToast('A ' + EMBED_SHELLS[ev.sub].name.toLowerCase() + ', +' + v + ' shells');
+    } else if (ev.ek === EK_BOMB) {
+      for (let k = 0; k < ev.sub; k++) addBomb(octo);
+      discover('item-bomb');
+      particles.pickupSparkle(ev.x, ev.y, '#cfe8ff'); sfx.chime();
+    } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
+  }
 }
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
@@ -1091,18 +1269,70 @@ function killDropRoll(n) {
   return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
 }
 
+// --- section 14: the Siphon Shell's set spot, and the rest grotto at the end of the zone ---
+let siphonSpot = null; // {x, y, taken}: the Siphon Shell lying on a floor near the start of one Shallows level per dive
+/** The Shallows level of this dive that holds the Siphon Shell: one of the levels the dive actually plays (a shortcut starts later). */
+function siphonLevel() {
+  const start = Math.max(1, run.dive.startLevel | 0);
+  return start + ((run.diveSeed >>> 0) % (BIOME_LEVELS - start + 1));
+}
+/** A floor spot 3-9 tiles from the start (open water with rock under it), found by a flood from the start; null if none. */
+function findFloorSpot() {
+  const sx = Math.floor(world.startX), sy = Math.floor(world.startY);
+  const seen = new Set([sx + ',' + sy]), q = [[sx, sy]];
+  for (let qi = 0; qi < q.length && qi < 900; qi++) {
+    const [x, y] = q[qi];
+    const d = Math.hypot(x - sx, y - sy);
+    if (d >= 3 && d <= 9 && world.isSolid(x + 0.5, y + 1.5) && !world.isSolid(x - 0.5, y + 0.5) && !world.isSolid(x + 1.5, y + 0.5) && !world.isSolid(x + 0.5, y - 0.5)) return { x: x + 0.5, y: y + 0.72 };
+    for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      const k = nx + ',' + ny;
+      if (seen.has(k) || world.isSolid(nx + 0.5, ny + 0.5) || d > 9) continue;
+      seen.add(k); q.push([nx, ny]);
+    }
+  }
+  return null;
+}
+let restSpring = null; // {x, y, used}: the rest grotto's spring
+const restSay = { at: -99 };
+/** The rest grotto: swimming into the spring heals every heart and fills the jar (each time you come back to it). */
+function stepRest() {
+  if (restSpring && springReach(octo.x, octo.y, restSpring.x, restSpring.y)) {
+    const healed = octo.hearts < octo.heartMax, filled = run.juice < juiceCap();
+    if (healed || filled || !restSpring.used) {
+      octo.hearts = octo.heartMax; prevHearts = octo.hearts;
+      run.juice = juiceCap();
+      restSpring.used = true;
+      particles.pickupSparkle(octo.x, octo.y, '#bfe8d8'); particles.pickupSparkle(octo.x, octo.y - 0.3, '#a98ad8');
+      sfx.chime();
+      if (sim.time - restSay.at > 4) { ui.showToast('The spring heals you and fills your jar'); restSay.at = sim.time; }
+      discover('place-rest');
+    }
+  }
+  const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
+  if (ev) onShopEvent(ev);
+}
+
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null;
+  if (run.state === S_REST) {
+    const lv = world.level;
+    if (lv.springX >= 0) restSpring = { x: lv.springX, y: lv.springY, used: false };
+    shopSt = createShopState(lv.shop, shopItems, run.diveSeed, 7, run.items);
+  }
   if (run.state === S_BIOME) {
     const spec = levelSpec(run);
     const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
     const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex, eligible, otherSpawns());
     quest = createQuestState(plan);
-    if (plan) questClear = { x: plan.pos[0], y: plan.pos[1] };
+    if (plan) {
+      questClear = { x: plan.pos[0], y: plan.pos[1] };
+      if (world.addPlantKeepOut) world.addPlantKeepOut(Math.floor(plan.pos[0]) - 2, Math.floor(plan.pos[1]) - 2, Math.floor(plan.pos[0]) + 3, Math.floor(plan.pos[1]) + 3); // r46: no foliage over the person or the cage
+    }
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
     poolSts = planPools(world.level).map(createPoolState);
     setupKeepers(spec);
+    if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
   }
 }
 
@@ -1147,6 +1377,25 @@ setShopHooks({
   hit: (x, y, r, kind, dmg, fx, fy) => (V2 && run && run.state === S_BIOME ? hitKeepersAt(keepers, x, y, r, kind, dmg, fx, fy) : 0),
   angry: () => !!(run && run.shopAggro),
 });
+
+// the ink jet's target list: the enemies plus one reusable stand-in per live shopkeeper (inkjet.js reads x, y, radius, hp, dead)
+const keeperProxies = [];
+function inkTargets() {
+  const list = enemies.all();
+  if (!(run && run.state === S_BIOME) || !keepers.n) return list;
+  for (let i = 0; i < keepers.n; i++) {
+    if (keepers.mode[i] === KM_DEAD) continue;
+    const p = keeperProxies[i] || (keeperProxies[i] = { keeper: true, i: 0, x: 0, y: 0, radius: KEEPER_R, hp: 1, dead: false });
+    p.i = i; p.x = keepers.x[i]; p.y = keepers.y[i]; p.hp = keepers.hp[i]; p.dead = false;
+    list.push(p);
+  }
+  return list;
+}
+function inkHurt(e, d) {
+  if (!e.keeper) { enemies.hurt(e, d); return; }
+  hitKeeper(keepers, e.i, HIT_INK, d, octo.x, octo.y);
+  e.dead = keepers.mode[e.i] === KM_DEAD;
+}
 
 /** What the keepers did this step: hits on them anger the run, a dead keeper leaves his shells, claws whoosh. */
 function handleKeeperEvents() {
@@ -1541,6 +1790,31 @@ window.__octo = {
   stepDraw(n) { loop.manualStep(n | 0); render(0, 16); return sim.time; },
   /** Test hook: break a tile as a bomb would (no blast), e.g. the floor under a pedestal. */
   breakTile(tx, ty) { return world.breakTile(tx, ty); },
+  /** v2: the buried treasure of this level (embed.js): tile, kind, tier / item code, state (0 buried, 1 loose, 2 taken), position. */
+  embedded() {
+    const d = embedded.data, out = [];
+    for (let i = 0; i < d.n; i++) out.push({ tx: d.tx[i], ty: d.ty[i], ek: d.ek[i], sub: d.sub[i], state: d.state[i], x: d.x[i], y: d.y[i] });
+    return { items: out, goggles: !!octo.seeBuried };
+  },
+  /** Section 14 test hooks: the jar, droplets, clouds, the ink jet, the hotbar and the inventory. */
+  juice() {
+    const hb = run ? hotbar() : null;
+    return {
+      juice: run ? run.juice : 0, casts: run ? castsOf(run.juice) : 0, cap: juiceCap(), perCast: JUICE.perCast, drops: juiceDrops.count(), clouds: inkClouds.count(),
+      cloudList: Array.from({ length: inkClouds.data.n }, (_, i) => i).filter((i) => inkClouds.data.alive[i]).map((i) => ({ x: inkClouds.data.x[i], y: inkClouds.data.y[i], r: inkClouds.data.r[i], age: inkClouds.data.age[i] })),
+      hotbar: hb ? { slots: hb.slots.map((sl) => sl.ids.slice()), sel: hb.sel, spell: selectedSpell(hb) } : null,
+      inventory: inventoryOpen, ...runStats, jet: inkJet.count(), jetCooldown: inkJet.cooldown(),
+      siphonSpot: siphonSpot ? { ...siphonSpot } : null, siphonLevel: run && run.state === S_BIOME ? siphonLevel() : -1, spring: restSpring ? { ...restSpring } : null, state: run ? run.state : -1,
+      hearts: octo.hearts, heartMax: octo.heartMax, siphonR: octo.siphonR || 0,
+      dropList: Array.from({ length: juiceDrops.data.n }, (_, i) => i).filter((i) => juiceDrops.data.alive[i]).map((i) => [+juiceDrops.data.x[i].toFixed(2), +juiceDrops.data.y[i].toFixed(2)]), octo: [+octo.x.toFixed(2), +octo.y.toFixed(2)],
+    };
+  },
+  setJuice(n) { if (run) run.juice = Math.max(0, Math.min(juiceCap(), n | 0)); return run ? run.juice : 0; },
+  dropJuice(x, y, n) { juiceDrops.spawn(x != null ? x : octo.x, y != null ? y : octo.y, n || 3); return juiceDrops.count(); },
+  /** Whether a creature at (x, y) has lost the octopus to an ink cloud. */
+  inkHides(x, y) { return inkClouds.hides(x, y, octo.x, octo.y); },
+  openInventory() { return openInventory(); },
+  closeInventory() { return closeInventory(); },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
   /** Test hook: set a story flag (save.js STORY_KEYS) as if it had happened; returns the story. */

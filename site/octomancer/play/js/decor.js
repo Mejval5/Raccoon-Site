@@ -20,6 +20,8 @@
 // sprites and their idle motion (bob/sway/blink/tiny crawl) are drawn by
 // decor-draw.js, called from render.js's per-frame draw list.
 
+import { getFoliageTable, pickEmbedded, SURF_EMBED } from './foliage.js';
+
 const BUBBLE_RISE_SPEED = 1.4; // u/s
 const BUBBLE_LIFETIME = 3.5; // s before a vent's bubble respawns at the bottom
 
@@ -328,6 +330,20 @@ function patternRunes(chunk, yOffset, chunkW) {
     const h = hash2(tx * 91 + 7, ty * 53 + 3);
     // r37: jitter along the wall (runes on a straight wall used to line up in columns); fossils sit anywhere in their tile
     const j1 = (((h >>> 5) % 100) / 100 - 0.5), j2 = (((h >>> 13) % 100) / 100 - 0.5);
+    const FT = getFoliageTable();
+    // (not over a buried-treasure find: embed.js's {type:'embed'} records sit in rock tiles too)
+    if (s.dk === 'fossil' && FT && ((h >>> 21) % 5) < 2 && !chunk.spawns.some((e) => e.type === 'embed' && Math.abs(Math.floor(e.x) - tx) <= 1 && Math.abs(Math.floor(e.y) - ty) <= 1)) {
+      // the background generator's crystals and pebbles (FoliageRock23, Rock23_Solo, Plant20), on two in five fossil
+      // cells: thick rock all round, so their FoliageRandomizer scale and rotation keep them on the rock face
+      const e = pickEmbedded(FT, SURF_EMBED, ((h >>> 3) % 997) / 997, ((h >>> 9) % 991) / 991, ((h >>> 15) % 983) / 983, (h >>> 27) & 1);
+      if (e) {
+        out.push({
+          kind: 'embed', fk: e.kind, scale: e.scale, rot: e.rot, x: s.x + j1 * 0.4, y: s.y + yOffset + j2 * 0.4,
+          support: ty * chunkW + tx, onFloor: false, onCeiling: false, wallDir: 0, phase: (h % 1000) / 1000 * Math.PI * 2, flip: e.flip,
+        });
+        continue;
+      }
+    }
     if (s.dk === 'fossil') {
       out.push({
         kind: FOSSIL_KINDS[h % FOSSIL_KINDS.length], x: s.x + j1 * 0.5, y: s.y + yOffset + j2 * 0.5,
@@ -338,7 +354,7 @@ function patternRunes(chunk, yOffset, chunkW) {
     }
     const alongX = s.dy !== 0; // a floor or ceiling rune slides sideways, a wall rune up and down
     out.push({
-      kind: CRITTER_KINDS_WALL[h % 3], x: s.x - s.dx * 0.12 + (alongX ? j1 * 0.7 : 0), y: s.y + yOffset - s.dy * 0.12 + (alongX ? 0 : j2 * 0.7),
+      kind: FT ? 'rune' + (1 + ((h >>> 7) % 6)) : CRITTER_KINDS_WALL[h % 3], x: s.x - s.dx * 0.12 + (alongX ? j1 * 0.7 : 0), y: s.y + yOffset - s.dy * 0.12 + (alongX ? 0 : j2 * 0.7),
       support: ty * chunkW + tx, onFloor: s.dy < 0, onCeiling: s.dy > 0, wallDir: -s.dx,
       phase: (h % 1000) / 1000 * Math.PI * 2, flip: (h >> 3) % 2 === 0,
     });
@@ -508,6 +524,37 @@ export function findClusterMates(chunk, chunkW, chunkH, tx, ty, onCeiling, ancho
     if (chunk.tiles[(ty - 1) * chunkW + nx] !== 0) continue; // that side isn't open -- would grow into rock
     if (chunk.v2 && plantBlockedBySlot(chunk, nx, ty, false)) continue; // r37: a cluster mate never grows into an enemy or hazard
     out.push({ dx: mateSlots[i], hash: h2 });
+  }
+  return out;
+}
+
+/**
+ * Side-wall anchors for the wall foliage (the original's FoliagePattern03: water beside rock; FoliagePlant25 coral,
+ * FoliagePlant7 drooping leaves). The rock tile (tx, ty) faces water on side -dir (dir +1 = rock right of the water)
+ * and the face continues one tile above and below, so the plant sits on a flat stretch, never on a corner. Same
+ * keep-outs as the floor and ceiling anchors; hash-gated (about 1 in 5) and at least 3 tiles apart on a face. Returns {tx, ty, dir}.
+ */
+export function findWallAnchors(chunk, chunkW, chunkH, chunkIndex = 0) {
+  const out = [];
+  const T = (x, y) => x < 0 || y < 0 || x >= chunkW || y >= chunkH || chunk.tiles[y * chunkW + x] !== 0;
+  const nf = chunk.plantFree, pf = chunk.plantKeepOut;
+  for (let ty = 2; ty < chunkH - 2; ty++) {
+    for (let tx = 1; tx < chunkW - 1; tx++) {
+      if (!T(tx, ty)) continue;
+      for (const dir of [1, -1]) {
+        const wx = tx - dir;
+        if (T(wx, ty) || !T(tx, ty - 1) || !T(tx, ty + 1) || T(wx, ty - 1) || T(wx, ty + 1)) continue;
+        if (T(wx - dir, ty)) continue; // at least two tiles of water in front: never wedged into a one-tile shaft
+        const h = hash2(chunkIndex * 977 + tx * 37 + (dir > 0 ? 11 : 0), ty * 613 + chunkIndex);
+        if (h % 5 !== 0) continue;
+        // never a column of them: at least three tiles to the next one on the same face
+        if (out.some((a) => a.tx === tx && a.dir === dir && ty - a.ty < 3)) continue;
+        if (nf && wx >= nf.x0 && wx < nf.x1 && ty >= nf.y0 && ty < nf.y1) continue;
+        if (pf && pf.some((r) => wx >= r.x0 && wx < r.x1 && ty >= r.y0 && ty < r.y1)) continue;
+        if (nearEnemySlot(chunk, tx, ty) || nearEnemySlot(chunk, wx, ty)) continue;
+        out.push({ tx, ty, dir });
+      }
+    }
   }
   return out;
 }

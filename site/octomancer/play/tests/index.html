@@ -170,6 +170,10 @@ await runEnemyR36Tests(assert);
 import { runDetailTests } from './detail.test.js';
 await runDetailTests(assert);
 
+// --- Round 46: foliage from the original's FoliageItems (kinds, offsets, rims, no twins) ---
+import { runFoliageTests } from './foliage.test.js';
+await runFoliageTests(assert);
+
 // --- Round 37: set pieces force their content, seeding fix ---
 import { runSetPieceTests } from './setpieces.test.js';
 await runSetPieceTests(assert);
@@ -195,6 +199,19 @@ await runPortalTests(assert);
 // --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
 import { runShopTests } from './shop.test.js';
 await runShopTests(assert);
+// --- Buried treasure and the Sea-glass Goggles ---
+import { runEmbedTests } from './embed.test.js';
+await runEmbedTests(assert);
+
+// --- Section 14: fish juice, Ink Cloud, the ink jet, the hotbar and inventory, the new controls ---
+import { runSpellTests } from './spells.test.js';
+await runSpellTests(assert);
+import { runInkJetTests } from './inkjet.test.js';
+runInkJetTests(assert);
+import { runHotbarTests } from './hotbar.test.js';
+await runHotbarTests(assert);
+import { runRestTests } from './rest.test.js';
+await runRestTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

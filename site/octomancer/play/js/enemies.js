@@ -513,6 +513,9 @@ export function createEnemies() {
   const liveCache = []; // reusable list for autofire (rebuilt each step in hpMode)
   const stepList = []; // every enemy of this step (rebuilt once per update)
   let hazData = null; // hazards.js data (v2): anemone / spike anchors the crab and piranha turn probes avoid
+  let cloak = null; // spells.js ink clouds (v2): a creature whose line to the octopus passes through one has lost it
+  /** The octopus is hidden from `e` by an ink cloud (inside one, or one is in the way). */
+  function lost(e, octo) { return cloak !== null && cloak.hides(e.x, e.y, octo.x, octo.y); }
   function allEnemies() {
     const out = [];
     for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) out.push(list[i]);
@@ -594,7 +597,12 @@ export function createEnemies() {
   }
   function updatePiranha(e, dt, octo, world) {
     const px = e.x, py = e.y;
-    const seesOcto = () => !octo.dead && dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
+    const seesOcto = () => !octo.dead && dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
+    // ink: a winding-up or lunging piranha that loses the octopus gives up and wanders off from where it is
+    if ((e.st === PS_WINDUP || e.st === PS_LUNGE) && lost(e, octo)) {
+      e.st = PS_PATROL; e.t = 1.2; e.tell = 0; e.flipCd = 0.4; e.stuck = 0;
+      e.dir = rnd(e) < 0.5 ? -1 : 1; e.face = e.dir; e.baseX = e.x; e.baseY = e.y; e.chasing = false; e.lostInk = (e.lostInk | 0) + 1;
+    }
     e.chasing = e.st === PS_WINDUP || e.st === PS_LUNGE;
     switch (e.st) {
       case PS_PATROL: {
@@ -658,7 +666,7 @@ export function createEnemies() {
     let target = false, want = e.out;
     if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < CANNON_RANGE) {
       const a = Math.atan2(octo.y - e.y, octo.x - e.x);
-      if (Math.abs(angDiff(a, e.out)) <= CANNON_ARC && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) { target = true; want = a; }
+      if (Math.abs(angDiff(a, e.out)) <= CANNON_ARC && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) { target = true; want = a; }
     }
     // turn slowly toward it (slower while charging), or back to rest
     const rate = (e.st === CN_CHARGE ? CANNON_TURN * 0.4 : CANNON_TURN) * dt;
@@ -696,7 +704,7 @@ export function createEnemies() {
     const groundDy = e.placement === 'ceiling' ? -1 : 1;
     e.cool = Math.max(0, e.cool - dt);
     e.flipCd = Math.max(0, e.flipCd - dt);
-    const near = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3;
+    const near = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3 && !lost(e, octo);
     switch (e.st) {
       case CS_WALK: {
         // sinks if the floor under it was bombed away
@@ -719,13 +727,14 @@ export function createEnemies() {
         break;
       }
       case CS_PAUSE:
+        if (!octo.dead && lost(e, octo)) { e.st = CS_WALK; e.cool = 0.6; e.tell = 0; break; } // ink: it lost the octopus, no snap
         e.vx = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / CRAB_PAUSE);
         if (!octo.dead) { e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; }
         if (e.t <= 0) { e.st = CS_SNAP; e.t = CRAB_SNAP; e.tell = 0; e.snapHit = false; }
         break;
       case CS_SNAP:
         e.vx = 0; e.t -= dt;
-        if (!e.snapHit && !octo.dead && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
+        if (!e.snapHit && !octo.dead && !lost(e, octo) && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
           e.snapHit = true;
           hurtOctopus(octo, e.x, e.y, 'crab');
         }
@@ -769,7 +778,7 @@ export function createEnemies() {
         // octopus below it, in line, with a clear drop: tell, then dive
         if (e.cool <= 0 && !octo.dead) {
           const dy = octo.y - e.y;
-          if (Math.abs(octo.x - e.x) < 1.2 && dy > 1.5 && dy < 7 && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) {
+          if (Math.abs(octo.x - e.x) < 1.2 && dy > 1.5 && dy < 7 && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) {
             e.st = MA_TELL; e.t = MANTA_TELL; e.vx = e.vy = 0; e.tell = 0;
           }
         }
@@ -777,6 +786,7 @@ export function createEnemies() {
       }
       case MA_TELL:
         e.vx = e.vy = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / MANTA_TELL);
+        if (e.t <= 0 && lost(e, octo)) { e.st = MA_GLIDE; e.tell = 0; e.cool = 1.0; break; } // ink: it sweeps on past
         if (e.t <= 0) {
           const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
           e.tx = dx / d; e.ty = dy / d; e.tell = 0;
@@ -845,6 +855,8 @@ export function createEnemies() {
   return {
     /** v2: hand over the level's hazard data (hazards.js `data`) so patrolling enemies turn before an anemone or spike wall. */
     setHazardData(d) { hazData = d; },
+    /** v2: the level's ink clouds (spells.js createInkClouds; anything with `hides(ex, ey, ox, oy)`), or null. */
+    setInkClouds(c) { cloak = c; },
     events,
     /** All resident enemies plus the Beholder (if spawned) and any hit-stop ghosts, for rendering. */
     all() {

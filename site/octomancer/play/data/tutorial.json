@@ -33,7 +33,7 @@
    "y": 12.5,
    "r": 7,
    "title": "Swim",
-   "desktop": "Use WASD or the arrow keys, or hold the mouse button to swim toward the cursor.",
+   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at.",
    "touch": "Touch and drag on the left of the screen to swim."
   },
   {
@@ -41,7 +41,7 @@
    "y": 12.5,
    "r": 7,
    "title": "Dash",
-   "desktop": "Press Z, Shift or Enter, or right-click, for a burst of speed.",
+   "desktop": "Press Space or Shift for a burst of speed.",
    "touch": "Tap the Dash button for a burst of speed."
   },
   {
@@ -50,7 +50,7 @@
    "r": 6.5,
    "title": "Bomb the floor",
    "refillBomb": true,
-   "desktop": "This floor is in the way. Swim over it and drop or throw a bomb onto it: Space or X throws it the way you swim, middle-click throws it at the cursor. Bombs sink, so aim down. Then swim away, the blast hurts you too.",
+   "desktop": "This floor is in the way. Swim over it and drop or throw a bomb onto it: B or X throws it the way you swim, middle-click throws it at the cursor. Bombs sink, so aim down. Then swim away, the blast hurts you too.",
    "touch": "This floor is in the way. Swim over it and tap Bomb to drop one (bombs sink, so point the stick down), then swim away: the blast hurts you too."
   },
   {

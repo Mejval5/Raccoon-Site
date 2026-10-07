@@ -1,7 +1,7 @@
 // Shops (round 22, behind ?v2=1). A shop room (level.js, 'shop' tag) has a keeper and three item
 // pedestals. Swim onto a pedestal with enough shells to buy what stands on it. The currency is SHELLS.
 // Items are data rows in data/shop-items.json (effect 'bombs' or 'heart', an amount, a price), so more
-// can be added later without touching code.
+// can be added later without touching code. A row with `rare` (0..1) is stocked only in that share of stalls.
 //
 // Flat state: one small record per shop; the wallet lives in the run (run.shells), passed in and returned.
 //
@@ -70,8 +70,11 @@ export function applyItem(item, octo, inv = []) {
  */
 export function createShopState(shop, items, runSeed, levelIndex, owned = []) {
   if (!shop || !items.length) return null;
-  // a one-of item the player already carries is not offered again
-  let order = items.map((_, i) => i).filter((i) => items[i].effect !== 'carry' || canCarry(owned, items[i].item));
+  // a one-of item the player already carries is not offered again; a row with `rare` (0..1) is only on offer when this
+  // stall's roll for it passes (its own stream, so the shuffle below is the same whether it is in or not)
+  const rareRng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x6a7e));
+  const rareOk = items.map((it) => { const r = rareRng(); return !(it.rare > 0) || r < it.rare; });
+  let order = items.map((_, i) => i).filter((i) => rareOk[i] && (items[i].effect !== 'carry' || canCarry(owned, items[i].item)));
   if (order.length < SHOP_SLOTS) order = items.map((_, i) => i);
   if (order.length > SHOP_SLOTS) {
     const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5a09));

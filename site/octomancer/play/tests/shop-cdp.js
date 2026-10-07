@@ -160,6 +160,20 @@ const VPS = {
       const ink = await page.evaluate(() => { const hp0 = __octo.keepers().list[0].hp; const d = __octo.hitKeeper(0, 'ink', 4); __octo.stepDraw(1); return { hp0, d, hp: __octo.keepers().list[0].hp, a: __octo.extras().shopAggro }; });
       check(`an ink jet barely scratches the keeper (${ink.d.toFixed(2)} hp of ${ink.hp0}) but angers him`, ink.d > 0 && ink.d < 0.5 && ink.a.on && ink.a.why === 'hurt');
       await page.close();
+      // the real Ink Jet (inkjet.js through main.js's target list), fired at a calm keeper
+      const pj = await open('desktop', BASE + `?at=1&seed=${seed}`);
+      const jet = await pj.evaluate(() => {
+        __octo.god(true); __octo.freeze(true);
+        const k = __octo.keepers().list[0];
+        for (let n = 0; n < 5; n++) { __octo.teleport(k.x - 3, k.y - 0.2); __octo.stepDraw(1); }
+        __octo.input({ move: { x: 0.3, y: 0 }, attack: true });
+        for (let n = 0; n < 45; n++) { __octo.teleport(k.x - 3, k.y - 0.2); __octo.stepDraw(1); }
+        __octo.input(null);
+        const k2 = __octo.keepers().list[0];
+        return { hp0: k.hp, hp: k2.hp, mode: k2.mode, a: __octo.extras().shopAggro };
+      });
+      check(`ink jet blobs hit the keeper for almost nothing (${(jet.hp0 - jet.hp).toFixed(2)} hp) and anger him`, jet.hp0 - jet.hp > 0.2 && jet.hp0 - jet.hp < 1.5 && jet.a.on && jet.a.why === 'hurt' && jet.mode === 'angry', JSON.stringify(jet));
+      await pj.close();
       const p2 = await open('desktop', BASE + `?at=1&seed=${seed}`);
       await p2.evaluate(() => { __octo.god(true); __octo.freeze(true); });
       const sh2 = await p2.evaluate(() => __octo.extras().shop);

@@ -1,0 +1,28 @@
+{
+ "version": 1,
+ "juice": {
+  "perCast": 4,
+  "jarCasts": 3,
+  "startCasts": 3,
+  "dropMin": 1,
+  "dropMax": 3,
+  "pullSpeed": 7,
+  "collectR": 0.35,
+  "pickupDelay": 0.3,
+  "life": 3.5
+ },
+ "start": "ink-cloud",
+ "spells": [
+  {
+   "id": "ink-cloud",
+   "name": "Ink Cloud",
+   "effect": "cloud",
+   "cost": 1,
+   "radius": 2.1,
+   "duration": 4,
+   "drift": 0.25,
+   "journal": "spell-ink-cloud",
+   "blurb": "a puff of ink: enemies lose sight of you"
+  }
+ ]
+}
