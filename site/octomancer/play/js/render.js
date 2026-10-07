@@ -1134,6 +1134,18 @@ export function createRenderer(ctx, world) {
     }
     return e;
   }
+  /** r44: ONE piece of a new level's set-up per frame behind the dark screen (before, a set-up frame did the plant anchors of every chunk, a
+   *  deep-rock step and the cell bakes together: a 50-80 ms task at 4x on a phone): the plant anchors of one chunk, or a few of its cluster
+   *  mates, then the deep-rock steps one by one, then the wall cells (updateCells keeps its own per-frame budget). */
+  function setupPiece(canvasW, canvasH, resident) {
+    for (const { index, chunk } of resident) {
+      const e = plantCache.get(chunk);
+      if (!e || e.ver !== world.tileVersion || e.next < e.anchors.length) { plantEntry(chunk, index); return; }
+    }
+    plantsWarm = true;
+    if (deepStage < 3 && stepDeepRock()) return;
+    updateCells(canvasW, canvasH);
+  }
   const NO_MATES = [];
   let plantsWarm = false;
   const timing = { warmMs: 0, warmMax: 0, wallsMs: 0, wallsMax: 0 }; // r43: the level's set-up steps and the wall drawing (with its cell bakes), worst frame so far
@@ -1348,7 +1360,9 @@ export function createRenderer(ctx, world) {
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate((o.angle * Math.PI) / 180);
-    ctx.scale(camera.pxPerUnit, camera.pxPerUnit);
+    const swallow = o.entering || 0; // r44: going into a whirlpool: shrinks to 15% and fades out (main.js stepEntry)
+    const sc = camera.pxPerUnit * (1 - 0.85 * swallow);
+    ctx.scale(sc, sc);
     o.__t = time;
     o.__speed = Math.hypot(o.vx, o.vy);
     // Invulnerability blink (M3-2): flicker the octopus while it can't be
@@ -1364,7 +1378,7 @@ export function createRenderer(ctx, world) {
     // image at that alpha, which is exactly an "x-ray" look. Passing the
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
-    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
+    const octoAlpha = (o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1) * (1 - swallow);
     drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }
@@ -1419,15 +1433,11 @@ export function createRenderer(ctx, world) {
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
       updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      if (warmOnly && warmGroup < 0) return; // r44: a frame behind the dark screen that main.js uses to run the simulation's first updates: nothing to set up or draw
       if (warmOnly && warmGroup <= 0) {
         // r43: the screen is dark while a new level's first view bakes: do only the set-up (plant anchors, the deep rock, the wall
         // cells) and draw nothing, so these frames stay cheap
-        if (world.v2) {
-          for (const { index, chunk } of resident) plantEntry(chunk, index); // the anchors, then a few cluster mates per frame
-          if (plantsWarm) stepDeepRock();
-          plantsWarm = true;
-          updateCells(canvasW, canvasH);
-        }
+        if (world.v2) setupPiece(canvasW, canvasH, resident);
         return;
       }
       // r43: a warm-up frame (warmGroup 1..5, behind the dark screen) draws one group of the scene so the first real frame does not
