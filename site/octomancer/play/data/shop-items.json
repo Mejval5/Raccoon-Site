@@ -7,6 +7,7 @@
   { "id": "lantern", "name": "Lantern", "price": 10, "effect": "carry", "item": "lantern", "glyph": "lantern", "journal": "item-lantern", "blurb": "a larger light radius" },
   { "id": "magnet", "name": "Shell magnet", "price": 9, "effect": "carry", "item": "magnet", "glyph": "magnet", "journal": "item-magnet", "blurb": "pulls in shells within 3 tiles" },
   { "id": "bombbag", "name": "Bomb bag", "price": 7, "effect": "carry", "item": "bombbag", "glyph": "bombbag", "journal": "item-bombbag", "blurb": "+3 bombs and +1 max bombs" },
-  { "id": "heartcontainer", "name": "Heart container", "price": 12, "effect": "carry", "item": "heartcontainer", "glyph": "heartcontainer", "journal": "item-heartcontainer", "blurb": "+1 max heart and heals 1" }
+  { "id": "heartcontainer", "name": "Heart container", "price": 12, "effect": "carry", "item": "heartcontainer", "glyph": "heartcontainer", "journal": "item-heartcontainer", "blurb": "+1 max heart and heals 1" },
+  { "id": "siphon", "name": "Siphon Shell", "price": 9, "effect": "carry", "item": "siphon", "glyph": "siphon", "journal": "item-siphon", "blurb": "drink the fish juice beaten creatures leak" }
  ]
 }

@@ -1,0 +1,231 @@
+/* Spell hotbar + inventory (hotbar-ui.js, inventory-ui.js). Carved stone slots bound with kelp, ink outlines, soft inner
+   shadows. No gold, no glow, no gloss: the selected slot gets a paler sea-green rim and a kelp tie across the top. */
+
+.octo-hotbar,
+#hud > .octo-hotbar {
+  --stone: #5f6c6a;
+  --stone-dark: #424d4c;
+  --stone-lit: #78857f;
+  --kelp: #3f6a45;
+  --kelp-dark: #2a4a31;
+  --ink: #10202c;
+  --rim: #b6dcc6;
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + var(--safe-b));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  max-width: calc(100vw - 24px);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #34503a, #263d2c);
+  border: 2px solid var(--ink);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), 0 3px 8px rgba(0, 0, 0, 0.4);
+  font-family: 'Quicksand', sans-serif;
+  color: #e3efe6;
+  pointer-events: none; /* #hud > * opts in; the bar itself lets clicks through, only the slots take them */
+  z-index: 3;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.octo-hb-slots { display: flex; gap: 6px; }
+
+.octo-hb-slot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex: none;
+  border-radius: 9px;
+  border: 2px solid var(--ink);
+  background: radial-gradient(circle at 50% 35%, var(--stone-lit), var(--stone) 55%, var(--stone-dark));
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.5), inset 0 -1px 2px rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+}
+.octo-hb-spell { cursor: pointer; pointer-events: auto; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.octo-hb-icon { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.octo-hb-key {
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  font: 700 11px/1.2 'Quicksand', sans-serif;
+  color: #d3e4d8;
+  text-shadow: 0 1px 1px var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink);
+  pointer-events: none;
+}
+.octo-hb-key-bomb { left: auto; right: 4px; font-size: 10px; opacity: 0.85; }
+
+/* selected: a paler carved rim plus a small kelp tie over the top edge */
+.octo-hb-slot.is-selected {
+  border-color: var(--rim);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--ink);
+}
+.octo-hb-slot.is-selected::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -7px;
+  width: 20px;
+  height: 7px;
+  margin-left: -10px;
+  border-radius: 3px;
+  background: var(--kelp);
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  pointer-events: none;
+}
+
+.octo-hb-sep { width: 3px; align-self: stretch; margin: 2px 0; border-radius: 2px; background: var(--ink); opacity: 0.55; }
+
+.octo-hb-bomb { cursor: default; }
+.octo-hb-bomb .octo-hb-icon { top: -4px; height: calc(100% - 8px); }
+.octo-hb-count {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1px;
+  text-align: center;
+  font: 700 11px/1.1 'Quicksand', sans-serif;
+  color: #eaf5ee;
+  text-shadow: 0 1px 1px var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink);
+  pointer-events: none;
+}
+.octo-hb-bomb.is-empty { opacity: 0.55; }
+
+.octo-hb-jar { display: flex; align-items: center; gap: 5px; padding: 0 2px; }
+.octo-hb-jarcv { width: 22px; height: 30px; display: block; }
+.octo-hb-casts { font: 700 15px/1 'Quicksand', sans-serif; color: #e3efe6; min-width: 10px; text-shadow: 0 1px 1px var(--ink); }
+.octo-hb-jar.is-empty .octo-hb-casts { color: #d98f86; }
+
+/* the empty-jar feedback */
+@keyframes octo-jar-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  15% { transform: translateX(-4px) rotate(-6deg); }
+  35% { transform: translateX(4px) rotate(5deg); }
+  55% { transform: translateX(-3px) rotate(-4deg); }
+  75% { transform: translateX(2px) rotate(2deg); }
+}
+.octo-jar-shake { animation: octo-jar-shake 0.32s ease-out; }
+@media (prefers-reduced-motion: reduce) { .octo-jar-shake { animation-duration: 0.01s; } }
+
+/* phones: small, top centre under the HUD row (the owner may move it with a later rule) */
+.octo-hotbar.is-compact,
+#hud > .octo-hotbar.is-compact {
+  top: calc(env(safe-area-inset-top, 0px) + 58px);
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 60vw;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 10px;
+}
+.octo-hotbar.is-compact .octo-hb-slots { gap: 4px; }
+.octo-hotbar.is-compact .octo-hb-slot { width: 34px; height: 34px; border-radius: 7px; border-width: 1.5px; }
+.octo-hotbar.is-compact .octo-hb-spell .octo-hb-key,
+.octo-hotbar.is-compact .octo-hb-key-bomb { display: none; }
+.octo-hotbar.is-compact .octo-hb-count { font-size: 9px; }
+.octo-hotbar.is-compact .octo-hb-slot.is-selected::after { top: -6px; width: 16px; height: 6px; margin-left: -8px; }
+.octo-hotbar.is-compact .octo-hb-jar { gap: 3px; }
+.octo-hotbar.is-compact .octo-hb-jarcv { width: 18px; height: 24px; }
+.octo-hotbar.is-compact .octo-hb-casts { font-size: 12px; }
+
+/* hidden behind the settings / journal / inventory panels, like the HUD bar */
+#hud.octo-modal-open > .octo-hotbar { visibility: hidden; }
+
+/* ------------------------------------------------------------------------------------------ inventory panel */
+.octo-inv-overlay { z-index: 6; }
+.octo-inv {
+  --ink: #10202c;
+  --stone: #5f6c6a;
+  --kelp: #3f6a45;
+  --rim: #b6dcc6;
+  width: min(100%, 520px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #2f4a37, #243a2b);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45), 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-family: 'Quicksand', sans-serif;
+  color: #e3efe6;
+  text-align: left;
+  overflow: hidden;
+}
+.octo-inv-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 2px solid var(--ink); background: rgba(0, 0, 0, 0.18); }
+.octo-inv-title { font: 700 20px 'Quicksand', sans-serif; letter-spacing: 0.02em; }
+.octo-inv-close {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #7a8a82, #5b6a64);
+  color: #10202c;
+  font: 700 15px 'Quicksand', sans-serif;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.25);
+}
+.octo-inv-close:active { background: #4f5d57; }
+.octo-inv-body { overflow-y: auto; touch-action: pan-y; padding: 6px 14px 14px; -webkit-overflow-scrolling: touch; }
+.octo-inv-h { margin: 12px 0 6px; font: 700 12px 'Quicksand', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #a9d4b6; }
+.octo-inv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #56635f, #46524e);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+.octo-inv-spell { cursor: pointer; }
+.octo-inv-spell.is-selected { border-color: var(--rim); box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px var(--ink); }
+.octo-inv-spell.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: -6px;
+  width: 22px;
+  height: 6px;
+  border-radius: 3px 3px 0 0;
+  background: var(--kelp);
+  border: 2px solid var(--ink);
+  border-bottom: none;
+}
+.octo-inv-icon { width: 40px; height: 40px; flex: none; border-radius: 8px; background: radial-gradient(circle at 50% 35%, #78857f, #5f6c6a 60%, #424d4c); border: 2px solid var(--ink); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4); }
+.octo-inv-jar { width: 32px; height: 44px; flex: none; margin: 0 4px; }
+.octo-inv-text { flex: 1; min-width: 0; }
+.octo-inv-name { font: 700 15px/1.25 'Quicksand', sans-serif; color: #f0f7f2; }
+.octo-inv-blurb { font: 600 12px/1.3 'Quicksand', sans-serif; color: #cfe0d4; opacity: 0.9; }
+.octo-inv-meta { font: 600 11px/1.3 'Quicksand', sans-serif; color: #a9d4b6; margin-top: 1px; }
+.octo-inv-tag { flex: none; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--ink); background: #3b4a44; font: 700 11px 'Quicksand', sans-serif; color: #cfe0d4; }
+.octo-inv-tag-active { background: #3f6a45; color: #eaf5ee; }
+.octo-inv-moves { display: flex; gap: 4px; flex: none; }
+.octo-inv-move {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #4d7a52, #3a5e40);
+  color: #eaf5ee;
+  font: 700 14px 'Quicksand', sans-serif;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.3);
+}
+.octo-inv-move:disabled { opacity: 0.35; cursor: default; }
+.octo-inv-move:active:not(:disabled) { background: #335238; }
+
+@media (max-height: 460px) {
+  .octo-inv-body { padding-bottom: 8px; }
+  .octo-inv-head { padding: 6px 12px; }
+}
+
+/* The desktop bar owns the bottom centre: toasts sit above it and the controls hint stops short of it. */
+#hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-toast { bottom: calc(86px + var(--safe-b)); }
+#hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-controls-help { max-width: min(560px, calc(50vw - 130px)); }

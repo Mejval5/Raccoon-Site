@@ -22,9 +22,9 @@ const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
 /** Controls help per input method, shown in the panel (the on-screen hint at the bottom left uses the keyboard / mouse lines). */
 export const CONTROLS_HELP = [
-  { id: 'keyboard', title: 'Keyboard', lines: ['Swim: WASD or the arrow keys', 'Dash: Z, Enter or Shift', 'Throw a bomb: Space or X (in your swim direction)', 'Pause: Esc'] },
-  { id: 'mouse', title: 'Mouse', lines: ['Swim: hold the left button, toward the cursor', 'Dash: right-click or double-click', 'Throw a bomb: middle-click or the wheel (at the cursor)'] },
-  { id: 'touch', title: 'Touch', lines: ['Swim: drag on the left half of the screen', 'Dash and Bomb: the two buttons at the bottom right', 'Pause and settings: the buttons at the top right'] },
+  { id: 'keyboard', title: 'Keyboard', lines: ['Swim: WASD or the arrow keys', 'Dash: Space or Shift', 'Ink jet: J or K (the way you face)', 'Cast the selected spell: F', 'Throw a bomb: B or X (the way you swim)', 'Pick a spell: Q / E or 1-9', 'Inventory: Tab or I', 'Pause: Esc'] },
+  { id: 'mouse', title: 'Mouse', lines: ['Ink jet: left button, at the cursor (hold to keep squirting)', 'Cast the selected spell: right button, toward the cursor', 'Throw a bomb: middle button, at the cursor', 'Pick a spell: the wheel'] },
+  { id: 'touch', title: 'Touch', lines: ['Swim: drag on the left half of the screen', 'Jet, Spell, Bomb and Dash: the buttons at the bottom right (Jet aims at the nearest creature)', 'Pick a spell: tap it on the bar at the top', 'Pause and settings: the buttons at the top right'] },
 ];
 
 export function settingDef(key) { return BY_KEY.get(key) || null; }

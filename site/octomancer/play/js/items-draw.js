@@ -10,7 +10,25 @@ function outline(ctx, r, fill, stroke) {
 export function drawItemIcon(ctx, id, x, y, r) {
   ctx.save();
   ctx.translate(x, y);
-  if (id === 'flippers') {
+  if (id === 'siphon') {
+    // the Siphon Shell: a hollow spiral shell (a whelk), its long siphon canal pointing down-left, the octopus drinks through it
+    outline(ctx, r, '#d9c7a4', '#3a2a18');
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.92, r * 0.78); // the siphon tip
+    ctx.quadraticCurveTo(-r * 0.55, r * 0.55, -r * 0.35, r * 0.62);
+    ctx.bezierCurveTo(r * 0.25, r * 0.85, r * 0.95, r * 0.35, r * 0.82, -r * 0.25);
+    ctx.bezierCurveTo(r * 0.72, -r * 0.75, r * 0.2, -r * 0.98, -r * 0.12, -r * 0.62);
+    ctx.bezierCurveTo(-r * 0.55, -r * 0.2, -r * 0.6, r * 0.25, -r * 0.62, r * 0.42);
+    ctx.quadraticCurveTo(-r * 0.75, r * 0.6, -r * 0.92, r * 0.78);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // the whorls: a spiral of growth lines toward the apex, and the dark open mouth
+    ctx.strokeStyle = '#8a6f4a'; ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.beginPath();
+    for (let k = 0; k <= 36; k++) { const t = k / 36, a = -0.6 + t * 4.4, rr = r * (0.62 - t * 0.5); const px = r * 0.28 + Math.cos(a) * rr, py = -r * 0.12 + Math.sin(a) * rr * 0.85; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+    ctx.stroke();
+    ctx.fillStyle = '#5a3f2a'; ctx.beginPath(); ctx.ellipse(-r * 0.1, r * 0.3, r * 0.2, r * 0.32, 0.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(160,200,120,0.75)'; ctx.beginPath(); ctx.arc(-r * 0.86, r * 0.74, r * 0.09, 0, TAU); ctx.fill(); // a drop of juice at the tip
+  } else if (id === 'flippers') {
     // a pair of fins: two leaf shapes side by side
     outline(ctx, r, '#f59a2a', '#4a2406'); // orange: cyan vanished against the Shallows water on a pedestal
     for (const s of [-1, 1]) {

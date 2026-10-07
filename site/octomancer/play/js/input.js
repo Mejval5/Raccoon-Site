@@ -1,19 +1,15 @@
-// Input layer: keyboard + touch + mouse, normalised to one shape for
-// gameplay. OVERNIGHT.md §2 "Input": keyboard (arrows/WASD move, Z/Enter/
-// Shift dash, Space/X bomb, Esc pause) and touch (floating joystick left
-// half, Dash/Bomb buttons bottom-right). Gameplay only ever sees
-// {move:{x,y}, dash, bomb, pause} with pressed/held flags.
+// Input layer: keyboard + mouse + touch, normalised to one shape for gameplay. Gameplay only ever sees the snapshot:
+// {move:{x,y}, dash, bomb, pause, attack, spell, inventory (buttons with pressed/held), cycle, select, src, mode}.
 //
-// Round-8 addition (NIGHT-LOG.md item 4): mouse control, the same abstract
-// actions as keyboard/touch -- hold the left button to swim toward the
-// cursor (thrust scales with distance, like the touch joystick's own
-// magnitude), right-click or double-click to dash, middle-click or the
-// wheel to drop a bomb. This module only tracks the raw cursor position and
-// the one-shot dash/bomb clicks; turning the cursor position into a
-// world-space swim direction needs the octopus's current position and the
-// camera, neither of which this module knows about, so main.js's step()
-// calls `setMouseAim` once per fixed step with the already-computed
-// direction (see camera.js's `screenToWorld`).
+// Controls (Daniel, 2026-10-07; V2-PLAN section 14):
+//   keyboard  WASD / arrows move; Space or Shift dash (Z and Enter still dash too: they confirm the end screens);
+//             J or K ink jet (the facing direction); F (or C) cast the selected spell; B or X bomb (the swim direction);
+//             Q / E previous / next spell; 1-9 pick a hotbar slot; Tab or I the inventory; Esc pause.
+//   mouse     left button ink jet toward the cursor (held: auto-repeat), right button cast the selected spell toward the
+//             cursor, middle button bomb toward the cursor, wheel previous / next spell. No steering with the mouse.
+//   touch     stick on the left half; Attack (auto-aims), Ink (spell), Bomb and Dash buttons bottom right (touch-ui.js).
+// `src` says where the last attack / spell / bomb press came from ('mouse' | 'key' | 'touch'), so main.js knows whether to
+// aim at the cursor, along the facing / swim direction, or at the nearest enemy.
 
 const MOVE_KEYS = {
   ArrowUp: [0, -1], KeyW: [0, -1],
@@ -21,14 +17,23 @@ const MOVE_KEYS = {
   ArrowLeft: [-1, 0], KeyA: [-1, 0],
   ArrowRight: [1, 0], KeyD: [1, 0],
 };
-const DASH_KEYS = new Set(['KeyZ', 'Enter', 'ShiftLeft', 'ShiftRight']);
-const BOMB_KEYS = new Set(['Space', 'KeyX']);
+const DASH_KEYS = new Set(['Space', 'ShiftLeft', 'ShiftRight', 'KeyZ', 'Enter']);
+const BOMB_KEYS = new Set(['KeyB', 'KeyX']);
+const ATTACK_KEYS = new Set(['KeyJ', 'KeyK']);
+const SPELL_KEYS = new Set(['KeyF', 'KeyC']);
+const INVENTORY_KEYS = new Set(['Tab', 'KeyI']);
 const PAUSE_KEYS = new Set(['Escape']);
+const CYCLE_KEYS = { KeyQ: -1, KeyE: 1 };
+/** 'Digit1'..'Digit9' and the numpad -> hotbar slot 0..8. */
+function slotOfKey(code) {
+  const m = /^(?:Digit|Numpad)([1-9])$/.exec(code);
+  return m ? Number(m[1]) - 1 : -1;
+}
+const WHEEL_STEP = 100; // px of wheel delta per hotbar step (one notch of a mouse wheel; a trackpad needs a longer swipe)
 
 function newButton() {
   return { pressed: false, held: false, released: false };
 }
-
 function pressButton(btn) {
   if (!btn.held) btn.pressed = true;
   btn.held = true;
@@ -37,30 +42,23 @@ function releaseButton(btn) {
   if (btn.held) btn.released = true;
   btn.held = false;
 }
+/** A button read for one snapshot: pressed this step or held. */
+function read(...bs) {
+  let pressed = false, held = false;
+  for (const b of bs) { pressed = pressed || b.pressed; held = held || b.held; }
+  return { pressed, held };
+}
 
 export function createInput(canvas) {
   const keys = new Set();
-  const state = {
-    move: { x: 0, y: 0 },
-    dash: newButton(),
-    bomb: newButton(),
-    pause: newButton(),
-  };
-  // Touch axis is set directly by touch-ui.js (analog), separate from the
-  // keyboard's normalised digital vector, then combined in snapshot().
-  const touch = { x: 0, y: 0, active: false, dash: newButton(), bomb: newButton() };
-  // Mouse: `x`/`y` are the tracked cursor position in canvas BUFFER pixels
-  // (device px, matching what render.js's camera works in), `active` is
-  // whether the left button is currently held. `aim` is written once per
-  // fixed step by main.js (`setMouseAim`, see the module comment above) with
-  // the already-normalised-and-thrust-scaled direction toward the cursor.
-  const mouse = { x: 0, y: 0, active: false, seen: false };
-  let mouseAim = { x: 0, y: 0 };
-  let mouseDashPressed = false;
-  let mouseBombPressed = false;
-  let usingTouch = false;
-  let usingKeyboard = false;
-  let usingMouse = false;
+  const kb = { dash: newButton(), bomb: newButton(), pause: newButton(), attack: newButton(), spell: newButton(), inventory: newButton() };
+  // Touch: the stick axis and the buttons are written directly by touch-ui.js.
+  const touch = { x: 0, y: 0, active: false, dash: newButton(), bomb: newButton(), spell: newButton(), attack: newButton() };
+  // Mouse: `x`/`y` are the tracked cursor position in canvas BUFFER pixels (device px, what the camera works in).
+  const mouse = { x: 0, y: 0, seen: false, attack: newButton(), spell: newButton(), bomb: newButton() };
+  let cycle = 0, wheelAcc = 0, select = -1;
+  const src = { attack: 'key', spell: 'key', bomb: 'key' };
+  let usingTouch = false, usingKeyboard = false, usingMouse = false;
   const listeners = { modechange: [] };
 
   function setMode(mode) {
@@ -82,33 +80,47 @@ export function createInput(canvas) {
     return { x, y };
   }
 
+  function isGameKey(code) {
+    return !!MOVE_KEYS[code] || DASH_KEYS.has(code) || BOMB_KEYS.has(code) || PAUSE_KEYS.has(code) || ATTACK_KEYS.has(code)
+      || SPELL_KEYS.has(code) || INVENTORY_KEYS.has(code) || CYCLE_KEYS[code] !== undefined || slotOfKey(code) >= 0;
+  }
   function onKeyDown(e) {
-    if (e.repeat) return;
-    if (e.target && e.target.closest && e.target.closest('[data-octo-modal]')) return; // typing in a menu (settings): not game input
-    if (MOVE_KEYS[e.code] || DASH_KEYS.has(e.code) || BOMB_KEYS.has(e.code) || PAUSE_KEYS.has(e.code)) {
-      setMode('keyboard');
-      keys.add(e.code);
-      if (DASH_KEYS.has(e.code)) pressButton(state.dash);
-      if (BOMB_KEYS.has(e.code)) pressButton(state.bomb);
-      if (PAUSE_KEYS.has(e.code)) pressButton(state.pause);
-      e.preventDefault();
-    }
+    if (e.repeat) { if (isGameKey(e.code)) e.preventDefault(); return; }
+    const t = e.target;
+    const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (t && t.closest && t.closest('[data-octo-modal]') && (typing || !INVENTORY_KEYS.has(e.code))) return; // a menu has focus: not game input (Tab / I still close the inventory)
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // browser shortcuts (Ctrl+F, Alt+Tab ...) stay the browser's
+    if (!isGameKey(e.code)) return;
+    setMode('keyboard');
+    keys.add(e.code);
+    if (DASH_KEYS.has(e.code)) pressButton(kb.dash);
+    if (BOMB_KEYS.has(e.code)) { pressButton(kb.bomb); src.bomb = 'key'; }
+    if (PAUSE_KEYS.has(e.code)) pressButton(kb.pause);
+    if (ATTACK_KEYS.has(e.code)) { pressButton(kb.attack); src.attack = 'key'; }
+    if (SPELL_KEYS.has(e.code)) { pressButton(kb.spell); src.spell = 'key'; }
+    if (INVENTORY_KEYS.has(e.code)) pressButton(kb.inventory);
+    if (CYCLE_KEYS[e.code] !== undefined) cycle += CYCLE_KEYS[e.code];
+    const slot = slotOfKey(e.code);
+    if (slot >= 0) select = slot;
+    e.preventDefault();
   }
   function onKeyUp(e) {
     keys.delete(e.code);
-    if (DASH_KEYS.has(e.code)) releaseButton(state.dash);
-    if (BOMB_KEYS.has(e.code)) releaseButton(state.bomb);
-    if (PAUSE_KEYS.has(e.code)) releaseButton(state.pause);
+    if (DASH_KEYS.has(e.code) && ![...DASH_KEYS].some((k) => keys.has(k))) releaseButton(kb.dash);
+    if (BOMB_KEYS.has(e.code)) releaseButton(kb.bomb);
+    if (PAUSE_KEYS.has(e.code)) releaseButton(kb.pause);
+    if (ATTACK_KEYS.has(e.code) && ![...ATTACK_KEYS].some((k) => keys.has(k))) releaseButton(kb.attack);
+    if (SPELL_KEYS.has(e.code)) releaseButton(kb.spell);
+    if (INVENTORY_KEYS.has(e.code)) releaseButton(kb.inventory);
   }
-  window.addEventListener('keydown', onKeyDown, { passive: false });
-  window.addEventListener('keyup', onKeyUp);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', onKeyDown, { passive: false });
+    window.addEventListener('keyup', onKeyUp);
+    // a key held while the window loses focus never gets its keyup: drop everything
+    window.addEventListener('blur', () => { keys.clear(); for (const b of Object.values(kb)) releaseButton(b); releaseButton(mouse.attack); });
+  }
 
-  // --- Mouse (round-8, item 4): hold left = swim toward cursor, right-click
-  // or double-click = dash, middle-click or wheel = bomb. Bound to the
-  // canvas element (not `window`) so page chrome outside the game never
-  // steals a click, except `mousemove`/`mouseup`, tracked on `window` too so
-  // dragging the cursor off-canvas while the button is still held doesn't
-  // silently freeze the swim direction.
+  // --- Mouse: buttons on the canvas (page chrome outside the game never takes a click), the cursor tracked on window.
   if (canvas) {
     const toBufferPx = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -116,81 +128,67 @@ export function createInput(canvas) {
       const sy = rect.height > 0 ? canvas.height / rect.height : 1;
       return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
     };
+    const track = (e) => { const p = toBufferPx(e); mouse.x = p.x; mouse.y = p.y; mouse.seen = true; };
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
-        setMode('mouse');
-        mouse.active = true;
-        const p = toBufferPx(e);
-        mouse.x = p.x; mouse.y = p.y; mouse.seen = true;
-        e.preventDefault();
-      } else if (e.button === 1) {
-        setMode('mouse');
-        mouseBombPressed = true;
-        e.preventDefault();
-      } else if (e.button === 2) {
-        setMode('mouse');
-        mouseDashPressed = true;
-        e.preventDefault();
-      }
+      track(e);
+      if (e.button === 0) { setMode('mouse'); pressButton(mouse.attack); src.attack = 'mouse'; e.preventDefault(); }
+      else if (e.button === 1) { setMode('mouse'); pressButton(mouse.bomb); src.bomb = 'mouse'; e.preventDefault(); }
+      else if (e.button === 2) { setMode('mouse'); pressButton(mouse.spell); src.spell = 'mouse'; e.preventDefault(); }
     });
-    window.addEventListener('mousemove', (e) => {
-      // always tracked (a bomb is thrown toward the cursor even when the swim button is up); `active` still gates swimming
-      const p = toBufferPx(e);
-      mouse.x = p.x; mouse.y = p.y; mouse.seen = true;
-    });
+    window.addEventListener('mousemove', track);
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) mouse.active = false;
+      if (e.button === 0) releaseButton(mouse.attack);
+      else if (e.button === 1) releaseButton(mouse.bomb);
+      else if (e.button === 2) releaseButton(mouse.spell);
     });
-    // Double-click also dashes (alongside right-click); most browsers fire
-    // this after two 'click's (left button only), so no separate button
-    // check is needed the way mousedown's chord dispatch above needs one.
-    canvas.addEventListener('dblclick', () => { setMode('mouse'); mouseDashPressed = true; });
-    // Right-click is the dash button here, not a context menu.
+    // the right button casts: never the browser's context menu over the game
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // the wheel steps through the hotbar's spells (one step per notch)
     canvas.addEventListener('wheel', (e) => {
-      setMode('mouse');
-      mouseBombPressed = true;
       e.preventDefault();
+      const d = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      wheelAcc += d;
+      while (wheelAcc >= WHEEL_STEP) { cycle++; wheelAcc -= WHEEL_STEP; }
+      while (wheelAcc <= -WHEEL_STEP) { cycle--; wheelAcc += WHEEL_STEP; }
     }, { passive: false });
   }
-  /** Called once per fixed step by main.js (needs the octopus's current
-   * position and the camera, neither of which this module has) with the
-   * already-normalised, thrust-scaled direction from the octopus toward the
-   * tracked cursor position; a no-op while the left button isn't held. */
-  function setMouseAim(x, y) { mouseAim = { x, y }; }
 
-  // Test / override hook: __octo.input(actions) merges synthetic actions in
-  // for one snapshot. null clears it.
+  // Test / override hook: __octo.input(actions) replaces the actions it names, for every snapshot until cleared (null).
   let override = null;
   function setOverride(actions) { override = actions; }
 
-  /** Called once per fixed step by main.js; returns the frame's input and
-   * clears the one-shot `pressed` edges. */
+  /** Called once per fixed step by main.js; returns the step's input and clears the one-shot `pressed` edges. */
   function snapshot() {
-    const kb = keyboardVector();
-    const move = usingMouse && mouse.active ? mouseAim
-      : usingTouch && touch.active
-      ? { x: touch.x, y: touch.y }
-      : kb;
+    const move = usingTouch && touch.active ? { x: touch.x, y: touch.y } : keyboardVector();
     const out = {
       move,
-      dash: { pressed: state.dash.pressed || touch.dash.pressed || mouseDashPressed, held: state.dash.held || touch.dash.held },
-      bomb: { pressed: state.bomb.pressed || touch.bomb.pressed || mouseBombPressed, held: state.bomb.held || touch.bomb.held },
-      pause: { pressed: state.pause.pressed, held: state.pause.held },
+      dash: read(kb.dash, touch.dash),
+      bomb: read(kb.bomb, touch.bomb, mouse.bomb),
+      pause: read(kb.pause),
+      attack: read(kb.attack, touch.attack, mouse.attack),
+      spell: read(kb.spell, touch.spell, mouse.spell),
+      inventory: read(kb.inventory),
+      cycle, select,
+      src: { attack: touch.attack.pressed || touch.attack.held ? 'touch' : src.attack, spell: touch.spell.pressed ? 'touch' : src.spell, bomb: touch.bomb.pressed ? 'touch' : src.bomb },
       mode: usingTouch ? 'touch' : usingMouse ? 'mouse' : 'keyboard',
     };
-    // Clear one-shot edges after reading.
-    state.dash.pressed = false; state.bomb.pressed = false; state.pause.pressed = false;
-    touch.dash.pressed = false; touch.bomb.pressed = false;
-    mouseDashPressed = false; mouseBombPressed = false;
+    for (const b of [kb.dash, kb.bomb, kb.pause, kb.attack, kb.spell, kb.inventory, touch.dash, touch.bomb, touch.spell, touch.attack, mouse.attack, mouse.spell, mouse.bomb]) { b.pressed = false; b.released = false; }
+    cycle = 0; select = -1;
 
     if (override) {
       const o = override;
+      const btn = (v, d) => (v !== undefined ? { pressed: !!v, held: !!v } : d);
       return {
         move: o.move ? { x: o.move.x, y: o.move.y } : out.move,
-        dash: o.dash !== undefined ? { pressed: !!o.dash, held: !!o.dash } : out.dash,
-        bomb: o.bomb !== undefined ? { pressed: !!o.bomb, held: !!o.bomb } : out.bomb,
-        pause: o.pause !== undefined ? { pressed: !!o.pause, held: !!o.pause } : out.pause,
+        dash: btn(o.dash, out.dash),
+        bomb: btn(o.bomb, out.bomb),
+        pause: btn(o.pause, out.pause),
+        attack: btn(o.attack, out.attack),
+        spell: btn(o.spell, out.spell),
+        inventory: btn(o.inventory, out.inventory),
+        cycle: o.cycle !== undefined ? o.cycle | 0 : out.cycle,
+        select: o.select !== undefined ? o.select | 0 : out.select,
+        src: o.src ? { ...out.src, ...o.src } : out.src,
         mode: 'test',
       };
     }
@@ -205,14 +203,12 @@ export function createInput(canvas) {
     snapshot,
     setOverride,
     onModeChange,
-    mode() { return usingTouch ? "touch" : usingMouse ? "mouse" : usingKeyboard ? "keyboard" : ""; },
+    mode() { return usingTouch ? 'touch' : usingMouse ? 'mouse' : usingKeyboard ? 'keyboard' : ''; },
     setMode,
-    setMouseAim,
     debugKeys,
     // touch-ui.js writes into these directly:
     touch,
-    // main.js reads `mouse.active`/`mouse.x`/`mouse.y` each fixed step to
-    // compute the world-space aim direction it passes to `setMouseAim`.
+    // main.js reads the cursor (mouse.x / mouse.y, canvas buffer px) to aim the ink jet, the spell and the bomb
     mouse,
   };
 }
