@@ -15,3 +15,7 @@ Static site in `site/`, Cloud Functions in `functions/`, Firebase project `websi
 - `scripts/deploy-guard.js` still runs before every deploy (local and CI) and blocks anything that isn't master.
 
 Older Octomancer docs (`octomancer-web/OVERNIGHT.md`, `MORNING-REPORT.md`, `PLAN.md`) say that Daniel deploys by hand. That was before auto-deploy and no longer applies.
+
+## Wedding page
+
+The invite page `/svatba/` is locked behind an invite key (`?k=<key>`). The key is in the gitignored `.svatba-key` file in the repo root; the repo only holds its SHA-256 hash, and this repo is public, so never commit the key. When reporting wedding-page changes, give Daniel the unlock URLs: `http://localhost:41089/svatba/?k=<key>`, the LAN one, and `https://raccoon.website/svatba/?k=<key>`.
