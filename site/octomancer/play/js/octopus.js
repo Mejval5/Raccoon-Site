@@ -81,7 +81,7 @@ export function createOctopus(x, y) {
  * invulnerable or dead (OVERNIGHT.md M3-2: "no second loss within 1s"). */
 export function hurtOctopus(o, fromX, fromY, cause) {
   if (o.dead) return hitBody(o, fromX, fromY);
-  if (o.invulnTimer > 0) return false;
+  if (o.invulnTimer > 0 || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
   o.cause = cause || 'unknown'; // what last hurt it: the death screen names the killer (run.js CAUSE_TEXT)
   o.hearts = Math.max(0, o.hearts - 1);
   const dx = o.x - fromX, dy = o.y - fromY;
@@ -100,6 +100,7 @@ export function hurtOctopus(o, fromX, fromY, cause) {
  * body ('death' = X eyes; a special death such as 'impaled' or 'splat' registered with octopus-draw.js setRagdollPose). */
 export function killOctopus(o, cause, pose = 'death') {
   if (o.dead) { hitBody(o, o.x, o.y + 0.3); return; }
+  if (o.sealed) return; // r45: going into a whirlpool
   if (cause) o.cause = cause;
   o.hearts = 0;
   o.dead = true;
