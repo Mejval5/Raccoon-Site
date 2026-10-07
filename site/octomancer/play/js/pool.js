@@ -47,7 +47,7 @@ export function planPools(level) {
 /** Fresh state for a plan (null gives null). `chest` is where the prize chest stands once the wager is won. */
 export function createPoolState(plan) {
   if (!plan) return null;
-  return { plan, state: PL_IDLE, t: 0, outside: 0, poor: 0, seen: false, chestOpen: 0, flash: 0, rise: 0 };
+  return { plan, state: PL_IDLE, t: 0, outside: 0, poor: 0, seen: false, chestOpen: 0, flash: 0, rise: 0, hostOff: 0 };
 }
 
 /** Is a point inside the pool's room (a small margin round it)? */
@@ -70,6 +70,7 @@ export function poolStep(st, octo, shells, dt) {
   if (inPoolRoom(p, octo.x, octo.y, 0)) st.seen = true;
   switch (st.state) {
     case PL_IDLE:
+      if (st.hostOff) break; // the host is hostile, dead or gone (npcs.js): nobody takes the wager
       if (Math.hypot(octo.x - p.x, octo.y - p.y) < PAY_R) {
         if (shells >= POOL_COST) { st.state = PL_ACTIVE; st.t = POOL_SECONDS; st.outside = 0; ev.push({ type: 'paid', cost: POOL_COST }); }
         else if (st.poor <= 0) { st.poor = 1.6; st.flash = 0.5; ev.push({ type: 'poor' }); }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Octomancer tests (one module)</title>
+<style>
+  body { background:#0a1c2a; color:#baffea; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 16px; }
+  #result { white-space: pre-wrap; }
+  .pass { color:#7CFC9A; }
+  .fail { color:#ff8a8a; }
+</style>
+</head>
+<body>
+<h3>Octomancer play tests: one module</h3>
+<div id="result">running…</div>
+<script type="module">
+// Runs one test module of tests/index.html on its own (development aid, V2-PLAN 16):
+//   one.html?m=damage.test.js&fn=runDamageTests
+// The pattern table is registered first (as index.html does before the spawn tests). The full page stays the gate.
+const q = new URLSearchParams(location.search);
+const results = [];
+function assert(name, cond) { results.push({ name, pass: !!cond }); }
+function approx(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps; }
+const out = document.getElementById('result');
+try {
+  const { registerPatternTable } = await import('./patterns.test.js');
+  await registerPatternTable();
+  const mod = await import('./' + q.get('m'));
+  const fn = mod[q.get('fn')] || Object.values(mod).find((f) => typeof f === 'function' && /^run/.test(f.name));
+  await fn(assert, approx);
+} catch (e) {
+  results.push({ name: 'ERROR ' + (e && e.stack || e), pass: false });
+}
+const pass = results.filter((r) => r.pass).length;
+const lines = results.map((r) => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
+lines.push('');
+lines.push(pass === results.length ? `PASS ${pass}/${results.length}` : `FAIL ${pass}/${results.length}`);
+out.textContent = lines.join('\n');
+out.className = pass === results.length ? 'pass' : 'fail';
+</script>
+</body>
+</html>

@@ -22,7 +22,7 @@ import { DASH_KILL_SPEED } from './config.js';
 
 export const Q_RESCUE = 1, Q_VAULT = 2;
 const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT };
-export const ST_ACTIVE = 0, ST_DONE = 1;
+export const ST_ACTIVE = 0, ST_DONE = 1, ST_FAILED = 2; // failed: the person was turned on (npcs.js); no reward, no stage up
 export const RELICS_NEEDED = 3;           // relics Quill wants (story.relics counts the ones carried out through an exit)
 export const DIVER_RUNS = 3;              // runs in which Marlo must be freed before he opens the hub shortcut to 1-3
 export const CAGE_BREAK_R = 1.3;         // octopus centre to the cage centre for a dash to break it
@@ -192,6 +192,14 @@ export function createQuestState(plan) {
     clock: 0, met: false, helped: false, lastAsk: -99, leave: 0,
     talk: createTalk(),
   };
+}
+
+/** The person turned hostile (npcs.js) or died: the encounter ends with no reward and no stage up. Returns true when it was still running. */
+export function questFail(st) {
+  if (!st || st.status !== ST_ACTIVE) return false;
+  st.status = ST_FAILED; st.leave = 0;
+  st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
+  return true;
 }
 
 function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_DONE; return true; }

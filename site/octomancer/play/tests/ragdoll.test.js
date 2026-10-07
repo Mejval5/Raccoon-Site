@@ -59,6 +59,9 @@ export async function runRagdollTests(assert) {
     assert('ragdoll: ... and exitRagdoll cannot revive the dead', d.limp && d.dead);
     const s = createOctopus(5, 5); killOctopus(s, 'rock', 'splat');
     assert('ragdoll: a special death passes its own pose (splat) while the death screen keeps the killer', s.limpCause === 'splat' && s.cause === 'rock');
+    const sp = createProps(), srd = createRagdoll();
+    srd.update(s, sp);
+    assert('ragdoll: ... and a pinned death (skewered, flattened: V2-PLAN 16) gets no ragdoll body and takes no hits', s.bodyIdx === -1 && sp.count() === 0 && !hitBody(s, s.x - 1, s.y));
   }
 
   // ---- hits on the dead body: a knock, a flash, no damage, one per BODY_HIT_COOL ----

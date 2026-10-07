@@ -8,6 +8,8 @@
 // that chunk's fixed yOffset), baked in once per chunk the first time it is
 // seen, since a chunk's world position never changes after generation.
 
+import { SK_COWRIE, SK_PEARL, SHELL_VALUE } from './shells.js';
+
 const COLLECT_RADIUS = 0.55; // world units, added to the octopus's own radius
 const PLANKTON_PULL_RADIUS = 1.0; // "pulled in within 1 unit" (OVERNIGHT.md M2-3)
 const MAGNET_PULL_SPEED = 6.0; // u/s, shell magnet pull (items.js)
@@ -63,7 +65,8 @@ function buildChunkPickups(chunk, yOffset, seedSalt) {
       // `hidden` starts true and is recomputed live in `update()` below from
       // the chunk's own tile data -- so a shell only becomes visible once
       // its pocket is actually bombed open.
-      items.push({ type: 'shell', x: s.x, y: wy, hidden: true, collected: false });
+      const sk = s.sk >= SK_COWRIE && s.sk < SK_PEARL ? s.sk : SK_COWRIE; // placed shells are never pearls
+      items.push({ type: 'shell', x: s.x, y: wy, sk, value: SHELL_VALUE[sk], hidden: true, collected: false });
     } else if (s.type === 'plankton-swarm') {
       for (let i = 0; i < s.count; i++) {
         let bx = s.x, byLocal = s.y, phase = 0, found = false;
@@ -179,19 +182,19 @@ export function createPickups() {
           const d = dist(octo.x, octo.y, it.x, it.y);
           if (d < COLLECT_RADIUS + octo.radius) {
             it.collected = true;
-            if (it.type === 'shell') totals.shells++;
+            if (it.type === 'shell') totals.shells += it.value || 1;
             else if (it.type === 'plankton') totals.plankton++;
-            events.push({ type: it.type, x: it.x, y: it.y });
+            events.push(it.type === 'shell' ? { type: 'shell', x: it.x, y: it.y, value: it.value || 1, sk: it.sk || SK_COWRIE } : { type: it.type, x: it.x, y: it.y });
           }
         }
       }
     },
     events,
     /** v2: a shell dropped by a defeated creature, in the single level chunk (index 0). False before that chunk exists. */
-    dropShell(x, y, vx = 0, vy = 0) {
+    dropShell(x, y, vx = 0, vy = 0, sk = SK_COWRIE) {
       const items = byChunk.get(0);
       if (!items) return false;
-      items.push({ type: 'shell', x, y, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY });
+      items.push({ type: 'shell', x, y, sk, value: SHELL_VALUE[sk] || 1, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY });
       return true;
     },
     /** Visible, uncollected pickups in world space, for render.js. */

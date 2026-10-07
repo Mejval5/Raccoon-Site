@@ -578,3 +578,24 @@ Juice economy (Daniel, 2026-10-07): corpses leak juice, but it is collectible on
 - **Status (2026-10-08, combat and spells branch):** built. Controls as above (no mouse steering; J/K, F, B/X, Q/E, 1-9, Tab/I keyboard alternatives; a 2x2 Jet/Spell/Bomb/Dash touch block, the Jet auto-aims). Ink Jet (inkjet.js, enemies have hp in v2; urchin, horns and the Beholder are immune). Ink Cloud (spells.json row; 4 s; piranhas abort and wander, cannons cannot aim through it, crabs stop snapping, mantas sweep past; the Beholder is not fooled). Hotbar (slots hold arrays of spell ids) with the juice jar and an inventory panel (pauses, reorders). Juice: a jar of 3 casts, full at the start of a dive; corpses leak a cloudy trickle that dissolves, drinkable only with the Siphon Shell (lies on one Shallows level per dive near its start, also sold at stalls); the Still Grotto after Shallows 1-3 has a spring that refills hearts and juice and a stall. The leak comes from the enemy's death spot through main.js bodyJuice(), to be retargeted to onCorpse when physics corpses land.
 
 Portal entry (Daniel, 2026-10-07): match Unity's LevelPlayMode.AnimateOctopus/MoveOctoToExit exactly: on reaching the exit, pause physics for the octopus (velocity 0, collider off, idle animation, no input), then for 1.5 s move it toward the exit centre at OctopusAnimWinSpeed = 1 tile/s, rotate at OctopusAnimWinRotationSpeed = 720 deg/s (clockwise), scale *= (1 - 0.5*dt) per frame, while TransitionEffect.FadeoutAt(exit) runs a black-hole fade centred on the exit; then hide the octopus and finish the level. Current build jitters because physics keeps running while a hold pulls it. Scheduled for an owner right after round 44 lands (same code).
+## 16. Damage model, the Spelunky way (Daniel, 2026-10-07)
+
+Traps and creatures are told apart by how they hurt, not only by how they look. Every hazard and enemy has one tier:
+
+| Thing | Tier | Why |
+|---|---|---|
+| Spike strip (trap) | **instant**: impaled, the body stays skewered on the tips | a trap you can read from afar; Spelunky's spikes |
+| Hanging boulder landing on the octopus | **instant**: splat, flattened under it (hit-stop, heavy shake, ink and goo, chunks stick) | the rumble and dust are the warning |
+| Giant clam snapping shut with the octopus inside | **instant** | it opens, a pearl glints, the shell trembles 0.5 s first |
+| Tentacle grab not broken in time | **instant** (pulled into its shell) | the grab itself can be escaped |
+| Beholder | **instant** (unchanged) | the level clock |
+| Manta dive slam | **incapacitation** (1 heart, about 1.25 s limp) | a heavy body falling on you knocks you out |
+| Electric eel shock | **incapacitation** (1 heart, about 1 s limp) | a shock paralyses |
+| Tentacle grab | **held**: no control, dragged to the shell, dies unless it breaks free (3 dash struggles, ink hits on the tentacle, or a bomb) | the grab before the kill |
+| Piranha, crab, urchin, horned growth, cannon shot, anemone, trapped-chest spikes, relic and pool chase stones, Pip / Quill / pool host bites | **one hit**: 1 heart, strong knockback (9 u/s) | creatures that bite or sting |
+| Marlo's harpoon (aggroed) | **heavy hit**: 2 hearts, 13 u/s knockback, after a 0.7 s aim line | a weapon, telegraphed |
+| Current jet | no damage; pushes **up only** | paired with ceiling spikes only where 5+ tiles of clear water leave room to dash out |
+
+Incapacitation: the octopus loses control, the body goes limp (sinks, bounces off rock, tumbles), rights itself in the last 0.35 s, then has 0.5 s of grace. Chosen for the manta slam (a heavy body), the eel (a shock) and the tentacle (held, not limp). Ordinary bites stay one hit so most fights keep their pace.
+
+Also in this pass: giant clams (pearl = 30, the top currency find), Milan's Clamissaint as the tentacle (dormant until you come near), killable and aggroable NPCs (Marlo with a harpoon gun; Pip, Quill and the pool host bite; a killed person is gone until the end of the next dive, Marlo's 1-3 shortcut with him; the shopkeeper belongs to the Shop owner and our hits call `shopAggro`), physics corpses for every enemy and person (no drops from enemies; `setCorpseHook` lets fish juice leak from them), and currency shells by value: cowrie 1, conch 5, nautilus 15, pearl 30.

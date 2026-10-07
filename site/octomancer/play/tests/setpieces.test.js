@@ -67,7 +67,7 @@ export async function runSetPieceTests(assert) {
       const urchins = sp.filter((r) => r.type === 'enemy-slot' && r.kind === 'urchin' && inr(r)).length;
       const others = sp.filter((r) => r.type === 'enemy-slot' && r.kind !== 'urchin' && inr(r)).length;
       (stats[kind] || (stats[kind] = [])).push({
-        far, jets: jets.length, alt: jets.length >= 2 && jets.some((j) => j.dy > 0) && jets.some((j) => j.dy < 0), urchins, others,
+        far, jets: jets.length, alt: jets.length >= 2 && jets.every((j) => j.dy < 0 && j.dx === 0), urchins, others,
         wreck: sp.filter((r) => r.type === 'decor' && r.dk === 'wreck' && inr(r)).length,
         chest: sp.filter((r) => r.type === 'loot' && r.lk === LK_CHEST && inr(r)).length,
         pots: sp.filter((r) => r.type === 'loot' && r.lk === LK_POT && inr(r)).length,
@@ -77,7 +77,7 @@ export async function runSetPieceTests(assert) {
   const g = stats[SET_GAUNTLET], ga = stats[SET_GARDEN], w = stats[SET_WRECK];
   assert(`set pieces turn up in 120 seeds x 3 levels (${g.length} gauntlets, ${ga.length} gardens, ${w.length} wrecks reachable)`, g.length > 30 && ga.length > 30 && w.length > 30);
   const gf = g.filter((x) => x.far);
-  assert(`gauntlet: 3+ jets, ceiling and floor both, in every room away from the start / exit (${gf.filter((x) => x.jets >= 3 && x.alt).length}/${gf.length}); never fewer than 2 (${Math.min(...g.map((x) => x.jets))})`,
+  assert(`gauntlet: 3+ jets, all on the floor pointing up (V2-PLAN 16), in every room away from the start / exit (${gf.filter((x) => x.jets >= 3 && x.alt).length}/${gf.length}); never fewer than 2 (${Math.min(...g.map((x) => x.jets))})`,
     gf.length > 20 && gf.every((x) => x.jets >= 3 && x.alt) && g.every((x) => x.jets >= 2));
   // r39: a few gardens lose a bed or two to their neighbours (the bank grew a room and the levels shifted: 1 of 62 has 2)
   assert(`garden: 3+ urchins in nearly every room (${ga.filter((x) => x.urchins >= 3).length}/${ga.length}; fewest ${Math.min(...ga.map((x) => x.urchins))}, never fewer than 2) and no other enemy in the room`,

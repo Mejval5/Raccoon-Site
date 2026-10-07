@@ -30,6 +30,13 @@ function fake(rows) {
   return world;
 }
 const rec = (world, name, x, y, dx = 0, dy = 0) => makeHazardRecord(name, x, y, dx, dy, world.tiles, world.w, world.h);
+/** A jet record built by hand (any facing): the physics still runs along dx, dy; only makeHazardRecord refuses a non-up jet. */
+function setupJet(world, x, y, dx, dy, len, octoX, octoY) {
+  const hz = createHazards();
+  const r = { type: 'hazard', hk: HZ_JET, x: x - dx * 0.5, y: y - dy * 0.5, dx, dy, len };
+  hz.add(r);
+  return { hz, r, octo: createOctopus(octoX, octoY) };
+}
 function setup(world, name, x, y, dx, dy, octoX, octoY) {
   const hz = createHazards();
   const r = rec(world, name, x, y, dx, dy);
@@ -62,12 +69,12 @@ export async function runHazardTests(assert) {
   {
     const open = fake(['##########', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '##########']);
     assert('records: a jet needs room for its stream (4+ tiles) and a rock needs a 3+ tile drop',
-      rec(open, 'jet', 1.5, 3.5, 1, 0) !== null && rec(open, 'jet', 1.5, 3.5, 1, 0).len === 7 &&
-      rec(fake(['#####', '#..##', '#####']), 'jet', 1.5, 1.5, 1, 0) === null &&
+      rec(open, 'jet', 4.5, 7.5, 0, -1) !== null && rec(open, 'jet', 4.5, 7.5, 0, -1).len === 7 && rec(open, 'jet', 1.5, 3.5, 1, 0) === null &&
+      rec(fake(['#####', '#..##', '#####']), 'jet', 1.5, 1.5, 0, -1) === null &&
       rec(open, 'rock', 4.5, 1.5, 0, 1) !== null && rec(open, 'rock', 4.5, 1.5, 0, 1).landY === 7.5 &&
       rec(open, 'rock', 4.5, 6.5, 0, 1) === null);
-    const jr = rec(open, 'jet', 1.5, 3.5, 1, 0);
-    assert('records: a jet sits on the wall face (mouth half a tile behind the anchor cell)', jr.x === 1 && jr.y === 3.5 && jr.dx === 1);
+    const jr = rec(open, 'jet', 4.5, 7.5, 0, -1);
+    assert('records: a jet sits on the floor face (mouth half a tile below the anchor cell) and points up', jr.x === 4.5 && jr.y === 8 && jr.dx === 0 && jr.dy === -1);
     const shaft = fake(['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '#...#']);
     const er = rec(shaft, 'eel', 2.5, 3.5, 0, 0);
     assert(`records: an eel patrols the shaft between its ends (${er && er.y0.toFixed(1)}..${er && er.y1.toFixed(1)})`, er && er.y0 === 1.1 && er.y1 === 6.9 || er && er.y1 - er.y0 >= 4);
@@ -83,7 +90,7 @@ export async function runHazardTests(assert) {
   // ---- current jet: pushes along the stream, no damage ----
   {
     const w = fake(['####################', '#..................#', '#..................#', '#..................#', '#..................#', '####################']);
-    const { hz, r, octo } = setup(w, 'jet', 1.5, 2.5, 1, 0, 6.5, 2.5);
+    const { hz, r, octo } = setupJet(w, 1.5, 2.5, 1, 0, 7, 6.5, 2.5);
     const len0 = r.len;
     let vmax = 0;
     run(hz, octo, w, 1.5, () => { vmax = Math.max(vmax, octo.vx); });
@@ -110,19 +117,19 @@ export async function runHazardTests(assert) {
     const w = fake(['##########', '#........#', '#........#', '#........#', '#........#', '#........#', '##########']);
     const a = setup(w, 'spikes', 1.5, 3.5, 1, 0, 1.6, 3.5);
     run(a.hz, a.octo, w, 0.1);
-    assert('spikes: touching the strip costs a heart and knocks the octopus away', a.octo.hearts === 2 && a.octo.vx > 0 && a.hz.events.length <= 1);
+    assert('spikes: touching the strip kills outright (V2-PLAN 16: impaled, see damage.test.js)', a.octo.dead && a.octo.deathStyle === 'impale');
     const first = a.octo.hearts;
     run(a.hz, a.octo, w, 0.3, () => { a.octo.x = 1.6; a.octo.y = 3.5; });
-    assert('spikes: the hurt invulnerability still applies (no second heart within a second)', a.octo.hearts === first);
+    assert('spikes: the dead body stays pinned', a.octo.hearts === 0 && a.octo.dead);
     const far = setup(w, 'spikes', 1.5, 3.5, 1, 0, 3.0, 3.5);
     run(far.hz, far.octo, w, 0.5);
     const beside = setup(w, 'spikes', 1.5, 3.0, 1, 0, 1.6, 6.0 - 0.1);
     beside.octo.y = 5.3; // past the 3 tile strip
     run(beside.hz, beside.octo, w, 0.3);
     assert('spikes: two tiles off the face, or past the end of the strip, is safe', far.octo.hearts === 3 && beside.octo.hearts === 3);
-    const floor = setup(fake(['#####', '#...#', '#...#', '#...#', '#####']), 'spikes', 2.5, 3.5, 0, -1, 2.5, 3.2);
+    const floor = setup(fake(['#####', '#...#', '#...#', '#...#', '#####']), 'spikes', 2.5, 3.5, 0, -1, 2.5, 3.4);
     run(floor.hz, floor.octo, floor.hz && fake(['#####', '#...#', '#...#', '#...#', '#####']), 0.1);
-    assert('spikes: a floor strip hurts too', floor.octo.hearts === 2);
+    assert('spikes: a floor strip kills too', floor.octo.dead);
   }
 
   // ---- falling rock ----
@@ -159,7 +166,7 @@ export async function runHazardTests(assert) {
     run(u.hz, u.octo, u.w, 2, (i) => { if (u.hz.data.state[0] < 3) { u.octo.x = 4.5; u.octo.y = 7.0; u.octo.vx = u.octo.vy = 0; } });
     assert('rock: it hurts the octopus it falls on', u.octo.hearts <= 2);
     // landing on top of the octopus waits until it swims clear
-    const p = mk(4.5, 8.6);
+    const p = mk(4.5, 8.6); p.octo.noKill = true; // the test hook: a boulder dropped on it is only a (blocked) hit, so it can wait
     run(p.hz, p.octo, p.w, 1.6, () => { p.octo.x = 4.5; p.octo.y = 8.5; p.octo.vx = p.octo.vy = 0; p.octo.invulnTimer = 5; });
     const waited = p.hz.data.state[0] === 4 && p.w.placed.length === 0;
     run(p.hz, p.octo, p.w, 0.5, () => { p.octo.x = 8.5; p.octo.y = 4; });

@@ -9,7 +9,7 @@ export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
 export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
-export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_COUNT = 4;
+export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_COUNT = 5;
 
 export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
@@ -21,7 +21,7 @@ export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard:
  * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][], story:any}[]}
  */
 export const ENTRIES = [];
-const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED };
+const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, angered: STAT_ANGERED };
 {
   const res = await fetch(new URL('../data/journal.json', import.meta.url));
   if (!res.ok) throw new Error('journal.json ' + res.status);
@@ -52,6 +52,7 @@ export function causeEntryId(cause) {
   if (cause === 'shot') return 'creature-cannon';
   if (cause === 'bomb') return 'item-bomb';
   if (cause === 'chest') return 'loot-chest';
+  if (cause === 'clam') return 'creature-gclam';
   if (cause === 'shopkeeper') return 'person-keeper';
   for (const pre of ['creature-', 'hazard-']) if (INDEX.has(pre + cause)) return pre + cause;
   return null;
@@ -125,7 +126,7 @@ export function createJournal(store) {
     stat(id, stat) { const i = INDEX.get(id); return i === undefined ? 0 : stats[i * STAT_COUNT + stat]; },
     /** Write pending counter changes to the store. */
     flush() { if (dirty) persistStats(); },
-    /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected], in ENTRIES order. */
+    /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected, angered], in ENTRIES order. */
     list(cat) {
       const out = [];
       for (let i = 0; i < ENTRIES.length; i++) {
@@ -164,7 +165,10 @@ export function counterRows(e) {
 export function storyLines(e, flags) {
   if (!e || !e.story) return [];
   const n = e.story.key ? Math.max(0, Math.floor(Number(flags && flags[e.story.key]) || 0)) : 0;
-  return e.story.lines.filter((l) => n >= l[0]).map((l) => l[1]);
+  const out = e.story.lines.filter((l) => n >= l[0]).map((l) => l[1]);
+  // V2-PLAN 16: lines for what you did to them (`extra`: [flag, text]), shown once the flag counts at least one
+  if (e.story.extra) for (const x of e.story.extra) if ((Number(flags && flags[x[0]]) || 0) > 0) out.push(x[1]);
+  return out;
 }
 
 /** Completion: overall and per tab, from the journal's found counts. {found, total, pct, tabs:[{id, title, found, total, pct}]} */
