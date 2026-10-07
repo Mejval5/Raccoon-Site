@@ -10,6 +10,8 @@
 // `?octo=code` keeps the M1 code-drawn placeholder (below) as the fallback,
 // and the placeholder is also what renders until the bake has loaded.
 
+import { sharedCanvas } from './canvas-pool.js';
+
 const TENTACLE_COUNT = 8;
 const BODY = '#c05060';
 const SHADE = '#904050';
@@ -305,7 +307,7 @@ let compositeCanvas = null;
 let compositeCtx = null;
 function getCompositeCtx(w, h) {
   if (!compositeCanvas) {
-    compositeCanvas = document.createElement('canvas');
+    compositeCanvas = sharedCanvas(document.createElement('canvas'));
     compositeCtx = compositeCanvas.getContext('2d');
   }
   if (compositeCanvas.width !== w || compositeCanvas.height !== h) {

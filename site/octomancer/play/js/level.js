@@ -608,12 +608,25 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
       }
       cands.sort((p, q) => p[0] - q[0]);
       let best = null;
-      for (let k = 0; k < cands.length && k < 6 && !best; k++) {
+      for (let k = 0; k < cands.length && k < 40 && !best; k++) {
         const [, x, y] = cands[k];
         if (fatWaterSolvable(tiles, sx, sy, x, y) && finalPathOk(tiles, sx, sy, x, y, shop)) best = [x, y];
       }
       ey = ey1;
       if (best) { ex = best[0]; ey = best[1]; }
+      else if (!(shop && ex + 2 > shop.x0 && ex - 1 < shop.x1 && ey + 2 > shop.y0 && ey - 1 < shop.y1) && !inSetPiece(ex, ey)) {
+        // r42: no flat 3-tile floor within reach that the start can swim to (the exit room is a dead end at a map edge):
+        // build one at the exit itself, a shelf of rock under ex-1..ex+1 and water over it, and keep it only if still solvable
+        const nx = Math.min(Math.max(ex, BORDER + 1), LEVEL_W - BORDER - 2);
+        const saved = [];
+        for (let dx = -1; dx <= 1; dx++) for (const [yy, v] of [[ey, 0], [ey + 1, 1]]) {
+          const i = yy * LEVEL_W + nx + dx;
+          if (isBedrock(nx + dx, yy)) continue;
+          saved.push([i, tiles[i]]); tiles[i] = v;
+        }
+        if (supported(nx) && fatWaterSolvable(tiles, sx, sy, nx, ey) && finalPathOk(tiles, sx, sy, nx, ey, shop)) { ex = nx; fillSealedHoles(tiles, sx, sy, pockets, nPockets); }
+        else for (const [i, v] of saved) tiles[i] = v;
+      }
     }
   }
   if (ey !== ey0 || ex !== ex0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex0 && marks[i * 3 + 1] === ey0) { marks[i * 3] = ex; marks[i * 3 + 1] = ey; }

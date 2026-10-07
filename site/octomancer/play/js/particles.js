@@ -5,19 +5,21 @@
 // pushing, and `update()` mutates in place.
 
 import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
+import { offScreenFar } from './cull.js';
 
 const POOL_SIZE = 256;
 
 export function createParticles() {
   const pool = new Array(POOL_SIZE);
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff' };
+    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1 };
   }
   let cursor = 0;
   let shake = 0; // current screen-shake magnitude, world units (endless)
   let fxAmp = 0, fxT = 0, fxDur = SHAKE_DURATION; // v2 feel shake: peak amplitude (px), time left (s) and the duration it was started with
 
   function spawnOne(x, y, vx, vy, life, size, color) {
+    if (offScreenFar(x, y, 2)) return; // r43: nothing is spawned far off screen (AnimationLOD: the particles are switched off with the renderer)
     const p = pool[cursor];
     cursor = (cursor + 1) % POOL_SIZE; // ring buffer: oldest slot is reused first
     p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;

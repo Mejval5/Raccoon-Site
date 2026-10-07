@@ -155,8 +155,11 @@ export function setMotionSettings(reduced, shake) { motion.reduced = reduced ===
 export function shakeEnabled() { return motion.shake; }
 
 /** The OS preference alone, ignoring the player's setting (the settings panel shows it as the default). */
+let reducedMql = null, reducedFn = null; // r43: one MediaQueryList (its .matches is live); a matchMedia() call per use cost 44 ms over 4 transitions at 4x throttle
 export function osPrefersReducedMotion() {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof matchMedia !== 'function') return false;
+  if (!reducedMql || reducedFn !== matchMedia) { reducedFn = matchMedia; reducedMql = matchMedia('(prefers-reduced-motion: reduce)'); }
+  return reducedMql.matches;
 }
 
 /** One `matchMedia` query, reused by every M7 juice effect (and the M3

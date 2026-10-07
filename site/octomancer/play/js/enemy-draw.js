@@ -6,6 +6,7 @@
 // ... explosion, particles").
 
 import { BOMB_RADIUS } from './config.js';
+import { visibleObj, cullView } from './cull.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -224,8 +225,10 @@ function drawBarrel(ctx, sx, sy, ppu, e, time) {
 
 export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha = 1) {
   const ppu = camera.pxPerUnit;
+  cullView(camera, canvasW, canvasH);
   for (const e of enemies) {
     if (e.dead) continue;
+    if (!visibleObj(e, e.x, e.y, 3)) continue; // r43: far from the camera it is not animated or drawn (its AI and collisions run in enemies.js)
     const { x: ex, y: ey } = interpPos(e, alpha);
     const fl = flashOf(e, time);
     const tell = e.tell || 0;
@@ -292,6 +295,7 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
   }
   for (const s of shots) {
     if (s.dead) continue;
+    if (!visibleObj(s, s.x, s.y, 1)) continue;
     const angle = Math.atan2(s.vy, s.vx);
     const img = s.radius > 0.23 ? shotImg : mantaBallImg;
     drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, s.x, s.y, 0.4, angle, 0);
@@ -412,8 +416,10 @@ function drawBlast(ctx, x, y, R, t) {
 }
 
 export function drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particlePool) {
+  cullView(camera, canvasW, canvasH);
   for (const p of particlePool) {
     if (!p.active) continue;
+    if (!visibleObj(p, p.x, p.y, 0.5)) continue; // r43
     const s = worldToScreen(camera, canvasW, canvasH, p.x, p.y);
     const alpha = Math.max(0, p.life / p.maxLife);
     ctx.save();

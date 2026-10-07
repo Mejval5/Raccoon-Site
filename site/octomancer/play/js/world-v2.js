@@ -42,12 +42,14 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   // opts.level: a prebuilt level (authored hub / tutorial from authored.js, any size);
   // otherwise one is generated (34x68).
   const authored = !!(opts && opts.level);
-  const level = authored ? opts.level : generateLevel(runSeed, levelIndex);
+  // r43: opts.generated / opts.spawnInfo let a caller do the two expensive steps (generateLevel, buildLevelSpawns) in tasks of
+  // their own and pass the results in; the world is the same either way
+  const level = authored ? opts.level : (opts && opts.generated) || generateLevel(runSeed, levelIndex);
   const tiles = level.tiles;
   const W = level.w || LEVEL_W, H = level.h || LEVEL_H;
   const bedrock = (x, y) => x < BORDER || x >= W - BORDER || y < BORDER || y >= H - BORDER;
   const startX = level.startX + 0.5, startY = level.startY + 0.5;
-  const spawnInfo = authored ? { spawns: level.spawns || [] } : buildLevelSpawns(level, runSeed, levelIndex);
+  const spawnInfo = authored ? { spawns: level.spawns || [] } : (opts && opts.spawnInfo) || buildLevelSpawns(level, runSeed, levelIndex);
   const chunk = {
     tiles, width: W, height: H, spawns: spawnInfo.spawns, dirty: true,
     exclude: authored ? undefined : { x: startX, y: startY, r: START_SAFE_RADIUS },

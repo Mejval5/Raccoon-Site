@@ -59,7 +59,9 @@
 // flat at this art style's resolution; a loud grain was fighting the video
 // look as much as the wrong base colour was.
 
-import { updateCamera, worldToScreen } from './camera.js';
+import { updateCamera, worldToScreen, computePxPerUnit } from './camera.js';
+import { acquireCanvas, releaseCanvas, sharedCanvas } from './canvas-pool.js';
+import { visibleAt, visibleObj, cullFlags, cullFrame, cullEnd } from './cull.js';
 import { drawOctopus } from './octopus-draw.js';
 import { depthTint, findPlantAnchors, findClusterMates } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
@@ -80,7 +82,11 @@ const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 // already `32 x 24` tiles).
 export const WALL_BAND_PX = 512; // v2 wall cache band height, baked px
 const ROCK_TEX_ALPHA = 0.8; // v2 rock texture strength over the flat fill
-const BAKE_PX_PER_UNIT = Math.min(96, Math.round(48 * (typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1)));
+// r43: the bake resolution follows the screen the walls are drawn on (about one baked pixel per screen pixel), not the device pixel
+// ratio: DPR 3 baked at 96 px/unit although the phone canvas shows 62, and every canvas was 2.4 times bigger than it could be seen.
+const BAKE_MIN = 24, BAKE_MAX = 96;
+const MAX_CELL_TILES = 8;
+function bakeFor(ppu) { return Math.max(BAKE_MIN, Math.min(BAKE_MAX, Math.round(ppu))); }
 
 // The cave silhouette fades out by this world depth, below which the deep
 // gradient (plus the existing depth tint / caustics / vignette) carries the
@@ -108,16 +114,55 @@ function loadImage(src) {
 
 /** r41: free a canvas's backing store at once (setting the size to 0 releases the bitmap without waiting for the GC). */
 function freeCanvas(c) { if (c) { c.width = 0; c.height = 0; } }
-/** Empty a Map of baked canvases (the value is a canvas or {canvas}). */
+/** Empty a Map of baked canvases (the value is a canvas or {canvas}): each goes back to the pool (or is freed at once). */
 function releaseCanvases(map) {
-  for (const v of map.values()) freeCanvas(v && v.canvas ? v.canvas : v);
+  for (const v of map.values()) releaseCanvas(v && v.canvas ? v.canvas : v);
   map.clear();
 }
 
-let sharedRock = null; // {px, canvas, pattern}: see createRenderer
+const NOISE_TEX_PX = 384; // the rock grain texture: 8 tiles at 48 px, scaled to the bake size by a pattern transform
+let sharedRock = null; // {px, canvas, pattern}: built once per page, see createRenderer
+// r43: images and tiny tinted sprites every level shares, made once per page (a renderer per level used to make its own)
+let sharedArt = null; // {plants, clusterBush, shellImgs, noise, deepTint}
+function getSharedArt() {
+  if (sharedArt) return sharedArt;
+  const noise = sharedCanvas(document.createElement('canvas'));
+  noise.width = noise.height = 128;
+  const nctx = noise.getContext('2d');
+  const img = nctx.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 10 + Math.random() * 18; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  nctx.putImageData(img, 0, 0);
+  sharedArt = {
+    plants: [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))],
+    // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates only (reuses decor.js's bush2 art)
+    clusterBush: loadImage(ASSET('decor-bush2.webp')),
+    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')) },
+    noise,
+    deepTint: null,
+  };
+  return sharedArt;
+}
+const DEEP_FOLIAGE = 'rgba(24,78,98,0.85)';
+/** The two plant sprites tinted dark teal for the deep rock (65 x 256 each), once per page. */
+function deepTintOf(plants) {
+  const sa = getSharedArt();
+  if (sa.deepTint) return sa.deepTint;
+  if (!plants.every((im) => im.complete && im.naturalWidth)) return null;
+  sa.deepTint = plants.map((img) => {
+    const t = sharedCanvas(document.createElement('canvas')); t.width = img.naturalWidth; t.height = img.naturalHeight;
+    const tg = t.getContext('2d'); tg.drawImage(img, 0, 0);
+    tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = DEEP_FOLIAGE; tg.fillRect(0, 0, t.width, t.height);
+    return t;
+  });
+  return sa.deepTint;
+}
 
 export function createRenderer(ctx, world) {
   let disposed = false; // set by dispose(): late image loads then build nothing
+  const sa = getSharedArt();
+  // r43: bake px per world unit, from the size of the screen this renderer draws to (re-checked on a resize, see syncBake)
+  const screenPpu = () => (ctx.canvas && ctx.canvas.width > 0 && ctx.canvas.height > 0 ? computePxPerUnit(ctx.canvas.width, ctx.canvas.height) : 48);
+  let BAKE_PX_PER_UNIT = bakeFor(screenPpu());
   // Wall rendering (round-7 rewrite -- Daniel's screenshot review round 6,
   // item 1/2/6): walls used to be assembled from Milan's per-tile marching-
   // squares tileset (`play/assets/tiles/tile-*.webp`, picked by
@@ -146,7 +191,7 @@ export function createRenderer(ctx, world) {
   // values above them in history, just per this round's review.
   const WALL_FILL_COLOR = [58, 84, 142]; // lighter slate-blue (was [34,56,112])
   const RIM_TARGET = [70, 205, 165]; // brighter mint-green rim (was [25,109,94])
-  const caveArt = loadImage(ASSET('bg-cave.webp'));
+  const caveArt = world.v2 ? null : loadImage(ASSET('bg-cave.webp')); // r43: the v2 game draws its own backdrop layers; the 2560 x 1440 cave art (a 15 MB canvas once feathered) is endless-only
   // Feathered once the source image loads: the raw art is a bright cave
   // mouth on a big flat near-black rectangle, and even under a 'screen'
   // blend that flat area is dark-teal (not literal black), so drawing it
@@ -154,11 +199,10 @@ export function createRenderer(ctx, world) {
   // screenshot review). Baking a vertical fade into an offscreen copy once,
   // instead of redoing the gradient every frame, keeps this cheap.
   let caveArtFeathered = null;
-  caveArt.addEventListener('load', () => {
+  if (caveArt) caveArt.addEventListener('load', () => {
     if (disposed) return;
-    const fc = document.createElement('canvas');
-    fc.width = caveArt.naturalWidth;
-    fc.height = caveArt.naturalHeight;
+    const fk = Math.min(1, 1024 / caveArt.naturalWidth); // r43: feathered at no more than 1024 px wide (it is drawn blurred and faded)
+    const fc = acquireCanvas(Math.round(caveArt.naturalWidth * fk), Math.round(caveArt.naturalHeight * fk));
     const fctx = fc.getContext('2d');
     // Round-6 fix (reviewer leftover, task 6): "shows hard-edged ghost
     // silhouettes (chest, tentacle) in open water: blur it". The source art
@@ -170,8 +214,8 @@ export function createRenderer(ctx, world) {
     // bake time (native resolution, before the radial feather below, so the
     // feather's own edge stays soft too) reads as "distant/out of focus"
     // instead.
-    fctx.filter = 'blur(10px)';
-    fctx.drawImage(caveArt, 0, 0);
+    fctx.filter = `blur(${Math.max(2, Math.round(10 * fk))}px)`;
+    fctx.drawImage(caveArt, 0, 0, fc.width, fc.height);
     fctx.filter = 'none';
     fctx.globalCompositeOperation = 'destination-in';
     // A radial fade (rather than a vertical one) so every edge -- top,
@@ -188,7 +232,7 @@ export function createRenderer(ctx, world) {
     fctx.fillRect(0, 0, fc.width, fc.height);
     caveArtFeathered = fc;
   }, { once: true });
-  const plants = [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))];
+  const plants = sa.plants;
   // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates
   // only (never the primary anchor sprite, so `findPlantAnchors`'s own
   // solid/open checks -- which only know about the plant1/2 silhouette's
@@ -196,15 +240,12 @@ export function createRenderer(ctx, world) {
   // existing `bush2` art (already vetted floor-only, round-4/5/7 notes in
   // decor.js), not new art, so a floor cluster can mix a bush in alongside
   // the vine/frond plants per the brief ("clusters of 2-4 mixed items").
-  const clusterBush = loadImage(ASSET('decor-bush2.webp'));
-  const shellImgs = {
-    blue: loadImage(ASSET('shell-blue.webp')),
-    green: loadImage(ASSET('shell-green.webp')),
-    red: loadImage(ASSET('shell-red.webp')),
-  };
+  const clusterBush = sa.clusterBush;
+  const shellImgs = sa.shellImgs;
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
-  if (world.v2) world.configureBands(Math.max(2, Math.round(WALL_BAND_PX / BAKE_PX_PER_UNIT)));
+  const cellTiles = () => Math.max(2, Math.min(MAX_CELL_TILES, Math.round(WALL_BAND_PX / BAKE_PX_PER_UNIT))); // r43: wall cells are this many tiles square (about 512 px, at most 8 tiles: never wider than the screen)
+  if (world.v2) world.configureBands(cellTiles());
 
   // --- Per-chunk baked wall cache, rebaked only when a chunk's tiles change
   // (bomb breaks) or when it is seen for the first time. ---
@@ -265,7 +306,7 @@ export function createRenderer(ctx, world) {
   // across a chunk canvas, and across chunk boundaries stacked in world
   // space, lines up exactly with no seam and no per-chunk offset needed.
   const NOISE_FIELD_TILES = 8; // world tiles per noise repeat (divides 32x24)
-  const NOISE_FIELD_PX = NOISE_FIELD_TILES * BAKE_PX_PER_UNIT;
+  const NOISE_FIELD_PX = NOISE_TEX_PX; // r43: a fixed texture (8 tiles at 48 px), scaled to the bake size when it is painted
   const NOISE_BASE_FREQ = 6; // lattice cells across one repeat, octave 0
   const NOISE_OCTAVES = 4;
   const NOISE_LACUNARITY = 2;
@@ -348,6 +389,7 @@ export function createRenderer(ctx, world) {
   // rock grain/cracks up close instead of a near-flat tint.
   if (noiseField) {
     const canvas = buildNoiseTexture(noiseField, NOISE_FIELD_PX, [12, 24, 58], [92, 128, 205], 0.22);
+    sharedCanvas(canvas);
     sharedRock = { px: NOISE_FIELD_PX, canvas, pattern: document.createElement('canvas').getContext('2d').createPattern(canvas, 'repeat') };
   }
   const rockNoiseCanvas = sharedRock.canvas;
@@ -377,20 +419,22 @@ export function createRenderer(ctx, world) {
   // Paints a seamless noise pattern onto already-opaque wall pixels only
   // (`source-atop`), offset so it tiles across chunk boundaries in world
   // space -- see the NOISE_FIELD_TILES comment above.
-  function paintNoise(bctx, entry, pattern, canvas, rectX, rectY, rectW, rectH) {
+  // r43: the grain is one fixed texture; a pattern transform scales it to the bake size and puts its origin at world (0, 0), so
+  // cells, chunks and caps baked at different offsets still continue it.
+  function paintNoise(bctx, xTiles, yTiles, rectW, rectH) {
+    const k = (NOISE_FIELD_TILES * BAKE_PX_PER_UNIT) / rockNoiseCanvas.width;
+    if (rockNoisePattern.setTransform) rockNoisePattern.setTransform(new DOMMatrix([k, 0, 0, k, -xTiles * BAKE_PX_PER_UNIT, -yTiles * BAKE_PX_PER_UNIT]));
     bctx.save();
     bctx.globalCompositeOperation = 'source-atop';
-    const offPx = ((entry.yOffset * BAKE_PX_PER_UNIT) % canvas.height + canvas.height) % canvas.height;
-    bctx.translate(0, -offPx);
-    bctx.fillStyle = pattern;
-    bctx.fillRect(rectX, rectY + offPx, rectW, rectH);
+    bctx.fillStyle = rockNoisePattern;
+    bctx.fillRect(0, 0, rectW, rectH);
     bctx.restore();
   }
 
   // Shared wall-art pass: fill + rim from already-px loops, clipped to the
   // canvas, then the seamless noise grain. `yOffsetTiles` is the world row
   // the canvas top sits at (so the noise tiles across neighbouring canvases).
-  function paintWallCanvas(canvas, loops, yOffsetTiles) {
+  function paintWallCanvas(canvas, loops, yOffsetTiles, xOffsetTiles = 0) {
     const bctx = canvas.getContext('2d');
     const s = BAKE_PX_PER_UNIT;
     bctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -426,7 +470,7 @@ export function createRenderer(ctx, world) {
       const pat = bctx.createPattern(rockImg, 'repeat');
       if (pat && pat.setTransform) {
         const k = (ROCK_TILE_UNITS * s) / rockImg.naturalWidth;
-        pat.setTransform(new DOMMatrix([k, 0, 0, k, 0, -yOffsetTiles * s]));
+        pat.setTransform(new DOMMatrix([k, 0, 0, k, -xOffsetTiles * s, -yOffsetTiles * s]));
         bctx.save();
         bctx.globalAlpha = ROCK_TEX_ALPHA;
         bctx.fillStyle = pat;
@@ -450,16 +494,14 @@ export function createRenderer(ctx, world) {
     //
     // Surface texture pass, baked once here (never per-frame): the seamless
     // fBm field masked onto every opaque wall pixel via source-atop.
-    paintNoise(bctx, { yOffset: yOffsetTiles }, rockNoisePattern, rockNoiseCanvas, 0, 0, canvas.width, canvas.height);
+    paintNoise(bctx, xOffsetTiles, yOffsetTiles, canvas.width, canvas.height);
   }
 
   function bakeChunkWalls(entry) {
     const { chunk } = entry;
     let canvas = wallCache.get(entry.index)?.canvas;
     if (!canvas) {
-      canvas = document.createElement('canvas');
-      canvas.width = chunkW * BAKE_PX_PER_UNIT;
-      canvas.height = chunkH * BAKE_PX_PER_UNIT + 2 * CHUNK_MARGIN_PX;
+      canvas = acquireCanvas(chunkW * BAKE_PX_PER_UNIT, chunkH * BAKE_PX_PER_UNIT + 2 * CHUNK_MARGIN_PX);
     }
     const loops = chunkLoopsPx(entry, BAKE_PX_PER_UNIT);
     for (const loop of loops) for (const pt of loop) pt.y += CHUNK_MARGIN_PX;
@@ -467,66 +509,108 @@ export function createRenderer(ctx, world) {
     wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
   }
 
-  // --- v2 single-level walls (world-v2.js): the wall art is cached in
-  // horizontal bands of about WALL_BAND_PX baked pixels. Only the bands on
-  // screen plus one on each side stay cached (`wallBandWindow`); a bomb
-  // rebakes just the bands whose outline changed, at most one per frame
-  // beyond the ones needed on screen, so no single frame pays for a whole
-  // blast crossing several bands.
-  const bandCache = new Map(); // band -> {canvas, version}
+  // --- v2 single-level walls (world-v2.js): the wall art is cached in CELLS, a band of rows (about WALL_BAND_PX baked
+  // pixels tall) cut into columns of the same width, so a cell is about 512 x 512 baked pixels. r43: until now a band was as
+  // wide as the whole level (3264 or 6144 x 480 px, 6-12 MB each, seven of them live, a whole new set per level), which on a
+  // phone made the transition spike by 100 MB. Now only the cells on the screen and a one-cell ring round them are live, they
+  // come from the canvas pool (the previous level's cells are reused), and baking is budgeted: at most BAKE_BUDGET_MS per frame
+  // (always at least one missing cell on screen), the ring one cell per frame when nothing on screen was missing. A bomb
+  // rebakes only the cells of the bands whose outline changed, on the same budget.
+  const CELL_KEY = 4096; // key = band * CELL_KEY + column
+  const BAKE_BUDGET_MS = 8;
+  const bandCache = new Map(); // key -> {canvas, version}
   const onArt = (key) => { if (key === 'rock') releaseCanvases(bandCache); }; // bake with the texture once it is there
   if (world.v2) ensureV2Art(onArt);
   let bandBakes = 0; // total bakes, for tests / perf checks
-  let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single band bake
-  function bandLoopsPx(bi, y0) {
+  let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single cell bake
+  let wallsReady = false; // every cell on screen is baked (the level may fade in)
+  function bandLoopsPx(bi, y0, x0) {
     const outline = world.getWallOutline(bi);
     if (!outline) return [];
     const s = BAKE_PX_PER_UNIT;
-    return outline.loops.map((loop) => loop.map((p) => ({ x: p.x * s, y: (p.y - y0) * s })));
+    return outline.loops.map((loop) => loop.map((p) => ({ x: (p.x - x0) * s, y: (p.y - y0) * s })));
   }
-  function bakeBand(bi) {
-    const rows = world.bandRows, y0 = bi * rows, h = Math.min(rows, world.height - y0);
-    let entry = bandCache.get(bi);
+  function bakeCell(bi, ci) {
+    const rows = world.bandRows, cols = cellTiles();
+    const y0 = bi * rows, h = Math.min(rows, world.height - y0), x0 = ci * cols, w = Math.min(cols, world.width - x0);
+    const key = bi * CELL_KEY + ci;
+    let entry = bandCache.get(key);
     let canvas = entry && entry.canvas;
-    const wantH = h * BAKE_PX_PER_UNIT;
-    if (!canvas || canvas.height !== wantH) {
-      canvas = document.createElement('canvas');
-      canvas.width = chunkW * BAKE_PX_PER_UNIT;
-      canvas.height = wantH;
+    const wantW = w * BAKE_PX_PER_UNIT, wantH = h * BAKE_PX_PER_UNIT;
+    if (!canvas || canvas.height !== wantH || canvas.width !== wantW) {
+      if (canvas) releaseCanvas(canvas);
+      canvas = acquireCanvas(wantW, wantH);
     }
     const t0 = performance.now();
-    paintWallCanvas(canvas, bandLoopsPx(bi, y0), y0);
-    bandCache.set(bi, { canvas, version: world.bandVersion(bi) });
+    paintWallCanvas(canvas, bandLoopsPx(bi, y0, x0), y0, x0);
+    bandCache.set(key, { canvas, version: world.bandVersion(bi) });
     bandBakes++;
     bandBakeLastMs = performance.now() - t0;
     if (bandBakeLastMs > bandBakeMaxMs) bandBakeMaxMs = bandBakeLastMs;
   }
-  function drawBandWalls(canvasW, canvasH) {
-    const rows = world.bandRows, n = world.bandCount();
-    const halfH = canvasH / 2 / camera.pxPerUnit;
+  /** The window of cells on screen (vis*) and the ring that stays baked (keep*), in band rows and cell columns. */
+  function cellWindow(canvasW, canvasH) {
+    const ppu = camera.pxPerUnit, halfW = canvasW / 2 / ppu, halfH = canvasH / 2 / ppu;
+    const rows = world.bandRows, n = world.bandCount(), cols = cellTiles(), nc = Math.ceil(world.width / cols);
     const win = wallBandWindow(camera.y - halfH, camera.y + halfH, rows, n);
-    for (const bi of [...bandCache.keys()]) if (bi < win.keepFrom || bi > win.keepTo) bandCache.delete(bi);
-    let budget = 1;
-    // Visible bands first: a missing one must bake now; a stale one (bomb) may
-    // keep drawing its old canvas one more frame if the budget is spent.
-    for (let bi = win.visFrom; bi <= win.visTo; bi++) {
-      const c = bandCache.get(bi);
-      if (!c) bakeBand(bi);
-      else if (c.version !== world.bandVersion(bi) && budget > 0) { bakeBand(bi); budget--; }
+    const cl = (c) => Math.max(0, Math.min(nc - 1, c));
+    const cFrom = cl(Math.floor((camera.x - halfW - 0.5) / cols)), cTo = cl(Math.floor((camera.x + halfW + 0.5) / cols));
+    return { ...win, cFrom, cTo, kFrom: cl(cFrom - 1), kTo: cl(cTo + 1), nc, cols };
+  }
+  /** r43: re-bake at the new size when the screen changed a lot (a window resize, a rotation). */
+  function syncBake(canvasW, canvasH) {
+    if (!world.v2) return; // the endless chunks are baked at one size for their whole life
+    const want = bakeFor(computePxPerUnit(canvasW, canvasH));
+    if (want === BAKE_PX_PER_UNIT || Math.abs(want - BAKE_PX_PER_UNIT) / BAKE_PX_PER_UNIT < 0.2) return;
+    BAKE_PX_PER_UNIT = want;
+    releaseCanvases(bandCache);
+    if (world.v2) world.configureBands(cellTiles());
+  }
+  /** Prune what left the window and bake what is missing, within the frame's budget (see the comment above). Returns the window. */
+  function updateCells(canvasW, canvasH) {
+    syncBake(canvasW, canvasH);
+    const w = cellWindow(canvasW, canvasH);
+    for (const key of [...bandCache.keys()]) {
+      const bi = Math.floor(key / CELL_KEY), ci = key % CELL_KEY;
+      if (bi < w.keepFrom || bi > w.keepTo || ci < w.kFrom || ci > w.kTo) { releaseCanvas(bandCache.get(key).canvas); bandCache.delete(key); }
     }
-    for (let bi = win.keepFrom; bi <= win.keepTo && budget > 0; bi++) {
-      if (bi >= win.visFrom && bi <= win.visTo) continue;
-      const c = bandCache.get(bi);
-      if (!c || c.version !== world.bandVersion(bi)) { bakeBand(bi); budget--; }
+    const t0 = performance.now();
+    let baked = 0, missing = 0;
+    const need = (bi, ci) => { const c = bandCache.get(bi * CELL_KEY + ci); return !c || c.version !== world.bandVersion(bi); };
+    // cells on screen first: a missing one must be baked, within the frame's budget but never fewer than one per frame
+    for (let bi = w.visFrom; bi <= w.visTo; bi++) {
+      for (let ci = w.cFrom; ci <= w.cTo; ci++) {
+        if (!need(bi, ci)) continue;
+        if (baked === 0 || performance.now() - t0 < BAKE_BUDGET_MS) { bakeCell(bi, ci); baked++; } else missing++;
+      }
     }
-    for (let bi = win.visFrom; bi <= win.visTo; bi++) {
-      const c = bandCache.get(bi);
-      if (!c) continue;
+    wallsReady = missing === 0;
+    // then the ring, one cell per frame, only when the screen needed nothing this frame
+    if (baked === 0) {
+      ring: for (let bi = w.keepFrom; bi <= w.keepTo; bi++) {
+        for (let ci = w.kFrom; ci <= w.kTo; ci++) {
+          if ((bi >= w.visFrom && bi <= w.visTo && ci >= w.cFrom && ci <= w.cTo) || !need(bi, ci)) continue;
+          bakeCell(bi, ci); break ring;
+        }
+      }
+    }
+    return w;
+  }
+  function drawBandWalls(canvasW, canvasH) {
+    const rows = world.bandRows;
+    const w = updateCells(canvasW, canvasH);
+    const flat = `rgb(${WALL_FILL_COLOR.join(',')})`;
+    for (let bi = w.visFrom; bi <= w.visTo; bi++) {
       const y0 = bi * rows, y1 = Math.min(world.height, y0 + rows);
-      const tl = worldToScreen(camera, canvasW, canvasH, 0, y0);
-      const br = worldToScreen(camera, canvasW, canvasH, chunkW, y1);
-      const sx0 = Math.round(tl.x), sy0 = Math.round(tl.y);
-      ctx.drawImage(c.canvas, sx0, sy0, Math.round(br.x) - sx0, Math.round(br.y) - sy0);
+      for (let ci = w.cFrom; ci <= w.cTo; ci++) {
+        const x0 = ci * w.cols, x1 = Math.min(world.width, x0 + w.cols);
+        const tl = worldToScreen(camera, canvasW, canvasH, x0, y0);
+        const br = worldToScreen(camera, canvasW, canvasH, x1, y1);
+        const sx0 = Math.round(tl.x), sy0 = Math.round(tl.y), sw = Math.round(br.x) - sx0, sh = Math.round(br.y) - sy0;
+        const c = bandCache.get(bi * CELL_KEY + ci);
+        if (c) ctx.drawImage(c.canvas, sx0, sy0, sw, sh);
+        else { ctx.fillStyle = flat; ctx.fillRect(sx0, sy0, sw, sh); } // not baked yet (the next frame has it): plain rock, never a hole
+      }
     }
   }
 
@@ -542,18 +626,7 @@ export function createRenderer(ctx, world) {
 
   // --- Drifting code value-noise layer (small offscreen canvas, generated once) ---
   const NOISE_SIZE = 128;
-  const noiseCanvas = document.createElement('canvas');
-  noiseCanvas.width = noiseCanvas.height = NOISE_SIZE;
-  const noiseCtx = noiseCanvas.getContext('2d');
-  (function generateNoise() {
-    const img = noiseCtx.createImageData(NOISE_SIZE, NOISE_SIZE);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = 10 + Math.random() * 18;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-    noiseCtx.putImageData(img, 0, 0);
-  })();
+  const noiseCanvas = sa.noise; // r43: one 128 x 128 texture for the whole page
 
   function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
 
@@ -677,49 +750,7 @@ export function createRenderer(ctx, world) {
     let m = seed >>> 0 || 1;
     return () => { m = (m * 1664525 + 1013904223) >>> 0; return m / 4294967296; };
   }
-  // Baked once per plant image (not a per-frame `ctx.filter` -- decor-draw.js's
-  // round-7 note already found a filter graph reads soft/blurry and costs a
-  // rasterize pass per draw; a plain `source-atop` darken, cached, is free at
-  // draw time and stays crisp) so the many silhouette instances below are
-  // ordinary `drawImage` calls.
-  const ambientSilCache = [];
-  // Round-13 fix (Daniel's screenshot review round 12, item 2: "the depth
-  // cue is backwards -- background silhouettes read darker and heavier
-  // than the pale foreground rim foliage, video shows the opposite"). This
-  // used to tint toward near-black cave rock (rgba(2,10,16,0.88)), which at
-  // the layer's own draw-time alpha (silAlpha below) still reads as a
-  // saturated dark shape against the bright shallow-water gradient
-  // (drawBackground: ~rgb(140,252,252) at the surface). Tinting toward that
-  // same pale water colour instead -- and at a lower fill alpha so some of
-  // the source art's own shading survives the tint -- keeps it low-contrast
-  // and washed-out like the pale background weeds in the promo footage
-  // (octo-video-cave-urchin.webp) rather than a bold silhouette.
-  const AMBIENT_TINT = 'rgba(150,215,220,0.6)';
-  function getAmbientSilhouette(i) {
-    if (ambientSilCache[i]) return ambientSilCache[i];
-    const img = plants[i];
-    if (!img.complete || !img.naturalWidth) return null;
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth; c.height = img.naturalHeight;
-    const cctx = c.getContext('2d');
-    cctx.drawImage(img, 0, 0);
-    cctx.globalCompositeOperation = 'source-atop';
-    cctx.fillStyle = AMBIENT_TINT;
-    cctx.fillRect(0, 0, c.width, c.height);
-    // Fade the tinted sprite to fully transparent over its bottom third so
-    // no cut-off stem end shows once it's anchor-tucked into a floor tile
-    // the same way the foreground plants are (see drawAmbientBackground
-    // below) -- matches PLANT_INTO_WALL's "hide the faded root under the
-    // rim" trick without needing a second baked variant per anchor depth.
-    cctx.globalCompositeOperation = 'destination-in';
-    const fade = cctx.createLinearGradient(0, c.height * 0.62, 0, c.height);
-    fade.addColorStop(0, 'rgba(0,0,0,1)');
-    fade.addColorStop(1, 'rgba(0,0,0,0)');
-    cctx.fillStyle = fade;
-    cctx.fillRect(0, c.height * 0.62, c.width, c.height * 0.38);
-    ambientSilCache[i] = c;
-    return c;
-  }
+  // (The pale ambient plant silhouettes were removed in round 13 and their baked cache with them, r43.)
   function parallaxScreen(canvasW, canvasH, wx, wy) {
     const s = worldToScreen(camera, canvasW, canvasH, wx, wy);
     return {
@@ -732,90 +763,108 @@ export function createRenderer(ctx, world) {
   // low-res bake, with the existing plant sprites in a dark teal on its floors and ceilings. Baked once per level
   // (and again when the plant art finishes loading); one drawImage per frame. The opaque walls cover it, so it only
   // shows in the open water, where it gives the cave depth the flat gradient lacked.
-  const DEEP_PARALLAX = 0.7, DEEP_SCALE = 0.86, DEEP_PX = 12;
-  const DEEP_ROCK = 'rgba(18,58,80,0.9)', DEEP_FOLIAGE = 'rgba(24,78,98,0.85)';
-  let deepLevel = null, deepCanvas = null, deepPlants = false, deepPlantList = [], deepTint = null;
+  // r43: baked in three steps, one per frame, never in one task (it used to cost 150-230 ms at 4x CPU throttle, most of it a
+  // blur per arc and a GPU read-back): 1) the blobs, unblurred, on a scratch canvas; 2) one blur of the whole thing into the
+  // canvas that is drawn, tinted; 3) the plant list, worked out from the blob circles on the CPU (no read-back). Both canvases
+  // come from the pool and the scratch one goes straight back. At 8 px per tile it is 0.6 MB (was 1.3).
+  const DEEP_PARALLAX = 0.7, DEEP_SCALE = 0.86, DEEP_PX = 8;
+  const DEEP_ROCK = 'rgba(18,58,80,0.9)';
+  let deepLevel = null, deepStage = 0, deepCanvas = null, deepScratch = null, deepCircles = null, deepCount = 0, deepPlantList = [];
   const deepHash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263 + 1013, 1274126177); h ^= h >>> 13; return (Math.imul(h, 1103515245) >>> 0); };
-  function bakeDeepRock() {
+  function resetDeepRock() {
+    releaseCanvas(deepCanvas); releaseCanvas(deepScratch);
+    deepCanvas = deepScratch = null; deepCircles = null; deepCount = 0; deepPlantList = []; deepStage = 0;
+  }
+  function deepSolid(x, y) { return x < 0 || y < 0 || x >= world.width || y >= world.height || world.tileAt(x, y) !== 0; }
+  function deepStage1() {
     const W = world.width, H = world.height;
-    const solid = (x, y) => x < 0 || y < 0 || x >= W || y >= H || world.tileAt(x, y) !== 0;
-    // the mass as overlapping round blobs (one per rock cell, a few extra beside the edges), blurred once at bake time:
-    // organic, soft-edged silhouettes instead of a tile grid
-    const c = document.createElement('canvas');
-    c.width = W * DEEP_PX; c.height = H * DEEP_PX;
-    const g = c.getContext('2d');
-    const blur = 'filter' in g;
-    if (blur) g.filter = 'blur(' + Math.round(DEEP_PX * 0.45) + 'px)';
+    // the mass as overlapping round blobs (one per rock cell, a few extra beside the edges), blurred in step 2: organic, soft-edged
+    // silhouettes instead of a tile grid
+    deepScratch = acquireCanvas(W * DEEP_PX, H * DEEP_PX);
+    const g = deepScratch.getContext('2d');
     g.fillStyle = '#000';
+    deepCircles = new Float32Array(W * H * 3); deepCount = 0;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const h = deepHash(x, y);
-        let on = solid(x, y), r = 0.78;
+        let on = deepSolid(x, y), r = 0.78;
         if (!on) { // water next to rock: a hash-gated extra lump, so the deep wall is lumpier and thicker than the near one
-          const n = solid(x + 1, y) + solid(x - 1, y) + solid(x, y + 1) + solid(x, y - 1);
+          const n = deepSolid(x + 1, y) + deepSolid(x - 1, y) + deepSolid(x, y + 1) + deepSolid(x, y - 1);
           on = n > 0 && h % 100 < 25 + n * 12;
           r = 0.55 + ((h >>> 8) % 40) / 100;
         }
         if (!on) continue;
         const jx = (((h >>> 12) % 21) - 10) / 40, jy = (((h >>> 17) % 21) - 10) / 40;
         g.beginPath(); g.arc((x + 0.5 + jx) * DEEP_PX, (y + 0.5 + jy) * DEEP_PX, r * DEEP_PX, 0, Math.PI * 2); g.fill();
+        const o = deepCount++ * 3; deepCircles[o] = x + 0.5 + jx; deepCircles[o + 1] = y + 0.5 + jy; deepCircles[o + 2] = r;
       }
     }
+    deepStage = 1;
+  }
+  function deepStage2() {
+    const c = acquireCanvas(deepScratch.width, deepScratch.height);
+    const g = c.getContext('2d');
+    if ('filter' in g) g.filter = 'blur(' + Math.max(1, Math.round(DEEP_PX * 0.45)) + 'px)';
+    g.drawImage(deepScratch, 0, 0);
     g.filter = 'none';
     g.globalCompositeOperation = 'source-in';
     g.fillStyle = DEEP_ROCK;
     g.fillRect(0, 0, c.width, c.height);
     g.globalCompositeOperation = 'source-over';
-    // foliage on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark). r37: these are drawn
-    // live at screen resolution (drawDeepRock), not baked into the low-res canvas, which made them blocky; the list
-    // keeps only plants that stand on THICK deep rock (rock behind and beside the base), so none hangs in open water.
-    deepPlants = !!(plants[0].complete && plants[0].naturalWidth && plants[1].complete && plants[1].naturalWidth);
-    deepPlantList = [];
-    if (deepPlants) {
-      deepTint = plants.map((img) => {
-        const t = document.createElement('canvas'); t.width = img.naturalWidth; t.height = img.naturalHeight;
-        const tg = t.getContext('2d'); tg.drawImage(img, 0, 0);
-        tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = DEEP_FOLIAGE; tg.fillRect(0, 0, t.width, t.height);
-        return t;
-      });
-      // r38: the blobs are jittered and blurred, so the tile test alone still let a plant stand on a thin or ragged
-      // edge with open water under half of it. The baked blob canvas is read back once (downscaled to 4 px per tile)
-      // and a plant is kept only where the blob is opaque under its whole base.
-      const RS = 4, rc = document.createElement('canvas'); rc.width = W * RS; rc.height = H * RS;
-      const rg = rc.getContext('2d', { willReadFrequently: true });
-      rg.drawImage(c, 0, 0, rc.width, rc.height);
-      let px4 = null;
-      try { px4 = rg.getImageData(0, 0, rc.width, rc.height).data; } catch (e) { px4 = null; }
-      const alphaAt = (wx, wy) => {
-        if (!px4) return 255;
-        const ix = Math.min(rc.width - 1, Math.max(0, Math.floor(wx * RS))), iy = Math.min(rc.height - 1, Math.max(0, Math.floor(wy * RS)));
-        return px4[(iy * rc.width + ix) * 4 + 3];
-      };
-      for (let y = 1; y < H - 1; y++) {
-        for (let x = 1; x < W - 1; x++) {
-          if (world.tileAt(x, y) === 0) continue;
-          const h = deepHash(x * 3 + 1, y * 5 + 2);
-          const floor = world.tileAt(x, y - 1) === 0, ceil = world.tileAt(x, y + 1) === 0;
-          if (!(floor && h % 5 === 0) && !(ceil && !floor && h % 9 === 0)) continue;
-          const dyIn = floor ? 1 : -1; // one tile into the rock, and the neighbours of that tile: the mass under the plant is thick
-          if (!solid(x, y + dyIn) || !solid(x - 1, y) || !solid(x + 1, y) || !solid(x - 1, y + dyIn) || !solid(x + 1, y + dyIn)) continue;
-          const img = (h >>> 8) & 1, ph = 1.5 + ((h >>> 12) % 10) / 10, pw = ph * (deepTint[img].width / deepTint[img].height);
-          const by = floor ? y + 0.15 : y + 0.85, inY = floor ? y + 0.55 : y + 0.45; // base line, and a line inside the rock under it
-          let thick = true;
-          for (let o = -1; o <= 1 && thick; o++) {
-            const sxp = x + 0.5 + o * Math.min(0.75, pw * 0.4);
-            if (alphaAt(sxp, by) < 200 || alphaAt(sxp, inY) < 215) thick = false;
-          }
-          if (!thick) continue;
-          deepPlantList.push({ x: x + 0.5, y: by, pw, ph, ceil: !floor, img });
-        }
+    releaseCanvas(deepScratch); deepScratch = null;
+    deepCanvas = c; deepStage = 2;
+  }
+  function deepStage3(tint) {
+    // foliage on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark), drawn live at screen
+    // resolution (drawDeepRock); the list keeps only plants that stand on THICK deep rock (rock behind and beside the base), so
+    // none hangs in open water. r38 checked the blurred blob's alpha for that; r43 rasterises the same circles (eroded by
+    // 0.2 tile, which is about what the blur takes off an edge) into 4 cells per tile, so there is no read-back.
+    const W = world.width, H = world.height, RS = 4, OW = W * RS, OH = H * RS;
+    const occ = new Uint8Array(OW * OH);
+    for (let i = 0; i < deepCount; i++) {
+      const cx = deepCircles[i * 3], cy = deepCircles[i * 3 + 1], r = Math.max(0, deepCircles[i * 3 + 2] - 0.2), r2 = r * r;
+      const x0 = Math.max(0, Math.floor((cx - r) * RS)), x1 = Math.min(OW - 1, Math.ceil((cx + r) * RS));
+      const y0 = Math.max(0, Math.floor((cy - r) * RS)), y1 = Math.min(OH - 1, Math.ceil((cy + r) * RS));
+      for (let yy = y0; yy <= y1; yy++) {
+        const dy = (yy + 0.5) / RS - cy;
+        for (let xx = x0; xx <= x1; xx++) { const dx = (xx + 0.5) / RS - cx; if (dx * dx + dy * dy <= r2) occ[yy * OW + xx] = 1; }
       }
     }
-    deepCanvas = c; deepLevel = world.level;
+    const opaque = (wx, wy) => occ[Math.min(OH - 1, Math.max(0, Math.floor(wy * RS))) * OW + Math.min(OW - 1, Math.max(0, Math.floor(wx * RS)))] === 1;
+    const list = [];
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        if (world.tileAt(x, y) === 0) continue;
+        const h = deepHash(x * 3 + 1, y * 5 + 2);
+        const floor = world.tileAt(x, y - 1) === 0, ceil = world.tileAt(x, y + 1) === 0;
+        if (!(floor && h % 5 === 0) && !(ceil && !floor && h % 9 === 0)) continue;
+        const dyIn = floor ? 1 : -1; // one tile into the rock, and the neighbours of that tile: the mass under the plant is thick
+        if (!deepSolid(x, y + dyIn) || !deepSolid(x - 1, y) || !deepSolid(x + 1, y) || !deepSolid(x - 1, y + dyIn) || !deepSolid(x + 1, y + dyIn)) continue;
+        const img = (h >>> 8) & 1, ph = 1.5 + ((h >>> 12) % 10) / 10, pw = ph * (tint[img].width / tint[img].height);
+        const by = floor ? y + 0.15 : y + 0.85, inY = floor ? y + 0.55 : y + 0.45; // base line, and a line inside the rock under it
+        let thick = true;
+        for (let o = -1; o <= 1 && thick; o++) {
+          const sxp = x + 0.5 + o * Math.min(0.75, pw * 0.4);
+          if (!opaque(sxp, by) || !opaque(sxp, inY)) thick = false;
+        }
+        if (!thick) continue;
+        list.push({ x: x + 0.5, y: by, pw, ph, ceil: !floor, img });
+      }
+    }
+    deepPlantList = list; deepCircles = null; deepStage = 3;
+  }
+  /** One step of the deep-rock bake per call (the renderer calls it once a frame while the level is new). */
+  function stepDeepRock() {
+    if (!world.level || !world.tileAt) return false;
+    if (deepLevel !== world.level) { resetDeepRock(); deepLevel = world.level; }
+    if (deepStage === 0) deepStage1();
+    else if (deepStage === 1) deepStage2();
+    else if (deepStage === 2) { const tint = deepTintOf(plants); if (tint) deepStage3(tint); else return false; }
+    else return false;
+    return true;
   }
   function drawDeepRock(canvasW, canvasH, depth) {
-    if (!world.level || !world.tileAt) return;
-    if (deepLevel !== world.level || !deepCanvas || (!deepPlants && plants[0].complete && plants[0].naturalWidth && plants[1].complete && plants[1].naturalWidth)) bakeDeepRock();
+    if (!deepCanvas || deepLevel !== world.level) return;
     const ppu = camera.pxPerUnit, W = world.width, H = world.height, cx0 = W / 2, cy0 = H / 2, s = DEEP_SCALE;
     const camLx = cx0 + (camera.x - cx0) * DEEP_PARALLAX, camLy = cy0 + (camera.y - cy0) * DEEP_PARALLAX;
     const dx = canvasW / 2 + (cx0 * (1 - s) - camLx) * ppu, dy = canvasH / 2 + (cy0 * (1 - s) - camLy) * ppu;
@@ -826,12 +875,12 @@ export function createRenderer(ctx, world) {
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(deepCanvas, dx, dy, dw, dh);
     // the plants, live at screen resolution and culled to the view
-    const k = s * ppu;
-    for (let i = 0; i < deepPlantList.length; i++) {
+    const k = s * ppu, tint = sa.deepTint;
+    if (tint) for (let i = 0; i < deepPlantList.length; i++) {
       const pl = deepPlantList[i];
       const px = dx + pl.x * k, py = dy + pl.y * k, w = pl.pw * k, h = pl.ph * k;
       if (px + w < 0 || px - w > canvasW || py + h < 0 || py - h > canvasH) continue;
-      const img = deepTint[pl.img];
+      const img = tint[pl.img];
       if (pl.ceil) { ctx.save(); ctx.translate(px, py); ctx.scale(1, -1); ctx.drawImage(img, -w / 2, -h, w, h); ctx.restore(); }
       else ctx.drawImage(img, px - w / 2, py - h, w, h);
     }
@@ -1055,23 +1104,44 @@ export function createRenderer(ctx, world) {
   let canvasW_ = 0, canvasH_ = 0;
   const plantCache = new WeakMap();
 
+  /** v2: the anchors and cluster mates of a chunk, worked out once per tile change (r43: also warmed up on a level's first frame). */
+  // r43: the anchors are found in one go, the cluster mates a few at a time (PLANT_MATES_MS per call, about 4 ms), so a new level or a
+  // bomb does not cost one 30-60 ms task; an anchor whose mates are not worked out yet is drawn alone for the frames it takes
+  const PLANT_MATES_MS = 4;
+  function plantEntry(chunk, index) {
+    let e = plantCache.get(chunk);
+    if (!e || e.ver !== world.tileVersion) {
+      const list = findPlantAnchors(chunk, chunkW, chunkH, index);
+      e = { ver: world.tileVersion, anchors: list, mates: new Array(list.length).fill(NO_MATES), vis: new Uint8Array(list.length), next: 0 };
+      plantCache.set(chunk, e);
+      return e;
+    }
+    if (e.next < e.anchors.length) {
+      const t0 = performance.now();
+      while (e.next < e.anchors.length && performance.now() - t0 < PLANT_MATES_MS) {
+        const a = e.anchors[e.next];
+        e.mates[e.next++] = findClusterMates(chunk, chunkW, chunkH, a.tx, a.ty, a.onCeiling, a.hash);
+      }
+    }
+    return e;
+  }
+  const NO_MATES = [];
+  let plantsWarm = false;
+  const timing = { warmMs: 0, warmMax: 0, wallsMs: 0, wallsMax: 0 }; // r43: the level's set-up steps and the wall drawing (with its cell bakes), worst frame so far
+
   function drawPlants(canvasW, canvasH, resident, time = 0, reduced = false) {
     if (!plants[0].complete || !plants[0].naturalWidth) return;
     canvasW_ = canvasW; canvasH_ = canvasH;
     for (const { index, yOffset, chunk } of resident) {
       // r36 (v2): the anchors and their cluster mates are worked out once per tile change, not every frame
-      let anchors, matesOf = null;
+      let anchors, matesOf = null, vis;
       if (world.v2) {
-        let e = plantCache.get(chunk);
-        if (!e || e.ver !== world.tileVersion) {
-          const list = findPlantAnchors(chunk, chunkW, chunkH, index);
-          e = { ver: world.tileVersion, anchors: list, mates: list.map((a) => findClusterMates(chunk, chunkW, chunkH, a.tx, a.ty, a.onCeiling, a.hash)) };
-          plantCache.set(chunk, e);
-        }
-        anchors = e.anchors; matesOf = e.mates;
-      } else anchors = findPlantAnchors(chunk, chunkW, chunkH, index);
+        const e = plantEntry(chunk, index);
+        anchors = e.anchors; matesOf = e.mates; vis = e.vis;
+      } else { anchors = findPlantAnchors(chunk, chunkW, chunkH, index); vis = cullFlags('plants', anchors.length); }
       for (let ai = 0; ai < anchors.length; ai++) {
         const { tx, ty, onCeiling, hash: h } = anchors[ai];
+        if (!visibleAt(vis, ai, tx + 0.5, ty + yOffset, 3)) continue; // r43: off-screen foliage is not swayed or drawn
         const sway = reduced ? 0 : Math.sin(time * SWAY_SPEED + (h % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
         if (!onCeiling) {
           // Floor cap: solid here, open water directly above -- grows up.
@@ -1111,15 +1181,15 @@ export function createRenderer(ctx, world) {
   // round 28: a flat-rock tile baked like a wall chunk (fill + world-aligned noise), cached per noise phase
   const capCache = new Map();
   function getCapCanvas(yOffsetTiles) {
-    const key = ((yOffsetTiles * BAKE_PX_PER_UNIT) % rockNoiseCanvas.height + rockNoiseCanvas.height) % rockNoiseCanvas.height;
+    const period = NOISE_FIELD_TILES * BAKE_PX_PER_UNIT;
+    const key = ((yOffsetTiles * BAKE_PX_PER_UNIT) % period + period) % period;
     let c = capCache.get(key);
     if (!c) {
-      c = document.createElement('canvas');
-      c.width = chunkW * BAKE_PX_PER_UNIT; c.height = chunkH * BAKE_PX_PER_UNIT;
+      c = acquireCanvas(chunkW * BAKE_PX_PER_UNIT, chunkH * BAKE_PX_PER_UNIT);
       const b = c.getContext('2d');
       b.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
       b.fillRect(0, 0, c.width, c.height);
-      if (rockNoisePattern) paintNoise(b, { yOffset: yOffsetTiles }, rockNoisePattern, rockNoiseCanvas, 0, 0, c.width, c.height);
+      if (rockNoisePattern) paintNoise(b, 0, yOffsetTiles, c.width, c.height);
       capCache.set(key, c);
     }
     return c;
@@ -1197,6 +1267,7 @@ export function createRenderer(ctx, world) {
   function drawPickups(canvasW, canvasH, items, time) {
     for (const it of items) {
       if (it.hidden) continue; // sealed behind soft rock; nothing to draw until it breaks
+      if (!visibleObj(it, it.x, it.y, 1)) continue; // r43: off-screen pickups are not animated or drawn
       const s = worldToScreen(camera, canvasW, canvasH, it.x, it.y);
       if (it.type === 'plankton') {
         const r = camera.pxPerUnit * 0.045;
@@ -1219,6 +1290,7 @@ export function createRenderer(ctx, world) {
   function drawBubbles(canvasW, canvasH, bubbles) {
     if (!plants[0]) return;
     for (const b of bubbles) {
+      if (!visibleObj(b, b.x, b.y, 1)) continue; // r43
       const s = worldToScreen(camera, canvasW, canvasH, b.x, b.y);
       const r = camera.pxPerUnit * 0.08;
       ctx.save();
@@ -1266,32 +1338,34 @@ export function createRenderer(ctx, world) {
       disposed = true;
       offV2Art(onArt);
       releaseCanvases(wallCache); releaseCanvases(bandCache); releaseCanvases(capCache);
-      freeCanvas(deepCanvas); deepCanvas = null; deepLevel = null; deepPlantList = [];
-      if (deepTint) for (const t of deepTint) freeCanvas(t);
-      deepTint = null;
-      for (const c of ambientSilCache) freeCanvas(c);
-      ambientSilCache.length = 0;
-      freeCanvas(noiseCanvas);
-      freeCanvas(caveArtFeathered); caveArtFeathered = null;
+      resetDeepRock(); deepLevel = null;
+      releaseCanvas(caveArtFeathered); caveArtFeathered = null;
     },
+    /** r43: the first screen of this level is baked (every wall cell on screen, the deep rock's blobs): the level may fade in. */
+    ready() { return !world.v2 || (wallsReady && deepStage >= 2); },
     /** r41 test hook: live canvases this renderer holds. */
     canvasStats() {
       let n = 0, bytes = 0;
       const add = (c) => { if (c && c.width * c.height > 0) { n++; bytes += c.width * c.height * 4; } };
       for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) add(v && v.canvas ? v.canvas : v);
-      add(deepCanvas); if (deepTint) deepTint.forEach(add); ambientSilCache.forEach(add); add(noiseCanvas); add(caveArtFeathered);
-      return { n, bytes };
+      add(deepCanvas); add(deepScratch); add(caveArtFeathered);
+      let maxW = 0, maxH = 0;
+      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) { const c = v && v.canvas ? v.canvas : v; if (c) { maxW = Math.max(maxW, c.width); maxH = Math.max(maxH, c.height); } }
+      for (const c of [deepCanvas, deepScratch, caveArtFeathered]) if (c) { maxW = Math.max(maxW, c.width); maxH = Math.max(maxH, c.height); }
+      return { n, bytes, maxW, maxH, bake: BAKE_PX_PER_UNIT, cells: bandCache.size, deepStage };
     },
+    /** r43: the slowest set-up step (plant anchors, one deep-rock step) and the slowest wall pass (cell bakes) of this level, in ms. */
+    timing() { return { warmMax: +timing.warmMax.toFixed(1), wallsMax: +timing.wallsMax.toFixed(1) }; },
     /** v2: how many wall bands are cached / were on screen last frame. */
-    wallBandStats() { return { live: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
+    wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
       // of the run (~10 min soak test caught this: heap kept climbing).
       const liveIdx = new Set(resident.map((r) => r.index));
-      if (!world.v2) for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) wallCache.delete(ci);
+      if (!world.v2) for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) { releaseCanvas(wallCache.get(ci).canvas); wallCache.delete(ci); }
       // Round-6 task 3: follow the octopus's INTERPOLATED (render-alpha)
       // position, not its raw fixed-step one -- camera.js's own doc comment
       // already said it should ("following the octopus's interpolated
@@ -1306,17 +1380,37 @@ export function createRenderer(ctx, world) {
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
       updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      if (warmOnly && warmGroup <= 0) {
+        // r43: the screen is dark while a new level's first view bakes: do only the set-up (plant anchors, the deep rock, the wall
+        // cells) and draw nothing, so these frames stay cheap
+        if (world.v2) {
+          for (const { index, chunk } of resident) plantEntry(chunk, index); // the anchors, then a few cluster mates per frame
+          if (plantsWarm) stepDeepRock();
+          plantsWarm = true;
+          updateCells(canvasW, canvasH);
+        }
+        return;
+      }
+      // r43: a warm-up frame (warmGroup 1..5, behind the dark screen) draws one group of the scene so the first real frame does not
+      // meet every draw path for the first time at once; warmGroup 0 outside a warm-up draws everything (warmOnly with warmGroup <= 0 is a set-up frame, handled above)
+      const G = (n) => !warmGroup || warmGroup === n;
+      cullFrame(camera, canvasW, canvasH); // r43: what is far from the camera is not drawn or animated (cull.js); its logic keeps running
       const shakePx = shakePxIn ? shakePxIn : shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
       ctx.translate(shakePx.x, shakePx.y);
       const reduced = prefersReducedMotion();
-      drawBackground(canvasW, canvasH, time, depth);
-      drawCaustics(canvasW, canvasH, time, reduced);
+      // r43: a new level's heavy set-up runs one piece per frame, never several in one: the plant anchors first, then the three
+      // deep-rock steps (and the wall cells, a few per frame, see drawBandWalls)
+      const tf0 = performance.now();
+      if (!warmOnly && world.v2) { if (!plantsWarm) { for (const { index, chunk } of resident) plantEntry(chunk, index); plantsWarm = true; } else stepDeepRock(); }
+      timing.warmMs = performance.now() - tf0; if (timing.warmMs > timing.warmMax) timing.warmMax = timing.warmMs;
+      if (G(1)) drawBackground(canvasW, canvasH, time, depth);
+      if (G(1)) drawCaustics(canvasW, canvasH, time, reduced);
       // Round-12 "fill the cave" pass, section 2: distant background
       // silhouettes/motes, behind everything (drawWalls, below, composites
       // opaque rock right over this same as it does the FG plants).
-      if (world.v2) drawDeepRock(canvasW, canvasH, depth);
-      drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced);
+      if (G(1) && world.v2) drawDeepRock(canvasW, canvasH, depth);
+      if (G(1)) drawAmbientBackground(canvasW, canvasH, resident, time, depth, reduced);
       // Layering pass: plants/decor draw BEFORE the walls now (was after), so
       // the wall bake -- opaque rock art -- composites on top and occludes
       // each sprite's anchor-tucked base (see PLANT_INTO_WALL / decor.js's
@@ -1325,11 +1419,11 @@ export function createRenderer(ctx, world) {
       // layer, the tilemap on "Map", which renders after "Default" -- i.e.
       // walls were always meant to composite over decor, not the other way
       // round.
-      drawPlants(canvasW, canvasH, resident, time, reduced);
+      if (G(1)) drawPlants(canvasW, canvasH, resident, time, reduced);
       // Otter's alive pass; runes are excluded here and drawn again AFTER
       // drawWalls below (Round-4 fix: runes need to land on top of the rock
       // face like a painted mark, not be buried under the opaque wall bake).
-      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, false);
+      if (G(1)) drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, false);
       // Round-3 fix (Daniel's screenshot review: "each light shaft ends in a
       // hard straight vertical edge at the level boundary" -- `drawOuterRock`
       // used to draw right after the background, BEFORE `drawCaustics`, so
@@ -1339,22 +1433,26 @@ export function createRenderer(ctx, world) {
       // "rock" compositing step, after caustics and right alongside
       // `drawWalls`, so outer rock occludes the shafts exactly the same way
       // the level's own walls already do -- no shaft shows on rock anywhere.
-      drawOuterRock(canvasW, canvasH);
-      drawWalls(canvasW, canvasH, resident);
+      if (G(2)) drawOuterRock(canvasW, canvasH);
+      const tw0 = performance.now();
+      if (G(2)) drawWalls(canvasW, canvasH, resident);
+      timing.wallsMs = performance.now() - tw0; if (timing.wallsMs > timing.wallsMax) timing.wallsMax = timing.wallsMs;
       // Round-4 fix: runes drawn on top of the just-baked wall art, so they
       // read as a mark painted onto the rock face instead of a sprite the
       // rock bake occludes.
-      drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
-      drawBubbles(canvasW, canvasH, bubbles);
-      drawPickups(canvasW, canvasH, pickups, time);
-      if (preEnemyDraw) preEnemyDraw(ctx, camera, canvasW, canvasH);
-      drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
-      drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
-      if (extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
-      if (particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
-      drawOcto(octo, alpha, canvasW, canvasH, time);
-      if (postOctoDraw) postOctoDraw(ctx, camera, worldToScreen, canvasW, canvasH);
+      if (G(2)) drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
+      if (G(2)) drawBubbles(canvasW, canvasH, bubbles);
+      if (G(2)) drawPickups(canvasW, canvasH, pickups, time);
+      if (G(3) && preEnemyDraw) preEnemyDraw(ctx, camera, canvasW, canvasH);
+      if (G(3)) drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
+      if (G(3)) drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
+      if (G(4) && extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
+      if (G(4) && particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
+      if (G(5)) drawOcto(octo, alpha, canvasW, canvasH, time);
+      if (G(5) && postOctoDraw) postOctoDraw(ctx, camera, worldToScreen, canvasW, canvasH);
+      cullEnd();
       ctx.restore();
+      if (!G(5)) return;
       if (lightR > 0) { const o = worldToScreen(camera, canvasW, canvasH, followX, followY); drawLight(canvasW, canvasH, o.x, o.y, lightR); }
       drawDepthTint(canvasW, canvasH, depth);
       drawVignette(canvasW, canvasH);

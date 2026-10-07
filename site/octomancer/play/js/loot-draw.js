@@ -7,6 +7,7 @@ import { itemFromCode } from './items.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { artImg } from './v2-art.js';
+import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -20,10 +21,11 @@ const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - M
 export function drawLoot(ctx, camera, cw, ch, d, time) {
   const ppu = camera.pxPerUnit;
   const sx = (wx) => cw / 2 + (wx - camera.x) * ppu, sy = (wy) => ch / 2 + (wy - camera.y) * ppu;
-  const m = 3 * ppu;
+  cullView(camera, cw, ch);
+  const fl = cullFlags('loot', d.n), fi = cullFlags('lootItems', d.ni), fr = cullFlags('lootRocks', d.nr);
   for (let i = 0; i < d.n; i++) {
+    if (!visibleAt(fl, i, d.x[i], d.y[i], 3)) continue; // r43: off-screen loot is not animated or drawn
     const x = sx(d.x[i]), y = sy(d.y[i]);
-    if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
     const st = d.state[i];
     switch (d.kind[i]) {
       case LK_CLAM: if (st === ST_INTACT) drawClam(ctx, x, y, ppu, time, i); break;
@@ -36,8 +38,8 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
   }
   for (let i = 0; i < d.ni; i++) {
     if (d.itaken[i]) continue;
+    if (!visibleAt(fi, i, d.ix[i], d.iy[i], 3)) continue;
     const x = sx(d.ix[i]), y = sy(d.iy[i]) + Math.sin(time * 2.4 + i) * 0.06 * ppu;
-    if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
     if (d.ikind[i] === POCKET_BOMB) drawBombItem(ctx, x, y, ppu);
     else if (d.ikind[i] === POCKET_ITEM) {
       const gl = ctx.createRadialGradient(x, y, 0.05 * ppu, x, y, 0.7 * ppu);
@@ -47,8 +49,8 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
     } else drawHeartItem(ctx, x, y, ppu);
   }
   for (let i = 0; i < d.nr; i++) {
+    if (!visibleAt(fr, i, d.rx[i], d.ry[i], 6)) continue;
     const x = sx(d.rx[i]), y = sy(d.ry[i]);
-    if (x < -m || x > cw + m || y < -m * 4 || y > ch + m) continue;
     if (d.rstate[i] === 1) { // warning: grit shaking loose at the ceiling, and a pale streak down the column
       const k = 1 - d.rt[i] / 0.55;
       ctx.fillStyle = 'rgba(205,195,180,0.75)';

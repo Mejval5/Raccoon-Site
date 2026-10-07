@@ -38,9 +38,11 @@ import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
 import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN } from './journal.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
-import { drawV2Marks } from './v2-draw.js';
+import { drawV2Marks, drawV2Labels } from './v2-draw.js';
+import { resetPortalStates } from './portal-draw.js';
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
+import { buildLevelSpawns } from './level-spawns.js';
 import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
 import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
 import { drawPool, drawPoolHost } from './pool-draw.js';
@@ -55,6 +57,8 @@ import { seedFromText } from './settings.js';
 import { HEART_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
+import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool } from './canvas-pool.js';
+import { cullStats, visibleAt, cullFlags, cullView } from './cull.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -95,6 +99,54 @@ if (V2) {
   else if (at === 'end') run.state = S_END;
   else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); }
 }
+/**
+ * r43: the same world as makeWorld, built in three tasks (generate the level, place its spawns, assemble the world) with a
+ * timeout between them, so a transition never does all of it in one go. `done(world)` gets the result. Hub and tutorial are
+ * authored maps and take one step.
+ */
+// r43: the generator worker (gen-worker.js). Created on first use; if it cannot start or fails, the same steps run here.
+let genWorker = null, genWorkerBad = false, genId = 0;
+const genPending = new Map();
+const DATA_BASE = new URL('../data/', import.meta.url).href;
+function getGenWorker() {
+  if (genWorker || genWorkerBad || typeof Worker === 'undefined') return genWorker;
+  try {
+    genWorker = new Worker(new URL('./gen-worker.js', import.meta.url), { type: 'module' });
+    genWorker.onmessage = (e) => { const cb = genPending.get(e.data.id); genPending.delete(e.data.id); if (cb) cb(e.data); };
+    genWorker.onerror = () => { genWorkerBad = true; genWorker = null; for (const cb of genPending.values()) cb({ error: 'worker' }); genPending.clear(); };
+  } catch (err) { genWorkerBad = true; genWorker = null; }
+  return genWorker;
+}
+/** Ask the worker for a generated level + spawns; `cb(result | null)` (null: no worker, or it failed: do it here). */
+function generateInWorker(spec, cb) {
+  const w = getGenWorker();
+  if (!w) { cb(null); return; }
+  const id = ++genId;
+  const timer = setTimeout(() => { if (genPending.delete(id)) cb(null); }, 4000);
+  genPending.set(id, (r) => { clearTimeout(timer); cb(r.error ? null : r); });
+  w.postMessage({ id, seed: spec.seed, levelIndex: spec.levelIndex, dataBase: DATA_BASE });
+}
+if (V2 && typeof window !== 'undefined') setTimeout(() => { const w = getGenWorker(); if (w) w.postMessage({ id: 0, dataBase: DATA_BASE }); }, 1500); // load the banks in the worker while the page is idle
+const stepLog = []; // r43: {step, ms} of each transition step, for __octo.stepLog()
+function timed(name, fn) { const t0 = performance.now(); const r = fn(); stepLog.push({ step: name, at: Math.round(t0), ms: +(performance.now() - t0).toFixed(1) }); if (stepLog.length > 60) stepLog.shift(); return r; }
+function makeWorldSteps(done) {
+  const spec = levelSpec(run);
+  if (!V2 || spec.kind !== 'generated') { setTimeout(() => done(timed('authored world', () => makeWorld(0))), 0); return; }
+  generateInWorker(spec, (r) => {
+    if (r) { setTimeout(() => done(timed('world', () => createLevelWorld(spec.seed, spec.levelIndex, { generated: r.level, spawnInfo: r.spawnInfo }))), 0); return; }
+    stagedOnThread();
+  });
+  function stagedOnThread() {
+  let generated = null, spawnInfo = null;
+  setTimeout(() => {
+    generated = timed('generate', () => generateLevel(spec.seed, spec.levelIndex));
+    setTimeout(() => {
+      spawnInfo = timed('spawns', () => buildLevelSpawns(generated, spec.seed, spec.levelIndex));
+      setTimeout(() => done(timed('world', () => createLevelWorld(spec.seed, spec.levelIndex, { generated, spawnInfo }))), 0);
+    }, 0);
+  }, 0);
+  }
+}
 function makeWorld(runSeed) {
   if (!V2) return createWorld(runSeed);
   const spec = levelSpec(run);
@@ -113,7 +165,7 @@ function isCoarsePointer() {
   return matchMedia('(pointer: coarse)').matches;
 }
 function resize() {
-  const cap = dprForcedDown ? 1 : (isCoarsePointer() ? 1.5 : 2);
+  const cap = dprForcedDown ? 1 : Math.min(pixelRatioCap(), isCoarsePointer() ? 1.5 : 2); // r43: 2, or 1.5 on a phone / a device with 4 GB or less
   dpr = Math.min(window.devicePixelRatio || 1, cap);
   const w = window.innerWidth, h = window.innerHeight;
   canvas.width = Math.round(w * dpr);
@@ -545,6 +597,7 @@ function render(alpha, frameMs) {
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
   renderer.render(w, h, octo, alpha, sim.time, frameMs / 1000, {
+    warmOnly: holdDark, warmGroup: holdDark ? (holdFrame++ % 2 === 0 ? 0 : 1 + ((holdFrame >> 1) % 5)) : 0, // behind the dark screen: a set-up frame, then one group of the scene, alternating
     resident,
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),
@@ -580,12 +633,13 @@ const debug = createDebugOverlay(debugEl, { loop, input });
 loop.start();
 if (V2) showLevelTitle(); // the first level's title card
 
-function resetWorld(newSeed) {
+function resetWorld(newSeed, prebuilt = null) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
   sfx.stopAll();
   renderer.dispose();
+  resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
-  world = makeWorld(seed);
+  world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
   octo = createOctopus(world.startX, world.startY);
   if (V2) { octo.feel = true; octo.sink = sinkNow; }
   if (V2) applyCarried(octo, run.items);
@@ -616,7 +670,12 @@ function resetWorld(newSeed) {
 
 // --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
 let transitioning = false;
+let holdFrame = 0;
+let lastDark = null; // {start, end} (performance.now) of the last transition's dark part: the event until the screen starts to fade in
+let holdDark = false; // r43: the new level is being baked behind the dark screen: render only sets it up, draws nothing
 const FADE_MS = 320;
+const GENERATE_AT_MS = 80;     // r43: when, after the fade starts, the next level is generated
+const FADE_IN_MAX_MS = 2500;  // r43: the longest the screen stays dark waiting for the first view to bake
 let fadeEl = null;
 function ensureFade() {
   if (!fadeEl) {
@@ -635,8 +694,7 @@ function v2Event(ev) {
   const carry = { hearts: octo.hearts, bombs: octo.bombs };
   if (!runEvent(run, ev)) return false;
   if (!(prevState === S_BIOME && run.state === S_BIOME)) seenDive.clear();
-  journal.flush();
-  if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true);
+  timed('save', () => { journal.flush(); if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true); });
   if (run.state === S_END) {
     // the dive is over: record it, unlock the hub shortcut (persisted), show the summary
     const res = recordDive(run.last);
@@ -645,21 +703,39 @@ function v2Event(ev) {
     return true;
   }
   transitioning = true;
+  const darkStart = performance.now();
+  markAllocation(); // r43: __octo.memory().allocatedMB counts what this transition creates
   audio.setSwimIntensity(0); audio.setBeholderDread(0); sfx.hold(true); // r41: the loops fade out with the screen and no new effect starts; whatever is left is stopped when the level is torn down (resetWorld)
   const fade = ensureFade();
   fade.style.opacity = '1';
-  setTimeout(() => {
+  // r43: the work is spread over separate tasks. 1) the fade starts, 2) a few frames later the next level is generated (while the
+  // screen goes dark and the music plays on), 3) at the end of the fade the old level is torn down and the new one's objects are
+  // made, 4) the walls and the deep rock bake a little each frame behind the dark screen, and 5) the screen fades in when the
+  // first view is ready (at the latest after FADE_IN_MAX_MS). No task here does generation, baking and starting together.
+  let nextWorld = null;
+  setTimeout(() => { if (transitioning) makeWorldSteps((w) => { nextWorld = w; }); }, GENERATE_AT_MS);
+  const proceed = () => {
+    if (!nextWorld) { setTimeout(proceed, 10); return; } // the generation is still running in its own tasks
     if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
-    if (run.state === S_HUB) arriveInHub();
-    resetWorld(0);
+    timed('arrive', () => { if (run.state === S_HUB) arriveInHub(); });
+    timed('reset', () => resetWorld(0, nextWorld));
     if (run.state === S_BIOME && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
-    discoverStatePlace();
+    timed('discover', () => discoverStatePlace());
     if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
-    window.dispatchEvent(new CustomEvent('restart'));
-    fade.style.opacity = '0';
-    sfx.hold(false);
-    setTimeout(() => { transitioning = false; }, FADE_MS);
-  }, FADE_MS);
+    timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
+    const t0 = performance.now();
+    holdDark = true;
+    const fadeIn = () => {
+      if (!renderer.ready() && performance.now() - t0 < FADE_IN_MAX_MS) { setTimeout(fadeIn, 30); return; }
+      holdDark = false;
+      lastDark = { start: darkStart, end: performance.now() }; // the dark part of the transition, for the tests
+      fade.style.opacity = '0';
+      sfx.hold(false);
+      setTimeout(() => { transitioning = false; }, FADE_MS);
+    };
+    setTimeout(fadeIn, 30);
+  };
+  setTimeout(proceed, FADE_MS);
   return true;
 }
 
@@ -809,9 +885,10 @@ function decorWrecks(lv) {
 function scalePx(p, k) { return p.x === 0 && p.y === 0 ? p : { x: p.x * k, y: p.y * k }; }
 function shadowPass(c, camera, cw, ch) { drawWrecks(c, camera, cw, ch, decorWrecks(world.level), sim.time); drawContactShadows(c, camera, cw, ch, props.data, enemies.all(), world.isSolid, octo); }
 function v2Extra(c, camera, w2s, cw, ch) {
+  cullView(camera, cw, ch);
   const lv = world.level;
   drawV2Marks(c, camera, cw, ch, {
-    exitX: lv.exitX, exitY: lv.exitY, tileAt: world.tileAt,
+    exitX: lv.exitX, exitY: lv.exitY, tileAt: world.tileAt, octoX: octo.x, octoY: octo.y,
     boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
     label: run.state === S_HUB ? 'Dive' : '',
     shortcutX: run.state === S_HUB && run.shortcut && lv.shortcutX !== undefined ? lv.shortcutX : -1, shortcutY: lv.shortcutY,
@@ -829,14 +906,16 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
-    if (shopSt) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
-    for (const ps of poolSts) drawPool(c, camera, cw, ch, ps, run.shells, t);
+    if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
+    let pk = 0;
+    for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
 }
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
+  drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
   if (run.state === S_BIOME) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
@@ -1005,9 +1084,11 @@ function discoverScenery() {
 
 /** What is lying on the level: the sealed diver, the caged critter (resting on the floor); and the speech bubble. */
 function drawQuestThing(c, camera, cw, ch, t) {
+  cullView(camera, cw, ch);
   const st = quest, p = st.plan;
   const fade = st.status === ST_ACTIVE ? 1 : Math.max(0, Math.min(1, st.leave / 1.2));
-  switch (p.kindId) {
+  const near = visibleAt(cullFlags('quest', 1), 0, st.cx, st.cy, 4); // r43: the diver / critter / cage far from the camera is not animated or drawn
+  switch (near ? p.kindId : -1) {
     case Q_VAULT:
       if (fade > 0) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, st.cx, st.cy + 0.22, t, st.collected, !st.collected); c.restore(); }
       break;
@@ -1083,8 +1164,12 @@ function hubStep(lv) {
 }
 
 function drawHubPeople(c, camera, cw, ch, lv, t) {
+  cullView(camera, cw, ch);
+  const fl = cullFlags('hubPeople', 8);
+  let k = 0;
   for (const r of hubResidents(questTable, story)) {
     const pl = hubPlace(lv, r.id, t);
+    if (!visibleAt(fl, k++ & 7, pl.x, pl.y, 3)) continue; // r43: a resident far from the camera is not animated or drawn (its bubble below still is)
     if (r.id === 'marlo') drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
     else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
     else drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
@@ -1182,7 +1267,7 @@ window.__octo = {
   },
   /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
   enemies() {
-    return enemies.all().filter((e) => !e.ghost).map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
   },
   shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
@@ -1280,8 +1365,30 @@ window.__octo = {
   memory() {
     const c = renderer.canvasStats();
     const pm = typeof performance !== 'undefined' && performance.memory ? performance.memory : null;
-    return { rendererCanvases: c.n, rendererCanvasBytes: c.bytes, heap: pm ? pm.usedJSHeapSize : null, sources: audio.sources().length };
+    const pool = canvasPoolStats(), cs = cullStats(), MB = 1048576;
+    return {
+      rendererCanvases: c.n, rendererCanvasBytes: c.bytes, heap: pm ? pm.usedJSHeapSize : null, sources: audio.sources().length,
+      // r43: canvases = the ones in use (pool.live, plus the page-wide small ones below), canvasMB their size, poolMB the free ones kept for the next level
+      canvases: pool.live + pool.shared, canvasMB: +((pool.liveBytes + pool.sharedBytes) / MB).toFixed(2), sharedMB: +(pool.sharedBytes / MB).toFixed(2), poolMB: +(pool.pooledBytes / MB).toFixed(2), pooled: pool.pooled,
+      allocatedMB: +(pool.allocatedBytes / MB).toFixed(2), allocated: pool.allocatedCount, reused: pool.reuseCount,
+      heapMB: pm ? +(pm.usedJSHeapSize / MB).toFixed(1) : null,
+      drawnEntities: cs.drawn, totalEntities: cs.total, setupMaxMs: renderer.timing().warmMax, wallsMaxMs: renderer.timing().wallsMax, bake: c.bake, cells: c.cells, deepStage: c.deepStage,
+    };
   },
+  /** r43 test hook: a generated level (built by the worker) equals what the main thread generates for the same seed; null in the hub / tutorial. */
+  levelMatchesMainThread() {
+    const spec = levelSpec(run);
+    if (!V2 || spec.kind !== 'generated') return null;
+    const lv = generateLevel(spec.seed, spec.levelIndex), t = world.level.tiles;
+    for (let i = 0; i < t.length; i++) if (lv.tiles[i] !== t[i]) return false;
+    return lv.exitX === world.level.exitX && lv.exitY === world.level.exitY && lv.startX === world.level.startX;
+  },
+  /** r43 test hook: the duration of each transition step so far (generate, spawns, world, reset). */
+  stepLog() { return stepLog.slice(); },
+  /** r43 test hook: how many entities of each kind the last frame drew, and whether the first view of the level is baked. */
+  renderReady() { return renderer.ready(); },
+  /** r43 test hook: when the last transition started and when its screen began to fade back in (performance.now ms). */
+  lastTransition() { return lastDark ? { ...lastDark } : null; },
   /** r41: the live audio sources: synthesised ones (kind, loop) and the music elements. */
   audioSources() { return audio.sources(); },
   /** r41 test hook: play a synthesised effect by name (dash, hurt, chime, bomb). */

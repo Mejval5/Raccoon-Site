@@ -8,6 +8,7 @@ import { isItem } from './items.js';
 import { drawItemIcon } from './items-draw.js';
 import { FN } from './journal-art.js';
 import { wrapLines } from './speech.js';
+import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -31,11 +32,12 @@ function label(ctx, text, x, y, px, fill, stroke = 'rgba(4,20,34,0.85)') {
 /** Rubble props (props.js): small grey-brown chips that tumble down and fade out over their last 0.8 s. */
 export function drawRubble(ctx, camera, cw, ch, d) {
   const { ppu, sx, sy } = view(camera, cw, ch);
-  const m = 2 * ppu;
+  cullView(camera, cw, ch);
+  const fl = cullFlags('rubble', d.n);
   for (let i = 0; i < d.n; i++) {
     if (!d.alive[i] || d.kind[i] !== 7) continue;
+    if (!visibleAt(fl, i, d.x[i], d.y[i], 2)) continue; // r43
     const x = sx(d.x[i]), y = sy(d.y[i]);
-    if (x < -m || x > cw + m || y < -m || y > ch + m) continue;
     const a = Math.min(1, d.timer[i] / 0.8);
     const r = Math.max(1.5, d.radius[i] * ppu * 1.25);
     const rot = d.x[i] * 3 + i;
@@ -733,10 +735,12 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
  */
 export function drawDecorBoulders(ctx, camera, cw, ch, list, tileAt) {
   const { ppu, sx, sy } = view(camera, cw, ch);
+  cullView(camera, cw, ch);
+  const fb = cullFlags('boulders', list.length >> 2);
   for (let i = 0; i < list.length; i += 4) {
     const x = list[i], y = list[i + 1], dy = list[i + 2], seed = list[i + 3];
+    if (!visibleAt(fb, i >> 2, x, y, 2)) continue; // r43
     const px = sx(x), py = sy(y);
-    if (px < -ppu * 2 || px > cw + ppu * 2 || py < -ppu * 2 || py > ch + ppu * 2) continue;
     if (tileAt(Math.floor(x), Math.floor(y) - dy) === 0) continue; // its rock was bombed away
     const R = ppu * (0.3 + 0.05 * ((seed * 7) % 3));
     const rimY = py - dy * 0.5 * ppu;      // the rock face under (over) the cell
@@ -806,9 +810,11 @@ export function drawDecorRock(ctx, x, rimY, R, seed, dy) {
  */
 export function drawWrecks(ctx, camera, cw, ch, list, time) {
   const { ppu, sx, sy } = view(camera, cw, ch);
+  cullView(camera, cw, ch);
+  const fw = cullFlags('wrecks', list.length / 3);
   for (let i = 0; i < list.length; i += 3) {
+    if (!visibleAt(fw, i / 3, list[i], list[i + 1], 7)) continue; // r43
     const px = sx(list[i]), py = sy(list[i + 1]), flip = list[i + 2] < 0 ? -1 : 1;
-    if (px < -ppu * 6 || px > cw + ppu * 6 || py < -ppu * 3 || py > ch + ppu * 8) continue;
     drawWreck(ctx, px, py, ppu, flip, time);
   }
 }

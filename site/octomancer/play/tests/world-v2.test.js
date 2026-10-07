@@ -59,6 +59,8 @@ export async function runWorldV2Tests(assert) {
     const canvas = document.createElement('canvas');
     canvas.width = 375; canvas.height = 812;
     const world = createLevelWorld(42, 0);
+    const { canvasPoolStats } = await import('../js/canvas-pool.js');
+    const live0 = canvasPoolStats().live;
     const renderer = createRenderer(canvas.getContext('2d'), world);
     const octo = createOctopus(world.startX, world.startY);
     let maxLive = 0, ok = true;
@@ -76,6 +78,30 @@ export async function runWorldV2Tests(assert) {
       if (live > vis + 2) ok = false;
     }
     assert(`v2 render: live wall bands <= on screen + 2 through a full dive (max ${maxLive} of ${world.bandCount()})`, ok && maxLive < world.bandCount());
+    // r43: the wall art is cells (a band cut into columns), the deep rock bakes in steps, and nothing is bigger than the screen
+    octo.x = octo.prevX = 10; octo.y = octo.prevY = 30;
+    const frame = () => renderer.render(canvas.width, canvas.height, octo, 1, 0, 1, {
+      resident: world.residentChunks(), pickups: [], bubbles: [], critters: [], depth: 30, enemies: [], shots: [], bombs: [],
+      particles: null, shakeOffset: null, dreadLevel: 0, extraDraw: null,
+    });
+    let frames = 0;
+    // frames with a pause between them: the plant images (the deep rock's foliage) load between tasks
+    while (!(renderer.ready() && renderer.canvasStats().deepStage >= 3) && frames < 200) { frame(); frames++; await new Promise((r) => setTimeout(r, 8)); }
+    const cs = renderer.canvasStats();
+    assert(`v2 render r43: the first view is baked in ${frames} frames (ready, deep rock done)`, renderer.ready() && cs.deepStage >= 3 && frames < 200);
+    assert(`v2 render r43: no wall canvas is wider or taller than the screen (${cs.maxW}x${cs.maxH} px of ${canvas.width}x${canvas.height})`, cs.maxW <= canvas.width && cs.maxH <= canvas.height);
+    assert(`v2 render r43: the canvases for a 375x812 screen stay small (${(cs.bytes / 1048576).toFixed(1)} MB, ${cs.cells} cells at ${cs.bake} px/unit)`, cs.bytes < 14 * 1048576 && cs.cells >= 2);
+    renderer.dispose();
+    assert('v2 render r43: dispose gives every canvas back (none left in use)', canvasPoolStats().live === live0 && renderer.canvasStats().n === 0);
+    const w2 = createLevelWorld(43, 0);
+    const before = canvasPoolStats();
+    const r2 = createRenderer(canvas.getContext('2d'), w2);
+    let f2 = 0;
+    const o2 = createOctopus(w2.startX, w2.startY);
+    while (!r2.ready() && f2 < 60) { r2.render(canvas.width, canvas.height, o2, 1, 0, 1, { resident: w2.residentChunks(), pickups: [], bubbles: [], critters: [], depth: 0, enemies: [], shots: [], bombs: [], particles: null, shakeOffset: null, dreadLevel: 0, extraDraw: null }); f2++; }
+    const after = canvasPoolStats();
+    assert(`v2 render r43: the next level reuses the pooled canvases (${after.reuseCount - before.reuseCount} reused, ${((after.allocatedBytes - before.allocatedBytes) / 1048576).toFixed(1)} MB new)`, after.reuseCount > before.reuseCount);
+    r2.dispose();
   }
 
   for (const seed of SEEDS) {

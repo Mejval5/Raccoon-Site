@@ -23,7 +23,7 @@
   "###############....###############",
   "###########.............##########",
   "###########.............##########",
-  "###########.T...E...R...##########",
+  "###########..T...E...R..##########",
   "##################################",
   "##################################"
  ],
@@ -33,8 +33,8 @@
    "y": 12,
    "r": 10,
    "title": "Welcome to the Shallows",
-   "desktop": "Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal.",
-   "touch": "Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal."
+   "desktop": "Swim into the whirlpool in the floor to dive. Swim into the board on the left to read your journal.",
+   "touch": "Swim into the whirlpool in the floor to dive. Swim into the board on the left to read your journal."
   }
  ],
  "spawns": [

@@ -161,14 +161,22 @@ export function createUI(root, handlers) {
   }
 
   let helpV2 = false;
+  let heartsKey = '';
+  // r43: the HUD is updated every frame; a textContent write replaces the text node and invalidates layout even when the string is the
+  // same (about 4 per frame, and the Layout showed up in the transition frames on a phone), so a write happens only on a change
+  const setText = (e, t) => { if (e._t !== t) { e._t = t; e.textContent = t; } };
   function updateHud(state) {
-    ensureHearts(state.heartMax);
-    for (let i = 0; i < heartEls.length; i++) {
-      const shown = i < state.heartMax;
-      heartEls[i].style.display = shown ? '' : 'none';
-      heartEls[i].style.opacity = i < state.hearts ? '1' : '0.25';
+    const hk = state.heartMax + ':' + state.hearts;
+    if (hk !== heartsKey) {
+      heartsKey = hk;
+      ensureHearts(state.heartMax);
+      for (let i = 0; i < heartEls.length; i++) {
+        const shown = i < state.heartMax;
+        heartEls[i].style.display = shown ? '' : 'none';
+        heartEls[i].style.opacity = i < state.hearts ? '1' : '0.25';
+      }
     }
-    bombsEl.textContent = `Bombs ${state.bombs}`;
+    setText(bombsEl, `Bombs ${state.bombs}`);
     const v2 = state.stage !== undefined;
     if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
       helpV2 = true;
@@ -201,9 +209,9 @@ export function createUI(root, handlers) {
       }
       itemsEl.style.display = key ? '' : 'none';
     }
-    depthEl.textContent = `Depth ${state.depth}m`;
-    scoreEl.textContent = `Score ${state.score}`;
-    bestEl.textContent = `Best ${state.best}`;
+    setText(depthEl, `Depth ${state.depth}m`);
+    setText(scoreEl, `Score ${state.score}`);
+    setText(bestEl, `Best ${state.best}`);
   }
 
   // --- Overlays (pause, game over): dim backdrop + centred card ---

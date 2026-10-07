@@ -14,6 +14,7 @@
 // screenshot review: it read as a bullet hole, not a cave feature.)
 
 import { prefersReducedMotion } from './config.js';
+import { visibleObj, cullView } from './cull.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -233,8 +234,10 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
  * `runesOnly` filters which pass a given call handles. */
 export function drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, runesOnly = false) {
   const reduced = prefersReducedMotion();
+  cullView(camera, canvasW, canvasH);
   for (const c of critters) {
     if (onWallPass(c.kind) !== runesOnly) continue;
+    if (!visibleObj(c, c.x, c.y, 3)) continue; // r43: off-screen critters are not animated or drawn
     drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced);
   }
 }

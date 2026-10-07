@@ -17,6 +17,7 @@ const FILES = {
   board: 'hub-board.webp',
   questSign: 'hub-questsign.webp',
   banner: 'title-banner.webp',
+  whirlpool: 'whirlpool-sheet.webp', // r42: Milan's Whirlpool animation (21 frames, 7 columns of 208 px)
 };
 
 export const ROCK_TILE_UNITS = 9;           // world units one rock texture tile spans

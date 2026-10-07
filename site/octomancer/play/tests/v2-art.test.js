@@ -15,7 +15,7 @@ function pixels(img) {
 
 export async function runV2ArtTests(assert) {
   const keys = Object.keys(V2_ART_FILES);
-  assert('v2 art: 14 generated images are registered, all under img/v2 as webp', keys.length === 14 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
+  assert('v2 art: 15 images are registered (14 generated + the whirlpool sheet from the original game), all under img/v2 as webp', keys.length === 15 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
   ensureV2Art();
   const rockEl = art.rock;
   ensureV2Art();
@@ -24,12 +24,13 @@ export async function runV2ArtTests(assert) {
   assert('v2 art: every image loads', keys.every((k) => artImg(k) && artImg(k).naturalWidth > 16));
 
   // alpha sprites have transparent corners and opaque centre pixels; the opaque layers have none
-  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'chestClosed', 'chestOpen', 'crackVault', 'crackWall', 'board', 'questSign', 'banner'];
+  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'chestClosed', 'chestOpen', 'crackVault', 'crackWall', 'board', 'questSign', 'banner', 'whirlpool'];
   const clearShare = (k) => { const d = pixels(artImg(k)).data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 8) c++; return c / (d.length / 4); };
   assert('v2 art: keyed sprites keep real transparency (between 5 and 98 percent of pixels clear, no opaque key box)', alphaKeys.every((k) => { const c = clearShare(k); return c > 0.05 && c < 0.98; }));
   let magenta = 0;
   for (const k of alphaKeys) { const d = pixels(artImg(k)).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 2] > 200 && d[i + 1] < 90) magenta++; }
   assert('v2 art: no key-colour (magenta) pixels are left opaque in any sprite', magenta < 40);
+  assert('v2 art: the whirlpool sheet is 7 columns x 3 rows of 208 px cells', artImg('whirlpool').naturalWidth === 7 * 208 && artImg('whirlpool').naturalHeight === 3 * 208);
   const far = pixels(artImg('far')).data;
   let opaque = true; for (let i = 3; i < far.length; i += 4 * 97) if (far[i] !== 255) { opaque = false; break; }
   assert('v2 art: the far backdrop is fully opaque', opaque);

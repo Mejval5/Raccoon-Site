@@ -3,6 +3,7 @@
 
 import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_HALF_LEN, SPIKE_REACH, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT } from './hazards.js';
 import { prefersReducedMotion } from './config.js';
+import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -18,11 +19,11 @@ const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - M
  */
 export function drawHazards(ctx, camera, cw, ch, d, time, isSolid) {
   const ppu = camera.pxPerUnit;
-  const margin = 9; // world units: skip hazards farther off screen than a jet stream can reach
-  const left = camera.x - cw / 2 / ppu - margin, right = camera.x + cw / 2 / ppu + margin;
-  const top = camera.y - ch / 2 / ppu - margin, bottom = camera.y + ch / 2 / ppu + margin;
+  cullView(camera, cw, ch);
+  const fl = cullFlags('hazards', d.n);
   for (let i = 0; i < d.n; i++) {
-    if (d.x[i] < left || d.x[i] > right || d.y[i] < top || d.y[i] > bottom) continue;
+    // r43: off-screen hazards are not animated or drawn (the reach is a jet stream's length, or the plate / rock / ring around the centre)
+    if (!visibleAt(fl, i, d.x[i], d.y[i], d.kind[i] === HZ_JET ? d.len[i] + 1 : 2.5)) continue;
     const sx = cw / 2 + (d.x[i] - camera.x) * ppu, sy = ch / 2 + (d.y[i] - camera.y) * ppu;
     switch (d.kind[i]) {
       case HZ_JET: drawJet(ctx, sx, sy, ppu, d.dx[i], d.dy[i], d.len[i], time, i); break;
