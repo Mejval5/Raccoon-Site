@@ -480,7 +480,9 @@ export function placeMaterials(tiles, mrng, shop, keep) {
           if (nx >= shop.x0 && nx < shop.x1 && ny >= shop.y0 && ny < shop.y1 && T(nx, ny) === 0) { near = true; break; }
         }
         if (!near) continue;
-        tiles[y * W + x] = T(x, y - 1) !== 0 && T(x, y + 1) === 0 ? MAT_TIMBER : MAT_MASONRY;
+        // timber beams only along a flat ceiling (water under this tile and under a side neighbour); stepped walls stay masonry
+        const beam = T(x, y + 1) === 0 && ((T(x - 1, y) !== 0 && T(x - 1, y + 1) === 0) || (T(x + 1, y) !== 0 && T(x + 1, y + 1) === 0));
+        tiles[y * W + x] = beam ? MAT_TIMBER : MAT_MASONRY;
       }
     }
   }
