@@ -331,7 +331,8 @@ function patternRunes(chunk, yOffset, chunkW) {
     // r37: jitter along the wall (runes on a straight wall used to line up in columns); fossils sit anywhere in their tile
     const j1 = (((h >>> 5) % 100) / 100 - 0.5), j2 = (((h >>> 13) % 100) / 100 - 0.5);
     const FT = getFoliageTable();
-    if (s.dk === 'fossil' && FT && ((h >>> 21) % 5) < 2) {
+    // (not over a buried-treasure find: embed.js's {type:'embed'} records sit in rock tiles too)
+    if (s.dk === 'fossil' && FT && ((h >>> 21) % 5) < 2 && !chunk.spawns.some((e) => e.type === 'embed' && Math.abs(Math.floor(e.x) - tx) <= 1 && Math.abs(Math.floor(e.y) - ty) <= 1)) {
       // the background generator's crystals and pebbles (FoliageRock23, Rock23_Solo, Plant20), on two in five fossil
       // cells: thick rock all round, so their FoliageRandomizer scale and rotation keep them on the rock face
       const e = pickEmbedded(FT, SURF_EMBED, ((h >>> 3) % 997) / 997, ((h >>> 9) % 991) / 991, ((h >>> 15) % 983) / 983, (h >>> 27) & 1);
