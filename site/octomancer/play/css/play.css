@@ -81,6 +81,8 @@ body {
 .octo-btn.is-active {
   background: rgba(255,255,255,0.32);
 }
+.octo-btn.is-empty { opacity: 0.45; }
+
 
 /* --- HUD bar (hearts + score/depth/bombs), M4-1 --- */
 .octo-hud-bar {

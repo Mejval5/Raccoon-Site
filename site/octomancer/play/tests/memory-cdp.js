@@ -48,8 +48,8 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
       await sleep(200);
       return ok;
     };
-    // the sequence of events that moves between levels: tutorial -> 1-1 -> 1-2 -> 1-3 -> end -> hub -> 1-1 ...
-    const seq = ['exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'continue', 'enter'];
+    // the sequence of events that moves between levels: tutorial -> 1-1 -> 1-2 -> 1-3 -> rest grotto -> end -> hub -> 1-1 ...
+    const seq = ['exit', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter'];
     // warm-up: three transitions fill the page's lazy caches (art, fonts, the shared rock grain, code), then the base is taken
     check('the warm-up transitions run', (await go(seq[0])) && (await go(seq[1])) && (await go(seq[2])));
     const base = await snap();
@@ -75,9 +75,9 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
     check('the renderer reports a small canvas set (cells for the screen and a ring)', last.mem.rendererCanvases <= 30 && last.mem.rendererCanvasBytes < 20 * 1048576, JSON.stringify(last.mem));
 
     // --- audio: nothing synthesised survives a transition, only the music ---
-    // r44: the sequence ended in 1-3, where 'exit' shows the end screen (no teardown). Go to the hub and into 1-1 first, so the next
-    // 'exit' is a real transition (this check used to pass because the octopus stood still: no swim loop existed to be left behind)
-    await go('exit'); await go('continue'); await go('enter');
+    // r44: the next 'exit' must be a real transition (not the end screen, which tears nothing down); the sequence above ends in 1-1
+    // (this check used to pass because the octopus stood still: no swim loop existed to be left behind)
+    check('the sequence ends in Shallows 1-1', await page.evaluate(() => __octo.level().stage === 'Shallows 1-1'));
     await page.keyboard.press('KeyD'); // the first input starts the audio
     await sleep(400);
     await page.evaluate(() => { __octo.teleport(__octo.level().startX, __octo.level().startY); __octo.input({ move: { x: 1, y: 0.4 }, dash: true }); __octo.step(40); });
