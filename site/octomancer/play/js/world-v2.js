@@ -8,7 +8,7 @@
 //     (same padded-window trace world.js does per chunk), lazily, and each
 //     band's outline is kept until a bomb changes it; a bomb retraces only
 //     the band(s) its tiles touch;
-//   - bombs break any interior rock (tile 1) but never the border (isBedrock).
+//   - bombs break any interior rock (tile 1), the shop room's included, but never the border (isBedrock).
 //
 // Bands are the unit render.js caches wall canvases in; `configureBands(rows)`
 // lets the renderer pick the band height (about 512 px of baked canvas).
@@ -73,6 +73,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
   const shopRect = level.shop || null;
   function inShop(x, y) { return shopRect !== null && x >= shopRect.x0 && x < shopRect.x1 && y >= shopRect.y0 && y < shopRect.y1; }
+  // 2026-10-07: the shop is ordinary breakable world (Spelunky: bombing the stall is how you anger the keeper). Every shop
+  // tile broken is counted, so main.js can tell the stall was damaged. When the Materials owner's shop-frame material
+  // (timber / masonry) lands, its tiles break the same way: only the border (isBedrock) is unbreakable.
+  let shopBroken = 0;
 
   let deepestY = startY;
 
@@ -175,14 +179,19 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !bedrock(x, y) && !inShop(x, y) && tileAt(x, y) !== 0;
+      return !bedrock(x, y) && tileAt(x, y) !== 0;
     },
+    /** Shop tiles broken on this level so far (main.js: a change angers the shopkeepers). */
+    get shopTilesBroken() { return shopBroken; },
+    /** Whether tile (tx, ty) is part of the shop room (its frame, floor, walls). */
+    inShop(tx, ty) { return inShop(Math.floor(tx), Math.floor(ty)); },
     /** Bomb break: any interior rock, never the 2-tile border. */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (bedrock(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
+      if (bedrock(x, y)) return false;
       if (tiles[y * W + x] === 0) return false;
       setTile(x, y, 0);
+      if (inShop(x, y)) shopBroken++; // the stall breaks like any rock: its pedestals fall, the keeper is angered (main.js, shop.js)
       return true;
     },
 

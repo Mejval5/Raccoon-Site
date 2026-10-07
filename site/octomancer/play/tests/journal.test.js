@@ -83,8 +83,8 @@ export async function runJournalTests(assert) {
       counterRows(jl.list('place')[0]).map((r) => r[0]).join() === 'Visited' && counterRows(jl.list('person')[0]).map((r) => r[0]).join() === 'Met,Freed');
     // r39: a collectable shows only the counter that means something (no per-dive Seen next to a per-event Collected); the keeper has Bought, not Helped
     const labelsOf = (id) => counterRows(jl.list().find((e) => e.id === id)).map((r) => r[0]).join();
-    assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought',
-      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought' && labelsOf('person-collector') === 'Met,Relics given');
+    assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought / Angered / Killed you',
+      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought,Angered,Killed you' && labelsOf('person-collector') === 'Met,Relics given');
     assert('journal counters: nothing labelled Seen anywhere (it counts dives, so it says so)', !ENTRIES.some((e) => e.counters.some(([k, l]) => l === 'Seen')) && ENTRIES.filter((e) => e.counters.some(([k]) => k === 'seen') && ['item', 'loot'].includes(e.cat)).length === 0);
     // completion math: percentages per tab and overall are floor(100 * found / total); 100% only when everything is found
     const c0 = completion(jl);

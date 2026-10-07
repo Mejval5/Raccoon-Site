@@ -52,6 +52,7 @@ export function causeEntryId(cause) {
   if (cause === 'shot') return 'creature-cannon';
   if (cause === 'bomb') return 'item-bomb';
   if (cause === 'chest') return 'loot-chest';
+  if (cause === 'shopkeeper') return 'person-keeper';
   for (const pre of ['creature-', 'hazard-']) if (INDEX.has(pre + cause)) return pre + cause;
   return null;
 }

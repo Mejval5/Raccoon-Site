@@ -25,14 +25,14 @@ export const SHORTCUT3_LEVEL = 3;
 export const CAUSE_TEXT = {
   piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'horned growth', manta: 'a manta',
   shot: 'a stray shot', bomb: 'its own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
-  eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', unknown: 'the dark',
+  eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', shopkeeper: 'the Shopkeeper', unknown: 'the dark',
 };
 
 /** The same causes as capitalised nouns, for list rows (the journal stats page: 'Piranha', 'Spike wall'). */
 export const CAUSE_NAME = {
   piranha: 'Piranha', crab: 'Crab', urchin: 'Urchin', horns: 'Horned growth', manta: 'Manta',
   shot: 'Stray shot', bomb: 'Own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
-  eel: 'Electric eel', anemone: 'Anemone', jet: 'Current jet', chest: 'Trapped chest', unknown: 'The dark',
+  eel: 'Electric eel', anemone: 'Anemone', jet: 'Current jet', chest: 'Trapped chest', shopkeeper: 'Shopkeeper', unknown: 'The dark',
 };
 
 /** The per-dive stats the run summary reports (reset by every dive). */
@@ -53,6 +53,8 @@ export function createRun(seed, opts = {}) {
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
+    shopAggro: false,    // Spelunky aggro: the shopkeepers are hostile for the rest of this dive (shop-aggro.js); a new dive resets it
+    shopAggroWhy: '',    // what angered them first: 'hurt' | 'shop' | 'theft' | 'kill' | ...
     deaths: 0,
     shortcut3: !!opts.shortcut3, // Marlo's hub ring to Shallows 1-3 (story.marlo >= 3 in save.js)
     shortcut: !!opts.shortcut, // the hub ring to Shallows 1-2: unlocked by finishing the biome once (persisted by save.js)
@@ -96,6 +98,7 @@ function startDive(run, level = 1) {
   run.levelsCleared = 0;
   run.shells = 0;
   run.items = [];
+  run.shopAggro = false; run.shopAggroWhy = '';
   run.dive = newDive(level);
   run.last = null;
 }
@@ -109,6 +112,7 @@ export function runEvent(run, ev, cause) {
     run.deaths++;
     if (run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
     run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
+    run.shopAggro = false; run.shopAggroWhy = '';
     return true;
   }
   switch (run.state) {
@@ -140,6 +144,7 @@ export function runEvent(run, ev, cause) {
         sum.shortcutNew = !run.shortcut; // first clear: the hub ring unlocks
         run.shortcut = true;
         run.state = S_END; run.level = 0;
+        run.shopAggro = false; run.shopAggroWhy = ''; // the dive is over: the next one starts with calm keepers
       }
       return true;
     case S_END:
