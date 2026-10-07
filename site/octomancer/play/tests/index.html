@@ -170,6 +170,10 @@ await runEnemyR36Tests(assert);
 import { runDetailTests } from './detail.test.js';
 await runDetailTests(assert);
 
+// --- Round 46: foliage from the original's FoliageItems (kinds, offsets, rims, no twins) ---
+import { runFoliageTests } from './foliage.test.js';
+await runFoliageTests(assert);
+
 // --- Round 37: set pieces force their content, seeding fix ---
 import { runSetPieceTests } from './setpieces.test.js';
 await runSetPieceTests(assert);

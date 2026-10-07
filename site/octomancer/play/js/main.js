@@ -22,6 +22,7 @@ import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LO
 import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
+import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
 import { createProps, PROP_NAMES } from './props.js';
@@ -86,6 +87,7 @@ let authoredJson = null;
 let run = null;
 let questTable = null;
 let shopItems = [];
+setFoliageTable(await fetchFoliage()); // r46: every original foliage kind, its offsets and spawn rules (data/foliage.json)
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
   setPatternTable(await fetchPatterns());
@@ -1009,7 +1011,10 @@ function setupLevelExtras() {
     const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
     const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex, eligible, otherSpawns());
     quest = createQuestState(plan);
-    if (plan) questClear = { x: plan.pos[0], y: plan.pos[1] };
+    if (plan) {
+      questClear = { x: plan.pos[0], y: plan.pos[1] };
+      if (world.addPlantKeepOut) world.addPlantKeepOut(Math.floor(plan.pos[0]) - 2, Math.floor(plan.pos[1]) - 2, Math.floor(plan.pos[0]) + 3, Math.floor(plan.pos[1]) + 3); // r46: no foliage over the person or the cage
+    }
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
     poolSts = planPools(world.level).map(createPoolState);
   }

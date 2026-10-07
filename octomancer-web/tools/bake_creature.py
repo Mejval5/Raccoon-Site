@@ -61,6 +61,10 @@ def unpack(b, i=0):
         return False, i + 1
     if t == 0xc3:
         return True, i + 1
+    if t in (0xc4, 0xc5, 0xc6):  # bin 8/16/32 (some foliage packs carry one)
+        w = {0xc4: 1, 0xc5: 2, 0xc6: 4}[t]
+        n = int.from_bytes(b[i + 1:i + 1 + w], 'big')
+        return bytes(b[i + 1 + w:i + 1 + w + n]), i + 1 + w + n
     if t == 0xca:
         return struct.unpack('>f', b[i + 1:i + 5])[0], i + 5
     if t == 0xcb:

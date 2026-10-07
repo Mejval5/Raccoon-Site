@@ -15,6 +15,7 @@
 
 import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
+import { planPools } from './pool.js';
 import {
   traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
   OUTLINE_PAD, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO,
@@ -64,7 +65,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       ...(level.shortcutX >= 0 && level.shortcutX !== undefined ? [{ x0: level.shortcutX - 2, x1: level.shortcutX + 3, y0: level.shortcutY - 2, y1: level.shortcutY + 2 }] : []),
       ...(level.shortcut3X >= 0 && level.shortcut3X !== undefined ? [{ x0: level.shortcut3X - 2, x1: level.shortcut3X + 3, y0: level.shortcut3Y - 2, y1: level.shortcut3Y + 2 }] : []),
       ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
+      // r46: the whirlpool pedestal (its plinth, the portal ring above it and the prize chest beside it)
+      ...(level.setPieces ? planPools(level).map((p) => ({ x0: Math.floor(p.x) - 3, x1: Math.floor(p.x) + 3, y0: p.floorY - 4, y1: p.floorY + 1 })) : []),
     ],
+    keepVer: 0, // bumped when a keep-out is added later (a quest's cage): render.js re-places the foliage
     plantFree: level.shop ? {
       x0: Math.min(level.shop.px[0], level.shop.kx) - 3, x1: Math.max(level.shop.px[4], level.shop.kx) + 4,
       y0: level.shop.ky - 5, y1: Math.max(level.shop.px[1], level.shop.px[3], level.shop.px[5]) + 3,
@@ -196,6 +200,8 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
     getWallOutline,
     wallSegmentsNear,
+    /** r46: no foliage in tile rect [x0, x1) x [y0, y1) (a quest's person or cage, placed after the level). */
+    addPlantKeepOut(x0, y0, x1, y1) { chunk.plantKeepOut.push({ x0, y0, x1, y1 }); chunk.keepVer++; },
 
     // ---- bands (render.js) ----
     configureBands(rows) {
