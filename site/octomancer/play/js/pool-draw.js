@@ -132,7 +132,7 @@ export function drawPoolHost(ctx, camera, cw, ch, st, time, lookX) {
   const bob = Math.sin(time * 1.9) * k * 0.025;
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.42, ppu * 0.07, 0, 0, TAU); ctx.fill();
+  if (!st.noShadow) { ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.42, ppu * 0.07, 0, 0, TAU); ctx.fill(); } // st.noShadow: a corpse
   if (spriteRect('host')) {
     // r46: Milan's sea horse, hovering just over the floor: it faces the octopus, bobs, hops and sways when it cheers, droops when lost
     const lost = st.state === PL_LOST, cheer = st.state === PL_ACTIVE || st.state === PL_WON;

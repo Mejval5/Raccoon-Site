@@ -196,6 +196,9 @@ await runPerf43Tests(assert);
 import { runPortalTests } from './portal.test.js';
 await runPortalTests(assert);
 
+// --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
+import { runShopTests } from './shop.test.js';
+await runShopTests(assert);
 // --- Buried treasure and the Sea-glass Goggles ---
 import { runEmbedTests } from './embed.test.js';
 await runEmbedTests(assert);
@@ -209,6 +212,27 @@ import { runHotbarTests } from './hotbar.test.js';
 await runHotbarTests(assert);
 import { runRestTests } from './rest.test.js';
 await runRestTests(assert);
+// --- V2-PLAN 16: corpses and currency shells by value ---
+import { runCorpseTests } from './corpses.test.js';
+await runCorpseTests(assert);
+import { runShellTests } from './shells.test.js';
+await runShellTests(assert);
+
+// --- V2-PLAN 16: giant clam and tentacle ---
+import { runCreatureTests } from './creatures.test.js';
+await runCreatureTests(assert);
+
+// --- V2-PLAN 16: traps and the octopus's death looks (impale, stun, jets up, jet+spikes, splat) ---
+import { runDamageTests } from './damage.test.js';
+await runDamageTests(assert);
+
+// --- V2-PLAN 16 point 5: friendly NPCs are killable and aggroable ---
+import { runNpcTests } from './npcs.test.js';
+await runNpcTests(assert);
+
+// --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
+import { runRagdollTests } from './ragdoll.test.js';
+await runRagdollTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

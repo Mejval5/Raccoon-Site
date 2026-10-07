@@ -93,12 +93,30 @@ function updateBlink(dt) {
   }
 }
 
+/** V2-PLAN 16: incapacitated (stunned / held) or killed in place (skewered / flattened): limp, eyes shut or crossed out. */
+function isLimpLook(o) { return o.stunT > 0 || o.held > 0 || (o.dead && (o.deathStyle === 'impale' || o.deathStyle === 'splat')); }
+/** Eyes crossed out: the skewered and the flattened. */
+function isCrossedOut(o) { return o.dead && (o.deathStyle === 'impale' || o.deathStyle === 'splat'); }
+
 /**
  * Pick the clip + frame-within-clip for the current octopus state.
  * Swim05 while pushing (rate scaled by speed), Idle4 at rest, Swim05 at 2x
  * with a dash squash right after a dash, Idle4Swirl while hurt.
  */
+// V2-PLAN 14: the dead octopus holds one swim frame with the tentacles splayed out, limp (no animation at all)
+const DEAD_FRAME = 4;
+
 function pickFrame(data, o, t) {
+  if (isLimpLook(o)) { // V2-PLAN 16: a limp body (stunned, held, skewered, flattened) is held on one hurt frame, not animating
+    const clip = data.clips.hurt || data.clips.idle;
+    const idx = Math.min(clip.count - 1, Math.floor(clip.count * 0.4));
+    return { clipKey: data.clips.hurt ? 'hurt' : 'idle', frameIndex: clip.start + idx, localIndex: idx };
+  }
+  if (o.dead || o.limp) { // V2-PLAN 14: the plain death and a ragdoll limp: tentacles splayed
+    const clip = data.clips.swim || data.clips.idle;
+    const idx = Math.min(clip.count - 1, DEAD_FRAME);
+    return { clipKey: data.clips.swim ? 'swim' : 'idle', frameIndex: clip.start + idx, localIndex: idx };
+  }
   const hurt = !!o.hurting;
   const justDashed = o.dashCooldown && o.dashCooldown > 0.45;
   let clipKey = 'idle';
@@ -126,8 +144,9 @@ function drawBaked(ctx, o, bakeData) {
   const worldSize = data.cellWorldSize * OCTO_VISUAL_SCALE;
   const half = worldSize / 2;
 
-  const justDashed = o.dashCooldown && o.dashCooldown > 0.45;
-  const squash = Math.min(justDashed ? 0.85 : 1, 1 - 0.18 * (o.squash || 0)); // dash squash, and a soft squash on landing
+  const limp = o.dead || o.limp;
+  const justDashed = !limp && o.dashCooldown && o.dashCooldown > 0.45;
+  const squash = limp ? 1 : Math.min(justDashed ? 0.85 : 1, 1 - 0.18 * (o.squash || 0)); // dash squash, and a soft squash on landing
 
   ctx.save();
   ctx.scale(1 / squash, squash);
@@ -138,7 +157,8 @@ function drawBaked(ctx, o, bakeData) {
   if (!anchors) return;
 
   const angry = !!o.hurting;
-  const eyeState = angry ? 'angry' : (blinkState.blinking ? 'closed' : 'open');
+  const crossed = o.dead; // every dead octopus has its eyes crossed out (V2-PLAN 14 / 16)
+  const eyeState = crossed || isLimpLook(o) || o.limp ? 'closed' : angry ? 'angry' : (blinkState.blinking ? 'closed' : 'open');
   const sprites = data.eyeSprites[eyeState] || data.eyeSprites.open;
   const toWorld = worldSize / cell; // px-in-cell -> world units, same transform as the body
 
@@ -216,9 +236,27 @@ function drawBaked(ctx, o, bakeData) {
       ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
+    if (crossed) { // an X over each eye (dark outline colour, rounded caps)
+      const k = openWorldW * 0.3;
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = openWorldW * 0.15; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-k, -k); ctx.lineTo(k, k); ctx.moveTo(k, -k); ctx.lineTo(-k, k); ctx.stroke();
+    } else {
+      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
+    }
     ctx.restore();
   }
+}
+
+/** A dead eye: a dark X, `s` across, centred on the (already socket-filled) eye. */
+function drawDeadEye(ctx, s) {
+  const h = s / 2;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = s * 0.3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-h, -h); ctx.lineTo(h, h);
+  ctx.moveTo(h, -h); ctx.lineTo(-h, h);
+  ctx.stroke();
 }
 
 /** The M1 code-drawn placeholder: head + 8 bezier tentacles, colours sampled
@@ -279,6 +317,7 @@ function drawPlaceholder(ctx, o) {
   const eyeDX = r * 0.42;
   const eyeR = r * 0.22;
   for (const dx of [-eyeDX, eyeDX]) {
+    if (o.dead || o.limp) { ctx.save(); ctx.translate(dx, eyeY); if (o.dead) drawDeadEye(ctx, eyeR * 1.6); else { ctx.strokeStyle = OUTLINE; ctx.lineWidth = eyeR * 0.4; ctx.beginPath(); ctx.moveTo(-eyeR, 0); ctx.lineTo(eyeR, 0); ctx.stroke(); } ctx.restore(); continue; }
     ctx.fillStyle = HIGHLIGHT;
     ctx.beginPath();
     ctx.ellipse(dx, eyeY, eyeR, eyeR, 0, 0, Math.PI * 2);
@@ -290,13 +329,34 @@ function drawPlaceholder(ctx, o) {
   }
 }
 
+// V2-PLAN 14: special ragdoll poses by cause (octopus.js enterRagdoll(o, s, cause)): a drawer replaces the limp pose
+// for that cause. It gets (ctx in the octopus's local frame, the octopus, drawLimp) and may call drawLimp() to draw the
+// plain limp body first (then add to it), or draw something else entirely (a splat).
+const RAGDOLL_POSES = new Map();
+/** Register (or with null remove) the drawer for a ragdoll cause such as 'impaled' or 'splat'. */
+export function setRagdollPose(cause, draw) { if (draw) RAGDOLL_POSES.set(cause, draw); else RAGDOLL_POSES.delete(cause); }
+
 function drawOctopusUnclipped(ctx, o) {
+  const pose = (o.dead || o.limp) && o.limpCause ? RAGDOLL_POSES.get(o.limpCause) : null;
+  if (pose) { pose(ctx, o, () => drawOctopusPlain(ctx, o)); return; }
+  drawOctopusPlain(ctx, o);
+}
+function drawOctopusPlain(ctx, o) {
+  const splat = o.dead && o.deathStyle === 'splat';
+  if (splat) { // V2-PLAN 16: a pancake: the body frame squashed wide and thin about its centre
+    const f = Math.max(0, Math.min(1, o.flat || 0));
+    ctx.save();
+    ctx.scale(1 + SPLAT_WIDE * f, 1 - SPLAT_THIN_K * f);
+  }
   if (!FORCE_CODE && bake && !bakeFailed) {
     drawBaked(ctx, o, bake);
   } else {
     drawPlaceholder(ctx, o);
   }
+  if (splat) ctx.restore();
 }
+const SPLAT_WIDE = 1.1;   // 2.1x as wide when fully flat (the sprite cell has empty margins, so it reads about 1.6 tiles)...
+const SPLAT_THIN_K = 0.7;  // ...and 0.3x as tall (hazards.js SPLAT_THIN is the matching height in tiles)
 
 // Round-5 fix (Daniel's screenshot review round 4, issue 5): a reused
 // offscreen canvas for the alpha < 1 (invulnerability flicker) path below,
@@ -334,7 +394,9 @@ function getCompositeCtx(w, h) {
  *   site in render.js).
  */
 export function drawOctopus(ctx, o, alpha = 1) {
-  if (alpha >= 1) {
+  const flash = o.dead && o.hitFlash > 0 ? o.hitFlash : 0; // V2-PLAN 14: a hit on the dead body flashes it white
+  const splat = o.dead && o.deathStyle === 'splat' && o.flat > 0;
+  if (alpha >= 1 && !flash && !splat) {
     drawOctopusUnclipped(ctx, o);
     return;
   }
@@ -343,7 +405,21 @@ export function drawOctopus(ctx, o, alpha = 1) {
   const cctx = getCompositeCtx(w, h);
   cctx.setTransform(ctx.getTransform());
   drawOctopusUnclipped(cctx, o);
+  if (splat) { // the flattened body is darker, a bruised ink-red, painted only over the body's own pixels
+    cctx.globalCompositeOperation = 'source-atop';
+    cctx.fillStyle = 'rgba(40,10,24,' + (0.5 * Math.min(1, o.flat)).toFixed(3) + ')';
+    cctx.fillRect(-3, -3, 6, 6);
+    cctx.globalCompositeOperation = 'source-over';
+  }
   cctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (flash) {
+    cctx.save();
+    cctx.globalCompositeOperation = 'source-atop';
+    cctx.globalAlpha = 0.85 * flash;
+    cctx.fillStyle = '#ffffff';
+    cctx.fillRect(0, 0, w, h);
+    cctx.restore();
+  }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = alpha;

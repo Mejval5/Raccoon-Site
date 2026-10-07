@@ -302,6 +302,27 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
   }
 }
 
+// V2-PLAN 16: corpses reuse each enemy's own sprite. kind -> [image, drawn height in tiles]
+const BODY_SPRITES = {
+  urchin: [urchinImg, 0.9], piranha: [piranhaImg, 1.15], cannon: [cannonImg, 0.9], crab: [crabSlowImg, 0.7],
+  'crab-fast': [crabFastImg, 0.7], horns: [hornsImg, 0.9], manta: [mantaImg, 0.9],
+};
+/** Draw a kind's sprite centred on screen point (sx, sy) at `ppu` px per tile, rotated `rot` radians, mirrored in x / y,
+ * with an optional canvas filter. Returns the drawn size {w, h} in px (for overlays), or null when not ready / unknown. */
+export function drawEnemyBody(ctx, kind, sx, sy, ppu, rot, flipX, flipY, filter) {
+  const e = BODY_SPRITES[kind];
+  if (!e || !ready(e[0])) return null;
+  const img = e[0], h = e[1] * ppu, w = h * (img.naturalWidth / img.naturalHeight);
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (rot) ctx.rotate(rot);
+  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+  if (filter) ctx.filter = filter;
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return { w, h };
+}
+
 /** Like `drawSprite`, but can mirror horizontally (walk direction) and/or vertically (hanging from a ceiling), tilt
  * (`rot`, radians, applied before the mirror) and squash / stretch (`sx`, `sy`) for the M6 creatures. */
 function drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, worldSize, flipX, flipY, hitFlash, rot = 0, sx = 1, sy = 1) {
@@ -421,12 +442,14 @@ export function drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, part
     if (!p.active) continue;
     if (!visibleObj(p, p.x, p.y, 0.5)) continue; // r43
     const s = worldToScreen(camera, canvasW, canvasH, p.x, p.y);
-    const alpha = Math.max(0, p.life / p.maxLife);
+    // V2-PLAN 16: a sticky chunk (a splat's gore) keeps its size and only fades in its last second
+    const alpha = p.sticky ? Math.min(1, p.life) : Math.max(0, p.life / p.maxLife);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = p.color;
-    const r = p.size * camera.pxPerUnit * alpha;
+    const r = p.size * camera.pxPerUnit * (p.sticky ? 1 : alpha);
     ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(0.5, r), 0, Math.PI * 2); ctx.fill();
+    if (p.sticky) { ctx.strokeStyle = '#181012'; ctx.lineWidth = Math.max(1, r * 0.22); ctx.stroke(); } // Milan's dark outline
     ctx.restore();
   }
 }

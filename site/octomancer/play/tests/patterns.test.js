@@ -70,11 +70,11 @@ export async function runPatternTests(assert) {
 
   // ---- the data file ----
   const ENEMY_KINDS = ['piranha', 'crab', 'cannon', 'manta', 'urchin', 'horns'];
-  const HAZARD_KINDS = Object.keys(HAZARD_CODE);
+  const HAZARD_KINDS = Object.keys(HAZARD_CODE).concat('jetspikes'); // jetspikes = a jet + the spike strip at the end of its stream (V2-PLAN 16)
   let shapeBad = '';
   for (const p of json.patterns) {
-    if (!p.id || !['enemy', 'hazard', 'loot', 'decor'].includes(p.kind)) shapeBad += ' kind:' + p.id;
-    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : p.kind === 'hazard' ? !HAZARD_KINDS.includes(p.spawn) : p.kind === 'decor' ? !['foliage', 'rune', 'boulder', 'fossil'].includes(p.spawn) : !Object.keys(LOOT_CODE).includes(p.spawn)) shapeBad += ' spawn:' + p.id;
+    if (!p.id || !['enemy', 'hazard', 'loot', 'decor', 'creature'].includes(p.kind)) shapeBad += ' kind:' + p.id;
+    if (p.kind === 'enemy' ? !ENEMY_KINDS.includes(p.spawn) : p.kind === 'hazard' ? !HAZARD_KINDS.includes(p.spawn) : p.kind === 'decor' ? !['foliage', 'rune', 'boulder', 'fossil'].includes(p.spawn) : p.kind === 'creature' ? !['gclam', 'tentacle'].includes(p.spawn) : !Object.keys(LOOT_CODE).includes(p.spawn)) shapeBad += ' spawn:' + p.id;
     if (p.rows.length !== 5 || p.rows.some((r) => !/^[#.?]{5}$/.test(r))) shapeBad += ' rows:' + p.id;
     if (p.rows[p.anchor[1]][p.anchor[0]] !== (p.spawn === 'pocket' || p.spawn === 'rune' || p.spawn === 'fossil' ? '#' : '.')) shapeBad += ' anchor:' + p.id; // a hidden pocket's and a rune's anchor is a rock tile
     if (p.chance.length !== NLEVELS || p.cap.length !== NLEVELS || p.chance.some((c) => c < 0 || c > 1) || p.cap.some((c) => c < 0 || !Number.isInteger(c))) shapeBad += ' ramp:' + p.id;

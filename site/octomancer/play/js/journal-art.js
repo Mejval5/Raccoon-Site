@@ -9,6 +9,8 @@ import { drawSpellIcon, drawJarIcon } from './spell-icons.js';
 import { ENTRIES } from './journal.js';
 import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
 import { drawSprite, drawSpriteColumns, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
+import { drawPoolHost } from './pool-draw.js';
+import { drawClamIcon, drawPearlIcon } from './creatures-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
@@ -115,6 +117,8 @@ export const FN = {
     c.strokeStyle = 'rgba(60,20,50,0.5)'; c.lineWidth = 0.05; for (let i = -2; i <= 2; i++) { c.beginPath(); c.moveTo(i * 0.28, 0.24); c.quadraticCurveTo(i * 0.2, -0.2, i * 0.1, -0.55); c.stroke(); }
     c.fillStyle = '#fff6d0'; c.beginPath(); c.arc(0, 0.3, 0.12, 0, TAU); c.fill();
   },
+  gclam(c) { drawClamIcon(c); },
+  pearl(c) { drawPearlIcon(c); },
   pot(c) {
     stroke(c, '#b9714a', 0.09);
     c.beginPath(); c.moveTo(-0.28, -0.7); c.bezierCurveTo(-0.9, -0.2, -0.75, 0.75, -0.3, 0.8); c.lineTo(0.3, 0.8); c.bezierCurveTo(0.75, 0.75, 0.9, -0.2, 0.28, -0.7); c.closePath(); c.fill(); c.stroke();
@@ -181,6 +185,7 @@ export const GAME_DRAW = {
   diver(c, px) { drawDiver(c, { x: 0, y: 0, pxPerUnit: px * 0.7 }, 0, 0, 0, 0.6, 0.6, true, false); },
   critter(c, px) { drawCritter(c, { x: 0, y: 0, pxPerUnit: px * 1.35 }, 0, 0, 0, 0.0, true, 0.6, 0, ''); },
   collector(c, px) { drawCollector(c, { x: 0, y: 0, pxPerUnit: px * 0.66 }, 0, 0, 0, 0.6, 0.6, false); },
+  host(c, px) { drawPoolHost(c, { x: 0, y: 0, pxPerUnit: px * 0.62 }, 0, 0, { plan: { x: 1.7, floorY: -0.52 }, state: 0 }, 0, 1.7); },
 };
 
 const cache = new Map();

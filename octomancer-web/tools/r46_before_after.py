@@ -22,12 +22,15 @@ GAME = ['hub-quill', 'shop', 'pool', 'chest', 'relic', 'jet', 'spikes', 'eel', '
 pairs = [(n, os.path.join(D, 'before-' + n + '.png'), os.path.join(D, 'after-' + n + '.png')) for n in GAL]
 pairs += [('in game: ' + n, os.path.join(D, 'game-before-' + n + '-dpr1.png'), os.path.join(D, 'game-after-' + n + '-dpr1.png')) for n in GAME]
 pairs.append(('journal plates', os.path.join(D, 'before-journal-plates.png'), os.path.join(D, 'after-journal-plates.png')))
-pairs = [p for p in pairs if os.path.exists(p[1]) and os.path.exists(p[2])]
+# r46 x damage model: hostile and corpse looks exist only after the art pass (shown alone)
+for n in ['hostile-marlo-aiming-pip', 'hostile-quill-host', 'corpses-marlo-pip-quill-host-']:
+    pairs.append(('after only: ' + n, None, os.path.join(D, 'after-' + n + '.png')))
+pairs = [p for p in pairs if (p[1] is None or os.path.exists(p[1])) and os.path.exists(p[2])]
 
 REF_W = 100
 blocks = []
 for name, b, a in pairs:
-    bi, ai = Image.open(b).convert('RGB'), Image.open(a).convert('RGB')
+    ai = Image.open(a).convert('RGB'); bi = Image.open(b).convert('RGB') if b else Image.new('RGB', (1, ai.height), (14, 28, 40))
     w = REF_W + bi.width + ai.width + 16
     h = max(bi.height, ai.height, octo.height + pir.height + 10) + 22
     blk = Image.new('RGB', (w, h), (14, 28, 40))

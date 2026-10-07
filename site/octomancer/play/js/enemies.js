@@ -23,10 +23,10 @@ import {
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
   CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
   HORNS_RADIUS,
-  MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
+  STUN_S, MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
 } from './config.js';
 import { PK_BOMB } from './props.js';
-import { hurtOctopus, killOctopus } from './octopus.js';
+import { hurtOctopus, stunOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
 
@@ -522,10 +522,11 @@ export function createEnemies() {
     return out;
   }
 
-  function killEnemy(e, reason) {
+  function killEnemy(e, reason, kx = 0, ky = 0) {
     if (e.dead) return;
     e.dead = true;
-    events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason });
+    // vx, vy, face (and a dash's shove) start the corpse (corpses.js)
+    events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason, vx: (e.vx || 0) + kx, vy: (e.vy || 0) + ky, face: e.face || e.dir || 1, variant: e.variant });
     if (reason === 'dash') {
       // hit-stop: a white ghost of the enemy stays for 60 ms and main.js freezes the sim for as long
       // r36: the ghost is only a white silhouette: no wind-up cue, '!' or glow (the enemy it copies is dead)
@@ -597,7 +598,7 @@ export function createEnemies() {
   }
   function updatePiranha(e, dt, octo, world) {
     const px = e.x, py = e.y;
-    const seesOcto = () => !octo.dead && dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
+    const seesOcto = () => dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
     // ink: a winding-up or lunging piranha that loses the octopus gives up and wanders off from where it is
     if ((e.st === PS_WINDUP || e.st === PS_LUNGE) && lost(e, octo)) {
       e.st = PS_PATROL; e.t = 1.2; e.tell = 0; e.flipCd = 0.4; e.stuck = 0;
@@ -631,9 +632,8 @@ export function createEnemies() {
       case PS_WINDUP: {
         e.vx = e.vy = 0;
         e.t -= dt; e.tell = Math.min(1, 1 - e.t / PIRANHA_WINDUP);
-        if (!octo.dead) e.face = sgn(octo.x - e.x, e.face);
+        e.face = sgn(octo.x - e.x, e.face);
         if (e.t <= 0) {
-          if (octo.dead) { e.st = PS_PATROL; e.t = 0.5; e.tell = 0; break; }
           const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
           e.lx = dx / d; e.ly = dy / d; e.lmax = d + 1.5; e.ltrav = 0;
           e.st = PS_LUNGE; e.t = PIRANHA_LUNGE_MAX; e.tell = 0; e.face = sgn(e.lx, e.face);
@@ -664,7 +664,7 @@ export function createEnemies() {
   function updateCannon(e, dt, octo, world) {
     // the target: octopus in range, inside the half plane the cannon faces, with a clear line
     let target = false, want = e.out;
-    if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < CANNON_RANGE) {
+    if (dist(e.x, e.y, octo.x, octo.y) < CANNON_RANGE) {
       const a = Math.atan2(octo.y - e.y, octo.x - e.x);
       if (Math.abs(angDiff(a, e.out)) <= CANNON_ARC && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) { target = true; want = a; }
     }
@@ -704,7 +704,7 @@ export function createEnemies() {
     const groundDy = e.placement === 'ceiling' ? -1 : 1;
     e.cool = Math.max(0, e.cool - dt);
     e.flipCd = Math.max(0, e.flipCd - dt);
-    const near = !octo.dead && dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3 && !lost(e, octo);
+    const near = dist(e.x, e.y, octo.x, octo.y) < CRAB_SNAP_RANGE && Math.abs(octo.y - e.y) < 1.3 && !lost(e, octo);
     switch (e.st) {
       case CS_WALK: {
         // sinks if the floor under it was bombed away
@@ -727,14 +727,14 @@ export function createEnemies() {
         break;
       }
       case CS_PAUSE:
-        if (!octo.dead && lost(e, octo)) { e.st = CS_WALK; e.cool = 0.6; e.tell = 0; break; } // ink: it lost the octopus, no snap
+        if (lost(e, octo)) { e.st = CS_WALK; e.cool = 0.6; e.tell = 0; break; } // ink: it lost the octopus, no snap
         e.vx = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / CRAB_PAUSE);
-        if (!octo.dead) { e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; }
+        e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir;
         if (e.t <= 0) { e.st = CS_SNAP; e.t = CRAB_SNAP; e.tell = 0; e.snapHit = false; }
         break;
       case CS_SNAP:
         e.vx = 0; e.t -= dt;
-        if (!e.snapHit && !octo.dead && !lost(e, octo) && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
+        if (!e.snapHit && !lost(e, octo) && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
           e.snapHit = true;
           hurtOctopus(octo, e.x, e.y, 'crab');
         }
@@ -776,7 +776,7 @@ export function createEnemies() {
         if (e.stuck > 0.3) { e.dir = -e.dir; e.stuck = 0; }
         e.face = e.dir;
         // octopus below it, in line, with a clear drop: tell, then dive
-        if (e.cool <= 0 && !octo.dead) {
+        if (e.cool <= 0) {
           const dy = octo.y - e.y;
           if (Math.abs(octo.x - e.x) < 1.2 && dy > 1.5 && dy < 7 && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) {
             e.st = MA_TELL; e.t = MANTA_TELL; e.vx = e.vy = 0; e.tell = 0;
@@ -790,7 +790,7 @@ export function createEnemies() {
         if (e.t <= 0) {
           const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
           e.tx = dx / d; e.ty = dy / d; e.tell = 0;
-          if (octo.dead || e.ty < 0.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; break; }
+          if (e.ty < 0.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; break; }
           e.st = MA_DIVE; e.t = MANTA_DIVE_MAX; e.dived = 0;
         }
         break;
@@ -847,7 +847,7 @@ export function createEnemies() {
     // It collides with the grid like every other moving enemy and chases with A* (the piranha no longer does).
     chaseWithPath(beholder, world, octo.x, octo.y, speed, dt);
     collideWithWalls(beholder, world);
-    if (!octo.dead && dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) {
+    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) { // dead: it keeps knocking the body about (octopus.js hitBody)
       killOctopus(octo, 'beholder');
     }
   }
@@ -912,11 +912,14 @@ export function createEnemies() {
         }
 
         if (!e.contactDamage) continue;
-        if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius) {
-          if (e.dashKillable && octoSpeed >= DASH_KILL_SPEED) {
-            killEnemy(e, 'dash');
+        // the dead body (V2-PLAN 14) is still a target: contact hits it (octopus.js hitBody), but a flung corpse never kills
+        // (a corpse wedged in a gap narrower than the enemy is still in reach of its nose: +0.25)
+        if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
+          if (e.dashKillable && !octo.dead && octoSpeed >= DASH_KILL_SPEED) {
+            killEnemy(e, 'dash', octo.vx * 0.4, octo.vy * 0.4);
           } else {
-            hurtOctopus(octo, e.x, e.y, e.kind);
+            if (e.kind === 'manta' && e.st === MA_DIVE) stunOctopus(octo, e.x, e.y, 'manta', STUN_S); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
+            else hurtOctopus(octo, e.x, e.y, e.kind);
             if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
           }
         }

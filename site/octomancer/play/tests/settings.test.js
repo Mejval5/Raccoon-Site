@@ -93,7 +93,7 @@ export async function runSettingsTests(assert) {
     assert('seed: blank (null) keeps the random per-dive seed', run2.diveSeed !== 424242 && run2.diveSeed === expect);
   }
 
-  // ---- shop room: unbreakable; the keeper flinches on a nearby blast
+  // ---- shop room: breakable since 2026-10-07 (Spelunky: bombing the stall angers the keeper); the keeper flinches on a nearby blast
   {
     let w = null;
     for (let seed = 1; seed < 60 && !w; seed++) { const c = createLevelWorld(seed, 0); if (c.level.shop) w = c; }
@@ -102,8 +102,8 @@ export async function runSettingsTests(assert) {
       const sh = w.level.shop;
       let solidInside = null;
       for (let y = sh.y0 + 2; y < sh.y1 - 1 && !solidInside; y++) for (let x = sh.x0 + 2; x < sh.x1 - 1; x++) if (w.tileAt(x, y) !== 0) { solidInside = [x, y]; break; }
-      assert('shop: a rock tile inside the shop room cannot be broken (planks, keeper and pedestals never float)',
-        !!solidInside && w.breakTile(solidInside[0], solidInside[1]) === false && w.tileAt(solidInside[0], solidInside[1]) !== 0 && w.isBreakable(solidInside[0], solidInside[1]) === false);
+      assert('shop: a rock tile inside the shop room breaks like any rock and counts as shop damage (2026-10-07)',
+        !!solidInside && w.isBreakable(solidInside[0], solidInside[1]) === true && w.breakTile(solidInside[0], solidInside[1]) === true && w.tileAt(solidInside[0], solidInside[1]) === 0 && w.shopTilesBroken === 1);
       let outside = null;
       for (let y = 4; y < w.height - 4 && !outside; y++) for (let x = 4; x < w.width - 4; x++) if (w.tileAt(x, y) !== 0 && !(x >= sh.x0 && x < sh.x1 && y >= sh.y0 && y < sh.y1) && !w.isBedrock(x, y)) { outside = [x, y]; break; }
       assert('shop: rock outside the shop room still breaks', !!outside && w.breakTile(outside[0], outside[1]) === true);

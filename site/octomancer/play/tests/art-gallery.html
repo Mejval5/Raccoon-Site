@@ -24,6 +24,8 @@ import { PL_IDLE, PL_ACTIVE, PL_WON, PL_DONE } from '../js/pool.js';
 import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_DONE, ST_RATTLE, ST_BURST, POCKET_BOMB, POCKET_HEART, POCKET_ITEM } from '../js/loot.js';
 import { HZ_JET, HZ_SPIKES, HZ_EEL, HZ_ANEMONE } from '../js/hazards.js';
 import { ITEM_IDS } from '../js/items.js';
+import { drawNpcs, registerNpcCorpses } from '../js/npcs-draw.js';
+import { NPC_CAP, HARPOON_CAP, ST_AIM, ST_MOVE } from '../js/npcs.js';
 
 const q = new URLSearchParams(location.search);
 const PPU = +(q.get('ppu') || 72), T = +(q.get('t') || 0.6);
@@ -76,6 +78,16 @@ cell('Spike wall (floor)', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData(
 cell('Current jet', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_JET, x: -1.2, y: 0, dx: 1, dy: 0, len: 3 }]), T), 4, 3);
 cell('Eel (calm / charging)', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_EEL, x: -0.6, y: 0 }, { kind: HZ_EEL, x: 0.7, y: 0, state: 1, t: 2.8 }]), T));
 cell('Anemone', (x, cw, ch) => drawHazards(x, cam(), cw, ch, hazData([{ kind: HZ_ANEMONE, x: 0, y: 0.5 }]), T));
+// r46 x damage model: the people turned hostile (Marlo aiming his harpoon) and as corpses lying rotated
+function npcSys(list) {
+  const f = () => new Float32Array(NPC_CAP), d = { used: new Uint8Array(NPC_CAP), hostile: new Uint8Array(NPC_CAP), who: new Uint8Array(NPC_CAP), x: f(), y: f(), state: new Uint8Array(NPC_CAP), t: f(), aimT: f(), aimAng: f(), reload: f(), vx: f(), face: new Int8Array(NPC_CAP), flash: f(), aimLen: f() };
+  list.forEach((o, i) => { d.used[i] = 1; d.hostile[i] = 1; d.who[i] = o.who; d.x[i] = o.x; d.y[i] = o.y; d.state[i] = o.st || ST_MOVE; d.face[i] = o.face || 1; d.aimT[i] = 0.5; d.aimAng[i] = 0.3; d.aimLen[i] = 3; });
+  return { data: d, talks: Array.from({ length: NPC_CAP }, () => ({ text: '' })), harpoons: { on: new Uint8Array(HARPOON_CAP) } };
+}
+cell('Hostile Marlo (aiming) / Pip', (x, cw, ch) => drawNpcs(x, cam(), cw, ch, npcSys([{ who: 1, x: -0.8, y: 1, st: ST_AIM }, { who: 2, x: 0.9, y: 0 }]), T, { x: 3, y: 0 }), 3.4, 3);
+cell('Hostile Quill / host', (x, cw, ch) => drawNpcs(x, cam(), cw, ch, npcSys([{ who: 3, x: -0.8, y: 1 }, { who: 4, x: 0.9, y: 1 }]), T, { x: 3, y: 0 }), 3.4, 3);
+const CORPSE = {}; registerNpcCorpses((k, fn) => { CORPSE[k] = fn; });
+cell('Corpses (Marlo, Pip, Quill, host)', (x, cw, ch) => Object.values(CORPSE).forEach((fn, i) => fn(x, (0.5 + i) * PPU * 1.05, ch - PPU * 1.35, PPU, i % 2 ? Math.PI / 2 : -Math.PI / 2, 1, 1)), 4.4, 3);
 const PLATES = ['person-collector', 'person-diver', 'person-critter', 'person-keeper', 'loot-chest', 'loot-clam', 'loot-pot', 'loot-relic', 'loot-pocket', 'item-flippers', 'item-lantern', 'item-magnet', 'item-bombbag', 'item-heartcontainer', 'item-bomb', 'item-bombpack', 'item-plankton', 'hazard-jet', 'hazard-spikes', 'hazard-eel', 'hazard-anemone', 'hazard-rock', 'creature-fish', 'prop-fossil', 'prop-boulder'];
 const PX = +(q.get('plate') || 96);
 cell('Journal plates', (x) => PLATES.forEach((id, i) => { const cx = (i % 9) * (PX + 6) + 3, cy = Math.floor(i / 9) * (PX + 6) + 3; x.fillStyle = '#e9dcbc'; x.fillRect(cx, cy, PX, PX); x.drawImage(entryArt(id, PX, false), cx, cy); }), 9 * (PX + 6) / PPU, 3 * (PX + 6) / PPU);

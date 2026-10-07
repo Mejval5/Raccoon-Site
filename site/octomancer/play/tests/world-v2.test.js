@@ -86,7 +86,7 @@ export async function runWorldV2Tests(assert) {
     });
     let frames = 0;
     // frames with a pause between them: the plant images (the deep rock's foliage) load between tasks
-    while (!(renderer.ready() && renderer.canvasStats().deepStage >= 3) && frames < 200) { frame(); frames++; await new Promise((r) => setTimeout(r, 8)); }
+    while (!(renderer.ready() && renderer.canvasStats().deepStage >= 3 && renderer.canvasStats().cells >= 2) && frames < 200) { frame(); frames++; await new Promise((r) => setTimeout(r, 8)); }
     const cs = renderer.canvasStats();
     assert(`v2 render r43: the first view is baked in ${frames} frames (ready, deep rock done)`, renderer.ready() && cs.deepStage >= 3 && frames < 200);
     assert(`v2 render r43: no wall canvas is wider or taller than the screen (${cs.maxW}x${cs.maxH} px of ${canvas.width}x${canvas.height})`, cs.maxW <= canvas.width && cs.maxH <= canvas.height);
