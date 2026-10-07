@@ -30,6 +30,19 @@ let started = false;
 
 export function artUrl(file) { return new URL(`../img/v2/${file}`, import.meta.url).href; }
 
+let warmCtx = null;
+/** r44: decode an image off the main thread, then draw it once into a 1 x 1 canvas so its first real draw (the hub's whirlpool and board, a
+ *  level's art) is not the first time the browser decodes and uploads it: that was a 50-100 ms frame during a transition. */
+function warmImage(img) {
+  const touch = () => {
+    try {
+      if (!warmCtx) { const c = document.createElement('canvas'); c.width = c.height = 1; warmCtx = c.getContext('2d'); }
+      warmCtx.drawImage(img, 0, 0, 1, 1);
+    } catch (e) { /* not drawable yet: it is decoded at its first use, as before */ }
+  };
+  if (img.decode) img.decode().then(touch, touch); else touch();
+}
+
 /** Start loading every image (idempotent). `cb` runs once per image when it has loaded. */
 export function ensureV2Art(cb) {
   if (cb) listeners.push(cb);
@@ -37,7 +50,8 @@ export function ensureV2Art(cb) {
   started = true;
   for (const key of Object.keys(FILES)) {
     const img = new Image();
-    img.addEventListener('load', () => { for (const f of listeners) f(key); }, { once: true });
+    // r44: decode once, when it arrives (off the main thread), not at the first drawImage of a frame during play
+    img.addEventListener('load', () => { for (const f of listeners) f(key); warmImage(img); }, { once: true });
     img.src = artUrl(FILES[key]);
     art[key] = img;
   }

@@ -5,6 +5,7 @@ import {
   generateLevel, fatWaterSolvable, isBedrock, LEVEL_W, LEVEL_H, NROOMS, BORDER,
 } from '../js/level.js';
 import { loadRoomsJson } from './rooms.test.js';
+import { portalPlace, PORTAL_SQUASH } from '../js/portal-draw.js';
 
 function sameBytes(a, b) {
   if (a.length !== b.length) return false;
@@ -67,6 +68,35 @@ export async function runLevelTests(assert, approx) {
     for (let dx = -1; dx <= 1; dx++) if (T(lv.exitX + dx, lv.exitY + 1) === 0) { ringBad++; break; }
   }
   assert(`level: exit ring has floor under its full width (${ringBad}/${ringTotal} bad, <= 10%)`, ringBad <= ringTotal * 0.1);
+  // r44: the exit whirlpool sits in the open floor span and never over rock: a flat floor at least 3 tiles wide with water above it, and the
+  // drawn footprint (width 1.2 x the idle one at its widest, height PORTAL_SQUASH of that, resting on the floor line) covers water only
+  {
+    let flatBad = 0, overlapBad = 0, n = 0, flatFirst = '', overlapFirst = '';
+    for (let seed = 1; seed <= 300; seed++) {
+      const lv = generateLevel(seed, 0, bank);
+      if (lv.fallback) continue;
+      n++;
+      const T = (x, y) => (x < 0 || y < 0 || x >= LEVEL_W || y >= LEVEL_H ? 1 : lv.tiles[y * LEVEL_W + x]);
+      let ok = true;
+      for (let dx = -1; dx <= 1; dx++) if (T(lv.exitX + dx, lv.exitY) !== 0 || T(lv.exitX + dx, lv.exitY + 1) === 0) ok = false;
+      if (!ok) { flatBad++; flatFirst = flatFirst || `seed ${seed}`; }
+      const pl = portalPlace((x, y) => T(Math.floor(x), Math.floor(y)), lv.exitX, lv.exitY);
+      // sample points inside the drawn ellipse (the idle frame; the Bounce frames are up to 1.2 x as wide): all in water, the floor line rock
+      const rx = pl.w * 1.1 / 2, ry = rx * PORTAL_SQUASH;
+      let hit = !pl.flat;
+      for (let fx = -1; fx <= 1 && !hit; fx += 0.25) {
+        const x = pl.cx + fx * rx;
+        if (T(Math.floor(x), pl.floorY) === 0) hit = true;
+        for (let dy = -0.8; dy <= 0.8 && !hit; dy += 0.4) {
+          if (fx * fx + dy * dy > 0.81) continue; // outside the ellipse
+          if (T(Math.floor(x), Math.floor(pl.floorY - ry + dy * ry)) !== 0) hit = true;
+        }
+      }
+      if (hit) { overlapBad++; overlapFirst = overlapFirst || `seed ${seed}`; }
+    }
+    assert(`level: the exit stands on a flat floor 3+ tiles wide (${flatBad}/${n} not; ${flatFirst})`, flatBad <= n * 0.02);
+    assert(`level: the exit whirlpool's footprint covers water only, resting on rock (${overlapBad}/${n} not; ${overlapFirst})`, overlapBad <= n * 0.02);
+  }
   assert(`level: fallback rate ${(rate * 100).toFixed(2)}% < 1%`, rate < 0.01);
 
   // determinism and purity

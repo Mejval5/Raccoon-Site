@@ -116,8 +116,13 @@ function loadImage(src) {
 function freeCanvas(c) { if (c) { c.width = 0; c.height = 0; } }
 /** Empty a Map of baked canvases (the value is a canvas or {canvas}): each goes back to the pool (or is freed at once). */
 function releaseCanvases(map) {
-  for (const v of map.values()) releaseCanvas(v && v.canvas ? v.canvas : v);
+  for (const v of map.values()) eachCanvas(v, releaseCanvas);
   map.clear();
+}
+/** r44: call fn on each canvas a cache value holds: a canvas, {canvas}, or an endless chunk's {cells: Map of canvases}. */
+function eachCanvas(v, fn) {
+  if (!v) return;
+  if (v.cells) { for (const c of v.cells.values()) fn(c); } else fn(v.canvas ? v.canvas : v);
 }
 
 const NOISE_TEX_PX = 384; // the rock grain texture: 8 tiles at 48 px, scaled to the bake size by a pattern transform
@@ -497,16 +502,29 @@ export function createRenderer(ctx, world) {
     paintNoise(bctx, xOffsetTiles, yOffsetTiles, canvas.width, canvas.height);
   }
 
-  function bakeChunkWalls(entry) {
-    const { chunk } = entry;
-    let canvas = wallCache.get(entry.index)?.canvas;
-    if (!canvas) {
-      canvas = acquireCanvas(chunkW * BAKE_PX_PER_UNIT, chunkH * BAKE_PX_PER_UNIT + 2 * CHUNK_MARGIN_PX);
+  // r44: an endless chunk (32 x 24 tiles) is no longer one canvas (6.7 MB at 48 px per unit on a phone, three live plus a cap, 26 MB, far
+  // more than the screen): it is cut into cells of cellTiles() tiles square, like the v2 bands, and only the cells on the screen (and half a cell
+  // round them, kept until the camera is further away) are baked. Every cell carries the quarter-tile margin above and below (see CHUNK_MARGIN_PX) so the cap line works.
+  const ENDLESS_KEY = 64; // cell key = row * 64 + column
+  function chunkEntry(entry) {
+    let e = wallCache.get(entry.index);
+    if (!e) { e = { cells: new Map(), loops: null }; wallCache.set(entry.index, e); }
+    if (entry.chunk.dirty) { // a bomb changed the tiles: the cells are baked again when drawn
+      for (const c of e.cells.values()) releaseCanvas(c);
+      e.cells.clear(); e.loops = null; entry.chunk.dirty = false;
     }
-    const loops = chunkLoopsPx(entry, BAKE_PX_PER_UNIT);
-    for (const loop of loops) for (const pt of loop) pt.y += CHUNK_MARGIN_PX;
-    paintWallCanvas(canvas, loops, entry.yOffset - CHUNK_MARGIN_PX / BAKE_PX_PER_UNIT);
-    wallCache.set(entry.index, { canvas, bakedTiles: chunk.tiles.slice() });
+    return e;
+  }
+  function bakeChunkCell(entry, e, cx, ry) {
+    const ct = cellTiles(), s = BAKE_PX_PER_UNIT, M = CHUNK_MARGIN_PX;
+    const x0 = cx * ct, y0 = ry * ct, w = Math.min(ct, chunkW - x0), h = Math.min(ct, chunkH - y0);
+    if (!e.loops) e.loops = chunkLoopsPx(entry, s);
+    const canvas = acquireCanvas(ct * s, ct * s + 2 * M); // full cell size whatever the cell's own size (pool reuse), see bakeCell
+    const ox = x0 * s, oy = y0 * s - M;
+    const loops = e.loops.map((loop) => loop.map((p) => ({ x: p.x - ox, y: p.y - oy })));
+    paintWallCanvas(canvas, loops, entry.yOffset + y0 - M / s, x0);
+    e.cells.set(ry * ENDLESS_KEY + cx, canvas);
+    return canvas;
   }
 
   // --- v2 single-level walls (world-v2.js): the wall art is cached in CELLS, a band of rows (about WALL_BAND_PX baked
@@ -536,8 +554,9 @@ export function createRenderer(ctx, world) {
     const key = bi * CELL_KEY + ci;
     let entry = bandCache.get(key);
     let canvas = entry && entry.canvas;
-    const wantW = w * BAKE_PX_PER_UNIT, wantH = h * BAKE_PX_PER_UNIT;
-    if (!canvas || canvas.height !== wantH || canvas.width !== wantW) {
+    // r44: every cell canvas has the full cell size (edge cells use part of it), so the pool's exact-size keys always find the last level's
+    const wantW = cols * BAKE_PX_PER_UNIT, wantH = rows * BAKE_PX_PER_UNIT;
+    if (!canvas || canvas.height !== Math.ceil(wantH) || canvas.width !== Math.ceil(wantW)) {
       if (canvas) releaseCanvas(canvas);
       canvas = acquireCanvas(wantW, wantH);
     }
@@ -608,20 +627,10 @@ export function createRenderer(ctx, world) {
         const br = worldToScreen(camera, canvasW, canvasH, x1, y1);
         const sx0 = Math.round(tl.x), sy0 = Math.round(tl.y), sw = Math.round(br.x) - sx0, sh = Math.round(br.y) - sy0;
         const c = bandCache.get(bi * CELL_KEY + ci);
-        if (c) ctx.drawImage(c.canvas, sx0, sy0, sw, sh);
+        if (c) ctx.drawImage(c.canvas, 0, 0, (x1 - x0) * BAKE_PX_PER_UNIT, (y1 - y0) * BAKE_PX_PER_UNIT, sx0, sy0, sw, sh);
         else { ctx.fillStyle = flat; ctx.fillRect(sx0, sy0, sw, sh); } // not baked yet (the next frame has it): plain rock, never a hole
       }
     }
-  }
-
-  function getBakedWalls(entry) {
-    const cached = wallCache.get(entry.index);
-    if (!cached || entry.chunk.dirty) {
-      bakeChunkWalls(entry);
-      entry.chunk.dirty = false;
-      return wallCache.get(entry.index).canvas;
-    }
-    return cached.canvas;
   }
 
   // --- Drifting code value-noise layer (small offscreen canvas, generated once) ---
@@ -1180,17 +1189,19 @@ export function createRenderer(ctx, world) {
   // fix already applied to the vertical case.
   // round 28: a flat-rock tile baked like a wall chunk (fill + world-aligned noise), cached per noise phase
   const capCache = new Map();
-  function getCapCanvas(yOffsetTiles) {
-    const period = NOISE_FIELD_TILES * BAKE_PX_PER_UNIT;
-    const key = ((yOffsetTiles * BAKE_PX_PER_UNIT) % period + period) % period;
-    let c = capCache.get(key);
+  // r44: the grain repeats every NOISE_FIELD_TILES tiles, so the flat rock above the top resident chunk is tiled from one square of
+  // that size per noise phase (it was a chunk-sized canvas, 6.7 MB on a phone, per phase)
+  function getCapTile(yOffsetTiles) {
+    const phase = ((Math.round(yOffsetTiles) % NOISE_FIELD_TILES) + NOISE_FIELD_TILES) % NOISE_FIELD_TILES;
+    let c = capCache.get(phase);
     if (!c) {
-      c = acquireCanvas(chunkW * BAKE_PX_PER_UNIT, chunkH * BAKE_PX_PER_UNIT);
+      const px = NOISE_FIELD_TILES * BAKE_PX_PER_UNIT;
+      c = acquireCanvas(px, px);
       const b = c.getContext('2d');
       b.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
       b.fillRect(0, 0, c.width, c.height);
-      if (rockNoisePattern) paintNoise(b, 0, yOffsetTiles, c.width, c.height);
-      capCache.set(key, c);
+      if (rockNoisePattern) paintNoise(b, 0, phase, c.width, c.height);
+      capCache.set(phase, c);
     }
     return c;
   }
@@ -1213,30 +1224,58 @@ export function createRenderer(ctx, world) {
         ctx.fillRect(0, 0, canvasW, cutY + 1);
         let yOff = topEntry.yOffset - chunkH;
         for (let j = 0; j < 8; j++, yOff -= chunkH) {
-          const tl = worldToScreen(camera, canvasW, canvasH, 0, yOff);
-          const br = worldToScreen(camera, canvasW, canvasH, chunkW, yOff + chunkH);
-          if (br.y < 0) break;
-          const y0 = Math.round(tl.y), y1 = Math.round(br.y);
-          if (y1 <= y0) continue;
-          ctx.drawImage(getCapCanvas(yOff), Math.round(tl.x), y0, Math.round(br.x) - Math.round(tl.x), y1 - y0 + (j === 0 ? 1 : 0));
+          const brTop = worldToScreen(camera, canvasW, canvasH, chunkW, yOff + chunkH);
+          if (brTop.y < 0) break;
+          const T = NOISE_FIELD_TILES, tile = getCapTile(yOff);
+          for (let ty = 0; ty < chunkH; ty += T) {
+            const tl = worldToScreen(camera, canvasW, canvasH, 0, yOff + ty);
+            const br = worldToScreen(camera, canvasW, canvasH, T, yOff + ty + T);
+            const y0 = Math.round(tl.y), y1 = Math.round(br.y);
+            if (y1 <= y0 || y1 < 0 || y0 > canvasH) continue;
+            const lastRow = ty + T >= chunkH;
+            for (let tx = 0; tx < chunkW; tx += T) {
+              const a = worldToScreen(camera, canvasW, canvasH, tx, 0).x, b = worldToScreen(camera, canvasW, canvasH, tx + T, 0).x;
+              const x0 = Math.round(a), x1 = Math.round(b);
+              if (x1 <= 0 || x0 >= canvasW) continue;
+              ctx.drawImage(tile, x0, y0, x1 - x0, y1 - y0 + (j === 0 && lastRow ? 1 : 0));
+            }
+          }
         }
         ctx.restore();
       }
     }
+    const ct = cellTiles(), ncx = Math.ceil(chunkW / ct), nry = Math.ceil(chunkH / ct);
+    const ringPx = ct * camera.pxPerUnit * 0.5; // a cell that has left the screen stays baked until it is half a cell away (so a camera that turns back does not re-bake), then it goes back to the pool
     for (const entry of resident) {
-      const canvas = getBakedWalls(entry);
-      if (!canvas) continue;
-      const topLeft = worldToScreen(camera, canvasW, canvasH, 0, entry.yOffset);
-      const bottomRight = worldToScreen(camera, canvasW, canvasH, chunkW, entry.yOffset + chunkH);
-      const x0 = Math.round(topLeft.x), y0 = Math.round(topLeft.y);
-      const x1 = Math.round(bottomRight.x), y1 = Math.round(bottomRight.y);
-      const M = CHUNK_MARGIN_PX, coreH = chunkH * BAKE_PX_PER_UNIT;
-      if (capped && entry === resident[0]) {
-        // the cap line: keep the top margin so a rim lying on the chunk edge bakes at full thickness
-        const k = (y1 - y0) / coreH;
-        ctx.drawImage(canvas, 0, 0, canvas.width, M + coreH, x0, y0 - M * k, x1 - x0, (y1 - y0) + M * k);
-      } else {
-        ctx.drawImage(canvas, 0, M, canvas.width, coreH, x0, y0, x1 - x0, y1 - y0);
+      const e = chunkEntry(entry);
+      const M = CHUNK_MARGIN_PX, s = BAKE_PX_PER_UNIT;
+      for (let ry = 0; ry < nry; ry++) {
+        const y0w = ry * ct, h = Math.min(ct, chunkH - y0w);
+        const tl0 = worldToScreen(camera, canvasW, canvasH, 0, entry.yOffset + y0w);
+        const br0 = worldToScreen(camera, canvasW, canvasH, 0, entry.yOffset + y0w + h);
+        const y0 = Math.round(tl0.y), y1 = Math.round(br0.y);
+        for (let cx = 0; cx < ncx; cx++) {
+          const x0w = cx * ct, w = Math.min(ct, chunkW - x0w);
+          const x0 = Math.round(worldToScreen(camera, canvasW, canvasH, x0w, 0).x), x1 = Math.round(worldToScreen(camera, canvasW, canvasH, x0w + w, 0).x);
+          const key = ry * ENDLESS_KEY + cx;
+          const onScreen = x1 > 0 && x0 < canvasW && y1 > 0 && y0 < canvasH;
+          let canvas = e.cells.get(key);
+          if (!onScreen) {
+            const near = x1 > -ringPx && x0 < canvasW + ringPx && y1 > -ringPx && y0 < canvasH + ringPx;
+            if (canvas && !near) { releaseCanvas(canvas); e.cells.delete(key); }
+            continue;
+          }
+          if (!canvas) canvas = bakeChunkCell(entry, e, cx, ry);
+          if (y1 <= y0) continue;
+          const coreH = h * s;
+          if (capped && entry === resident[0] && ry === 0) {
+            // the cap line: keep the top margin so a rim lying on the chunk edge bakes at full thickness
+            const k = (y1 - y0) / coreH;
+            ctx.drawImage(canvas, 0, 0, w * s, M + coreH, x0, y0 - M * k, x1 - x0, (y1 - y0) + M * k);
+          } else {
+            ctx.drawImage(canvas, 0, M, w * s, coreH, x0, y0, x1 - x0, y1 - y0);
+          }
+        }
       }
     }
   }
@@ -1347,10 +1386,10 @@ export function createRenderer(ctx, world) {
     canvasStats() {
       let n = 0, bytes = 0;
       const add = (c) => { if (c && c.width * c.height > 0) { n++; bytes += c.width * c.height * 4; } };
-      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) add(v && v.canvas ? v.canvas : v);
+      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) eachCanvas(v, add);
       add(deepCanvas); add(deepScratch); add(caveArtFeathered);
       let maxW = 0, maxH = 0;
-      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) { const c = v && v.canvas ? v.canvas : v; if (c) { maxW = Math.max(maxW, c.width); maxH = Math.max(maxH, c.height); } }
+      for (const m of [wallCache, bandCache, capCache]) for (const v of m.values()) eachCanvas(v, (c) => { if (c) { maxW = Math.max(maxW, c.width); maxH = Math.max(maxH, c.height); } });
       for (const c of [deepCanvas, deepScratch, caveArtFeathered]) if (c) { maxW = Math.max(maxW, c.width); maxH = Math.max(maxH, c.height); }
       return { n, bytes, maxW, maxH, bake: BAKE_PX_PER_UNIT, cells: bandCache.size, deepStage };
     },
@@ -1365,7 +1404,7 @@ export function createRenderer(ctx, world) {
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
       // of the run (~10 min soak test caught this: heap kept climbing).
       const liveIdx = new Set(resident.map((r) => r.index));
-      if (!world.v2) for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) { releaseCanvas(wallCache.get(ci).canvas); wallCache.delete(ci); }
+      if (!world.v2) for (const ci of [...wallCache.keys()]) if (!liveIdx.has(ci)) { eachCanvas(wallCache.get(ci), releaseCanvas); wallCache.delete(ci); }
       // Round-6 task 3: follow the octopus's INTERPOLATED (render-alpha)
       // position, not its raw fixed-step one -- camera.js's own doc comment
       // already said it should ("following the octopus's interpolated

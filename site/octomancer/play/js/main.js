@@ -620,13 +620,14 @@ function render(alpha, frameMs) {
     hearts: octo.hearts, heartMax: octo.heartMax,
     bombs: octo.bombs,
     depth: Math.round(depth), score: liveScore, best: bestScore,
-    stage: V2 ? stageLabel(run) : undefined,
+    stage: V2 ? hudStage : undefined, // r44: frozen at the fade, updated when the new level is built
     shells: V2 ? run.shells : undefined,
     items: V2 ? run.items : undefined,
   });
   debug.tick();
 }
 
+let hudStage = V2 ? stageLabel(run) : undefined;
 const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
@@ -637,6 +638,7 @@ function resetWorld(newSeed, prebuilt = null) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
   sfx.stopAll();
   renderer.dispose();
+  if (V2) hudStage = stageLabel(run);
   resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
@@ -675,6 +677,7 @@ let lastDark = null; // {start, end} (performance.now) of the last transition's 
 let holdDark = false; // r43: the new level is being baked behind the dark screen: render only sets it up, draws nothing
 const FADE_MS = 320;
 const GENERATE_AT_MS = 80;     // r43: when, after the fade starts, the next level is generated
+const WARM_FRAMES = 12;        // r44: warm frames drawn behind the dark screen before the fade-in (every group of the scene at least once)
 const FADE_IN_MAX_MS = 2500;  // r43: the longest the screen stays dark waiting for the first view to bake
 let fadeEl = null;
 function ensureFade() {
@@ -683,9 +686,12 @@ function ensureFade() {
     fadeEl.id = 'octo-fade';
     fadeEl.style.cssText = `position:fixed;inset:0;background:#04121c;opacity:0;pointer-events:none;z-index:30;transition:opacity ${FADE_MS}ms ease`;
     document.body.appendChild(fadeEl);
+    void fadeEl.offsetWidth; // r44: flush the opacity-0 style, or the first fade-out has no start state and cuts straight to black
+    void getComputedStyle(fadeEl).opacity;
   }
   return fadeEl;
 }
+if (V2) ensureFade(); // r44: made at startup, long before the first dive
 
 /** Apply a run event; on a state change fade out, load the next level, fade in. */
 function v2Event(ev) {
@@ -725,8 +731,12 @@ function v2Event(ev) {
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
     holdDark = true;
+    holdFrame = 0;
     const fadeIn = () => {
-      if (!renderer.ready() && performance.now() - t0 < FADE_IN_MAX_MS) { setTimeout(fadeIn, 30); return; }
+      // r44: also not before every group of the scene has been drawn once behind the dark screen (holdFrame counts the warm frames:
+      // a set-up frame, then groups 1..5 in turn). Otherwise the first visible frame is the first time the portals, people, octopus
+      // and particles run their cold paths, which was an 85 ms task during the fade-in on a phone.
+      if ((!renderer.ready() || holdFrame < WARM_FRAMES) && performance.now() - t0 < FADE_IN_MAX_MS) { setTimeout(fadeIn, 30); return; }
       holdDark = false;
       lastDark = { start: darkStart, end: performance.now() }; // the dark part of the transition, for the tests
       fade.style.opacity = '0';

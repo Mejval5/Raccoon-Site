@@ -65,11 +65,10 @@ export async function runPerf43Tests(assert) {
     releaseCanvas(a);
     const b = acquireCanvas(200, 100);
     assert('pool: a released canvas of the same size is reused, cleared', b === a && b.getContext('2d').getImageData(10, 10, 1, 1).data[3] === 0);
-    const big = acquireCanvas(1000, 1000); // 4 MB
-    const big2 = acquireCanvas(1000, 1000);
-    releaseCanvas(big); releaseCanvas(big2); // the pool keeps at most 6 MB: the second does not fit
+    const bigs = [acquireCanvas(1000, 1000), acquireCanvas(1000, 1000), acquireCanvas(1000, 1000), acquireCanvas(1000, 1000)]; // 4 MB each
+    for (const c of bigs) releaseCanvas(c); // the pool keeps at most 12 MB: the fourth does not fit
     const s = canvasPoolStats();
-    assert('pool: only what fits the pool budget is kept, the rest is freed at once (size 0)', s.pooledBytes <= 6 * 1048576 && (big.width === 0 || big2.width === 0));
+    assert('pool: only what fits the pool budget is kept, the rest is freed at once (size 0)', s.pooledBytes <= 12 * 1048576 && bigs.filter((c) => c.width === 0).length === 1);
     markAllocation();
     const c1 = acquireCanvas(321, 123);
     assert('pool: allocation is counted since markAllocation()', canvasPoolStats().allocatedBytes === 321 * 123 * 4);

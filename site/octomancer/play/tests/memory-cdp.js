@@ -38,9 +38,12 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
       const cv = await page.evaluate(() => { let n = 0, bytes = 0; for (const r of window.__cv) { const c = r.deref(); if (c && c.width * c.height > 0) { n++; bytes += c.width * c.height * 4; } } return { n, bytes }; });
       return { heap, ...cv, mem: await page.evaluate(() => __octo.memory()) };
     };
+    let afterSources = [];
     const go = async (ev) => {
       const ok = await page.evaluate((e) => __octo.runEvent(e), ev);
-      await sleep(900);
+      await sleep(500);
+      for (let k = 0; k < 60 && (await page.evaluate(() => __octo.level().transitioning)); k++) await sleep(100); // r44: until the screen is back (the warm-up frames take a while)
+      afterSources = await page.evaluate(() => __octo.audioSources()); // taken before any step, so a drifting octopus has not started a whoosh yet
       await page.evaluate(() => __octo.step(30));
       await sleep(200);
       return ok;
@@ -72,19 +75,23 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
     check('the renderer reports a small canvas set (cells for the screen and a ring)', last.mem.rendererCanvases <= 30 && last.mem.rendererCanvasBytes < 20 * 1048576, JSON.stringify(last.mem));
 
     // --- audio: nothing synthesised survives a transition, only the music ---
+    // r44: the sequence ended in 1-3, where 'exit' shows the end screen (no teardown). Go to the hub and into 1-1 first, so the next
+    // 'exit' is a real transition (this check used to pass because the octopus stood still: no swim loop existed to be left behind)
+    await go('exit'); await go('continue'); await go('enter');
     await page.keyboard.press('KeyD'); // the first input starts the audio
     await sleep(400);
-    await page.evaluate(() => { __octo.teleport(__octo.level().startX, __octo.level().startY); __octo.input({ right: true }); __octo.step(40); });
+    await page.evaluate(() => { __octo.teleport(__octo.level().startX, __octo.level().startY); __octo.input({ move: { x: 1, y: 0.4 }, dash: true }); __octo.step(40); });
+    check('the octopus really moved during the swim', await page.evaluate(() => Math.hypot(__octo.state().octopus.vx, __octo.state().octopus.vy) > 0.5));
     await page.evaluate(() => { __octo.sfx('dash'); __octo.sfx('bomb'); __octo.sfx('chime'); __octo.sfx('hurt'); });
     const before = await page.evaluate(() => __octo.audioSources());
     check('before the transition the swim whoosh and the effects make sources', before.filter((s) => s.kind !== 'music').length >= 4, JSON.stringify(before.map((s) => s.kind)));
     check('the swim loop exists once (deduped)', before.filter((s) => s.kind === 'swim').length <= 1);
     await page.evaluate(() => __octo.input(null));
     await go('exit');
-    const after = await page.evaluate(() => __octo.audioSources());
+    const after = afterSources;
     check('after a transition only the music sources remain', after.length > 0 ? after.every((s) => s.kind === 'music') : true, JSON.stringify(after));
     // a transition while moving and with a pending chime note
-    await page.evaluate(() => { __octo.input({ right: true }); __octo.step(40); __octo.sfx('chime'); __octo.runEvent('exit'); });
+    await page.evaluate(() => { __octo.input({ move: { x: -1, y: 0.6 }, dash: true }); __octo.step(40); __octo.sfx('chime'); __octo.runEvent('exit'); });
     await sleep(520); // the fade is 320 ms: the old level is torn down by now
     const mid = await page.evaluate(() => __octo.audioSources());
     check('once the old level is torn down no synthesised source is alive', mid.every((s) => s.kind === 'music'), JSON.stringify(mid));

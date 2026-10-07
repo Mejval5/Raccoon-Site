@@ -8,6 +8,28 @@ import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
 
+// r44: the keyboard hint (bottom-left, desktop input only) as a rectangle in canvas pixels, or null when it is not shown (touch devices
+// never show it). The old rule guessed it from window.devicePixelRatio (3 on a phone, but the canvas is capped at 1.5) and applied it
+// on touch screens too, so the hub's 'Dive' label was always hidden on a phone. Read from the element, at most twice a second.
+let hintCache = { at: -1e9, rect: null };
+function hintRect(canvas, now) {
+  if (now - hintCache.at > 500) {
+    hintCache.at = now; hintCache.rect = null;
+    try {
+      const el = document.querySelector('.octo-controls-help');
+      if (el && canvas.clientWidth > 0) {
+        const cs = getComputedStyle(el);
+        if (cs.display !== 'none' && cs.visibility !== 'hidden') {
+          const r = el.getBoundingClientRect(), k = canvas.width / canvas.clientWidth, c = canvas.getBoundingClientRect();
+          hintCache.rect = { x0: (r.left - c.left) * k - 8, y0: (r.top - c.top) * k - 8, x1: (r.right - c.left) * k + 8, y1: (r.bottom - c.top) * k + 8 };
+        }
+      }
+    } catch (e) { /* no DOM: no hint */ }
+  }
+  return hintCache.rect;
+}
+const inRect = (r, x, y) => !!r && x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
+
 /** Labels of the portals found by drawV2Marks this frame; drawV2Labels draws them after the octopus. */
 const pendingLabels = [];
 /** r42: the portal names (the hub's 'Dive' label, the shortcut signs), drawn after the octopus so it never hides them. */
@@ -67,7 +89,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       ctx.restore();
     }
     if (!label || !(ex > 0 && ex < cw && cy > 0 && cy < ch)) return;
-    const dpr = window.devicePixelRatio || 1;
+    const hr = hintRect(ctx.canvas, performance.now());
     const topY = pl.flat ? cy - hIdle / 2 : cy - wpx / 2;  // the rim of the whirlpool
     pendingLabels.push(() => {
       if (plank) {
@@ -82,7 +104,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
         ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.32 * S))}px Quicksand, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const tw = ctx.measureText(label).width, pw = tw + ppu * 0.5 * S;
-        const inHint = px < 320 * dpr && signY > ch - 130 * dpr;
+        const inHint = inRect(hr, px, signY);
         if (!inHint && signY > 0 && px > -pw && px < cw + pw) {
           ctx.lineJoin = 'round';
           const postW = Math.max(2, ppu * 0.1 * S);
@@ -95,7 +117,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
         }
       } else {
         const ly = topY - ppu * 0.32; // just above the whirlpool's rim
-        const inHint = ex < 320 * dpr && ly > ch - 130 * dpr;
+        const inHint = inRect(hr, ex, ly);
         if (!inHint && ly > 0) {
           ctx.font = `700 ${Math.max(11, Math.round(ppu * 0.4))}px Quicksand, sans-serif`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

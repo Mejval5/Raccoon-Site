@@ -7,7 +7,7 @@
 //  - `canvasBudget()` is the size rule: no canvas bigger than the screen at the pixel ratio the game renders at.
 // Everything is counted, so `__octo.memory()` and the tests can tell what is live, what is pooled and what a transition allocated.
 
-const POOL_MAX_BYTES = 6 * 1048576; // free canvases kept for the next level; the rest are freed on release
+const POOL_MAX_BYTES = 12 * 1048576; // free canvases kept for the next level (r44: 12 MB, was 6: a level's whole cell set goes back); the rest are freed on release
 const free = new Map(); // 'WxH' -> canvas[]
 const live = new Set(); // acquired and not yet released
 const shared = new Set(); // long-lived canvases that live outside the pool (the page-wide small textures); counted, never released
@@ -36,6 +36,7 @@ export function acquireCanvas(w, h) {
     allocatedBytes += w * h * 4; allocatedCount++;
   }
   live.add(c);
+  if (typeof window !== 'undefined' && window.__poolLog) window.__poolLog.push([w, h, !!list && !!c && reuseCount]); // r44 test hook: what is asked for
   return c;
 }
 

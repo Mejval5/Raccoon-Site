@@ -69,7 +69,7 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
       const dark = await page.evaluate(() => __octo.lastTransition());
       const allLts = (await page.evaluate(() => window.__lt.slice())).filter((x) => x[0] >= t0);
       const lts = allLts.filter((x) => dark && x[0] <= dark.end); // the transition proper: the event until the screen starts to fade in
-      lateTasks.push(...allLts.filter((x) => dark && x[0] > dark.end && x[1] > 50)); // after that it is play (cold code on the first frames of a level)
+      lateTasks.push(...allLts.filter((x) => dark && x[0] > dark.end && x[1] > 50)); // the fade-in (r44: judged below, until transitioning is false)
       const tr = await tracked();
       const mem = await page.evaluate(() => __octo.memory());
       rows.push({ i: rows.length + 1, ev, ms: waited, worst: lts.reduce((m, x) => Math.max(m, x[1]), 0), tracked: tr, mem });
@@ -86,7 +86,9 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
     check('a transition creates under 15 MB of new canvases (the pool hands the last level\'s back)', worstAlloc < 15, `worst ${worstAlloc} MB`);
     check('no canvas is bigger than the viewport at the capped pixel ratio', rows.every((r) => r.tracked.maxPx <= budget.w * budget.h), `biggest ${Math.max(...rows.map((r) => r.tracked.maxPx))} px vs ${budget.w * budget.h}`);
     check('no main-thread task over 50 ms during a transition at 4x CPU throttle', worstTask <= 50, `worst ${Math.round(worstTask)} ms`);
-    console.log(`  tasks over 50 ms after the fade-in began (the first frames of play, cold code, software raster in headless): ${lateTasks.length} of ${rows.length} transitions, worst ${Math.round(Math.max(0, ...lateTasks.map((x) => x[1])))} ms`);
+    const worstLate = Math.max(0, ...lateTasks.map((x) => x[1]));
+    console.log(`  tasks over 50 ms during the fade-in (until transitioning is false): ${lateTasks.length}, worst ${Math.round(worstLate)} ms`);
+    check('no main-thread task over 50 ms during the fade-in either (transition start until transitioning is false)', worstLate <= 50, `worst ${Math.round(worstLate)} ms`);
     check('the screen is dark for under 2.5 s per transition', rows.every((r) => r.ms < 2500), `worst ${Math.max(...rows.map((r) => r.ms))} ms`);
 
     // --- in a level: frame time and culling ---
@@ -98,8 +100,18 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
     for (let k = 0; k < 4 && lv.stage === 'Tutorial'; k++) { await page.evaluate(() => __octo.runEvent('exit')); await sleep(2800); lv = await page.evaluate(() => __octo.level()); }
     console.log('  playing in ' + lv.stage);
     check('the level the generator worker built equals the one the main thread generates for the same seed', (await page.evaluate(() => __octo.levelMatchesMainThread())) === true);
-    await page.evaluate(() => { __octo.god(true); __octo.input({ down: true, right: true }); });
-    await sleep(6000);
+    // r44: really swim (input() reads move:{x,y} and dash), changing direction every 400 ms, so the wall cells bake while the camera moves
+    const dirs = [[1, 1], [1, 0], [0, 1], [-1, 1], [1, -1], [-1, 0], [0, -1], [1, 1]];
+    const p0 = await page.evaluate(() => { __octo.god(true); const o = __octo.state().octopus; return { x: o.x, y: o.y }; });
+    let pathLen = 0, prev = p0;
+    for (let k = 0; k < 15; k++) { // 6 s
+      const d = dirs[k % dirs.length];
+      await page.evaluate((d) => __octo.input({ move: { x: d[0], y: d[1] }, dash: true }), d);
+      await sleep(400);
+      const o = await page.evaluate(() => { const q = __octo.state().octopus; return { x: q.x, y: q.y }; });
+      pathLen += Math.hypot(o.x - prev.x, o.y - prev.y); prev = o;
+    }
+    check('the octopus really swam while the frame time was measured (moved over 8 tiles in all)', pathLen > 8, `path ${pathLen.toFixed(1)} tiles`);
     const m = await page.evaluate(() => __octo.metrics());
     console.log(`  phone frame time (4x throttle, headless): median ${m.frameMsMedian.toFixed(1)} ms, p95 ${m.frameMsP95.toFixed(1)} ms`);
     await page.evaluate(() => __octo.input(null));
