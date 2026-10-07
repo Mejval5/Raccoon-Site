@@ -34,3 +34,6 @@ firebase-debug.log
 .gallery-admin-key
 # Local secrets for the Functions emulator
 functions/.secret.local
+
+# wedding invite key, kept locally so unlock URLs can be printed
+.svatba-key
