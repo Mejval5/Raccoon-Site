@@ -11,7 +11,8 @@ import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
 import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
 import { createRenderer } from './render.js';
-import { screenToWorld } from './camera.js';
+import { screenToWorld, worldToScreen } from './camera.js';
+import { drawBlackHole, farCorner } from './blackhole.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { isBaked } from './octopus-draw.js';
@@ -42,7 +43,7 @@ import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, 
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks, drawV2Labels } from './v2-draw.js';
-import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey, portalMode, whirlpoolReady, ENTRY_S } from './portal-draw.js';
+import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey, portalMode, whirlpoolReady } from './portal-draw.js';
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
@@ -416,36 +417,77 @@ window.addEventListener('keydown', (e) => {
 
 const autoDive = { path: [], recalc: 0 };
 
-// r44: entering a whirlpool. The octopus is pulled to the centre of the whirlpool while it shrinks and fades (octo.entering 0..1), the
-// whirlpool plays its Bounce (forced) and then swallows it (the Rise, reversed); only then does the level change (v2Event, which
-// starts the screen fade). ENTRY_S = BOUNCE_S + RISE_S = 1.33 s after the octopus touched the whirlpool.
+// r45: entering a whirlpool, as the original does it (octomancer-unity LevelPlayMode.AnimateOctopus / MoveOctoToExit, values from
+// MainGame.unity). On the touch the octopus leaves the simulation: no swimming, no velocity, no collision, no idle sink, nothing can hurt
+// or push it (octo.sealed; stepOctopus is not called). For ENTRY_S = 1.5 s only this script moves it: towards the whirlpool's centre at
+// OctopusAnimWinSpeed = 1 tile/s along the line it started on (it stops within 0.1 of the centre), turning at OctopusAnimWinRotationSpeed
+// = 720 deg/s (Unity's z goes down: clockwise on screen) and its scale multiplied by (1 - 0.5 dt) each step (0.47 at the end). The
+// whirlpool plays Milan's Bounce and the swallow meanwhile (portal-draw.js), and the black hole (blackhole.js) closes on the whirlpool
+// over the same 1.5 s. Then the octopus is hidden and the level changes (v2Event), under the already dark screen.
+// The pose is kept as this step's and the last step's values (x, y, turn, scale), and render.js draws it interpolated between them, so it
+// moves evenly at any display rate; the round-44 version fought the swim physics every step (stepOctopus moved and collided the body,
+// then the entry put it back), which is what made it shake.
 const NO_PRESS = { pressed: false, held: false };
 const NO_INPUT = { move: { x: 0, y: 0 }, dash: NO_PRESS, bomb: NO_PRESS, pause: NO_PRESS, attack: NO_PRESS, spell: NO_PRESS, inventory: NO_PRESS, cycle: 0, select: -1, src: { attack: 'key', spell: 'key', bomb: 'key' }, mode: 'keyboard' };
-let entry = null; // {ev, cx, cy, x0, y0, t, wall} while the sequence runs
-const ENTRY_PULL_S = 0.7; // the octopus reaches the centre this long after touching the whirlpool
+const ENTRY_S = 1.5;                 // Unity: animationTime = realtimeSinceStartup + 1.5
+const ENTRY_SPEED = 1;               // OctopusAnimWinSpeed, tiles per second
+const ENTRY_SPIN = 720;              // OctopusAnimWinRotationSpeed, degrees per second
+const ENTRY_STOP = 0.1;              // it stops moving this close to the centre
+const ENTRY_SHRINK = 0.5;            // localScale *= 1 - 0.5 * dt
+let entry = null; // the pose and the sequence's clock while it runs (also octo.entry, which render.js draws from)
+let entryLog = null; // test hook: the last entry's timing and every step's pose
+let lastIrisR = -1; // test hook: the black hole's dark radius in px at the last frame drawn
+let octoPhysSteps = 0; // test hook: how many times stepOctopus has run
 function beginEntry(ev, tx, ty) {
   if (entry || transitioning) return;
   const c = portalCenter(world.tileAt, tx, ty);
-  entry = { ev, cx: c.x, cy: c.y, x0: octo.x, y0: octo.y, t: 0, wall: performance.now() };
-  portalEnter(portalKey(tx, ty), sim.time);
-  octo.vx = octo.vy = 0;
-  entryLog = { start: entry.wall, simStart: sim.time, ev, fadeAt: 0, simFade: 0 };
+  const dx = c.x - octo.x, dy = c.y - octo.y, d = Math.hypot(dx, dy);
+  entry = {
+    ev, cx: c.x, cy: c.y, dirX: d > 1e-6 ? dx / d : 0, dirY: d > 1e-6 ? dy / d : 0, t: 0,
+    x: octo.x, y: octo.y, px: octo.x, py: octo.y, rot: octo.angle, prot: octo.angle, sc: 1, psc: 1, wall: performance.now(),
+  };
+  octo.entry = entry; octo.sealed = true;
+  octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0;
+  octo.dashedThisStep = octo.bouncedThisStep = octo.landedThisStep = false;
+  hitStop = 0;
+  portalEnter(portalKey(tx, ty), sim.time, ENTRY_S);
+  pinEntry();
+  entryLog = { start: entry.wall, simStart: sim.time, ev, fadeAt: 0, simFade: 0, cx: c.x, cy: c.y, poses: [[0, entry.x, entry.y, entry.rot, 1]], physAtStart: octoPhysSteps, physAtEnd: -1 };
 }
-let entryLog = null; // test hook: when the last entry started and when its fade began
+/** Write the scripted pose into the octopus (this step's and the last step's, for the interpolated draw) and keep it still. */
+function pinEntry() {
+  const e = entry;
+  octo.x = e.x; octo.y = e.y; octo.prevX = e.px; octo.prevY = e.py;
+  octo.vx = octo.vy = 0;
+  octo.angle = ((e.rot % 360) + 360) % 360;
+}
 function stepEntry(dt) {
-  entry.t += dt;
-  const u = Math.min(1, entry.t / ENTRY_PULL_S), e = u * u * (3 - 2 * u); // smoothstep
-  octo.x = entry.x0 + (entry.cx - entry.x0) * e; octo.y = entry.y0 + (entry.cy - entry.y0) * e;
-  octo.vx = octo.vy = 0; octo.swimming = false;
-  octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; // nothing hurts it on the way down
-  const p = Math.min(1, entry.t / ENTRY_S);
-  octo.entering = p * p * (3 - 2 * p);
-  if (entry.t >= ENTRY_S - 1e-6) {
-    const ev = entry.ev;
-    if (entryLog) { entryLog.fadeAt = performance.now(); entryLog.simFade = sim.time; }
-    v2Event(ev);
-    entry = null;
-  }
+  const e = entry;
+  e.px = e.x; e.py = e.y; e.prot = e.rot; e.psc = e.sc;
+  e.t += dt;
+  const dist = Math.hypot(e.cx - e.x, e.cy - e.y);
+  if (dist > ENTRY_STOP) { const f = Math.min(dist, ENTRY_SPEED * dt); e.x += f * e.dirX; e.y += f * e.dirY; }
+  e.rot += ENTRY_SPIN * dt;
+  e.sc *= 1 - ENTRY_SHRINK * dt;
+  pinEntry();
+  if (entryLog) entryLog.poses.push([e.t, e.x, e.y, e.rot, e.sc]);
+}
+/** After the whole step: put the pose back in case anything (a prop, a jet, a blast) touched the body, and end the sequence on time. */
+function endOfStepEntry() {
+  if (!entry) return;
+  pinEntry();
+  if (entry.t < ENTRY_S - 1e-6) return;
+  const ev = entry.ev;
+  entry = null; octo.entry = null;
+  octo.hidden = true; octo.angle = 0; // Unity: rotation back to identity, the octopus set inactive
+  if (entryLog) { entryLog.fadeAt = performance.now(); entryLog.simFade = sim.time; entryLog.physAtEnd = octoPhysSteps; }
+  // the black hole has closed: the dark screen comes on at once (no second fade from the picture), then the transition runs as before
+  const fade = ensureFade();
+  fade.style.transition = 'none';
+  const changed = v2Event(ev);
+  void fade.offsetWidth;
+  fade.style.transition = `opacity ${FADE_MS}ms ease`;
+  if (!changed || !transitioning) { octo.hidden = false; octo.sealed = false; } // no level change after all (the end screen, or a refused event): the octopus is back
 }
 
 function step(dt) {
@@ -494,18 +536,18 @@ function step(dt) {
     return;
   }
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
-  if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
+  if (hitStop > 0) { if (entry) hitStop = 0; else { hitStop = Math.max(0, hitStop - dt); return; } } // r45: never during the entry, which runs on its own clock
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) run.dive.time += dt; // the run summary's clock
-  if (entry) snap = NO_INPUT; // r44: the octopus is going into a whirlpool: no swimming, dashing or bombs
+  if (entry || octo.hidden) snap = NO_INPUT; // r45: the octopus is going into a whirlpool: no swimming, dashing, bombs or spells
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
     else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
   }
   if (Math.hypot(snap.move.x, snap.move.y) > 0.25) { const l = Math.hypot(snap.move.x, snap.move.y); lastAim = { x: snap.move.x / l, y: snap.move.y / l }; }
-  stepOctopus(octo, snap, dt, world);
-  if (entry) stepEntry(dt);
-  if (V2 && !octo.dead && !entry) stepCombat(snap, dt);
+  if (entry) stepEntry(dt); // r45: the scripted entry instead of the swim physics
+  else if (!octo.hidden) { octoPhysSteps++; stepOctopus(octo, snap, dt, world); }
+  if (V2 && !octo.dead && !entry && !octo.hidden) stepCombat(snap, dt);
   if (octo.dashedThisStep) {
     sfx.dash();
     particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
@@ -598,6 +640,8 @@ function step(dt) {
     }
     if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); journal.bump('item-bomb', STAT_COLLECTED); tutorialActed(tutState); }
   }
+
+  endOfStepEntry(); // r45: the entry's pose wins over anything that touched the body this step; the level changes here when it is over
 
   const depth = Math.max(0, world.depth() - world.startY);
   liveScore = computeScore(depth, pickups.totals, runKills);
@@ -774,6 +818,11 @@ function render(alpha, frameMs) {
     followBias: V2 && run.state === S_BIOME ? poolCameraBias() : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
+  if (entry && !holdDark) { // r45: the black hole closes on the whirlpool, on the entry's clock (interpolated like the octopus)
+    const c = worldToScreen(renderer.camera, w, h, entry.cx, entry.cy);
+    if (!entry.far) entry.far = farCorner(w, h, c.x, c.y);
+    lastIrisR = drawBlackHole(ctx, w, h, c.x, c.y, Math.max(0, entry.t - STEP + alpha * STEP), ENTRY_S, entry.far);
+  }
   ui.updateHud({
     hearts: octo.hearts, heartMax: octo.heartMax,
     bombs: octo.bombs,
@@ -1723,8 +1772,20 @@ window.__octo = {
   renderReady() { return renderer.ready(); },
   /** r43 test hook: when the last transition started and when its screen began to fade back in (performance.now ms). */
   lastTransition() { return lastDark ? { ...lastDark } : null; },
-  /** r44 test hook: the entry sequence now ({t, pulled to, entering}) or null, and the last one's timing (start, when its fade began, wall ms and sim s). */
-  entry() { return entry ? { t: entry.t, cx: entry.cx, cy: entry.cy, entering: octo.entering || 0 } : null; },
+  /** r45 test hook: the entry now ({t, centre, pose, sealed, iris radius}) or null; lastEntry(): the last one's timing and per-step poses. */
+  entry() { return entry ? { t: entry.t, cx: entry.cx, cy: entry.cy, x: entry.x, y: entry.y, rot: entry.rot, scale: entry.sc, sealed: !!octo.sealed, hidden: !!octo.hidden, vx: octo.vx, vy: octo.vy, hearts: octo.hearts, iris: lastIrisR } : null; },
+  /** r45 test hook: how many times the swim physics (stepOctopus) has run, and what the octopus was last drawn as ({x, y, rot, scale} interpolated, or null if hidden). */
+  physSteps() { return octoPhysSteps; },
+  drawnOcto() { return octo.__drawn ? { ...octo.__drawn } : null; },
+  /** r45 test hook: stop the rAF loop and run n frames of dtMs each synchronously (a display at 1000/dtMs Hz), recording what was drawn each frame; then restart the loop (unless hold). */
+  frames(n, dtMs, hold) {
+    loop.stop();
+    const rec = [];
+    try {
+      loop.manualFrames(n, dtMs, () => { const d = octo.__drawn; rec.push(d && !octo.hidden ? { ...d, t: entry ? entry.t : -1, iris: lastIrisR } : null); });
+    } finally { if (!hold) loop.start(); } // hold: leave the loop stopped (a screenshot of exactly this frame); frames(0) starts it again
+    return rec;
+  },
   lastEntry() { return entryLog ? { ...entryLog } : null; },
   /** r44 test hook: the exit / dive whirlpool's play state ('appear', 'idle', 'near', 'enter', 'swallow', 'gone'). */
   portalMode() { const lv = world.level; return portalMode(portalKey(lv.exitX, lv.exitY)); },
