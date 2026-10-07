@@ -81,6 +81,8 @@ body {
 .octo-btn.is-active {
   background: rgba(255,255,255,0.32);
 }
+.octo-btn.is-empty { opacity: 0.45; }
+
 
 /* --- HUD bar (hearts + score/depth/bombs), M4-1 --- */
 .octo-hud-bar {
@@ -597,7 +599,7 @@ body {
 .octo-death-ui .octo-go-actions { position: sticky; bottom: -18px; margin-bottom: -18px; padding: 8px 0 18px; background: linear-gradient(rgba(10, 28, 42, 0), rgb(10, 28, 42) 10px); }
 .octo-death-ui .octo-credit { display: none; }
 /* nothing else of the HUD floats over the body or shows through the panel (toasts, the controls line, prompts, title cards) */
-#hud.octo-death-open > .octo-toast, #hud.octo-death-open > .octo-controls-help, #hud.octo-death-open > .octo-prompt, #hud.octo-death-open > .octo-title { visibility: hidden; }
+#hud.octo-death-open > .octo-toast, #hud.octo-death-open > .octo-controls-help, #hud.octo-death-open > .octo-prompt, #hud.octo-death-open > .octo-title, #hud.octo-death-open .octo-hotbar { visibility: hidden; }
 /* phones: a bottom sheet of fixed height; the stat rows go two to a line so it all fits */
 @media (max-width: 700px), (max-height: 520px) {
   .octo-gameover-overlay.octo-death-ui { align-items: flex-end; justify-content: center; padding: 0 var(--safe-r) 0 var(--safe-l); }

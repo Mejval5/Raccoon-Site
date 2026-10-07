@@ -114,7 +114,7 @@ export function createUI(root, handlers) {
   // on-screen stick/buttons are the touch equivalent) and shows it again if
   // the player switches back to keyboard/mouse.
   const controlsHelp = el('div', 'octo-controls-help',
-    'Swim: WASD/arrows or hold mouse | Dash: Z/Enter/Shift or right-click/double-click | Bomb: Space/X or middle-click/wheel');
+    'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X');
   // Round-9 fix (Daniel's screenshot review round 8, issue 3: a phone visitor
   // saw mouse/keyboard instructions at first load -- this used to always
   // start visible and only hide on the first touch input, via main.js's
@@ -180,7 +180,7 @@ export function createUI(root, handlers) {
     const v2 = state.stage !== undefined;
     if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
       helpV2 = true;
-      controlsHelp.textContent = 'Swim: WASD/arrows or hold mouse | Dash: Z/Enter/Shift or right-click/double-click | Throw bomb: Space/X (swim direction) or middle-click/wheel (at cursor)';
+      controlsHelp.textContent = 'Swim: WASD/arrows | Dash: Space/Shift | Ink jet: left-click or J/K | Spell: right-click or F | Bomb: middle-click or B/X | Spells: wheel, Q/E, 1-9 | Inventory: Tab/I';
     }
     stageEl.style.display = v2 ? '' : 'none';
     depthEl.style.display = v2 ? 'none' : '';
