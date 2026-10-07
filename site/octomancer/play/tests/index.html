@@ -192,6 +192,10 @@ await runPerf43Tests(assert);
 import { runPortalTests } from './portal.test.js';
 await runPortalTests(assert);
 
+// --- Buried treasure and the Sea-glass Goggles ---
+import { runEmbedTests } from './embed.test.js';
+await runEmbedTests(assert);
+
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
