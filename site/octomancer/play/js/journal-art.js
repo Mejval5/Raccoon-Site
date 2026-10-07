@@ -1,17 +1,18 @@
-// Journal art (round 38): the picture on an entry's card and page. Creatures use their real sprites, places and people
-// the generated v2 art, carried items the code-drawn icons of items-draw.js; the rest (traps, loot, bombs) are small
-// code drawings. A locked entry is the same picture as a flat dark silhouette (Spelunky 2 style) under a '?'.
+// Journal art (round 38): the picture on an entry's card and page. Creatures use their real sprites, places the generated v2
+// art; r46: people, loot, hazards and carried items use the very sprites the game draws them with (js/sprites.js atlas, via the
+// game's own draw functions or {sprite: name}); the rest (bombs, plankton, the pocket, fossils) are small code drawings. A locked entry is the same picture as a flat dark silhouette (Spelunky 2 style) under a '?'.
 // One flat table of descriptors keyed by entry id; canvases are cached per (id, size, locked).
 
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { ENTRIES } from './journal.js';
 import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
+import { drawSprite, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
 
-/** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {item: carried item id} | {fn: name of a code drawing below}. */
+/** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {sprite: atlas name} | {item: carried item id} | {game: person} | {fn: name of a code drawing below}. */
 const ART = new Map(ENTRIES.map((e) => [e.id, e.art ? (e.art.img ? { ...e.art, img: new URL('../' + e.art.img, import.meta.url).href } : e.art) : null]));
 
 /** @type {Map<string, HTMLImageElement>} */
@@ -29,6 +30,8 @@ function image(url) {
 }
 /** Called when an image finished loading (the book redraws its cards). */
 export function onArtReady(fn) { listeners.push(fn); }
+// r46: once the sprite atlas is in, every cached plate is redrawn with it
+onSpritesReady(() => { cache.clear(); for (const fn of listeners) fn(); });
 
 function stroke(ctx, fill, lw) { ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; }
 
@@ -107,7 +110,7 @@ export const FN = {
   pocket(c) {
     stroke(c, '#7d8b96', 0.1); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.18); c.fill(); c.stroke();
     c.strokeStyle = INK; c.lineWidth = 0.07; c.beginPath(); c.moveTo(-0.15, -0.8); c.lineTo(0.05, -0.4); c.lineTo(-0.15, -0.1); c.lineTo(0.12, 0.3); c.lineTo(-0.02, 0.8); c.stroke();
-    c.fillStyle = '#ffe38a'; c.beginPath(); c.arc(0.4, 0.2, 0.09, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(225,245,255,0.9)'; c.lineWidth = 0.05; c.beginPath(); c.arc(0.3, -0.05, 0.09, 0, TAU); c.moveTo(0.48, -0.3); c.arc(0.42, -0.3, 0.06, 0, TAU); c.stroke(); // a bubble seeping out
   },
   relic(c) {
     stroke(c, '#e7b94a', 0.09);
@@ -152,9 +155,9 @@ export const FN = {
  * Each takes the plate's pixel size and paints Marlo, Pip or Quill the way they stand in the hub.
  */
 export const GAME_DRAW = {
-  diver(c, px) { drawDiver(c, { x: 0, y: 0, pxPerUnit: px * 0.6 }, 0, 0, 0, 0.58, 0.6, true, false); },
-  critter(c, px) { drawCritter(c, { x: 0, y: 0, pxPerUnit: px * 1.5 }, 0, 0, 0, 0.04, true, 0.6, 0, ''); },
-  collector(c, px) { drawCollector(c, { x: 0, y: 0, pxPerUnit: px * 0.58 }, 0, 0, 0, 0.62, 0.6, false); },
+  diver(c, px) { drawDiver(c, { x: 0, y: 0, pxPerUnit: px * 0.7 }, 0, 0, 0, 0.6, 0.6, true, false); },
+  critter(c, px) { drawCritter(c, { x: 0, y: 0, pxPerUnit: px * 1.35 }, 0, 0, 0, 0.0, true, 0.6, 0, ''); },
+  collector(c, px) { drawCollector(c, { x: 0, y: 0, pxPerUnit: px * 0.66 }, 0, 0, 0, 0.6, 0.6, false); },
 };
 
 const cache = new Map();
@@ -174,6 +177,10 @@ function paint(ctx, id, px) {
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(im, -im.naturalWidth * k / 2, -im.naturalHeight * k / 2, im.naturalWidth * k, im.naturalHeight * k);
     }
+  } else if (a.sprite) {
+    ensureSprites();
+    const asp = spriteAspect(a.sprite), d = px * 0.84;
+    drawSprite(ctx, a.sprite, 0, 0, asp >= 1 ? d : d * asp, asp >= 1 ? d / asp : d, 0.5, 0.5);
   } else if (a.item) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
   } else if (a.game && GAME_DRAW[a.game]) {
@@ -208,7 +215,7 @@ export function entryArt(id, px, locked) {
 }
 
 /** Preload every picture of the book (called when it opens). */
-export function preloadArt() { for (const a of ART.values()) if (a && a.img) image(a.img); }
+export function preloadArt() { ensureSprites(); for (const a of ART.values()) if (a && a.img) image(a.img); }
 
 /** Whether an entry id has art at all (tests). */
 export function hasArt(id) { return !!ART.get(id); }

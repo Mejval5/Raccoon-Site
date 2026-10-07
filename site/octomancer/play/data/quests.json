@@ -10,7 +10,7 @@
     "hub": { "1": ["Squeak!", "Squeak squeak. (Home!)"] },
     "thanks": { "1": "Squeak! Home!" } },
   { "id": "quill", "name": "Quill", "title": "The Collector", "journal": "person-collector",
-    "hub": { "1": ["Golden relics, my friend. Heavy, shiny, slightly cursed.", "{n} of 3 so far. {left} to go.", "Carry one out through the exit ring, and it is mine."],
+    "hub": { "1": ["Old octopus idols, my friend. Carved stone, heavy, slightly cursed.", "{n} of 3 so far. {left} to go.", "Carry one out through the exit ring, and it is mine."],
              "2": ["My lantern burns for you now.", "Every dive starts a little brighter."] },
     "relics": ["A relic! Splendid. Two more, if you would.", "The second! The shelf is filling up.", "Three! You have outdone yourself. The lantern is yours."],
     "thanks": { "1": "Ah, a new neighbour. Mind the ledge.", "2": "Take my lantern on every dive." } }

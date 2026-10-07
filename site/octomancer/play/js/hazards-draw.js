@@ -1,9 +1,11 @@
-// Hazard drawing (hazards.js), all code-drawn shapes (no sprites this round). Called from main.js's v2 extra
-// draw hook, in device pixels, after enemies and bombs and before the octopus. Reads the flat hazard arrays.
+// Hazard drawing (hazards.js). Called from main.js's v2 extra draw hook, in device pixels, after enemies and bombs and before
+// the octopus. Reads the flat hazard arrays. r46: the jet's rock chimney, the spine strip, the eel and the anemone are sprites
+// (js/sprites.js, generated in Milan's style) animated by transforms; the code shapes stay as the fallback until the atlas loads.
 
 import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_HALF_LEN, SPIKE_REACH, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT } from './hazards.js';
 import { prefersReducedMotion } from './config.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
+import { drawSprite, drawSpriteSlice, spriteRect } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -76,6 +78,8 @@ function drawJet(ctx, sx, sy, ppu, dx, dy, len, time, seed) {
     ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill(); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  // r46: a rock chimney growing out of the wall face, its mouth along the stream
+  if (drawSprite(ctx, 'vent', 0.3 * ppu, 0, 0, 0.78 * ppu, 1, 0.5)) { ctx.restore(); return; }
   // nozzle block on the wall face
   const nw = 0.42 * ppu, nh = 0.95 * ppu;
   ctx.fillStyle = '#2b5f6e';
@@ -103,6 +107,12 @@ function drawSpikes(ctx, sx, sy, ppu, dx, dy, isSolid, wx, wy) {
   ctx.save();
   ctx.translate(sx - dx * 0.5 * ppu, sy - dy * 0.5 * ppu); // centre of the face
   ctx.rotate(Math.atan2(dy, dx)); // +x = out of the rock
+  if (spriteRect('spines')) { // r46: bone-white urchin spines on a crusty coral base; the sprite's up is +x here
+    ctx.rotate(Math.PI / 2);
+    drawSprite(ctx, 'spines', (lo + hi) / 2 * ppu, 0.08 * ppu, (hi - lo) * ppu, (SPIKE_REACH + 0.1) * ppu);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = '#4d6278';
   ctx.strokeStyle = '#223445';
   ctx.lineWidth = Math.max(1, ppu * 0.04);
@@ -240,8 +250,16 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(sx, sy, 1.3 * ppu, 0, TAU); ctx.fill();
   }
-  // body: a wavy vertical line, drawn as two strokes (dark outline, teal body) plus yellow dashes
   const seg = 9, half = EEL_HALF_BODY * ppu;
+  if (spriteRect('eel')) {
+    // r46: the eel sprite cut into horizontal slices, each shifted by the same travelling wave the code body used
+    const top = sy - half - 0.25 * ppu, hgt = 2 * half + 0.35 * ppu, wid = hgt * 50 / 240 * 1.4, n = 16; // a little plumper than the sprite: it read too thin on dark water
+    for (let k = 0; k < n; k++) {
+      const u = k / n, wave = Math.sin(time * 5 + u * 5) * 0.13 * ppu;
+      drawSpriteSlice(ctx, 'eel', u, u + 1 / n, sx + wave - wid / 2, top + u * hgt, wid, hgt / n + 0.6);
+    }
+  } else {
+  // body: a wavy vertical line, drawn as two strokes (dark outline, teal body) plus yellow dashes
   const path = () => {
     ctx.beginPath();
     for (let k = 0; k <= seg; k++) {
@@ -262,6 +280,7 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
   ctx.beginPath(); ctx.arc(hx, hy, 0.19 * ppu, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx + 0.06 * ppu, hy - 0.03 * ppu, 0.06 * ppu, 0, TAU); ctx.fill();
   ctx.fillStyle = '#10202e'; ctx.beginPath(); ctx.arc(hx + 0.075 * ppu, hy - 0.03 * ppu, 0.03 * ppu, 0, TAU); ctx.fill();
+  }
   // the ring: a jagged circle growing out of the eel, stopped by rock (the same cover the shock's damage check uses)
   if (ring > 0) {
     const fade = Math.max(0, 1 - ring / EEL_RING_MAX);
@@ -313,6 +332,14 @@ function drawEel(ctx, sx, sy, ppu, state, ring, cycle, time, isSolid, wx, wy) {
 // ---- anemone cluster: a low base and swaying pink tentacles ----
 function drawAnemone(ctx, sx, sy, ppu, time, seed) {
   const floor = sy + 0.5 * ppu;
+  if (spriteRect('anemone')) { // r46: the sprite, swaying by a skew about its base
+    ctx.save();
+    ctx.translate(sx, floor + 0.04 * ppu);
+    ctx.transform(1, 0, -Math.sin(time * 1.7 + seed) * 0.16, 1, 0, 0);
+    drawSprite(ctx, 'anemone', 0, 0, 1.35 * ppu);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = '#7a2352';
   ctx.beginPath(); ctx.ellipse(sx, floor - 0.06 * ppu, 0.56 * ppu, 0.16 * ppu, 0, 0, TAU); ctx.fill();
   ctx.lineCap = 'round';

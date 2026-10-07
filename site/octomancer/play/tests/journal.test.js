@@ -1,4 +1,5 @@
 // B1-4 journal tests (journal.js + save.js persistence).
+import { ATLAS_RECTS } from '../js/sprite-atlas.js';
 import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, completion, percent, counterRows, storyLines, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
 import { artList, hasArt, FN, GAME_DRAW } from '../js/journal-art.js';
 import { ITEM_DEFS } from '../js/items.js';
@@ -53,6 +54,7 @@ export async function runJournalTests(assert) {
       } else if (art.item) { if (!ITEM_DEFS[art.item]) bad.push(id + ' item'); }
       else if (art.game) { if (typeof GAME_DRAW[art.game] !== 'function') bad.push(id + ' game'); }
       else if (art.fn) { if (typeof FN[art.fn] !== 'function') bad.push(id + ' fn'); }
+      else if (art.sprite) { if (!ATLAS_RECTS[art.sprite]) bad.push(id + ' sprite'); } // r46: the sprite atlas
       else bad.push(id + ' empty');
     }
     assert('journal art: every sprite referenced by journal.json exists (files load, item icons and code drawings are defined)' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0 && checked.size >= 15);

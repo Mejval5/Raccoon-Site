@@ -4,6 +4,7 @@
 
 import { artUrl } from './v2-art.js';
 import { drawItemIcon } from './items-draw.js';
+import { onSpritesReady } from './sprites.js';
 const HEART_SRC = new URL('../assets/ui-heart.webp', import.meta.url).href; // relative to this module, not the page (the test page lives in tests/)
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
@@ -82,6 +83,7 @@ export function createUI(root, handlers) {
   const itemsEl = el('div', 'octo-hud-items'); // its own row under the stats (never runs under the pause button)
   itemsEl.style.display = 'none';
   let itemsKey = '';
+  onSpritesReady(() => { itemsKey = null; }); // r46: the item icons are redrawn from the sprite atlas once it has loaded
   stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
   bar.append(heartsRow, stats, itemsEl);
 
@@ -203,7 +205,7 @@ export function createUI(root, handlers) {
         if (n > 1) {
           cx.font = '700 15px Quicksand, sans-serif'; cx.textAlign = 'right'; cx.textBaseline = 'alphabetic';
           cx.lineWidth = 4; cx.strokeStyle = '#04121c'; cx.strokeText('x' + n, 40, 39);
-          cx.fillStyle = '#ffe38a'; cx.fillText('x' + n, 40, 39);
+          cx.fillStyle = '#f1e4c3'; cx.fillText('x' + n, 40, 39);
         }
         itemsEl.appendChild(c);
       }

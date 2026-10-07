@@ -9,6 +9,7 @@ import { drawItemIcon } from './items-draw.js';
 import { FN } from './journal-art.js';
 import { wrapLines } from './speech.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
+import { drawSprite, spriteRect } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -302,6 +303,18 @@ export function drawCritter(ctx, camera, cw, ch, x, y, following, time, cageFloo
   if (cx < -ppu * 3 || cx > cw + ppu * 3 || cy < -ppu * 3 || cy > ch + ppu * 3) return;
   const lw = Math.max(1.5, ppu * 0.06);
   ctx.lineJoin = 'round';
+  // r46: Milan's own fish (FishGreen; the mother is his FishYellow, warmed to orange): a bob and a little fin-flap tilt
+  if (spriteRect(mama ? 'pipMama' : 'pip')) {
+    const tilt = Math.sin(time * (caged ? 2.4 : 4.2) + x) * (caged ? 0.05 : 0.1);
+    if (caged) drawCage(ctx, camera, cw, ch, x, cageFloor, mama ? 1.7 : 1.25, mama ? 1.55 : 1.15, false); // the back of the cage
+    drawSprite(ctx, mama ? 'pipMama' : 'pip', cx, cy, r * 3.2, 0, 0.5, 0.5, tilt);
+    if (caged) { // the front bars, see-through enough that Pip reads behind them
+      ctx.save(); ctx.globalAlpha = 0.5;
+      drawCage(ctx, camera, cw, ch, x, cageFloor, mama ? 1.7 : 1.25, mama ? 1.55 : 1.15, false);
+      ctx.restore();
+    }
+    return;
+  }
   const flap = Math.sin(time * 9) * 0.25;
   const body = mama ? '#f2b08e' : '#86e6d2', fin = mama ? '#d9805e' : '#58c8b8', edge = mama ? '#5a2a1c' : '#0c3a3c';
   ctx.fillStyle = fin; ctx.strokeStyle = edge; ctx.lineWidth = lw;
@@ -323,6 +336,11 @@ export function drawCage(ctx, camera, cw, ch, x, floorY, w, h, open) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), fy = sy(floorY);
   if (cx < -ppu * 3 || cx > cw + ppu * 3 || fy < -ppu * 3 || fy > ch + ppu * 4) return;
+  if (spriteRect(open ? 'cageOpen' : 'cage')) { // r46: driftwood planks and whale-bone bars lashed with kelp (generated, Milan style)
+    ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, w * ppu * 0.53, ppu * 0.07, 0, 0, TAU); ctx.fill();
+    drawSprite(ctx, open ? 'cageOpen' : 'cage', cx, fy + ppu * 0.03, w * ppu * (open ? 245 / 250 : 1), h * ppu);
+    return;
+  }
   const hw = w * ppu / 2, hh = h * ppu, lw = Math.max(1.5, ppu * 0.05);
   const feet = ppu * 0.07, top = fy - feet - hh;
   ctx.save();
@@ -372,6 +390,16 @@ export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 3 || cy > ch + ppu * 2) return;
+  if (spriteRect('marlo')) { // r46: generated, Milan style; one size everywhere, feet planted, a breath, a rocking wave when free
+    const u = ppu * DIVER_SCALE, hgt = u * 1.2, waving = freed && !sealed;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, 1 + Math.sin(time * 1.7) * 0.012);
+    drawSprite(ctx, waving ? 'marloWave' : 'marlo', 0, 0, 0, hgt, 0.5, 1, waving ? Math.sin(time * 5) * 0.04 : 0);
+    ctx.restore();
+    if (sealed || freed) diverBubbles(ctx, cx, cy, u, time, sealed);
+    return;
+  }
   const lw = Math.max(1.5, ppu * 0.055);
   const bob = Math.sin(time * 1.7) * ppu * 0.02;
   const u = ppu * DIVER_SCALE; // r40: one size everywhere (sealed, freed, in the hub)
@@ -403,15 +431,21 @@ export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed
   ctx.fillStyle = '#26465f'; ctx.beginPath(); ctx.ellipse(u * 0.03, -u * 0.82, u * 0.2, u * 0.17, 0, 0, TAU); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(-u * 0.05, -u * 0.88, u * 0.045, 0, TAU); ctx.fill();
   // bubbles from the helmet
-  if (sealed || freed) {
-    ctx.strokeStyle = 'rgba(215,242,255,0.8)'; ctx.lineWidth = Math.max(1, u * 0.025);
-    for (let i = 0; i < 3; i++) {
-      const ph = (time * 0.6 + i / 3) % 1;
-      ctx.beginPath(); ctx.arc(u * (0.18 + Math.sin(ph * 6 + i) * 0.05), -u * (1.2 + ph * (sealed ? 0.45 : 0.7)), u * (0.04 + 0.04 * ph), 0, TAU); ctx.stroke();
-    }
-  }
   ctx.restore();
+  if (sealed || freed) diverBubbles(ctx, cx, cy + bob, u, time, sealed);
 }
+
+/** Bubbles rising from Marlo's helmet; (cx, cy) are his feet in device px, u his size unit. */
+function diverBubbles(ctx, cx, cy, u, time, sealed) {
+  ctx.strokeStyle = 'rgba(215,242,255,0.8)'; ctx.lineWidth = Math.max(1, u * 0.025);
+  for (let i = 0; i < 3; i++) {
+    const ph = (time * 0.6 + i / 3) % 1;
+    ctx.beginPath(); ctx.arc(cx + u * (0.18 + Math.sin(ph * 6 + i) * 0.05), cy - u * (1.25 + ph * (sealed ? 0.45 : 0.7)), u * (0.04 + 0.04 * ph), 0, TAU); ctx.stroke();
+  }
+}
+
+/** r46: Quill's height in tiles (his sprite; the old drawing was about 1.05). */
+export const QUILL_H = 1.2;
 
 /** Quill, the collector: a fussy old octopus with a monocle, standing on the floor line `floorY` at x. `lantern`: his glowing lantern beside him (the last stage). */
 export function drawCollector(ctx, camera, cw, ch, x, floorY, time, lantern = false) {
@@ -420,6 +454,21 @@ export function drawCollector(ctx, camera, cw, ch, x, floorY, time, lantern = fa
   if (cx < -ppu * 3 || cx > cw + ppu * 3 || fy < -ppu * 3 || fy > ch + ppu * 4) return;
   const k = ppu * 0.64, bob = Math.sin(time * 1.4) * ppu * 0.02;
   ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, fy - 1, k * 0.95, ppu * 0.08, 0, 0, TAU); ctx.fill();
+  if (spriteRect('quill')) { // r46: Milan's intro-screen octopus (OctoBG1) in Quill's purple, a slow bob and a sea-glass monocle
+    const hgt = ppu * QUILL_H, wid = hgt * 158 / 190, top = fy - hgt + ppu * 0.04 + bob;
+    if (lantern) drawHubLantern(ctx, cx + wid * 0.85, fy, ppu, time); // first: its glow is behind him, not a haze over him
+    ctx.save();
+    ctx.translate(cx, fy + ppu * 0.04);
+    ctx.scale(1 + Math.sin(time * 1.4) * 0.012, 1 - Math.sin(time * 1.4) * 0.012);
+    drawSprite(ctx, 'quill', 0, bob, 0, hgt);
+    ctx.restore();
+    const mx = cx - wid / 2 + wid * 0.587, my = top + hgt * 0.557, mr = wid * 0.11;
+    ctx.fillStyle = 'rgba(190,235,225,0.22)'; ctx.strokeStyle = '#1c1426'; ctx.lineWidth = Math.max(1.5, ppu * 0.035);
+    ctx.beginPath(); ctx.arc(mx, my, mr, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = Math.max(1, ppu * 0.015); // the cord
+    ctx.beginPath(); ctx.moveTo(mx + mr * 0.7, my + mr * 0.7); ctx.quadraticCurveTo(mx + mr * 1.6, my + mr * 2.6, mx + mr * 0.4, my + mr * 3.4); ctx.stroke();
+    return;
+  }
   ctx.save();
   ctx.translate(cx, fy - k * 1.05 + bob); ctx.scale(k, k);
   FN.collector(ctx);
@@ -444,6 +493,7 @@ export function drawTank(ctx, camera, cw, ch, x, y, time, floorShadow = false) {
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 2 || cy > ch + ppu * 2) return;
   const lw = Math.max(1.5, ppu * 0.045);
   if (floorShadow) { ctx.fillStyle = 'rgba(6,14,22,0.3)'; ctx.beginPath(); ctx.ellipse(cx, cy + ppu * 0.36, ppu * 0.28, ppu * 0.06, 0, 0, TAU); ctx.fill(); }
+  if (drawSprite(ctx, 'tank', cx, cy + ppu * 0.37, 0, ppu * 0.76)) return; // r46: generated, Milan style
   ctx.save(); ctx.translate(cx, cy); ctx.lineJoin = 'round';
   ctx.strokeStyle = '#13301f'; ctx.lineWidth = lw;
   ctx.fillStyle = '#4c9a63';
@@ -521,16 +571,20 @@ function drawSpeechArrow(ctx, cw, ch, ax, ay, alpha, k, safeT, safeR, btnB) {
   ctx.restore();
 }
 
-function glint(ctx, gx, gy, ppu, alpha) {
-  ctx.fillStyle = `rgba(255,248,200,${alpha})`;
-  ctx.beginPath(); ctx.moveTo(gx, gy - ppu * 0.2); ctx.lineTo(gx + ppu * 0.05, gy - ppu * 0.05); ctx.lineTo(gx + ppu * 0.2, gy);
-  ctx.lineTo(gx + ppu * 0.05, gy + ppu * 0.05); ctx.lineTo(gx, gy + ppu * 0.2); ctx.lineTo(gx - ppu * 0.05, gy + ppu * 0.05);
-  ctx.lineTo(gx - ppu * 0.2, gy); ctx.lineTo(gx - ppu * 0.05, gy - ppu * 0.05); ctx.closePath(); ctx.fill();
+/** r46: a price as a shell and a number in plain sand-coloured type (no pill, no gold); muted brick red when it is too dear. */
+function priceTag(ctx, px, ty, price, afford, ppu) {
+  const text = String(price);
+  ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;
+  const tw = ctx.measureText(text).width, w = tw + ppu * 0.42;
+  ctx.globalAlpha = afford ? 1 : 0.75;
+  shellIcon(ctx, px - w / 2 + ppu * 0.15, ty, ppu * 0.34);
+  ctx.globalAlpha = 1;
+  label(ctx, text, px - w / 2 + ppu * 0.36 + tw / 2, ty + ppu * 0.02, ppu * 0.36, afford ? '#f1e4c3' : '#d98c78', 'rgba(20,14,10,0.85)');
 }
 
 /**
- * The shop: a hanging SHOP sign, the keeper (a round friendly shell-back critter), a low counter and
- * three plinths each with an item icon and a price tag. A price is red when the player cannot afford it.
+ * The shop: a hanging sign with a painted shell (r46: was the word SHOP), the keeper (a round friendly shell-back critter), a low
+ * counter and three plinths each with an item icon and a price (a shell and a number, r46: no pill). A price is red when the player cannot afford it.
  * The sign's ropes run up to the rock ceiling above it (found with tileAt); with no ceiling within reach
  * the sign stands on a post planted on the counter instead.
  * @param {{items:any[], stock:Uint8Array, sold:Uint8Array, px:Float32Array, keeperX:number, keeperY:number}} st
@@ -571,10 +625,7 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
   }
   ctx.fillStyle = '#9a6a3a'; ctx.strokeStyle = INK; ctx.lineWidth = lw;
   ctx.beginPath(); ctx.roundRect(kx - ppu * 0.95, signY - ppu * 0.3, ppu * 1.9, ppu * 0.6, ppu * 0.1); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#f6e7b8';
-  ctx.font = `700 ${Math.max(11, Math.round(ppu * 0.42))}px Quicksand, sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('SHOP', kx, signY + ppu * 0.02);
+  shellIcon(ctx, kx, signY, ppu * 0.5); // r46: a shell painted on the plank, not a word
 
   // keeper: round body, spiral shell on its back, stalk eyes, a smile
   const bob = Math.sin(time * 1.6) * ppu * 0.07;
@@ -607,16 +658,7 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
     if (!sold) itemGlyph(ctx, item.glyph, px, iy - ppu * 0.2, ppu * 0.36, time + i);
     const ty = py - ppu * 1.15;
     if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); continue; }
-    const afford = shells >= item.price;
-    const text = String(item.price);
-    ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;
-    const tw = ctx.measureText(text).width, pw = tw + ppu * 0.75, ph = ppu * 0.44;
-    ctx.fillStyle = 'rgba(6,22,34,0.85)'; ctx.strokeStyle = afford ? '#ffe38a' : '#ff8a80'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
-    ctx.beginPath(); ctx.roundRect(px - pw / 2, ty - ph / 2, pw, ph, ph / 2); ctx.fill(); ctx.stroke();
-    shellIcon(ctx, px - pw / 2 + ppu * 0.26, ty, ppu * 0.36);
-    ctx.fillStyle = afford ? '#ffe38a' : '#ff8a80';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, px + ppu * 0.2, ty + ppu * 0.02);
+    priceTag(ctx, px, ty, item.price, shells >= item.price, ppu);
   }
 }
 
@@ -699,7 +741,7 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
     ctx.drawImage(sign, 0, cropY, sign.naturalWidth, sign.naturalHeight - cropY, signX - sw / 2, postTop - dh + ppu * 0.12, sw, dh);
     signX = signX;
   }
-  label(ctx, 'SHOP', signX, ceil !== null ? signCy + sh * 0.04 : (counterTopY - ppu * 2.75) - sh * 0.4 + ppu * 0.12, ppu * 0.44, '#f6e7b8', '#3a2410');
+  shellIcon(ctx, signX, ceil !== null ? signCy + sh * 0.04 : (counterTopY - ppu * 2.75) - sh * 0.4 + ppu * 0.12, ppu * 0.55); // r46: a shell painted on the plank, not a word
 
   // pedestals, item icons and prices
   const ped = artImg('pedestal');
@@ -714,16 +756,7 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
     if (!sold) itemGlyph(ctx, item.glyph, px, iy, ppu * 0.36, time + i);
     const ty = iy - ppu * 0.72;
     if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); continue; }
-    const afford = shells >= item.price;
-    const text = String(item.price);
-    ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;
-    const tw = ctx.measureText(text).width, pillW = tw + ppu * 0.75, pillH = ppu * 0.44;
-    ctx.fillStyle = 'rgba(6,22,34,0.85)'; ctx.strokeStyle = afford ? '#ffe38a' : '#ff8a80'; ctx.lineWidth = Math.max(1.5, ppu * 0.05);
-    ctx.beginPath(); ctx.roundRect(px - pillW / 2, ty - pillH / 2, pillW, pillH, pillH / 2); ctx.fill(); ctx.stroke();
-    shellIcon(ctx, px - pillW / 2 + ppu * 0.26, ty, ppu * 0.36);
-    ctx.fillStyle = afford ? '#ffe38a' : '#ff8a80';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, px + ppu * 0.2, ty + ppu * 0.02);
+    priceTag(ctx, px, ty, item.price, shells >= item.price, ppu);
   }
 }
 

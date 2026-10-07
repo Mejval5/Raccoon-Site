@@ -183,7 +183,7 @@ export async function runItemTests(assert) {
     const ctxp = new Proxy({}, { get: (t, k) => (k === 'createRadialGradient' || k === 'createLinearGradient' ? () => ({ addColorStop() {} }) : () => { calls++; }), set: () => true });
     drawLoot(ctxp, { x: 5.5, y: 2.5, pxPerUnit: 60 }, 600, 400, l2.data, 0);
     for (const id of ITEM_IDS) drawItemIcon(ctxp, id, 10, 10, 12);
-    assert('draw: the pocket item and all five icons draw without errors', calls > 50);
+    assert('draw: the pocket item and all five icons draw without errors', calls >= 6); // r46: a sprite icon is one drawImage
 
     // real levels: chests / pockets with items turn up
     let withItem = 0, total = 0;
@@ -286,6 +286,7 @@ export async function runItemTests(assert) {
     const ribCalls = calls.filter((c) => c[2] && (c[0] === 'moveTo' || c[0] === 'quadraticCurveTo'));
     const xs = ribCalls.map((c) => (c[0] === 'moveTo' ? c[1][0] : c[1][2]));   // drawClam translates to the clam, so these are local
     const maxX = Math.max(...xs.map(Math.abs));
-    assert(`clam: the ribs are drawn under a clip to the shell and their endpoints stay within 0.8 of its half width (max ${(maxX / (0.5 * ppu)).toFixed(2)})`, clipIdx > 0 && xs.length >= 10 && maxX <= 0.8 * 0.5 * ppu + 0.01);
+    const sprite = calls.some((c) => c[0] === 'drawImage'); // r46: the scallop sprite; the ribs are only the code fallback's
+    assert(`clam: drawn as the scallop sprite, or its fallback's ribs are under a clip to the shell and stay within 0.8 of its half width (max ${(maxX / (0.5 * ppu)).toFixed(2)})`, sprite || (clipIdx > 0 && xs.length >= 10 && maxX <= 0.8 * 0.5 * ppu + 0.01));
   }
 }

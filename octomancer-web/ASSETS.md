@@ -84,10 +84,35 @@ All rows: **generated, Milan style**. Made with the openai-image-gen skill (`ima
 | `img/v2/exit-ring.webp` | glowing portal ring lying on the floor | exit ring as is; the hub dive ring is the same file hue-rotated once on load |
 | `img/v2/shop-keeper.webp` | hermit-crab shopkeeper | second generation, from the stall sheet as reference 2 |
 | `img/v2/shop-sign.webp`, `shop-pedestal.webp`, `shop-counter.webp` | hanging sign, stone pedestal, counter strip (left cap, stretchable middle, right cap) | cut from one stall sheet (keeper, counter, 3 pedestals, sign) |
-| `img/v2/chest-closed.webp`, `chest-open.webp` | treasure chest, closed and open with glow | one sheet, split |
+| ~~`img/v2/chest-closed.webp`, `chest-open.webp`~~ | treasure chest (removed in round 46: replaced by the giant clam in `sprites.webp`, Daniel's natural-fantasy rule) | |
 | `img/v2/crack-vault.webp` | crack web over the rock of a sealed vault pocket | |
 | `img/v2/crack-wall.webp` | tall crack for the tutorial bomb wall | repeated and flipped down the wall |
 | `img/v2/hub-board.webp`, `hub-questsign.webp` | wall-mounted notice board and the quest signpost (with a painted "!") | one sheet, split |
 | `img/v2/title-banner.webp` | ribbon behind the level title card | |
 
 Image budget: rock 1, backdrops 2, ring 1, stall 1, keeper 1, chest 1, vault crack 1, wall crack 1, boards 1, banner 1 = 11 (all medium; no separate low drafts were made to stay under 12, the four failed `--background transparent` calls never reached the model).
+
+## Sprite atlas (`play/img/v2/sprites.webp` + `play/js/sprite-atlas.js`, round 46 art pass)
+
+One packed 1024 x 725 atlas (213 KB, decoded once by `js/sprites.js`), built by `octomancer-web/tools/export_r46_sprites.py` from
+Milan's harvested art and from five generated sheets kept as sources in `octomancer-web/art-src/r46/`. Generated rows: made with the
+openai-image-gen skill (`image.py edit`, gpt-image-2, quality medium, `-i` a contact sheet of Milan's sprites: piranha, crab, urchin,
+Clamissaint, NPC20, cannon, FishGreen, NPC10, NPC26); the API refuses `--background transparent`, so each sheet was made on flat
+magenta (#FF00FF) or green (#00FF00), keyed to alpha and despilled in the export tool. 5 images generated in total (no drafts).
+Sized for DPR 2 at the game's desktop scale (144 device px per tile).
+
+| atlas sprite | what | source | owner |
+|---|---|---|---|
+| `quill` | Quill the collector (sea-glass monocle drawn in code) | `harvest/Assets/Sprites/IntroScreen/OctoBG1.webp`, hue-rotated to purple, desaturated | Milan Švancara |
+| `pip` | Pip, the caged critter | `harvest/Assets/Sprites/IntroScreen/FishGreen.webp` | Milan Švancara |
+| `pipMama` | Pip's mother | `harvest/Assets/Sprites/IntroScreen/FishYellow.webp`, warmed to orange | Milan Švancara |
+| `host` | the Challenge Pool host | `harvest/Assets/Sprites/IntroScreen/SeaHorse.webp` | Milan Švancara |
+| `heart` | heart pickup | `harvest/D-kept/Assets/Sprites/UI/Heart.webp` | Milan Švancara |
+| `heartcontainer` | heart container item | Milan's UI Heart inside his `Elements/BubbleSingle.webp`, composed by the tool | Milan Švancara |
+| `marlo`, `marloWave`, `tank` | Marlo the diver standing / waving, his air tank | `art-src/r46/gen01-marlo.webp` | generated, Milan style |
+| `clamShut`, `clamOpen`, `pot`, `clam`, `idol` | the giant clam (replaces the chest), amphora, scallop, the stone octopus idol (the relic) | `art-src/r46/gen02-loot.webp` | generated, Milan style |
+| `cage`, `cageOpen`, `stone` | Pip's driftwood-and-bone cage whole / broken, the pool's rune stone (replaces the die) | `art-src/r46/gen03-cage.webp` | generated, Milan style |
+| `flippers`, `lantern`, `magnet`, `bombbag` | item icons (the magnet is a lodestone, the lantern a snail shell, the bag woven kelp) | `art-src/r46/gen04-items.webp` | generated, Milan style |
+| `eel`, `spines`, `vent`, `anemone` | electric eel, urchin-spine strip (spike wall), rock chimney (current jet), anemone cluster | `art-src/r46/gen05-hazards.webp` | generated, Milan style |
+
+`img/journal/place-shop.webp`, `place-wreck.webp`, `place-pool.webp` were re-shot from the game in round 46 (no shop word, no chest, no die).

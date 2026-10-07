@@ -4,6 +4,8 @@
 import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS } from '../js/v2-art.js';
 import { DIVER_SCALE, drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
 import { drawV2Marks } from '../js/v2-draw.js';
+import { ATLAS_RECTS } from '../js/sprite-atlas.js';
+import { ensureSprites, spritesReady } from '../js/sprites.js';
 
 function pixels(img) {
   const c = document.createElement('canvas');
@@ -15,7 +17,7 @@ function pixels(img) {
 
 export async function runV2ArtTests(assert) {
   const keys = Object.keys(V2_ART_FILES);
-  assert('v2 art: 15 images are registered (14 generated + the whirlpool sheet from the original game), all under img/v2 as webp', keys.length === 15 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
+  assert('v2 art: 13 images are registered (12 generated + the whirlpool sheet from the original game; r46: the chest pair is gone, the giant clam is in the sprite atlas), all under img/v2 as webp', keys.length === 13 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
   ensureV2Art();
   const rockEl = art.rock;
   ensureV2Art();
@@ -24,7 +26,7 @@ export async function runV2ArtTests(assert) {
   assert('v2 art: every image loads', keys.every((k) => artImg(k) && artImg(k).naturalWidth > 16));
 
   // alpha sprites have transparent corners and opaque centre pixels; the opaque layers have none
-  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'chestClosed', 'chestOpen', 'crackVault', 'crackWall', 'board', 'questSign', 'banner', 'whirlpool'];
+  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'crackVault', 'crackWall', 'board', 'questSign', 'banner', 'whirlpool'];
   const clearShare = (k) => { const d = pixels(artImg(k)).data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 8) c++; return c / (d.length / 4); };
   assert('v2 art: keyed sprites keep real transparency (between 5 and 98 percent of pixels clear, no opaque key box)', alphaKeys.every((k) => { const c = clearShare(k); return c > 0.05 && c < 0.98; }));
   let magenta = 0;
@@ -84,4 +86,29 @@ export async function runV2ArtTests(assert) {
   const shot = ctx.getImageData(0, 0, 640, 480).data;
   let painted = 0; for (let i = 3; i < shot.length; i += 4) if (shot[i] > 0) painted++;
   assert('v2 art: the shop and props actually painted pixels', painted > 4000);
+
+  // ---- r46: the sprite atlas (people, loot, items, hazards) ----
+  {
+    ensureSprites();
+    for (let i = 0; i < 100 && !spritesReady(); i++) await new Promise((r) => setTimeout(r, 50));
+    const NAMES = ['quill', 'marlo', 'marloWave', 'tank', 'pip', 'pipMama', 'cage', 'cageOpen', 'host', 'stone', 'clamShut', 'clamOpen', 'clam', 'pot', 'idol',
+      'flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer', 'heart', 'eel', 'spines', 'vent', 'anemone'];
+    const missing = NAMES.filter((n) => !ATLAS_RECTS[n]);
+    const im = new Image(); im.src = new URL('../img/v2/sprites.webp', import.meta.url).href;
+    await im.decode().catch(() => {});
+    const outside = Object.entries(ATLAS_RECTS).filter(([, r]) => r[0] < 0 || r[1] < 0 || r[0] + r[2] > im.naturalWidth || r[1] + r[3] > im.naturalHeight).map(([n]) => n);
+    assert('sprites (r46): the atlas loads, every sprite the game draws is in it and every rect lies inside the image' + (missing.length || outside.length ? ' [' + missing.concat(outside).join(', ') + ']' : ''),
+      spritesReady() && im.naturalWidth > 0 && missing.length === 0 && outside.length === 0 && im.naturalWidth * im.naturalHeight <= 1024 * 1024);
+    // Marlo drawn from the sprite is still one size, about a tile, sealed, freed and standing
+    const bounds = (sealed, freed) => {
+      const c = document.createElement('canvas'); c.width = 400; c.height = 400; const g = c.getContext('2d');
+      drawDiver(g, { x: 0, y: 0, pxPerUnit: 100 }, 400, 400, 0, 1, 1, freed, sealed);
+      const d = g.getImageData(0, 0, 400, 400).data;
+      let top = 400, bot = 0;
+      for (let y = 0; y < 400; y++) { let n = 0; for (let x = 100; x < 300; x++) if (d[(y * 400 + x) * 4 + 3] > 200) n++; if (n >= 20) { if (y < top) top = y; if (y > bot) bot = y; } }
+      return (bot - top) / 100;
+    };
+    const hs = [bounds(true, false), bounds(false, true), bounds(false, false)];
+    assert('sprites (r46): Marlo\'s sprite is about 1-1.2 tiles tall sealed, freed and standing (' + hs.map((h) => h.toFixed(2)).join(' / ') + ')', hs.every((h) => h >= 0.95 && h <= 1.25) && Math.max(...hs) - Math.min(...hs) < 0.15);
+  }
 }

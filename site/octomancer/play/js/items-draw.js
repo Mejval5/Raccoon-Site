@@ -1,6 +1,8 @@
 // Code-drawn icons for the carried items (round 32): used by the HUD (small canvases), the shop pedestals and the
 // hidden-pocket items. drawItemIcon(ctx, id, cx, cy, r) draws inside a circle of radius r around (cx, cy).
 
+import { drawSprite, spriteAspect } from './sprites.js';
+
 const TAU = Math.PI * 2;
 
 function outline(ctx, r, fill, stroke) {
@@ -8,6 +10,14 @@ function outline(ctx, r, fill, stroke) {
 }
 
 export function drawItemIcon(ctx, id, x, y, r) {
+  // r46: the generated Milan-style icons (sprites.js); the code drawings below stay as the fallback until the atlas has loaded
+  if (id === 'lantern') {
+    const g = ctx.createRadialGradient(x, y + r * 0.15, r * 0.05, x, y + r * 0.15, r * 1.1); // its own soft light
+    g.addColorStop(0, 'rgba(255,226,150,0.45)'); g.addColorStop(1, 'rgba(255,200,110,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y + r * 0.15, r * 1.1, 0, TAU); ctx.fill();
+  }
+  const a = spriteAspect(id), d = 2 * r * 0.98;
+  if (drawSprite(ctx, id, x, y, a >= 1 ? d : d * a, a >= 1 ? d / a : d, 0.5, 0.5)) return;
   ctx.save();
   ctx.translate(x, y);
   if (id === 'flippers') {
