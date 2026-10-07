@@ -23,10 +23,10 @@ import {
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
   CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
   HORNS_RADIUS,
-  MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
+  STUN_S, MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
 } from './config.js';
 import { PK_BOMB } from './props.js';
-import { hurtOctopus, killOctopus } from './octopus.js';
+import { hurtOctopus, stunOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
 
@@ -519,10 +519,11 @@ export function createEnemies() {
     return out;
   }
 
-  function killEnemy(e, reason) {
+  function killEnemy(e, reason, kx = 0, ky = 0) {
     if (e.dead) return;
     e.dead = true;
-    events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason });
+    // vx, vy, face (and a dash's shove) start the corpse (corpses.js)
+    events.push({ type: 'enemyKilled', kind: e.kind, x: e.x, y: e.y, reason, vx: (e.vx || 0) + kx, vy: (e.vy || 0) + ky, face: e.face || e.dir || 1, variant: e.variant });
     if (reason === 'dash') {
       // hit-stop: a white ghost of the enemy stays for 60 ms and main.js freezes the sim for as long
       // r36: the ghost is only a white silhouette: no wind-up cue, '!' or glow (the enemy it copies is dead)
@@ -902,9 +903,10 @@ export function createEnemies() {
         if (!e.contactDamage) continue;
         if (!octo.dead && dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius) {
           if (e.dashKillable && octoSpeed >= DASH_KILL_SPEED) {
-            killEnemy(e, 'dash');
+            killEnemy(e, 'dash', octo.vx * 0.4, octo.vy * 0.4);
           } else {
-            hurtOctopus(octo, e.x, e.y, e.kind);
+            if (e.kind === 'manta' && e.st === MA_DIVE) stunOctopus(octo, e.x, e.y, 'manta', STUN_S); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
+            else hurtOctopus(octo, e.x, e.y, e.kind);
             if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
           }
         }

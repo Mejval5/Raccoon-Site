@@ -561,3 +561,25 @@ Daniel: it does not feel like Spelunky yet; enemies are buggy, levels lack detai
 - **Status (round 38, second pass):** settings menu built. The journal is a real book (two parchment pages, bookmark tabs, locked silhouettes, per-entry counters, a Progress spread; data in `data/journal.json`). Quests are named NPC questlines (Marlo, Pip, Quill the Collector) with staged speech bubbles, chains across levels and runs and a changing hub. The Challenge Pool and the Altar are still open.
 
 - **Status (round 39):** the questlines follow the Spelunky 2 model. No HUD line anywhere (the `.octo-hud-quest` element is gone), no per-level objective, no hub sign: everything is in-world (an NPC's speech bubble, the hub's residents) and in the journal's People pages (each shows the questline so far). Built: *the Stranded Diver* (Marlo: sealed in rock on 1-1 or 1-2, bomb him free; he stands in the hub from the next run; freed in three different runs he opens a second hub ring to Shallows 1-3), *the Caged Critter* (Pip: a cage on a floor, only a dash or a bomb breaks it, he trails you, 8 shells at the exit, then he swims in the hub), *the Collector* (Quill: moves into the hub after your first dive; each relic carried out through an exit and handed over unlocks a Shelf Piece journal entry; three give his lantern, lit in the hub and carried on every dive), *the Challenge Pool* (a set-piece room `b1-set-pool`: pay 5 shells at the pedestal, survive 20 s of falling rocks over two vents, take the chest for 14 shells). Cut: *the Altar* (optional in this plan). Quest state is flat counters in save.js (`marlo`, `pip`, `quill`, `relics`, `relicsGiven`, `diverFreed`, `critterFreed`, `poolPaid`, `poolWon`, `said<Name>`).
+
+## 16. Damage model, the Spelunky way (Daniel, 2026-10-07)
+
+Traps and creatures are told apart by how they hurt, not only by how they look. Every hazard and enemy has one tier:
+
+| Thing | Tier | Why |
+|---|---|---|
+| Spike strip (trap) | **instant**: impaled, the body stays skewered on the tips | a trap you can read from afar; Spelunky's spikes |
+| Hanging boulder landing on the octopus | **instant**: splat, flattened under it (hit-stop, heavy shake, ink and goo, chunks stick) | the rumble and dust are the warning |
+| Giant clam snapping shut with the octopus inside | **instant** | it opens, a pearl glints, the shell trembles 0.5 s first |
+| Tentacle grab not broken in time | **instant** (pulled into its shell) | the grab itself can be escaped |
+| Beholder | **instant** (unchanged) | the level clock |
+| Manta dive slam | **incapacitation** (1 heart, about 1.25 s limp) | a heavy body falling on you knocks you out |
+| Electric eel shock | **incapacitation** (1 heart, about 1 s limp) | a shock paralyses |
+| Tentacle grab | **held**: no control, dragged to the shell, dies unless it breaks free (3 dash struggles, ink hits on the tentacle, or a bomb) | the grab before the kill |
+| Piranha, crab, urchin, horned growth, cannon shot, anemone, trapped-chest spikes, relic and pool chase stones, Pip / Quill / pool host bites | **one hit**: 1 heart, strong knockback (9 u/s) | creatures that bite or sting |
+| Marlo's harpoon (aggroed) | **heavy hit**: 2 hearts, 13 u/s knockback, after a 0.7 s aim line | a weapon, telegraphed |
+| Current jet | no damage; pushes **up only** | paired with ceiling spikes only where 5+ tiles of clear water leave room to dash out |
+
+Incapacitation: the octopus loses control, the body goes limp (sinks, bounces off rock, tumbles), rights itself in the last 0.35 s, then has 0.5 s of grace. Chosen for the manta slam (a heavy body), the eel (a shock) and the tentacle (held, not limp). Ordinary bites stay one hit so most fights keep their pace.
+
+Also in this pass: giant clams (pearl = 30, the top currency find), Milan's Clamissaint as the tentacle (dormant until you come near), killable and aggroable NPCs (Marlo with a harpoon gun; Pip, Quill and the pool host bite; a killed person is gone until the end of the next dive, Marlo's 1-3 shortcut with him; the shopkeeper belongs to the Shop owner and our hits call `shopAggro`), physics corpses for every enemy and person (no drops from enemies; `setCorpseHook` lets fish juice leak from them), and currency shells by value: cowrie 1, conch 5, nautilus 15, pearl 30.

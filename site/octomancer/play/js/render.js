@@ -67,6 +67,7 @@ import { depthTint, findPlantAnchors, findClusterMates } from './decor.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
+import { SHELL_SIZE } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
 
@@ -141,7 +142,7 @@ function getSharedArt() {
     plants: [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))],
     // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates only (reuses decor.js's bush2 art)
     clusterBush: loadImage(ASSET('decor-bush2.webp')),
-    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')) },
+    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')), kinds: [null, loadImage(ASSET('shell-cowrie.webp')), loadImage(ASSET('shell-conch.webp')), loadImage(ASSET('shell-nautilus.webp')), loadImage(ASSET('shell-pearl.webp'))] }, // kinds: by value (shells.js)
     noise,
     deepTint: null,
   };
@@ -1316,8 +1317,9 @@ export function createRenderer(ctx, world) {
         ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       } else if (it.type === 'shell') {
-        const img = shellImgs.blue;
-        const size = camera.pxPerUnit * 0.7;
+        const kindImg = it.sk ? shellImgs.kinds[it.sk] : null; // V2: the currency kinds (cowrie, conch, nautilus, pearl); endless keeps the blue shell
+        const img = kindImg || shellImgs.blue;
+        const size = camera.pxPerUnit * (kindImg ? SHELL_SIZE[it.sk] : 0.7);
         ctx.save();
         ctx.globalAlpha = 0.85 + 0.15 * Math.sin(time * 5);
         if (img.complete && img.naturalWidth) ctx.drawImage(img, s.x - size / 2, s.y - size / 2, size, size);

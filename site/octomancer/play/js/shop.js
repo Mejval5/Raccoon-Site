@@ -103,3 +103,6 @@ export function shopStep(st, octo, shells, dt, inv = []) {
   }
   return null;
 }
+
+/** One of our attacks (a blast, a dash, ink) hit the keeper. */
+export function shopAggro(reason) { /* owned by the Shop owner: run-wide shopkeeper aggro */ }

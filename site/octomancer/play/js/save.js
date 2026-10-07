@@ -17,7 +17,10 @@ function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, ki
  * to Quill in the hub; said<Name> = the highest stage whose thank-you was spoken in the hub; diverFreed / critterFreed = how
  * many times they were freed (stats); poolPaid / poolWon = Challenge Pool wagers paid and won.
  */
-const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'relicsGiven', 'saidMarlo', 'saidPip', 'saidQuill', 'poolPaid', 'poolWon'];
+// V2-PLAN 16 (npcs.js): angered<Name> / killed<Name> count the times you turned on / killed Marlo, Pip, Quill or the pool Host (the
+// journal's story lines); gone<Name> is how many dive ends they stay away: 2 when killed in a dive, 1 in the hub (setStoryExact lowers it).
+const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'relicsGiven', 'saidMarlo', 'saidPip', 'saidQuill', 'poolPaid', 'poolWon',
+  'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
@@ -228,7 +231,7 @@ function cleanJournalStats(raw) {
   for (const id of Object.keys(raw).slice(0, 1000)) {
     const a = raw[id];
     if (!Array.isArray(a)) continue;
-    out[String(id)] = [0, 1, 2, 3].map((k) => Math.floor(num(a[k])));
+    out[String(id)] = [0, 1, 2, 3, 4].map((k) => Math.floor(num(a[k])));
   }
   return out;
 }
@@ -256,6 +259,14 @@ export function addStory(key) {
   loadBest();
   if (!STORY_KEYS.includes(key)) return 0;
   memory.story[key]++;
+  writeToStorage();
+  return memory.story[key];
+}
+/** Set a story counter to exactly `n` (may lower it: the 'gone' counters count down); returns the stored value. */
+export function setStoryExact(key, n) {
+  loadBest();
+  if (!STORY_KEYS.includes(key)) return 0;
+  memory.story[key] = Math.floor(num(n));
   writeToStorage();
   return memory.story[key];
 }

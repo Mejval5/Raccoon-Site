@@ -188,6 +188,24 @@ await runSettingsTests(assert);
 import { runPerf43Tests } from './perf43.test.js';
 await runPerf43Tests(assert);
 
+// --- V2-PLAN 16: corpses and currency shells by value ---
+import { runCorpseTests } from './corpses.test.js';
+await runCorpseTests(assert);
+import { runShellTests } from './shells.test.js';
+await runShellTests(assert);
+
+// --- V2-PLAN 16: giant clam and tentacle ---
+import { runCreatureTests } from './creatures.test.js';
+await runCreatureTests(assert);
+
+// --- V2-PLAN 16: traps and the octopus's death looks (impale, stun, jets up, jet+spikes, splat) ---
+import { runDamageTests } from './damage.test.js';
+await runDamageTests(assert);
+
+// --- V2-PLAN 16 point 5: friendly NPCs are killable and aggroable ---
+import { runNpcTests } from './npcs.test.js';
+await runNpcTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

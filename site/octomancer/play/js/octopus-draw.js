@@ -93,12 +93,22 @@ function updateBlink(dt) {
   }
 }
 
+/** V2-PLAN 16: incapacitated (stunned / held) or killed in place (skewered / flattened): limp, eyes shut or crossed out. */
+function isLimpLook(o) { return o.stunT > 0 || o.held > 0 || (o.dead && (o.deathStyle === 'impale' || o.deathStyle === 'splat')); }
+/** Eyes crossed out: the skewered and the flattened. */
+function isCrossedOut(o) { return o.dead && (o.deathStyle === 'impale' || o.deathStyle === 'splat'); }
+
 /**
  * Pick the clip + frame-within-clip for the current octopus state.
  * Swim05 while pushing (rate scaled by speed), Idle4 at rest, Swim05 at 2x
  * with a dash squash right after a dash, Idle4Swirl while hurt.
  */
 function pickFrame(data, o, t) {
+  if (isLimpLook(o)) { // V2-PLAN 16: a limp body (stunned, held, skewered, flattened) is held on one hurt frame, not animating
+    const clip = data.clips.hurt || data.clips.idle;
+    const idx = Math.min(clip.count - 1, Math.floor(clip.count * 0.4));
+    return { clipKey: data.clips.hurt ? 'hurt' : 'idle', frameIndex: clip.start + idx, localIndex: idx };
+  }
   const hurt = !!o.hurting;
   const justDashed = o.dashCooldown && o.dashCooldown > 0.45;
   let clipKey = 'idle';
@@ -138,7 +148,8 @@ function drawBaked(ctx, o, bakeData) {
   if (!anchors) return;
 
   const angry = !!o.hurting;
-  const eyeState = angry ? 'angry' : (blinkState.blinking ? 'closed' : 'open');
+  const crossed = isCrossedOut(o);
+  const eyeState = crossed || isLimpLook(o) ? 'closed' : angry ? 'angry' : (blinkState.blinking ? 'closed' : 'open');
   const sprites = data.eyeSprites[eyeState] || data.eyeSprites.open;
   const toWorld = worldSize / cell; // px-in-cell -> world units, same transform as the body
 
@@ -216,7 +227,13 @@ function drawBaked(ctx, o, bakeData) {
       ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
+    if (crossed) { // an X over each eye (dark outline colour, rounded caps)
+      const k = openWorldW * 0.3;
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = openWorldW * 0.15; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-k, -k); ctx.lineTo(k, k); ctx.moveTo(k, -k); ctx.lineTo(-k, k); ctx.stroke();
+    } else {
+      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
+    }
     ctx.restore();
   }
 }
@@ -291,12 +308,21 @@ function drawPlaceholder(ctx, o) {
 }
 
 function drawOctopusUnclipped(ctx, o) {
+  const splat = o.dead && o.deathStyle === 'splat';
+  if (splat) { // V2-PLAN 16: a pancake: the body frame squashed wide and thin about its centre
+    const f = Math.max(0, Math.min(1, o.flat || 0));
+    ctx.save();
+    ctx.scale(1 + SPLAT_WIDE * f, 1 - SPLAT_THIN_K * f);
+  }
   if (!FORCE_CODE && bake && !bakeFailed) {
     drawBaked(ctx, o, bake);
   } else {
     drawPlaceholder(ctx, o);
   }
+  if (splat) ctx.restore();
 }
+const SPLAT_WIDE = 1.1;   // 2.1x as wide when fully flat (the sprite cell has empty margins, so it reads about 1.6 tiles)...
+const SPLAT_THIN_K = 0.7;  // ...and 0.3x as tall (hazards.js SPLAT_THIN is the matching height in tiles)
 
 // Round-5 fix (Daniel's screenshot review round 4, issue 5): a reused
 // offscreen canvas for the alpha < 1 (invulnerability flicker) path below,
@@ -334,7 +360,8 @@ function getCompositeCtx(w, h) {
  *   site in render.js).
  */
 export function drawOctopus(ctx, o, alpha = 1) {
-  if (alpha >= 1) {
+  const splat = o.dead && o.deathStyle === 'splat' && o.flat > 0;
+  if (alpha >= 1 && !splat) {
     drawOctopusUnclipped(ctx, o);
     return;
   }
@@ -343,6 +370,12 @@ export function drawOctopus(ctx, o, alpha = 1) {
   const cctx = getCompositeCtx(w, h);
   cctx.setTransform(ctx.getTransform());
   drawOctopusUnclipped(cctx, o);
+  if (splat) { // the flattened body is darker, a bruised ink-red, painted only over the body's own pixels
+    cctx.globalCompositeOperation = 'source-atop';
+    cctx.fillStyle = 'rgba(40,10,24,' + (0.5 * Math.min(1, o.flat)).toFixed(3) + ')';
+    cctx.fillRect(-3, -3, 6, 6);
+    cctx.globalCompositeOperation = 'source-over';
+  }
   cctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);

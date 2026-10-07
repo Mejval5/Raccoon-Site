@@ -365,7 +365,7 @@ export async function runEnemyR35Tests(assert) {
     const world = room(30, 30, (x, y) => y < 8 || y >= 24);
     const props = createProps(); const hz = createHazards(props);
     const ri = hz.add(makeHazardRecord('rock', 12.5, 8.5, 0, 1, world.level.tiles, world.level.w, world.level.h));
-    const o = createOctopus(12.5, 13.5); let vxMax = 0, vyAtHit = 0; let minHearts = 3;
+    const o = createOctopus(13.2, 13.5); let vxMax = 0, vyAtHit = 0; let minHearts = 3; // under the rock's edge: a straight hit from above flattens it (damage.test.js), the side brush is one hit
     for (let i = 0; i < 300; i++) {
       const before = o.hearts;
       o.x += o.vx * DT; o.y += o.vy * DT; o.vx *= 0.97; o.vy *= 0.97;

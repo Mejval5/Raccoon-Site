@@ -360,7 +360,7 @@ export async function runQuestTests(assert) {
       const j2 = createJournal({ load: getJournalIds, save: saveJournalIds });
       assert('quest journal: a completed quest, the shop and a bought item survive a reload', j2.has('person-diver') && j2.has('place-shop') && j2.has('item-heart') && !j2.has('person-critter'));
       const questRows = j2.list('person');
-      assert('quest journal: the People category lists the four people, one found', questRows.length === 4 && questRows.filter((e) => e.found).length === 1);
+      assert('quest journal: the People category lists the five people, one found', questRows.length === 5 && questRows.filter((e) => e.found).length === 1);
       _resetForTests();
       if (desc) Object.defineProperty(globalThis, 'localStorage', desc); else delete globalThis.localStorage;
       _resetForTests();

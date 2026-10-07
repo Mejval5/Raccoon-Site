@@ -11,9 +11,11 @@
 //   - never in the 2-tile border.
 
 import { mulberry32, hashSeed2 } from './rng.js';
+import { pickPlacedKind } from './shells.js';
 import { LEVEL_W as W, LEVEL_H as H, BORDER, finalPathOk, SET_WRECK, SET_GARDEN, SET_GAUNTLET, SET_POOL } from './level.js';
 import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
+import { makeCreatureRecord } from './creatures.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
 import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT, ROOM_W, ROOM_H } from './rooms.js';
 
@@ -140,6 +142,7 @@ function makeEnemySlot(t, kind, x, y, dx, dy) {
 export function buildLevelSpawns(level, runSeed, levelIndex) {
   const t = level.tiles;
   const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5bd1e995));
+  const srng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5e11)); // shell kinds: its own stream, so the layout rolls above stay as they were
   const reached = floodReachable(t, level.startX, level.startY);
   const safe = START_SAFE_RADIUS;
   const sx = level.startX + 0.5, sy = level.startY + 0.5;
@@ -151,6 +154,14 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   const inShop = (x, y) => !!shop && x >= shop.x0 - SHOP_CALM && x < shop.x1 + SHOP_CALM && y >= shop.y0 - SHOP_CALM && y < shop.y1 + SHOP_CALM;
   // nothing static sits inside the exit ring (about 2.7 tiles wide) or right against it
   const nearExit = (x, y) => level.exitX !== undefined && Math.abs(x - level.exitX) <= 3 && y >= level.exitY - 3 && y <= level.exitY + 1;
+  // the set-piece rooms keep their own content: no ambush creature in one
+  const inSetPiece = (x, y) => {
+    for (let i = 0; i < (level.nSetPieces || 0); i++) {
+      const x0 = level.setPieces[i * 4], y0 = level.setPieces[i * 4 + 1];
+      if (x >= x0 - 1 && x < x0 + ROOM_W + 1 && y >= y0 - 1 && y < y0 + ROOM_H + 1) return true;
+    }
+    return false;
+  };
   const openCells = [];
   for (let y = BORDER; y < H - BORDER; y++) {
     for (let x = BORDER + 1; x < W - BORDER - 1; x++) {
@@ -162,7 +173,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   // rests its cache on the floor of the left cell
   for (let i = 0; i < (level.nPockets || 0); i++) {
     const px = level.pockets[i * 3], py = level.pockets[i * 3 + 1];
-    spawns.push({ type: 'shell', x: px + 1.5, y: py + 1.5 }, { type: 'shell', x: px + 1.5, y: py + 0.6 }); // right column: the vault chest takes the bottom-left
+    spawns.push({ type: 'shell', x: px + 1.5, y: py + 1.5, sk: pickPlacedKind(srng, levelIndex) }, { type: 'shell', x: px + 1.5, y: py + 0.6, sk: pickPlacedKind(srng, levelIndex) }); // right column: the vault chest takes the bottom-left
   }
   if (!openCells.length) return { spawns, openCells: 0 };
   const pick = (list) => list[Math.floor(rng() * list.length)];
@@ -181,7 +192,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
   const shellCount = floorCells.length ? 1 + Math.floor(rng() * 2) : 0;
   for (let i = 0; i < shellCount; i++) {
     const c = pick(floorCells);
-    spawns.push({ type: 'shell', x: c[0] + 0.5, y: c[1] + 0.5 });
+    spawns.push({ type: 'shell', x: c[0] + 0.5, y: c[1] + 0.5, sk: pickPlacedKind(srng, levelIndex) });
   }
 
   // Enemies and hazards: the pattern table (data/patterns.json, patterns.js) is matched once over the final
@@ -215,9 +226,20 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         return makeLootRecord(name, x, y, dx, dy, lrng, relicOk);
       }
       if (!ok[idx(tx, ty)]) return null;
+      if (kind === 'creature') { // giant clam, tentacle: an ambush, so it keeps away from the start, the shop, the exit ring and set pieces
+        if (fromStart < HAZARD_START_KEEP_OUT || inSetPiece(x, y)) return null;
+        if (level.exitX !== undefined && Math.hypot(x - level.exitX - 0.5, y - level.exitY - 0.5) < 5) return null;
+        return makeCreatureRecord(name, x, y, dx, dy, t, W, H);
+      }
       if (kind === 'hazard') {
         if (fromStart < HAZARD_START_KEEP_OUT) return null;
-        return makeHazardRecord(name, x, y, dx, dy, t, W, H);
+        const hz = makeHazardRecord(name, x, y, dx, dy, t, W, H);
+        if (hz && hz.pair) { // V2-PLAN 16 jet + spikes: the whole stream and the strip at its end must be ordinary reachable water, away from the start, shop and exit
+          const pr = hz.pair;
+          if (Math.hypot(pr.x - sx, pr.y - sy) < HAZARD_START_KEEP_OUT || !ok[idx(Math.floor(pr.x), Math.floor(pr.y))]) return null;
+          for (let yy = Math.floor(pr.y); yy <= ty; yy++) if (inShop(tx, yy) || nearExit(tx, yy)) return null;
+        }
+        return hz;
       }
       if (fromStart < ((name === 'cannon' || name === 'manta') ? RANGED_START_KEEP_OUT : ENEMY_START_KEEP_OUT)) return null;
       if (PATROL_CLEAR[name] && patrolDistance(t, tx, ty, PATROL_REACH[name], sx, sy) < PATROL_CLEAR[name]) return null;
@@ -238,8 +260,8 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && t[idx(tx, ty)] === 0;
       const clearOfStart = (tx, ty, keep) => Math.hypot(tx + 0.5 - sx, ty + 0.5 - sy) >= keep;
       if (kind === SET_GAUNTLET) {
-        // alternating floor / ceiling jets across the tube: floor at 2, ceiling at 5, floor at 8 (mirrored with the room)
-        const lanes = [[2, 0], [5, 1], [8, 0]];
+        // V2-PLAN 16: a current jet only pushes UP, so the gauntlet is floor jets only: lanes at 2, 5 and 8 (mirrored with the room)
+        const lanes = [[2, 0], [5, 0], [8, 0]];
         for (const [lx, ceil] of lanes) {
           const cx = flip ? ROOM_W - 1 - lx : lx;
           let rec = null;
@@ -309,7 +331,27 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         }
       }
     }
-    const placed = forced.concat(selectSpawns(table, hit, levelIndex, prng, build, occupied, (p) => table.kind[p] !== 'decor'));
+    // V2-PLAN 16: jet + spikes pairs need a rare spot (a flat floor and a flat ceiling 5-12 rows apart, open water beside), so they
+    // are picked first, before the crowd of other spawns fills the level and takes their space
+    {
+      const pairRng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x1e75b));
+      for (const r of selectSpawns(table, hit, levelIndex, pairRng, build, occupied, (p) => table.spawn[p] === 'jetspikes')) {
+        forced.push(r); occupied.push(r.x, r.y, 3.5, r.pair.x, r.pair.y, 3);
+      }
+    }
+    const placed = forced.concat(selectSpawns(table, hit, levelIndex, prng, build, occupied, (p) => table.kind[p] !== 'decor' && table.spawn[p] !== 'jetspikes'));
+    // V2-PLAN 16: a jet + spikes pair is two records (the jet and the strip at the end of its stream) sharing a pairId;
+    // the A* drop below and the filters after it keep them together
+    {
+      let pairN = 0;
+      for (let k = placed.length - 1; k >= 0; k--) {
+        const r = placed[k];
+        if (!r.pair) continue;
+        r.pairId = r.pair.pairId = ++pairN; // (the strip carries no pid: a pattern's cap counts the pair once)
+        placed.splice(k + 1, 0, r.pair);
+        delete r.pair;
+      }
+    }
     // A*: blocking hazards must leave the exit (and shop) reachable
     const collect = () => { const b = []; for (const r of placed) if (r.type === 'hazard') hazardBlockers(r, b); return b; };
     // r37: the loop used to stop after 64 drops, which a table flooded with blockers could exhaust (unsolvable level);
@@ -321,7 +363,13 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       for (const r of placed) if (r.type === 'hazard' && hazardBlockers(r).length) drop++;
       drop = Math.max(1, Math.floor(drop / 8));
       for (let k = placed.length - 1; k >= 0 && drop > 0; k--) {
-        if (placed[k].type === 'hazard' && hazardBlockers(placed[k]).length) { placed.splice(k, 1); drop--; }
+        if (placed[k].type === 'hazard' && hazardBlockers(placed[k]).length) {
+          const gone = placed.splice(k, 1)[0]; drop--;
+          if (gone.pairId) { // a paired strip goes with its jet (a jet streaming at nothing is a lift to nowhere)
+            const j = placed.findIndex((q) => q.pairId === gone.pairId);
+            if (j >= 0) { placed.splice(j, 1); if (j < k) k--; }
+          }
+        }
       }
       if (drop > 0 && !placed.some((r) => r.type === 'hazard' && hazardBlockers(r).length)) break; // nothing left to drop
     }
@@ -400,6 +448,11 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         return { type: 'decor', dk: name, x, y, dx, dy };
       };
       for (const r of selectSpawns(table, hit, levelIndex, drng, buildDecor, occ, (p) => table.kind[p] === 'decor')) kept.push(r);
+    }
+    { // a jet and its strip stand or fall together (a filter above may have removed one of them)
+      const cnt = new Map();
+      for (const r of kept) if (r.pairId) cnt.set(r.pairId, (cnt.get(r.pairId) || 0) + 1);
+      kept = kept.filter((r) => !r.pairId || cnt.get(r.pairId) === 2);
     }
     for (const r of kept) spawns.push(r);
   }

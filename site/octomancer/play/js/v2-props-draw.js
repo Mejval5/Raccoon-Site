@@ -368,7 +368,7 @@ export function drawCage(ctx, camera, cw, ch, x, floorY, w, h, open) {
  */
 /** Marlo's size: his helmet top is 1.14 u above his feet, so about 1.05 tiles tall. */
 export const DIVER_SCALE = 0.92;
-export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed = false) {
+export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed = false, skipFrontArm = false) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const cx = sx(x), cy = sy(y);
   if (cx < -ppu * 2 || cx > cw + ppu * 2 || cy < -ppu * 3 || cy > ch + ppu * 2) return;
@@ -395,7 +395,7 @@ export function drawDiver(ctx, camera, cw, ch, x, y, time, freed = false, sealed
   if (sealed && !freed) { arm(-u * 0.24, -u * 0.5, -u * 0.31, -u * 0.18); arm(u * 0.24, -u * 0.5, u * 0.31, -u * 0.18); }
   else {
     arm(-u * 0.24, -u * 0.5, -u * 0.46, -u * (freed ? 0.78 : 0.3) + wave * u * 0.2);
-    arm(u * 0.24, -u * 0.5, u * 0.36, -u * 0.22);
+    if (!skipFrontArm) arm(u * 0.24, -u * 0.5, u * 0.36, -u * 0.22); // npcs-draw.js holds his harpoon gun with that arm instead
   }
   // helmet
   ctx.strokeStyle = '#2a1808'; ctx.lineWidth = lw;

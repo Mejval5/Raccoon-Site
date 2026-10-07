@@ -69,6 +69,30 @@ export function createSfx(audio) {
     /** r41: level teardown: drop pending notes and stop every live source. */
     stopAll() { for (const id of timers) clearTimeout(id); timers.clear(); audio.stopSfx(); },
     hurt() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
+    /** V2-PLAN 16: a boulder flattening the octopus: a low thud, a wet filtered-noise crunch and a few crackling pops after it. */
+    splat() {
+      play((ctx, dest) => {
+        tone(audio, ctx, dest, { freq: 120, sweep: 34, dur: 0.32, type: 'sine', gain: 0.5 });
+        noiseBurst(audio, ctx, dest, { dur: 0.4, gain: 0.5, filterFreq: 2600 });
+        tone(audio, ctx, dest, { freq: 260, sweep: 60, dur: 0.12, type: 'sawtooth', gain: 0.16 });
+        for (let k = 1; k <= 3; k++) later(() => play((c, d) => noiseBurst(audio, c, d, { dur: 0.06, gain: 0.2, filterFreq: 3200 })), 60 * k + k * k * 12);
+      });
+    },
+    /** V2-PLAN 16: skewered on spikes: a sharp metallic stab and a short wet thunk. */
+    impale() {
+      play((ctx, dest) => {
+        tone(audio, ctx, dest, { freq: 1100, sweep: 240, dur: 0.1, type: 'sawtooth', gain: 0.2 });
+        tone(audio, ctx, dest, { freq: 150, sweep: 55, dur: 0.2, type: 'square', gain: 0.22 });
+        noiseBurst(audio, ctx, dest, { dur: 0.14, gain: 0.25, filterFreq: 1800 });
+      });
+    },
+    /** V2-PLAN 16: an electric shock: a buzzing zap that falls away. */
+    zap() {
+      play((ctx, dest) => {
+        tone(audio, ctx, dest, { freq: 900, sweep: 70, dur: 0.28, type: 'sawtooth', gain: 0.2 });
+        noiseBurst(audio, ctx, dest, { dur: 0.2, gain: 0.22, filterFreq: 4200 });
+      });
+    },
     bomb() {
       play((ctx, dest) => {
         noiseBurst(audio, ctx, dest, { dur: 0.35, gain: 0.35, filterFreq: 1200 });
