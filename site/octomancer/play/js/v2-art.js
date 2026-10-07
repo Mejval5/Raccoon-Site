@@ -17,6 +17,12 @@ const FILES = {
   board: 'hub-board.webp',
   questSign: 'hub-questsign.webp',
   banner: 'title-banner.webp',
+  matBedrock: 'mat-bedrock.webp',   // materials: indestructible basalt (generated, Milan style)
+  matTimber: 'mat-timber.webp',     // materials: sunken-ship planks (generated, Milan style)
+  matMasonry: 'mat-masonry.webp',   // materials: shop frame stone (generated, Milan style)
+  matBoneA: 'mat-bone-a.webp',      // materials: bone block (Milan's PushableBlock02)
+  matBoneB: 'mat-bone-b.webp',      // materials: bone block (Milan's PushableBlock03)
+  pushBlock: 'push-block.webp',     // pushable block prop (Milan's PushableBlock01)
   whirlpool: 'whirlpool-sheet.webp', // r42: Milan's Whirlpool animation (21 frames, 7 columns of 208 px)
 };
 /** r44: the same animation at about 0.55 scale (380 px cells), used only on a DPR >= 2 screen wider than 900 css px (a desktop at DPR 2 drew the normal sheet 1.9x too big and it looked soft). It loads under the key 'whirlpool' instead of the normal sheet, never both. */

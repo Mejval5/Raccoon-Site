@@ -1,6 +1,7 @@
 // M1-4 / M1-5 tests (world-v2.js, level-spawns.js, render.js band cache):
 // single-level world, bombs vs the border, band retracing, the wall-band ring,
 // and the spawn adapter (nothing in rock, nothing within 7 tiles of the start).
+import { MAT_BEDROCK } from '../js/materials.js';
 import { createRoomBank } from '../js/rooms.js';
 import { setDefaultBank, LEVEL_W, LEVEL_H, isBedrock } from '../js/level.js';
 import { createLevelWorld, wallBandWindow, START_SAFE_RADIUS } from '../js/world-v2.js';
@@ -124,11 +125,11 @@ export async function runWorldV2Tests(assert) {
     for (let y = 0; y < LEVEL_H; y++) {
       for (let x = 0; x < LEVEL_W; x++) {
         const v = world.tileAt(x, y);
-        if (isBedrock(x, y) && v !== 1) borderBroken++;
-        if (!isBedrock(x, y) && v !== 0) interiorLeft++;
+        if (isBedrock(x, y) && v !== MAT_BEDROCK) borderBroken++;
+        if (!isBedrock(x, y) && v !== 0 && v !== MAT_BEDROCK) interiorLeft++; // materials: bedrock outcrops stay too
       }
     }
-    assert(`v2 bombs s${seed}: breaking every tile leaves the whole border and clears the interior`, borderBroken === 0 && interiorLeft === 0);
+    assert(`v2 bombs s${seed}: breaking every tile leaves the whole border (and the bedrock outcrops) and clears the interior`, borderBroken === 0 && interiorLeft === 0);
     assert(`v2 bombs s${seed}: border still collides once the interior is gone`, world.isSolid(0.5, 30) && world.isSolid(33.5, 30) && world.isSolid(10, 0.5) && world.isSolid(10, 67.5) && !world.isSolid(10, 30));
   }
 

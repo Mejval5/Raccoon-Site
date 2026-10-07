@@ -18,13 +18,14 @@ import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
+import { drawBlocks } from './blocks-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
 import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
-import { createProps, PROP_NAMES } from './props.js';
+import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
@@ -197,6 +198,7 @@ let renderer = createRenderer(ctx, world);
 let pickups = createPickups();
 let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
+const blockChunks = new Set(); // chunks whose 'block' spawns are already props
 let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubble); idle in endless mode
 let hazards = createHazards(V2 ? props : null);
 if (V2) enemies.setHazardData(hazards.data);
@@ -492,7 +494,7 @@ function step(dt) {
     enemies.despawnNear(questClear.x, questClear.y, QUEST_CLEAR_R);
     questClear = null;
   }
-  if (V2) props.step(dt, world, octo, enemies.all()); // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { addBlocks(world.residentChunks()); props.step(dt, world, octo, enemies.all()); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -643,6 +645,7 @@ function render(alpha, frameMs) {
     shakeOffset: particles.shakeOffset(),
     shakePx: V2 ? scalePx(particles.shakePx(), dpr) : null,
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
+    preWallDraw: V2 ? v2PreWall : null,
     dreadLevel,
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     postOctoDraw: V2 ? v2People : null,
@@ -683,6 +686,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     decor = createDecor(world.width, world.chunkHeight);
     enemies = createEnemies();
     props = createProps();
+    blockChunks.clear();
     hazards = createHazards(V2 ? props : null);
     if (V2) enemies.setHazardData(hazards.data);
     loot = createLoot(V2 ? props : null);
@@ -734,7 +738,7 @@ function warmSim(n) {
       case 1: world.update(octo.y); pickups.update(dt, sim.time, octo, resident, world); break;
       case 2: decor.update(dt, resident); break;
       case 3: enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null); break;
-      case 4: if (V2) props.step(dt, world, octo, enemies.all()); break;
+      case 4: if (V2) { addBlocks(resident); props.step(dt, world, octo, enemies.all()); } break;
       case 5: if (V2 && !isSafeState(run)) { hazards.update(dt, sim.time, octo, world, resident); loot.update(dt, octo, world, resident); loot.takeEvents(); } break;
       case 6: bombs.update(dt, world, octo, enemies); break;
       default: break;
@@ -984,12 +988,24 @@ function v2Extra(c, camera, w2s, cw, ch) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
-    drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
     let pk = 0;
     for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+}
+/** Pushable blocks: each resident chunk's 'block' spawns become PK_BLOCK props once. */
+function addBlocks(resident) {
+  for (const { index, chunk } of resident) {
+    if (blockChunks.has(index)) continue;
+    blockChunks.add(index);
+    for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
+  }
+}
+/** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
+function v2PreWall(c, camera, cw, ch) {
+  drawBlocks(c, camera, cw, ch, props.data); // blocks only exist in generated levels, so no state test
+  if (run.state === S_BIOME) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
 }
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {

@@ -16,7 +16,7 @@ function pixels(img) {
 
 export async function runV2ArtTests(assert) {
   const keys = Object.keys(V2_ART_FILES);
-  assert('v2 art: 15 images are registered (14 generated + the whirlpool sheet from the original game), all under img/v2 as webp', keys.length === 15 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
+  assert('v2 art: 21 images are registered (17 generated + the whirlpool sheet and 3 block sprites from the original game), all under img/v2 as webp', keys.length === 21 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
   ensureV2Art();
   const rockEl = art.rock;
   ensureV2Art();

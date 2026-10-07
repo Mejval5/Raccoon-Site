@@ -158,6 +158,10 @@ await runMetaTests(assert);
 import { runPropsTests } from './props.test.js';
 await runPropsTests(assert);
 
+// --- Pushable blocks (props.js PK_BLOCK, blocks-draw.js, block spawns) ---
+import { runBlocksTests } from './blocks.test.js';
+await runBlocksTests(assert);
+
 // --- Round 35: enemy patterns, QA-ENEMIES regressions, round-34 review fixes ---
 import { runEnemyR35Tests } from './enemies-r35.test.js';
 await runEnemyR35Tests(assert);
@@ -191,6 +195,13 @@ await runPerf43Tests(assert);
 // --- Round 44: portal states, seating, tint, the two sheets ---
 import { runPortalTests } from './portal.test.js';
 await runPortalTests(assert);
+// --- Materials: material ids, draw order at boundaries, bedrock vs bombs, seams ---
+import { runMaterialsTests } from './materials.test.js';
+{
+  const { createRoomBank } = await import('../js/rooms.js');
+  const res = await fetch('../data/biome1-rooms.json');
+  await runMaterialsTests(assert, createRoomBank(await res.json()));
+}
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

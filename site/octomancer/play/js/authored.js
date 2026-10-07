@@ -4,10 +4,12 @@
 //
 // Rows: '#' rock, '.' water, 'S' start, 'E' exit (in the hub: the dive entrance),
 // 'J' journal board, 'Q' the hub residents' anchor (no sign is drawn any more: Marlo stands there, Pip swims beside it), 'R' shortcut ring to Shallows 1-2 (hub; drawn once unlocked), 'T' Marlo's shortcut ring to Shallows 1-3 (hub; r39), 'W' a bomb-breakable wall tile (rock like any other interior rock).
-// The 2-tile border is bedrock (the world treats it as unbreakable).
+// Materials (materials.js): 'X' bedrock, 'B' bone block, '=' timber, 'M' masonry. The 2-tile border is written as rock
+// and becomes bedrock (the world treats it as unbreakable).
 
 import { MK_START, MK_EXIT } from './rooms.js';
 import { createPathGrid, findPath } from './pathcheck.js';
+import { MAT_CHARS, MAT_ROCK, MAT_BEDROCK } from './materials.js';
 
 export const MK_BOARD = 9, MK_SIGN = 10, MK_SHORTCUT = 11, MK_SHORTCUT3 = 12;
 export const AUTHORED_BORDER = 2;
@@ -27,8 +29,8 @@ export function parseAuthoredMap(json) {
     for (let x = 0; x < w; x++) {
       const ch = rows[y][x];
       let t = 0;
-      if (ch === '#') t = 1;
-      else if (ch === 'W') { t = 1; walls.push(x, y); }
+      if (MAT_CHARS[ch] !== undefined) t = MAT_CHARS[ch];
+      else if (ch === 'W') { t = MAT_ROCK; walls.push(x, y); }
       else if (ch === 'S') { sx = x; sy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_START; nMarks++; }
       else if (ch === 'E') { ex = x; ey = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_EXIT; nMarks++; }
       else if (ch === 'J') { bx = x; by = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_BOARD; nMarks++; }
@@ -43,7 +45,8 @@ export function parseAuthoredMap(json) {
   if (ex < 0) throw new Error('map ' + json.id + ' has no E');
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (x < AUTHORED_BORDER || y < AUTHORED_BORDER || x >= w - AUTHORED_BORDER || y >= h - AUTHORED_BORDER) {
-      if (tiles[y * w + x] !== 1) throw new Error('map ' + json.id + ': border must be rock at ' + x + ',' + y);
+      if (tiles[y * w + x] === 0) throw new Error('map ' + json.id + ': border must be rock at ' + x + ',' + y);
+      tiles[y * w + x] = MAT_BEDROCK;
     }
   }
   return {

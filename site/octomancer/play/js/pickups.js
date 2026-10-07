@@ -41,7 +41,7 @@ function planktonSpotOpen(chunk, x, yLocal) {
     const lx = Math.floor(px), ly = Math.floor(py);
     if (lx < 0 || lx >= chunk.width || ly < 0 || ly >= chunk.height) return false; // off this chunk -- unknown, treat as unsafe
     const v = chunk.tiles[ly * chunk.width + lx];
-    if (v === 1 || v === 2) return false; // solid (hard or soft rock)
+    if (v !== 0) return false; // solid (any material)
   }
   return true;
 }
@@ -150,7 +150,7 @@ export function createPickups() {
             // simply track the tile's current value each step.
             const lx = Math.floor(it.x), ly = Math.floor(it.y - yOffset);
             const inChunk = lx >= 0 && lx < chunk.width && ly >= 0 && ly < chunk.height;
-            it.hidden = inChunk ? chunk.tiles[ly * chunk.width + lx] === 2 : it.hidden;
+            it.hidden = inChunk && !chunk.v2 ? chunk.tiles[ly * chunk.width + lx] === 2 : it.hidden; // endless soft rock (v2 tile 2 is bedrock)
           }
           if (it.type === 'plankton') {
             const prevX = it.x, prevY = it.y;

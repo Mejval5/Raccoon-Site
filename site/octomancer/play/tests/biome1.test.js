@@ -12,7 +12,7 @@ export async function loadBiome1Json() {
   return res.json();
 }
 
-const ALLOWED = new Set('#.SE?^v<>Y@'.split(''));
+const ALLOWED = new Set('#.SE?^v<>Y@XB=MO'.split('')); // materials: X bedrock, B bone, = timber, M masonry, O a pushable block
 const TAGS = ['start', 'exit', 'path-LR', 'drop', 'landing', 'side', 'shop'];
 
 /** Fat-water BFS inside one room's raw cells (rock = '#' or '?', everything else water). */
@@ -72,7 +72,7 @@ export async function runBiome1Tests(assert, approx) {
   assert(`biome1: ${rooms.length} rooms (r36: 30 + 10 new, 36-45) of 10x16`,
     rooms.length >= 36 && rooms.length <= 45 && rooms.every((r) => r.cells.length === ROOM_H && r.cells.every((s) => s.length === ROOM_W)));
   assert('biome1: ids are unique', new Set(rooms.map((r) => r.id)).size === rooms.length);
-  assert('biome1: only # . S E ? ^ v < > appear in the ASCII', rooms.every((r) => r.cells.every((s) => [...s].every((c) => ALLOWED.has(c)))));
+  assert('biome1: only # . S E ? ^ v < > Y @ and the material chars X B = M O appear in the ASCII', rooms.every((r) => r.cells.every((s) => [...s].every((c) => ALLOWED.has(c)))));
   assert('biome1: every room has at least one known tag', rooms.every((r) => r.tags && r.tags.length > 0 && r.tags.every((t) => TAGS.includes(t))));
   const count = (t) => rooms.filter((r) => r.tags.includes(t)).length;
   assert('biome1: enough rooms of each tag (3 start, 3 exit, 4 path-LR, 4 drop, 4 landing, 6 side)',
@@ -121,8 +121,8 @@ export async function runBiome1Tests(assert, approx) {
       // interior structure: rock cells inside the room that touch water on two or more sides (ledges, pillars, bumps, platforms)
       let n = 0;
       for (let y = 2; y < ROOM_H - 2; y++) for (let x = 2; x < ROOM_W - 2; x++) {
-        if (r.cells[y][x] !== '#') continue;
-        let open = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if ('.^v<>SE'.includes(r.cells[y + dy][x + dx])) open++;
+        if (!'#XB=M'.includes(r.cells[y][x])) continue;
+        let open = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if ('.^v<>SEO'.includes(r.cells[y + dy][x + dx])) open++;
         if (open >= 2) n++;
       }
       return n >= 1;
@@ -184,8 +184,8 @@ export async function runBiome1Tests(assert, approx) {
       let r = 0;
       for (let y = 0; y < LEVEL_H; y++) for (let x = 0; x < LEVEL_W; x++) {
         const v = t[y * LEVEL_W + x];
-        if (v > 1) borderBad++;
-        if (isBedrock(x, y) && v !== 1) borderBad++;
+        if (v > 5) borderBad++;
+        if (isBedrock(x, y) && v !== 2) borderBad++;
         if (!isBedrock(x, y)) r += v;
       }
       rockSum += r / ((LEVEL_W - 2 * BORDER) * (LEVEL_H - 2 * BORDER));
@@ -211,7 +211,7 @@ export async function runBiome1Tests(assert, approx) {
   }
   assert(`biome1: ${total} generated levels are all solvable without bombs (fat-water BFS)`, unsolved === 0);
   assert(`biome1: carved-corridor fallback under 1% (${carved}) and PNG-bank fallback under 1% (${viaPng})`, carved / total < 0.01 && viaPng / total < 0.01);
-  assert('biome1: bedrock border intact and tiles are only 0 or 1', borderBad === 0);
+  assert('biome1: bedrock border intact (material 2) and tiles are only material ids 0-5', borderBad === 0);
   assert('biome1: 3x3 water clearance at every start marker', clearBad === 0);
   assert('biome1: exactly one start and one exit marker per level, on water', markBad === 0);
   assert('biome1: start is in the top row of rooms, exit in the bottom row', rowBad === 0);

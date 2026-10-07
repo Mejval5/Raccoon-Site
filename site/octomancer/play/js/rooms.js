@@ -6,11 +6,15 @@
 //
 // Cell codes in bank.cells (y-down, row-major, RC per variant):
 //   0 water, 1 rock, 2 quantum (rolled at stamp time), 3 marker (water).
+// bank.mats (same layout) holds the material id of every solid cell (materials.js: '#' rock, 'X' bedrock, 'B' bone,
+// '=' timber, 'M' masonry); bank.cells marks all of them CELL_ROCK, so edges and connections are material-blind.
 // Room JSON strings: '#' rock, '.' water, '?' quantum, 'P' portal marker,
 // 'S' start marker, 'E' exit marker, 'C','N','K','H','Q' special markers.
 // Biome-1 rooms (data/biome1-rooms.json) also carry `tags` (start, exit, path-LR, drop,
 // landing, side) and anchors: '^' spot under a ceiling, 'v' spot on a floor, '<' spot
 // against a wall on its left, '>' against a wall on its right (all water cells).
+
+import { MAT_CHARS, MAT_ROCK } from './materials.js';
 
 export const ROOM_W = 10;
 export const ROOM_H = 16;
@@ -32,8 +36,8 @@ export const ANCH_NONE = 0, ANCH_UP = 1, ANCH_DOWN = 2, ANCH_LEFT = 3, ANCH_RIGH
 const ANCHOR_CHARS = { '^': ANCH_UP, v: ANCH_DOWN, '<': ANCH_LEFT, '>': ANCH_RIGHT };
 
 // bank.props codes: shop furniture written in room ASCII ('Y' the shopkeeper's spot, '@' an item pedestal), each a water cell
-export const PROP_NONE = 0, PROP_KEEPER = 1, PROP_PEDESTAL = 2;
-const PROP_CHARS = { Y: PROP_KEEPER, '@': PROP_PEDESTAL };
+export const PROP_NONE = 0, PROP_KEEPER = 1, PROP_PEDESTAL = 2, PROP_BLOCK = 3; // 'O': a pushable block (props.js PK_BLOCK) in a water cell
+const PROP_CHARS = { Y: PROP_KEEPER, '@': PROP_PEDESTAL, O: PROP_BLOCK };
 
 const MARKER_CHARS = { S: MK_START, E: MK_EXIT, P: MK_PORTAL, C: MK_CHEST, N: MK_NEST, K: MK_CAGE, H: MK_POOL, Q: MK_TREASURE };
 const KIND_NAMES = { room: KIND_NORMAL, start: KIND_START, end: KIND_END, pool: KIND_POOL };
@@ -60,6 +64,7 @@ export function loadRoomBank(rooms) {
   const tags = new Uint8Array(V);
   const anchors = new Uint8Array(V * RC);
   const props = new Uint8Array(V * RC);
+  const mats = new Uint8Array(V * RC);
   const tagged = rooms.some((r) => r.tags);
   const ids = new Array(V);
 
@@ -89,8 +94,8 @@ export function loadRoomBank(rooms) {
             anchors[o + y * ROOM_W + x] = code;
           } else if (PROP_CHARS[ch] !== undefined) {
             props[o + y * ROOM_W + x] = PROP_CHARS[ch];
-          } else if (ch === '#') c = CELL_ROCK;
-          else if (ch === '?') c = CELL_QUANTUM;
+          } else if (MAT_CHARS[ch] !== undefined) { c = CELL_ROCK; mats[o + y * ROOM_W + x] = MAT_CHARS[ch]; }
+          else if (ch === '?') { c = CELL_QUANTUM; mats[o + y * ROOM_W + x] = MAT_ROCK; }
           else if (MARKER_CHARS[ch] !== undefined) {
             c = CELL_MARKER;
             mk = MARKER_CHARS[ch]; sx += x; sy += y; sn++;
@@ -123,7 +128,7 @@ export function loadRoomBank(rooms) {
       v++;
     }
   }
-  return { V, cells, marker, markerXY, maskU, maskD, maskL, maskR, kind, weight, base, flags, ids, tags, anchors, props, tagged, nRooms: rooms.length };
+  return { V, cells, marker, markerXY, maskU, maskD, maskL, maskR, kind, weight, base, flags, ids, tags, anchors, props, mats, tagged, nRooms: rooms.length };
 }
 
 /** Pairwise tables: connX[a*V+b] = 1 when room b, placed on side X of room a, shares an open edge cell. */

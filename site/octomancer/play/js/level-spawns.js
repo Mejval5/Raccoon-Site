@@ -16,6 +16,7 @@ import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
 import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT, ROOM_W, ROOM_H } from './rooms.js';
+import { MAT_ROCK, MAT_BOMBABLE } from './materials.js';
 
 export const START_SAFE_RADIUS = 7;
 // Things that hurt from a distance stay out of reach of an idle octopus at the start: a cannon shot flies
@@ -133,6 +134,52 @@ function makeEnemySlot(t, kind, x, y, dx, dy) {
   return { type: 'enemy-slot', kind, placement, x: x + 0.5, y: y + 0.5, flatRun, wallDir, nearSideWall, mantaFit, narrowShaft };
 }
 
+export const BLOCK_BLOCKER_R = 0.75; // the path check treats a block as a circle this big (a 0.94 box, plus a little room to squeeze by)
+const BLOCK_EXIT_KEEP = 4;           // tiles a procedural block keeps from the exit
+
+/**
+ * Pushable blocks (props.js PK_BLOCK): {type:'block', x, y} spawns. (a) Room-authored: every 'O' prop cell of the placed
+ * rooms, when the level carries its bank (level.bank). (b) 0-2 procedural ones on a reachable floor cell. Each placed block
+ * must leave the level solvable: finalPathOk runs with it (and the hazards) as blocker circles, and it is dropped if not.
+ */
+function placeBlocks(level, t, runSeed, levelIndex, openCells, kept, spawns, inShop) {
+  const sx = level.startX + 0.5, sy = level.startY + 0.5;
+  const blockers = [];
+  for (const r of kept) if (r.type === 'hazard') hazardBlockers(r, blockers);
+  const taken = [];
+  for (const r of kept) taken.push(r.x, r.y);
+  for (const s of spawns) if (s.type === 'shell') taken.push(s.x, s.y);
+  const free = (x, y) => { for (let i = 0; i < taken.length; i += 2) if (Math.hypot(taken[i] - x, taken[i + 1] - y) < 1.3) return false; return true; };
+  const solvable = () => finalPathOk(t, level.startX, level.startY, level.exitX, level.exitY, level.shop, blockers);
+  const add = (x, y) => { blockers.push({ x, y, r: BLOCK_BLOCKER_R }); if (solvable()) { spawns.push({ type: 'block', x, y }); taken.push(x, y); return true; } blockers.pop(); return false; };
+
+  const sh = level.shop;
+  const nearShop = (x, y) => !!sh && x >= sh.x0 - 4.5 && x < sh.x1 + 4.5 && y >= sh.y0 - 4.5 && y < sh.y1 + 4.5; // the shop stays calm (quests.test.js)
+  // (a) room-authored: 'O' in a room's ASCII (level.roomBlocks, x, y pairs from generateLevel), kept out of the start's calm zone
+  const rb = level.roomBlocks;
+  if (rb) for (let i = 0; i + 1 < rb.length; i += 2) {
+    const x = rb[i] + 0.5, y = rb[i + 1] + 0.5;
+    if (t[idx(rb[i], rb[i + 1])] === 0 && !nearShop(x, y) && Math.hypot(x - sx, y - sy) >= START_SAFE_RADIUS && free(x, y)) add(x, y);
+  }
+
+  // (b) procedural: a water cell with rock under it and water over it, reachable from the start, away from the start,
+  // the exit, the shop, hidden pockets and everything else already placed
+  const brng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xb10c4));
+  const want = Math.floor(brng() * 3);
+  const cands = openCells.filter(([x, y]) => t[idx(x, y + 1)] !== 0 && y > 0 && t[idx(x, y - 1)] === 0 && !nearShop(x + 0.5, y + 0.5));
+  let tries = 0, got = 0;
+  while (got < want && cands.length && tries++ < 14) {
+    const c = cands.splice(Math.floor(brng() * cands.length), 1)[0];
+    const x = c[0] + 0.5, y = c[1] + 0.5;
+    if (Math.hypot(x - sx, y - sy) < START_SAFE_RADIUS + 2) continue;
+    if (level.exitX !== undefined && Math.hypot(x - (level.exitX + 0.5), y - (level.exitY + 0.5)) < BLOCK_EXIT_KEEP) continue;
+    let nearPocket = false;
+    for (let i = 0; i < (level.nPockets || 0); i++) if (Math.hypot(x - (level.pockets[i * 3] + 1), y - (level.pockets[i * 3 + 1] + 1)) < 4) nearPocket = true;
+    if (nearPocket || !free(x, y)) continue;
+    if (add(x, y)) got++;
+  }
+}
+
 /**
  * @param {{tiles:Uint8Array, startX:number, startY:number}} level from generateLevel
  * @returns {{spawns: any[], openCells: number}}
@@ -206,7 +253,9 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       if (kind === 'loot') {
         if (name === 'pocket') {
           // the anchor is a rock tile inside the level border; the water it can be bombed from is 2 tiles towards dir
-          if (tx < BORDER || ty < BORDER || tx >= W - BORDER || ty >= H - BORDER || t[idx(tx, ty)] === 0) return null;
+          // materials: a pocket hides in main rock, and the tile between it and the water must break too (never bedrock)
+          if (tx < BORDER || ty < BORDER || tx >= W - BORDER || ty >= H - BORDER || t[idx(tx, ty)] !== MAT_ROCK) return null;
+          if (!MAT_BOMBABLE[t[idx(tx + dx, ty + dy)]]) return null;
           const wx = tx + dx * 2, wy = ty + dy * 2;
           if (wx < 0 || wy < 0 || wx >= W || wy >= H || !ok[idx(wx, wy)] || fromStart < safe || inShop(tx, ty)) return null;
           return makeLootRecord(name, x, y, dx, dy, lrng);
@@ -402,6 +451,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       for (const r of selectSpawns(table, hit, levelIndex, drng, buildDecor, occ, (p) => table.kind[p] === 'decor')) kept.push(r);
     }
     for (const r of kept) spawns.push(r);
+    placeBlocks(level, t, runSeed, levelIndex, openCells, kept, spawns, inShop);
   }
   return { spawns, openCells: openCells.length };
 }

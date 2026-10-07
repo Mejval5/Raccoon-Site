@@ -1,5 +1,6 @@
 // M1-3 level generator tests (level.js): solvability by the fat-water BFS,
 // determinism, border, fallback rate and speed.
+import { MAT_BEDROCK, MAT_COUNT } from '../js/materials.js';
 import { createRoomBank, MK_START, MK_EXIT } from '../js/rooms.js';
 import {
   generateLevel, fatWaterSolvable, isBedrock, LEVEL_W, LEVEL_H, NROOMS, BORDER,
@@ -30,8 +31,8 @@ export async function runLevelTests(assert, approx) {
       for (let y = 0; y < LEVEL_H; y++) {
         for (let x = 0; x < LEVEL_W; x++) {
           const v = t[y * LEVEL_W + x];
-          if (v > 1) badCode++;
-          if (isBedrock(x, y) && v !== 1) borderBad++;
+          if (v >= MAT_COUNT) badCode++;
+          if (isBedrock(x, y) && v !== MAT_BEDROCK) borderBad++;
         }
       }
       // 3x3 water clearance at the start marker
@@ -52,8 +53,8 @@ export async function runLevelTests(assert, approx) {
     }
   }
   assert(`level: ${SEEDS.length} seeds x ${LEVELS} levels all solvable by the fat-water BFS (${total} checked)`, unsolved === 0);
-  assert('level: border cells (2 tiles on every side) are all rock', borderBad === 0);
-  assert('level: tiles only hold 0 (water) and 1 (rock)', badCode === 0);
+  assert('level: border cells (2 tiles on every side) are all bedrock', borderBad === 0);
+  assert('level: tiles only hold material ids (0 water .. 5 masonry)', badCode === 0);
   assert('level: start marker has 3x3 water clearance', clearBad === 0);
   assert('level: marker list has one start and one exit on water', markBad === 0);
   assert('level: start in the top room row, exit in the bottom room row', cornerBad === 0);
@@ -118,7 +119,7 @@ export async function runLevelTests(assert, approx) {
   assert('level: forced fallback flags the level and carves a solvable corridor',
     fb.fallback === 1 && fatWaterSolvable(fb.tiles, fb.startX, fb.startY, fb.exitX, fb.exitY));
   let borderOk = true;
-  for (let y = 0; y < LEVEL_H; y++) for (let x = 0; x < LEVEL_W; x++) if (isBedrock(x, y) && fb.tiles[y * LEVEL_W + x] !== 1) borderOk = false;
+  for (let y = 0; y < LEVEL_H; y++) for (let x = 0; x < LEVEL_W; x++) if (isBedrock(x, y) && fb.tiles[y * LEVEL_W + x] !== MAT_BEDROCK) borderOk = false;
   assert('level: the fallback corridor leaves the border intact', borderOk);
 
   // speed: p95 under 8 ms over 3 seeds x 1000 levels

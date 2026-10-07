@@ -26,6 +26,7 @@ export const ROCK_SHAKE = 0.45;     // s of rumble before it drops
 export const ROCK_GRAVITY = 16;
 export const ROCK_MAX_FALL = 11;
 export const ROCK_RADIUS = 0.5;
+export const ROCK_SMASH_SPEED = 4;  // u/s downward at which a falling rock smashes timber or bone under it
 export const ROCK_TRIGGER_HALF = 1.0; // the octopus is "under it" within this sideways distance
 export const EEL_SPEED = 1.5;
 export const EEL_PERIOD = 3.6;      // s between shocks
@@ -195,6 +196,11 @@ export function createHazards(props = null) {
     d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
     const sp = Math.hypot(pd.vx[pid], pd.vy[pid]);
     if (st === 2 && !octo.dead && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) hurtByRock(octo, i, world);
+    // materials: a falling boulder smashes through a wooden platform or a bone block it hits (and keeps falling)
+    if (st === 2 && world.smashTile && pd.vy[pid] > ROCK_SMASH_SPEED) {
+      const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i] + ROCK_RADIUS + 0.05 + pd.vy[pid] * 0.04); // looks one or two steps ahead: the wall resolver stops it at contact
+      if (world.smashTile(tx, ty)) { pd.vy[pid] *= 0.7; events.push({ type: 'tileSmashed', x: tx + 0.5, y: ty + 0.5 }); }
+    }
     const landed = (pd.grounded[pid] && sp < 1.5) || pd.state[pid] !== PS_FREE;
     if (!landed) return;
     // never settle on top of the octopus: wait (state 4) until it swims clear

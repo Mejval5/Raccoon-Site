@@ -8,7 +8,9 @@
 //     (same padded-window trace world.js does per chunk), lazily, and each
 //     band's outline is kept until a bomb changes it; a bomb retraces only
 //     the band(s) its tiles touch;
-//   - bombs break any interior rock (tile 1) but never the border (isBedrock).
+//   - tiles hold material ids (materials.js); bombs break every material but bedrock (the border and its outcrops);
+//   - render.js draws one layer per material present in a band, each from the outline of the tiles of that
+//     material's priority or higher (getLayerOutline), lowest first, so a higher material's edge overlaps a lower one.
 //
 // Bands are the unit render.js caches wall canvases in; `configureBands(rows)`
 // lets the renderer pick the band height (about 512 px of baked canvas).
@@ -19,6 +21,7 @@ import {
   traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
   OUTLINE_PAD, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO,
 } from './outline.js';
+import { MAT_ROCK, MAT_BEDROCK, MAT_PRIORITY, MAT_BOMBABLE, MAT_BOULDER_BREAKS, MAT_DRAW_ORDER } from './materials.js';
 
 export { START_SAFE_RADIUS };
 
@@ -47,7 +50,8 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   const level = authored ? opts.level : (opts && opts.generated) || generateLevel(runSeed, levelIndex);
   const tiles = level.tiles;
   const W = level.w || LEVEL_W, H = level.h || LEVEL_H;
-  const bedrock = (x, y) => x < BORDER || x >= W - BORDER || y < BORDER || y >= H - BORDER;
+  const border = (x, y) => x < BORDER || x >= W - BORDER || y < BORDER || y >= H - BORDER;
+  const bedrock = (x, y) => border(x, y) || (x >= 0 && y >= 0 && x < W && y < H && tiles[y * W + x] === MAT_BEDROCK);
   const startX = level.startX + 0.5, startY = level.startY + 0.5;
   const spawnInfo = authored ? { spawns: level.spawns || [] } : (opts && opts.spawnInfo) || buildLevelSpawns(level, runSeed, levelIndex);
   const chunk = {
@@ -88,7 +92,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   function bandOfRow(ty) { return Math.min(bandCount() - 1, Math.max(0, Math.floor(ty / bandRows))); }
 
   function tileAt(tx, ty) {
-    if (tx < 0 || tx >= W || ty < 0 || ty >= H) return 1;
+    if (tx < 0 || tx >= W || ty < 0 || ty >= H) return MAT_BEDROCK;
     return tiles[ty * W + tx];
   }
 
@@ -116,6 +120,43 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     if (!built) return null;
     const entry = { ...built, version: want };
     outlineCache.set(bi, entry);
+    return entry;
+  }
+
+  // ---- material layers (render.js): per band, which materials are present and the outline of each layer ----
+  /** @type {Map<number, {loops:any[], version:number}>} key = band * 8 + material */
+  const layerCache = new Map();
+  const maskCache = new Map(); // band -> {mask, version}
+  /** Bit (1 << material) for every material in band `bi` and the rows its trace reads (OUTLINE_PAD + 1 beyond it). */
+  function bandMaterials(bi) {
+    const want = bandVersion.get(bi) || 0;
+    const c = maskCache.get(bi);
+    if (c && c.version === want) return c.mask;
+    const y0 = Math.max(0, bi * bandRows - OUTLINE_PAD - 1), y1 = Math.min(H, (bi + 1) * bandRows + OUTLINE_PAD + 1);
+    let mask = 0;
+    for (let i = y0 * W; i < y1 * W; i++) mask |= 1 << tiles[i];
+    mask &= ~1;
+    maskCache.set(bi, { mask, version: want });
+    return mask;
+  }
+  /** The lowest-priority material in band `bi` (its layer is the plain solid outline, the collision shape). */
+  function lowestMaterial(mask) {
+    for (let k = 0; k < MAT_DRAW_ORDER.length; k++) if (mask & (1 << MAT_DRAW_ORDER[k])) return MAT_DRAW_ORDER[k];
+    return MAT_ROCK;
+  }
+  /** Traced + smoothed outline of every tile whose material has `mat`'s priority or higher (world tile units). */
+  function getLayerOutline(bi, mat) {
+    if (bi < 0 || bi >= bandCount()) return null;
+    if (mat === lowestMaterial(bandMaterials(bi))) return getWallOutline(bi);
+    const want = bandVersion.get(bi) || 0, key = bi * 8 + mat;
+    const cached = layerCache.get(key);
+    if (cached && cached.version === want) return cached;
+    const y0 = bi * bandRows, h = Math.min(bandRows, H - y0);
+    const p = MAT_PRIORITY[mat];
+    const { loops: raw } = traceOutlineLoops((tx, ty) => MAT_PRIORITY[tileAt(tx, y0 + ty)] >= p, W, h, OUTLINE_PAD);
+    const loops = raw.map((loop) => chaikinSmoothLoop(loop, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO).map((pt) => ({ x: pt.x, y: pt.y + y0 })));
+    const entry = { loops, version: want };
+    layerCache.set(key, entry);
     return entry;
   }
 
@@ -175,33 +216,46 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !bedrock(x, y) && !inShop(x, y) && tileAt(x, y) !== 0;
+      return !border(x, y) && !inShop(x, y) && MAT_BOMBABLE[tileAt(x, y)] === 1;
     },
-    /** Bomb break: any interior rock, never the 2-tile border. */
+    /** Bomb break: every material but bedrock (the border and its outcrops). */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (bedrock(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
-      if (tiles[y * W + x] === 0) return false;
+      if (border(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
+      if (!MAT_BOMBABLE[tiles[y * W + x]]) return false;
       setTile(x, y, 0);
       return true;
     },
+    /** A falling boulder smashes a wooden platform or a bone block it lands on. False for anything else. */
+    smashTile(tx, ty) {
+      const x = Math.floor(tx), y = Math.floor(ty);
+      if (border(x, y) || inShop(x, y) || !MAT_BOULDER_BREAKS[tileAt(x, y)]) return false;
+      setTile(x, y, 0);
+      return true;
+    },
+    /** Material id at a tile (0 water). */
+    materialAt(tx, ty) { return tileAt(Math.floor(tx), Math.floor(ty)); },
+    /** Something drawn on this tile changed (embedded treasure, ...): its wall cell is baked again. */
+    touchTile(tx, ty) { setTile(tx, ty, tiles[ty * W + tx]); },
 
     /** A falling rock settles: a water tile becomes breakable rock (hazards.js). False when it is not open water. */
     placeRock(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (bedrock(x, y) || tiles[y * W + x] !== 0) return false;
-      setTile(x, y, 1);
+      if (border(x, y) || tiles[y * W + x] !== 0) return false;
+      setTile(x, y, MAT_ROCK);
       return true;
     },
 
     getWallOutline,
     wallSegmentsNear,
+    getLayerOutline,
+    bandMaterials,
 
     // ---- bands (render.js) ----
     configureBands(rows) {
       const r = Math.max(2, Math.floor(rows));
       if (r === bandRows) return;
-      bandRows = r; outlineCache.clear(); bandVersion.clear();
+      bandRows = r; outlineCache.clear(); bandVersion.clear(); layerCache.clear(); maskCache.clear();
     },
     get tileVersion() { return tileVer; },
     get bandRows() { return bandRows; },

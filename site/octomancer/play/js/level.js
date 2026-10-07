@@ -4,16 +4,18 @@
 // no per-tile objects. Not wired into the running game yet (M1-4).
 //
 // Geometry: 3x4 rooms of 10x16 plus a 2-tile border = 34x68 tiles.
-// Tile codes: 0 water, 1 rock. Bombs must call isBedrock(x, y) (never breakable).
+// Tile codes: a material id per cell (materials.js): 0 water, 1 rock, 2 bedrock (the border and a few outcrops: never
+// breakable), 3 bone blocks, 4 timber platforms, 5 masonry (the shop frame). Anything non-zero is solid.
 
 import { mulberry32, hashSeed2 } from './rng.js';
 import {
   ROOM_W, ROOM_H, RC, CELL_ROCK, CELL_QUANTUM, FLAG_H,
   MK_START, MK_EXIT, MK_NONE, KIND_NORMAL,
-  TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, TAG_SHOP, PROP_KEEPER, PROP_PEDESTAL,
+  TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, TAG_SHOP, PROP_KEEPER, PROP_PEDESTAL, PROP_BLOCK,
   ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
 } from './rooms.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
+import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY } from './materials.js';
 
 export const ROOMS_X = 3, ROOMS_Y = 4, BORDER = 2;
 export const LEVEL_W = ROOMS_X * ROOM_W + 2 * BORDER; // 34
@@ -154,7 +156,7 @@ function fillEmpty(rng, bank, roomVar) {
 // ---------------------------------------------------------------- step 4: stamp
 
 function stampRooms(rng, bank, roomVar, tiles) {
-  const { cells } = bank;
+  const { cells, mats } = bank;
   for (let cell = 0; cell < NROOMS; cell++) {
     const ox = BORDER + (cell % ROOMS_X) * ROOM_W;
     const oy = BORDER + ((cell / ROOMS_X) | 0) * ROOM_H;
@@ -164,25 +166,27 @@ function stampRooms(rng, bank, roomVar, tiles) {
       const srow = src + y * ROOM_W;
       for (let x = 0; x < ROOM_W; x++) {
         const c = cells[srow + x];
-        tiles[drow + x] = c === CELL_ROCK ? 1 : c === CELL_QUANTUM ? (rng() < 0.5 ? 1 : 0) : 0;
+        const m = mats ? mats[srow + x] || MAT_ROCK : MAT_ROCK;
+        tiles[drow + x] = c === CELL_ROCK ? m : c === CELL_QUANTUM ? (rng() < 0.5 ? m : 0) : 0;
       }
     }
   }
-  // border: 2 tiles of indestructible rock on every side
+  // border: 2 tiles of indestructible bedrock on every side
   for (let y = 0; y < LEVEL_H; y++) {
-    for (let x = 0; x < LEVEL_W; x++) if (isBedrock(x, y)) tiles[y * LEVEL_W + x] = 1;
+    for (let x = 0; x < LEVEL_W; x++) if (isBedrock(x, y)) tiles[y * LEVEL_W + x] = MAT_BEDROCK;
   }
 }
 
-/** Rock to water only: interior tiles with 3+ open sides, then rock islands under 4 tiles. */
+/** Rock to water only: interior rock tiles with 3+ open sides, then rock islands under 4 tiles (a room's timber, bone or
+ *  masonry tiles are placed on purpose and stay, and so does any island holding one). */
 export function shaveNubsAndSmallIslands(tiles) {
   const W = LEVEL_W, H = LEVEL_H;
   for (let pass = 0; pass < 2; pass++) {
     for (let y = BORDER; y < H - BORDER; y++) {
       for (let x = BORDER; x < W - BORDER; x++) {
         const i = y * W + x;
-        if (tiles[i] === 0) continue;
-        if (tiles[i - W] + tiles[i + W] + tiles[i - 1] + tiles[i + 1] <= 1) tiles[i] = 0;
+        if (tiles[i] !== MAT_ROCK) continue;
+        if ((tiles[i - W] !== 0) + (tiles[i + W] !== 0) + (tiles[i - 1] !== 0) + (tiles[i + 1] !== 0) <= 1) tiles[i] = 0;
       }
     }
   }
@@ -192,11 +196,12 @@ export function shaveNubsAndSmallIslands(tiles) {
     for (let x = BORDER; x < W - BORDER; x++) {
       const i0 = y * W + x;
       if (_seen[i0] || tiles[i0] === 0) continue;
-      let qh = 0, qt = 0, touches = false;
+      let qh = 0, qt = 0, touches = false, keepMat = false;
       _queue[qt++] = i0; _seen[i0] = 1;
       while (qh < qt) {
         const i = _queue[qh++];
         const cx = i % W, cy = (i / W) | 0;
+        if (tiles[i] !== MAT_ROCK) keepMat = true;
         // a component touching the bedrock ring is part of the big wall
         if (cx === BORDER || cx === W - BORDER - 1 || cy === BORDER || cy === H - BORDER - 1) touches = true;
         let ni = i - W;
@@ -208,7 +213,7 @@ export function shaveNubsAndSmallIslands(tiles) {
         ni = i + 1;
         if (!_seen[ni] && tiles[ni] !== 0 && !isBedrock(cx + 1, cy)) { _seen[ni] = 1; _queue[qt++] = ni; }
       }
-      if (!touches && qt < MIN_ISLAND) for (let k = 0; k < qt; k++) tiles[_queue[k]] = 0;
+      if (!touches && !keepMat && qt < MIN_ISLAND) for (let k = 0; k < qt; k++) tiles[_queue[k]] = 0;
     }
   }
 }
@@ -436,6 +441,124 @@ export function finalPathOk(tiles, sx, sy, ex, ey, shop, blockers) {
   return true;
 }
 
+// ---------------------------------------------------------------- materials
+
+export const BEDROCK_OUTCROPS = [1, 3]; // min, max outcrops of bedrock growing in from the border
+export const BONE_CLUSTERS = [3, 6];    // min, max bone-block clusters on rock faces
+export const BEDROCK_POCKETS = [0, 2];  // min, max small bedrock blobs on rock faces inside the level
+export const TIMBER_FLOORS = 3;         // at most this many flat rock floors get a timber deck
+export const TIMBER_FLOOR_CHANCE = 0.22;
+export const TIMBER_RUN_CHANCE = 0.7;   // a 1-tile-thick rock ledge becomes a timber platform
+
+/**
+ * Materials pass on the FINAL tiles (Spelunky-style terrain): only ever turns one solid material into another, so the
+ * shape, the A* path, the pockets and every anchor stay exactly as they were. Uses its own rng.
+ *   - shop frame: every rock tile of the shop room touching its water becomes masonry (floor, walls) or timber (ceiling);
+ *   - timber: 1-tile-thick horizontal rock ledges (water above and below, 2+ long) become wooden platforms, and a few
+ *     flat floors (3+ long) get a timber deck on their top row;
+ *   - bone: a few clusters of 2-4 bone blocks on rock faces;
+ *   - bedrock: a few outcrops grown in from the border and a few small pockets on rock faces (never near the start,
+ *     exit, shop, pockets or set pieces).
+ * `keep` is a list of x0, y0, x1, y1 rects (inclusive) no bedrock or bone may enter.
+ */
+export function placeMaterials(tiles, mrng, shop, keep) {
+  const W = LEVEL_W, H = LEVEL_H;
+  const T = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? MAT_BEDROCK : tiles[y * W + x]);
+  const kept = (x, y) => {
+    for (let k = 0; k < keep.length; k += 4) if (x >= keep[k] && y >= keep[k + 1] && x <= keep[k + 2] && y <= keep[k + 3]) return true;
+    return false;
+  };
+  const touchesWater = (x, y) => T(x - 1, y) === 0 || T(x + 1, y) === 0 || T(x, y - 1) === 0 || T(x, y + 1) === 0;
+  // shop frame
+  if (shop) {
+    for (let y = shop.y0; y < shop.y1; y++) {
+      for (let x = shop.x0; x < shop.x1; x++) {
+        if (T(x, y) !== MAT_ROCK) continue;
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= shop.x0 && nx < shop.x1 && ny >= shop.y0 && ny < shop.y1 && T(nx, ny) === 0) { near = true; break; }
+        }
+        if (!near) continue;
+        tiles[y * W + x] = T(x, y - 1) !== 0 && T(x, y + 1) === 0 ? MAT_TIMBER : MAT_MASONRY;
+      }
+    }
+  }
+  // timber ledges
+  for (let y = BORDER; y < H - BORDER; y++) {
+    let x = BORDER;
+    while (x < W - BORDER) {
+      const thin = (xx) => T(xx, y) === MAT_ROCK && T(xx, y - 1) === 0 && T(xx, y + 1) === 0;
+      if (!thin(x)) { x++; continue; }
+      let e = x;
+      while (e + 1 < W - BORDER && thin(e + 1)) e++;
+      if (e > x && mrng() < TIMBER_RUN_CHANCE) for (let k = x; k <= e; k++) tiles[y * W + k] = MAT_TIMBER;
+      x = e + 1;
+    }
+  }
+  // timber decks on a few flat floors (rock with water above, the tile under it solid too)
+  let decks = 0;
+  for (let y = BORDER + 1; y < H - BORDER - 1 && decks < TIMBER_FLOORS; y++) {
+    let x = BORDER;
+    while (x < W - BORDER) {
+      const flat = (xx) => T(xx, y) === MAT_ROCK && T(xx, y - 1) === 0 && T(xx, y + 1) !== 0;
+      if (!flat(x)) { x++; continue; }
+      let e = x;
+      while (e + 1 < W - BORDER && flat(e + 1)) e++;
+      if (e - x >= 2 && decks < TIMBER_FLOORS && mrng() < TIMBER_FLOOR_CHANCE) {
+        const len = Math.min(e - x + 1, 6), x0 = x + Math.floor(mrng() * (e - x + 2 - len));
+        for (let k = x0; k < x0 + len; k++) tiles[y * W + k] = MAT_TIMBER;
+        decks++;
+      }
+      x = e + 1;
+    }
+  }
+  // bone clusters on rock faces
+  const face = [];
+  for (let y = BORDER + 1; y < H - BORDER - 1; y++) for (let x = BORDER + 1; x < W - BORDER - 1; x++) {
+    if (T(x, y) === MAT_ROCK && touchesWater(x, y) && !kept(x, y)) face.push(x, y);
+  }
+  const nBone = BONE_CLUSTERS[0] + Math.floor(mrng() * (BONE_CLUSTERS[1] - BONE_CLUSTERS[0] + 1));
+  for (let c = 0; c < nBone && face.length; c++) {
+    const k = Math.floor(mrng() * (face.length / 2)) * 2;
+    growBlob(tiles, face[k], face[k + 1], MAT_BONE, 2 + Math.floor(mrng() * 3), mrng, (x, y) => T(x, y) === MAT_ROCK && !kept(x, y) && x >= BORDER && y >= BORDER && x < W - BORDER && y < H - BORDER);
+  }
+  // bedrock outcrops from the border
+  const seeds = [];
+  for (let y = BORDER + 4; y < H - BORDER - 4; y++) for (let x = BORDER; x < W - BORDER; x++) {
+    if (T(x, y) !== MAT_ROCK || kept(x, y)) continue;
+    if (T(x - 1, y) === MAT_BEDROCK || T(x + 1, y) === MAT_BEDROCK || T(x, y + 1) === MAT_BEDROCK) seeds.push(x, y);
+  }
+  const nOut = BEDROCK_OUTCROPS[0] + Math.floor(mrng() * (BEDROCK_OUTCROPS[1] - BEDROCK_OUTCROPS[0] + 1));
+  for (let c = 0; c < nOut && seeds.length; c++) {
+    const k = Math.floor(mrng() * (seeds.length / 2)) * 2;
+    growBlob(tiles, seeds[k], seeds[k + 1], MAT_BEDROCK, 3 + Math.floor(mrng() * 5), mrng, (x, y) => T(x, y) === MAT_ROCK && !kept(x, y));
+  }
+  // small bedrock pockets on rock faces, away from the border
+  const nPk = BEDROCK_POCKETS[0] + Math.floor(mrng() * (BEDROCK_POCKETS[1] - BEDROCK_POCKETS[0] + 1));
+  const inner = (x, y) => x >= BORDER + 3 && y >= BORDER + 3 && x < W - BORDER - 3 && y < H - BORDER - 3;
+  for (let c = 0; c < nPk && face.length; c++) {
+    const k = Math.floor(mrng() * (face.length / 2)) * 2;
+    if (!inner(face[k], face[k + 1])) continue;
+    growBlob(tiles, face[k], face[k + 1], MAT_BEDROCK, 2 + Math.floor(mrng() * 3), mrng, (x, y) => T(x, y) === MAT_ROCK && !kept(x, y) && inner(x, y));
+  }
+}
+
+const _blob = new Int32Array(64);
+/** Grow a blob of `mat` from (x, y) over up to n cells that pass `ok`, by random 4-neighbour steps. */
+function growBlob(tiles, x, y, mat, n, rng, ok) {
+  if (!ok(x, y)) return 0;
+  let m = 0;
+  tiles[y * LEVEL_W + x] = mat; _blob[m++] = y * LEVEL_W + x;
+  for (let tries = 0; tries < n * 6 && m < n; tries++) {
+    const i = _blob[Math.floor(rng() * m)], d = Math.floor(rng() * 4);
+    const nx = (i % LEVEL_W) + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = ((i / LEVEL_W) | 0) + (d === 2 ? 1 : d === 3 ? -1 : 0);
+    if (!ok(nx, ny)) continue;
+    tiles[ny * LEVEL_W + nx] = mat; _blob[m++] = ny * LEVEL_W + nx;
+  }
+  return m;
+}
+
 // ---------------------------------------------------------------- generateLevel
 
 /**
@@ -631,8 +754,27 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   }
   if (ey !== ey0 || ex !== ex0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex0 && marks[i * 3 + 1] === ey0) { marks[i * 3] = ex; marks[i * 3 + 1] = ey; }
 
+  // materials (solid to solid only): shop frame, timber ledges, bone clusters, bedrock outcrops
+  {
+    const keep = [sx - 6, sy - 6, sx + 6, sy + 6, ex - 5, ey - 5, ex + 5, ey + 5];
+    if (shop) keep.push(shop.x0 - 3, shop.y0 - 3, shop.x1 + 2, shop.y1 + 2);
+    for (let i = 0; i < nPockets; i++) keep.push(pockets[i * 3] - 5, pockets[i * 3 + 1] - 5, pockets[i * 3] + 6, pockets[i * 3 + 1] + 6);
+    for (let i = 0; i < nSetPieces; i++) keep.push(setPieces[i * 4] - 1, setPieces[i * 4 + 1] - 1, setPieces[i * 4] + ROOM_W, setPieces[i * 4 + 1] + ROOM_H);
+    placeMaterials(tiles, mulberry32(hashSeed2(base, 0x3a7e)), shop, keep);
+  }
+
+  // pushable blocks the rooms ask for ('O' in the ASCII): x, y per block (level-spawns.js places them after its A* check)
+  const rbl = [];
+  if (!fallback && bank.props) {
+    for (let cell = 0; cell < NROOMS; cell++) {
+      const src = roomVar[cell] * RC;
+      for (let i = 0; i < RC; i++) if (bank.props[src + i] === PROP_BLOCK) rbl.push(cellX(cell) + (i % ROOM_W), cellY(cell) + ((i / ROOM_W) | 0));
+    }
+  }
+  const roomBlocks = Int16Array.from(rbl);
+
   return {
-    w: LEVEL_W, h: LEVEL_H, tiles, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
+    w: LEVEL_W, h: LEVEL_H, tiles, roomBlocks, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
     startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
     shop, pockets, nPockets, setPieces, nSetPieces,
   };

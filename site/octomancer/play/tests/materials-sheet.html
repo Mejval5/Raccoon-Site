@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Octomancer materials sheet</title>
+<style>
+  body { margin: 0; background: #0a1c2a; color: #cfe; font: 13px/1.4 ui-monospace, Consolas, monospace; }
+  #out { display: block; }
+</style>
+</head>
+<body>
+<canvas id="out"></canvas>
+<script type="module">
+// Review sheet (not a test): every material alone, every boundary pair side by side and stacked, a few Spelunky-like
+// mixes, baked through the real wall renderer (render.js debugCell) on a hand-made world. ?ppu=48 sets the bake scale.
+import { createLevelWorld } from '../js/world-v2.js';
+import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_NAMES, MAT_DRAW_ORDER } from '../js/materials.js';
+import { artImg } from '../js/v2-art.js';
+
+const realFetch = window.fetch;
+window.fetch = (u, ...a) => (String(u).includes('octopus.json') ? new Promise(() => {}) : realFetch(u, ...a));
+const { createRenderer } = await import('../js/render.js');
+
+const q0 = new URLSearchParams(location.search);
+const genSeed = q0.get('seed'); // ?seed=N&lvl=L: bake a whole generated level instead of the sample grid
+let W = 66, H = 44;
+const tiles = new Uint8Array(W * H);
+const put = (x, y, m) => { if (x >= 0 && y >= 0 && x < W && y < H) tiles[y * W + x] = m; };
+const rect = (x, y, w, h, m) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(x + i, y + j, m); };
+const labels = [];
+// border
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) put(x, y, MAT_BEDROCK);
+// row 1: each material alone (a 4x3 block with a notch)
+const mats = [MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY];
+mats.forEach((m, k) => { const x = 4 + k * 12; rect(x, 4, 5, 3, m); put(x + 5, 5, m); put(x + 2, 3, m); labels.push([x, 3.2, MAT_NAMES[m]]); });
+// rows 2-3: each pair side by side (A left, B right) and stacked (A on top of B)
+let k = 0;
+for (let a = 0; a < mats.length; a++) for (let b = a + 1; b < mats.length; b++) {
+  const col = k % 5, row = (k / 5) | 0, x = 4 + col * 12, y = 11 + row * 8;
+  rect(x, y, 3, 3, mats[a]); rect(x + 3, y, 3, 3, mats[b]);
+  rect(x + 7, y - 1, 3, 2, mats[a]); rect(x + 7, y + 1, 3, 2, mats[b]);
+  labels.push([x, y - 0.8, MAT_NAMES[mats[a]] + '|' + MAT_NAMES[mats[b]]]);
+  k++;
+}
+// row 4: Spelunky-like scenes: a rock cave with a timber ledge and bone cluster, a shop frame, the level border
+rect(4, 29, 18, 11, MAT_ROCK); rect(7, 31, 12, 6, 0); rect(7, 34, 5, 1, MAT_TIMBER); rect(15, 30, 2, 2, MAT_BONE); rect(16, 31, 1, 2, MAT_BONE);
+put(18, 36, MAT_BONE); rect(4, 37, 3, 3, MAT_BEDROCK); put(7, 37, MAT_BEDROCK);
+labels.push([4, 28.2, 'cave: timber ledge, bone cluster, bedrock outcrop']);
+rect(25, 29, 14, 11, MAT_ROCK); rect(27, 31, 10, 6, 0); rect(27, 30, 10, 1, MAT_TIMBER); rect(26, 31, 1, 7, MAT_MASONRY); rect(37, 31, 1, 7, MAT_MASONRY); rect(26, 37, 12, 1, MAT_MASONRY); rect(27, 30, 2, 1, MAT_TIMBER);
+labels.push([25, 28.2, 'shop frame: timber ceiling, masonry walls/floor']);
+rect(42, 30, 20, 10, MAT_ROCK); rect(45, 32, 6, 4, 0); rect(54, 33, 5, 5, 0); rect(55, 36, 3, 1, MAT_TIMBER); rect(46, 36, 4, 2, MAT_BONE); rect(59, 30, 3, 10, MAT_BEDROCK);
+labels.push([42, 29.2, 'mixed wall']);
+
+let level = { authored: true, id: 'sheet', w: W, h: H, tiles, marks: new Int16Array(48), nMarks: 0, startX: 30, startY: 8, exitX: 30, exitY: 9, prompts: [], spawns: [], nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0, walls: new Int16Array(0) };
+if (genSeed) {
+  const { fetchBiome1Bank } = await import('../js/rooms.js');
+  const { setDefaultBank, generateLevel } = await import('../js/level.js');
+  setDefaultBank(await fetchBiome1Bank('../data/biome1-rooms.json', '../data/rooms.json'));
+  level = generateLevel(Number(genSeed), Number(q0.get('lvl') || 0));
+  W = level.w; H = level.h; labels.length = 0;
+}
+const world = createLevelWorld(Number(genSeed) || 0, Number(q0.get('lvl') || 0), { level });
+const q = new URLSearchParams(location.search);
+const view = document.createElement('canvas');
+const ppu = Number(q.get('ppu')) || 48;
+// the renderer picks its bake scale from the canvas it draws to: a canvas showing 24 tiles of height at ppu px each
+view.width = Math.round(ppu * 18); view.height = Math.round(ppu * 24);
+const renderer = createRenderer(view.getContext('2d'), world);
+// wait for the material textures
+const keys = ['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB'];
+for (let i = 0; i < 200 && keys.some((k) => !artImg(k)); i++) await new Promise((r) => setTimeout(r, 50));
+const cell0 = renderer.debugCell(0, 0);
+const s = cell0.s, nb = world.bandCount(), nc = Math.ceil(W / cell0.cols);
+const out = document.getElementById('out');
+out.width = W * s; out.height = H * s;
+const c = out.getContext('2d');
+c.fillStyle = 'rgb(84,190,206)'; c.fillRect(0, 0, out.width, out.height); // the shallows water
+for (let bi = 0; bi < nb; bi++) for (let ci = 0; ci < nc; ci++) {
+  const d = renderer.debugCell(bi, ci);
+  const w = Math.min(d.cols, W - d.x0), h = Math.min(d.rows, H - d.y0);
+  c.drawImage(d.canvas, 0, 0, w * s, h * s, d.x0 * s, d.y0 * s, w * s, h * s);
+}
+c.font = `bold ${Math.round(s * 0.38)}px ui-monospace, Consolas, monospace`;
+c.fillStyle = '#04121c';
+for (const [x, y, t] of labels) c.fillText(t, x * s, y * s);
+window.__sheetDone = true;
+</script>
+</body>
+</html>

@@ -11,22 +11,27 @@
 //          PS_HELD  attached to a support tile (a clam on a wall, a chest on a ledge); lets go when the tile goes
 //
 // The octopus itself is not a prop: bombs are pushed by it (pushByOctopus), nothing else is.
+//
+//   PK_BLOCK (Spelunky-style push block) is the exception to "round": an axis-aligned square of half extent radius[i]
+//   that never rotates. It has its own mover (stepBlock: AABB against the tile grid, x then y, substepped) so it rests
+//   exactly on tile tops, stacks on other blocks, and is a solid box to the octopus (pushBlocksByOctopus) and to circle props.
 
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
+import { hurtOctopus } from './octopus.js';
 
-export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7;
+export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7, PK_BLOCK = 8;
 export const PS_FREE = 0, PS_REST = 1, PS_HELD = 2;
-export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 'rubble'];
+export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 'rubble', 'block'];
 
 // per kind (index = PK_*): sink acceleration u/s^2, linear drag 1/s (terminal sink speed = grav / drag),
 // restitution, rolling friction 1/s (tangential damping while touching), mass, default radius, no-roll slope
-const GRAV = new Float32Array([0, 3.6, 4.5, 5, 8, 7, 16, 6]);
-const DRAG = new Float32Array([0, 1.6, 2.4, 2.4, 2.0, 2.0, 1.45, 2.5]);
-const REST = new Float32Array([0, 0.5, 0.25, 0.3, 0.1, 0.25, 0.12, 0.35]);
-const ROLL = new Float32Array([0, 0.2, 1.5, 2.2, 3.5, 2.5, 3.0, 2.0]);
-const MASS = new Float32Array([0, 1, 1.2, 0.8, 4, 3, 6, 0.2]);
-const STICK = new Float32Array([0, 0.2, 0.25, 0.3, 0.6, 0.45, 0.5, 0.35]); // |slope sine| below which a slow prop stays put
-export const PROP_RADIUS = new Float32Array([0, 0.32, 0.38, 0.4, 0.5, 0.5, 0.5, 0.13]);
+const GRAV = new Float32Array([0, 3.6, 4.5, 5, 8, 7, 16, 6, 9]);
+const DRAG = new Float32Array([0, 1.6, 2.4, 2.4, 2.0, 2.0, 1.45, 2.5, 2]);
+const REST = new Float32Array([0, 0.5, 0.25, 0.3, 0.1, 0.25, 0.12, 0.35, 0.05]);
+const ROLL = new Float32Array([0, 0.2, 1.5, 2.2, 3.5, 2.5, 3.0, 2.0, 8]);
+const MASS = new Float32Array([0, 1, 1.2, 0.8, 4, 3, 6, 0.2, 5]);
+const STICK = new Float32Array([0, 0.2, 0.25, 0.3, 0.6, 0.45, 0.5, 0.35, 1]); // |slope sine| below which a slow prop stays put
+export const PROP_RADIUS = new Float32Array([0, 0.32, 0.38, 0.4, 0.5, 0.5, 0.5, 0.13, 0.47]);
 
 export const MAX_SPEED = 14;
 const BOUNCE_MIN = 0.9;        // u/s of impact speed below which nothing bounces
@@ -37,9 +42,16 @@ export const RUBBLE_LIFE = 3, RUBBLE_FADE = 0.8;
 export const THROW_SPEED = 9; // bombs: u/s added to the octopus's velocity in the aim direction
 export const BLAST_POWER = 11;  // u/s of velocity change for a unit-mass prop at the centre of a blast
 const DEFAULT_CAP = 160;
+// push blocks
+const BEPS = 0.001;            // overlaps smaller than this do not count (a block resting on a tile top shares an edge with it)
+const BLOCK_GROUND_DAMP = 9;   // 1/s of extra horizontal damping while a block is on something: it slides a little, then stops
+const BLOCK_PUSH_SPEED = 1.6;  // u/s a swimming octopus shoves a grounded block along
+const BLOCK_CRUSH_SPEED = 3;   // u/s of fall speed above which a block hurts what it lands on
+const BLOCK_STEP = 0.4;        // furthest a block moves in one substep (never tunnels)
 
 // scratch body for the wall resolvers (no allocation on the hot path)
 const B = { x: 0, y: 0, vx: 0, vy: 0, radius: 0 };
+const BN = { nx: 0, ny: 0, pen: 0 }; // scratch: push-out normal and depth of a circle against a block
 
 export function createProps(cap = DEFAULT_CAP) {
   const d = {
@@ -161,8 +173,160 @@ export function createProps(cap = DEFAULT_CAP) {
   }
   let lastNx = 0, lastNy = 0, ceilHit = false;
 
+  // ---- push blocks (PK_BLOCK): axis-aligned squares moved by their own AABB-vs-tile-grid mover ----
+  function tileSolid(world, tx, ty) { return world.tileAt ? world.tileAt(tx, ty) !== 0 : world.isSolid(tx + 0.5, ty + 0.5); }
+
+  /** Does the box (centre x, y, half extent r) overlap any solid tile? (Touching an edge does not count.) */
+  function boxHitsTiles(world, x, y, r) {
+    const x0 = Math.floor(x - r + BEPS), x1 = Math.floor(x + r - BEPS), y0 = Math.floor(y - r + BEPS), y1 = Math.floor(y + r - BEPS);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (tileSolid(world, tx, ty)) return true;
+    return false;
+  }
+
+  /** Move block i by dx along x: stop flush against rock or another block, handing a pushed block the speed. */
+  function blockMoveX(i, world, dx) {
+    const r = d.radius[i];
+    d.x[i] += dx;
+    const y0 = Math.floor(d.y[i] - r + BEPS), y1 = Math.floor(d.y[i] + r - BEPS);
+    const tx = dx > 0 ? Math.floor(d.x[i] + r - BEPS) : Math.floor(d.x[i] - r + BEPS);
+    for (let ty = y0; ty <= y1; ty++) {
+      if (!tileSolid(world, tx, ty)) continue;
+      d.x[i] = dx > 0 ? tx - r : tx + 1 + r;
+      d.vx[i] = 0;
+      break;
+    }
+    for (let j = 0; j < d.n; j++) {
+      if (j === i || !d.alive[j] || d.kind[j] !== PK_BLOCK) continue;
+      const rr = r + d.radius[j] - BEPS;
+      if (Math.abs(d.x[i] - d.x[j]) >= rr || Math.abs(d.y[i] - d.y[j]) >= rr) continue;
+      if (dx > 0 ? d.x[i] - dx > d.x[j] : d.x[i] - dx < d.x[j]) continue; // it started on the far side: not an entry
+      d.x[i] = dx > 0 ? d.x[j] - r - d.radius[j] : d.x[j] + r + d.radius[j];
+      // a pushed block passes its speed on (a row of blocks shoves along), the pusher is held by the one ahead
+      if (d.vx[i] * dx > 0) { d.vx[j] = d.vx[i]; d.state[j] = PS_FREE; d.rest[j] = 0; }
+      d.vx[i] = 0;
+    }
+  }
+
+  /** Move block i by dy along y; landing on rock or a block sets `grounded`. */
+  function blockMoveY(i, world, dy) {
+    const r = d.radius[i];
+    d.y[i] += dy;
+    const x0 = Math.floor(d.x[i] - r + BEPS), x1 = Math.floor(d.x[i] + r - BEPS);
+    const ty = dy > 0 ? Math.floor(d.y[i] + r - BEPS) : Math.floor(d.y[i] - r + BEPS);
+    for (let tx = x0; tx <= x1; tx++) {
+      if (!tileSolid(world, tx, ty)) continue;
+      d.y[i] = dy > 0 ? ty - r : ty + 1 + r;
+      if (dy > 0) d.grounded[i] = 1;
+      d.vy[i] = 0;
+      break;
+    }
+    for (let j = 0; j < d.n; j++) {
+      if (j === i || !d.alive[j] || d.kind[j] !== PK_BLOCK) continue;
+      const rr = r + d.radius[j] - BEPS;
+      if (Math.abs(d.x[i] - d.x[j]) >= rr || Math.abs(d.y[i] - d.y[j]) >= rr) continue;
+      if (dy > 0 ? d.y[i] - dy > d.y[j] : d.y[i] - dy < d.y[j]) continue;
+      d.y[i] = dy > 0 ? d.y[j] - r - d.radius[j] : d.y[j] + r + d.radius[j];
+      if (dy > 0) d.grounded[i] = 1;
+      d.vy[i] = 0;
+    }
+  }
+
+  function stepBlock(i, dt, world) {
+    const k = PK_BLOCK;
+    const onGround = d.grounded[i] === 1;
+    d.vy[i] += GRAV[k] * dt;
+    d.vx[i] /= 1 + dt * (DRAG[k] + (onGround ? BLOCK_GROUND_DAMP : 0)); // grounded: it slides a little, then stops
+    d.vy[i] /= 1 + dt * DRAG[k];
+    clampSpeed(i);
+    d.grounded[i] = 0;
+    d.timer[i] = Math.max(0, d.vy[i]); // fall speed going into this step: what a landing block hits with (crush)
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(d.vx[i]), Math.abs(d.vy[i])) * dt / BLOCK_STEP));
+    const sub = dt / steps;
+    for (let s = 0; s < steps; s++) {
+      if (d.vx[i] !== 0) blockMoveX(i, world, d.vx[i] * sub);
+      blockMoveY(i, world, d.vy[i] * sub);
+    }
+    if (d.grounded[i] && Math.hypot(d.vx[i], d.vy[i]) < SLEEP_SPEED) {
+      d.rest[i] += dt;
+      if (d.rest[i] >= SLEEP_TIME) { d.state[i] = PS_REST; d.vx[i] = d.vy[i] = 0; d.timer[i] = 0; }
+    } else d.rest[i] = 0;
+  }
+
+  /** Is a sleeping block still held up by rock or another block under it? */
+  function blockSupported(i, world) {
+    const r = d.radius[i];
+    if (boxHitsTiles(world, d.x[i], d.y[i] + 0.02, r)) return true;
+    for (let j = 0; j < d.n; j++) {
+      if (j === i || !d.alive[j] || d.kind[j] !== PK_BLOCK || d.y[j] < d.y[i]) continue;
+      const rr = r + d.radius[j];
+      if (Math.abs(d.x[i] - d.x[j]) < rr - BEPS && d.y[j] - d.y[i] < rr + 0.02) return true;
+    }
+    return false;
+  }
+
+  /** Closest-point test of a circle (centre cx, cy, radius R) against block b: writes the push-out normal and depth into BN, or returns false. */
+  function circleVsBox(cx, cy, R, b) {
+    const r = d.radius[b], bx = d.x[b], by = d.y[b];
+    const px = cx < bx - r ? bx - r : cx > bx + r ? bx + r : cx, py = cy < by - r ? by - r : cy > by + r ? by + r : cy;
+    const dx = cx - px, dy = cy - py, d2 = dx * dx + dy * dy;
+    if (d2 >= R * R) return false;
+    if (d2 > 1e-10) { const dist = Math.sqrt(d2); BN.nx = dx / dist; BN.ny = dy / dist; BN.pen = R - dist; }
+    else { // the centre is inside the box: leave along the shallower axis
+      const ex = r - Math.abs(cx - bx), ey = r - Math.abs(cy - by);
+      if (ex < ey) { BN.nx = cx >= bx ? 1 : -1; BN.ny = 0; BN.pen = ex + R; } else { BN.nx = 0; BN.ny = cy >= by ? 1 : -1; BN.pen = ey + R; }
+    }
+    return true;
+  }
+
+  /** A circle prop against a block: the circle is pushed out, the heavy block does not move. */
+  function circleVsBlock(c, b) {
+    if (d.state[c] === PS_HELD || !circleVsBox(d.x[c], d.y[c], d.radius[c], b)) return;
+    if (d.state[c] !== PS_FREE) { if (BN.pen < 0.02) return; d.state[c] = PS_FREE; d.rest[c] = 0; } // a sleeper only wakes if really overlapped
+    d.x[c] += BN.nx * BN.pen; d.y[c] += BN.ny * BN.pen;
+    const vn = d.vx[c] * BN.nx + d.vy[c] * BN.ny;
+    if (vn < 0) { const e = -vn > BOUNCE_MIN ? 0.25 : 0; d.vx[c] -= (1 + e) * vn * BN.nx; d.vy[c] -= (1 + e) * vn * BN.ny; }
+    if (BN.ny < -0.3) d.sup[c] = 1; // sits on top of the block
+  }
+
+  /** The octopus is solid to blocks: pushed out along the shallower axis, its speed into the box removed. Swimming sideways into a grounded block shoves it along. */
+  function pushBlocksByOctopus(octo, world) {
+    if (!octo || octo.dead) return;
+    for (let i = 0; i < d.n; i++) {
+      if (!d.alive[i] || d.kind[i] !== PK_BLOCK || !circleVsBox(octo.x, octo.y, octo.radius, i)) continue;
+      const nx = BN.nx, ny = BN.ny, pen = BN.pen;
+      if (ny > 0.5 && d.timer[i] > BLOCK_CRUSH_SPEED) hurtOctopus(octo, d.x[i], d.y[i], 'block'); // a fast fall onto the octopus
+      if (Math.abs(nx) > 0.7 && d.grounded[i]) {
+        const dir = nx < 0 ? 1 : -1, into = octo.vx * dir;
+        // only along a free floor: the next column over must be open, or the block stays put
+        if (into > 0.15 && !boxHitsTiles(world, d.x[i] + dir * 0.12, d.y[i], d.radius[i])) {
+          const v = Math.min(BLOCK_PUSH_SPEED, into * 2);
+          if (d.vx[i] * dir < v) d.vx[i] = dir * v;
+          d.state[i] = PS_FREE; d.rest[i] = 0;
+        }
+      }
+      octo.x += nx * pen; octo.y += ny * pen;
+      const vn = octo.vx * nx + octo.vy * ny;
+      if (vn < 0) { octo.vx -= vn * nx; octo.vy -= vn * ny; }
+    }
+  }
+
+  /** A block landing fast on an enemy kills it (no kill event: the enemy is just flagged dead, as when its support goes). */
+  function crushEnemies(list) {
+    for (let i = 0; i < d.n; i++) {
+      if (!d.alive[i] || d.kind[i] !== PK_BLOCK || d.timer[i] <= BLOCK_CRUSH_SPEED) continue;
+      const r = d.radius[i], bx = d.x[i], by = d.y[i];
+      for (let k = 0; k < list.length; k++) {
+        const e = list[k];
+        if (e.dead || e.ghost || e.immune || e.kind === 'beholder') continue;
+        const er = e.radius || 0.4;
+        if (Math.abs(e.x - bx) < r + er * 0.8 && e.y > by && e.y - er < by + r) e.dead = true;
+      }
+    }
+  }
+
   function stepOne(i, dt, world) {
     const k = d.kind[i];
+    if (k === PK_BLOCK) { stepBlock(i, dt, world); return; }
     d.vy[i] += GRAV[k] * dt;
     const f = 1 / (1 + dt * DRAG[k]);
     d.vx[i] *= f; d.vy[i] *= f;
@@ -210,6 +374,8 @@ export function createProps(cap = DEFAULT_CAP) {
         if (j === i || !d.alive[j] || d.kind[j] === PK_RUBBLE) continue;
         const sj = d.state[j];
         if (sj === PS_FREE && j < i) continue; // each free pair once (the lower index handles it)
+        const bi = d.kind[i] === PK_BLOCK, bj = d.kind[j] === PK_BLOCK;
+        if (bi || bj) { if (bi !== bj) circleVsBlock(bi ? j : i, bi ? i : j); continue; } // block vs block is the AABB mover's job
         let dx = d.x[i] - d.x[j], dy = d.y[i] - d.y[j];
         const rr = d.radius[i] + d.radius[j];
         if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
@@ -318,6 +484,7 @@ export function createProps(cap = DEFAULT_CAP) {
         lastVersion = v;
       }
       nAwake = 0;
+      let blocksAwake = false;
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
         if (d.grace[i] > 0) d.grace[i] = Math.max(0, d.grace[i] - dt);
@@ -327,14 +494,18 @@ export function createProps(cap = DEFAULT_CAP) {
         }
         if (d.state[i] !== PS_FREE) continue;
         awake[nAwake++] = i;
+        if (d.kind[i] === PK_BLOCK) blocksAwake = true;
         stepOne(i, dt, world);
       }
+      // a sleeping block whose support slid away (the block under it was shoved off) falls again
+      if (blocksAwake) for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === PK_BLOCK && d.state[i] === PS_REST && !blockSupported(i, world)) wake(i);
       if (nAwake > 0) { separate(); separateRubble(); }
-      if (octo) pushByOctopus(octo);
-      if (enemies) pushByEnemies(enemies);
+      if (octo) { pushByOctopus(octo); pushBlocksByOctopus(octo, world); }
+      if (enemies) { pushByEnemies(enemies); crushEnemies(enemies); }
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in
       for (let i = 0; i < d.n; i++) {
-        if (d.alive[i] && d.state[i] !== PS_HELD && solidAt(world, d.x[i], d.y[i])) eject(i, world);
+        if (!d.alive[i] || d.state[i] === PS_HELD) continue;
+        if (d.kind[i] === PK_BLOCK ? boxHitsTiles(world, d.x[i], d.y[i], d.radius[i]) : solidAt(world, d.x[i], d.y[i])) eject(i, world);
       }
     },
   };

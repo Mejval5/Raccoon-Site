@@ -89,5 +89,10 @@ All rows: **generated, Milan style**. Made with the openai-image-gen skill (`ima
 | `img/v2/crack-wall.webp` | tall crack for the tutorial bomb wall | repeated and flipped down the wall |
 | `img/v2/hub-board.webp`, `hub-questsign.webp` | wall-mounted notice board and the quest signpost (with a painted "!") | one sheet, split |
 | `img/v2/title-banner.webp` | ribbon behind the level title card | |
+| `img/v2/mat-bedrock.webp` | materials: indestructible basalt, 512 px = 4 world units | generated 2026-10-07 (medium, edit with `shallows-rock` and Milan's `PushableBlock05` as references); darkened with a violet tint in render.js |
+| `img/v2/mat-timber.webp` | materials: sunken-ship planks, 512 px = 2 world units | generated 2026-10-07 (medium, Milan's `PushableBlock01` + `shallows-rock` as references); brightened 1.6x |
+| `img/v2/mat-masonry.webp` | materials: shop frame / ruin stone, 512 px = 3 world units | generated 2026-10-07 (medium, Milan's `PushableBlock03` + `05` as references) |
+| `img/v2/mat-bone-a.webp`, `mat-bone-b.webp` | materials: bone (skull) blocks, one per tile | Milan Švancara, `Sprites/Tiles/PushableBlock02.png` / `03.png`, 192 px, desaturated to 35% |
+| `img/v2/push-block.webp` | pushable block prop | Milan Švancara, `Sprites/Tiles/PushableBlock01.png`, 192 px |
 
 Image budget: rock 1, backdrops 2, ring 1, stall 1, keeper 1, chest 1, vault crack 1, wall crack 1, boards 1, banner 1 = 11 (all medium; no separate low drafts were made to stay under 12, the four failed `--background transparent` calls never reached the model).

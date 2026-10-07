@@ -69,6 +69,25 @@ import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall cri
 import { prefersReducedMotion } from './config.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
+import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_DRAW_ORDER, getTileDrawHook } from './materials.js';
+
+// ---- Materials (Spelunky-style layering, materials.js). Per material id: flat fill, texture (v2-art key, world units per
+// repeat, alpha), an optional tint laid over the texture, per-tile art keys, and up to two rim strokes along the layer's
+// outline (width in tiles). Every layer is drawn as if it touched air everywhere; the next, higher layer covers it and its
+// rim overlaps the boundary. Rock keeps the original navy fill + mint rim.
+const MAT_FILL = ['', 'rgb(58,84,142)', 'rgb(24,23,40)', 'rgb(118,106,90)', 'rgb(96,66,40)', 'rgb(128,122,112)'];
+const MAT_TEX = ['', 'rock', 'matBedrock', '', 'matTimber', 'matMasonry'];
+const MAT_TEX_UNITS = new Float32Array([0, ROCK_TILE_UNITS, 4, 0, 2, 3]);
+const MAT_TEX_ALPHA = new Float32Array([0, 0.8, 1, 0, 1, 1]);
+const MAT_TINT = ['', '', 'rgba(14,8,30,0.32)', '', '', 'rgba(30,44,78,0.28)'];
+const MAT_TILE_ART = [null, null, null, ['matBoneA', 'matBoneB'], null, null];
+const MAT_RIM = ['', 'rgba(70,205,165,0.95)', 'rgb(8,7,16)', 'rgb(46,30,18)', 'rgb(34,22,13)', 'rgb(44,44,58)'];
+const MAT_RIM_W = new Float32Array([0, 0.1, 0.2, 0.11, 0.12, 0.11]);
+const MAT_RIM2 = ['', '', 'rgba(132,124,184,0.6)', 'rgba(214,180,130,0.45)', 'rgba(176,128,80,0.5)', 'rgba(200,196,186,0.45)'];
+const MAT_RIM2_W = new Float32Array([0, 0, 0.035, 0.03, 0.03, 0.03]);
+/** Texture keys the wall bake uses (a cell baked before one loaded is baked again when it arrives). */
+const MAT_ART_KEYS = new Set(['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB']);
+export const MATERIAL_STYLE = { MAT_FILL, MAT_RIM, MAT_RIM_W };
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -502,6 +521,79 @@ export function createRenderer(ctx, world) {
     paintNoise(bctx, xOffsetTiles, yOffsetTiles, canvas.width, canvas.height);
   }
 
+  // Materials: one cell of the v2 walls, layer by layer (see MAT_* above). For each material present in the band, lowest
+  // priority first: fill the outline of every tile of that priority or higher (the lowest layer's outline is the collision
+  // outline itself, so the silhouette always matches collision), texture it, draw its per-tile art, stroke its rim. The
+  // embedded-treasure hook (materials.js setTileDrawHook) runs after the main-terrain layer, before bedrock.
+  function paintMaterialCell(canvas, bi, y0, x0, cols, rows) {
+    const bctx = canvas.getContext('2d');
+    const s = BAKE_PX_PER_UNIT;
+    bctx.clearRect(0, 0, canvas.width, canvas.height);
+    bctx.save();
+    bctx.beginPath();
+    bctx.rect(0, 0, canvas.width, canvas.height);
+    bctx.clip();
+    bctx.lineJoin = 'round';
+    bctx.lineCap = 'round';
+    const mask = world.bandMaterials(bi);
+    const hook = getTileDrawHook();
+    let hooked = !hook;
+    const runHook = () => {
+      hooked = true;
+      for (let ty = y0 - 1; ty <= y0 + rows; ty++) for (let tx = x0 - 1; tx <= x0 + cols; tx++) {
+        const m = world.tileAt(tx, ty);
+        if (m !== 0 && m !== MAT_BEDROCK) hook(bctx, tx, ty, m, (tx - x0) * s, (ty - y0) * s, s);
+      }
+    };
+    for (let k = 0; k < MAT_DRAW_ORDER.length; k++) {
+      const m = MAT_DRAW_ORDER[k];
+      if (m === MAT_BEDROCK && !hooked) runHook();
+      if (!(mask & (1 << m))) continue;
+      const o = world.getLayerOutline(bi, m);
+      if (!o || !o.loops.length) continue;
+      const loops = o.loops.map((loop) => loop.map((p) => ({ x: (p.x - x0) * s, y: (p.y - y0) * s })));
+      bctx.fillStyle = MAT_FILL[m];
+      pathFromLoops(bctx, loops);
+      bctx.fill('nonzero');
+      const img = MAT_TEX[m] ? artImg(MAT_TEX[m]) : null;
+      const pat = img ? bctx.createPattern(img, 'repeat') : null;
+      if (pat && pat.setTransform) {
+        const kk = (MAT_TEX_UNITS[m] * s) / img.naturalWidth;
+        pat.setTransform(new DOMMatrix([kk, 0, 0, kk, -x0 * s, -y0 * s]));
+        bctx.globalAlpha = MAT_TEX_ALPHA[m];
+        bctx.fillStyle = pat;
+        bctx.fill('nonzero');
+        bctx.globalAlpha = 1;
+      }
+      if (MAT_TINT[m]) { bctx.fillStyle = MAT_TINT[m]; bctx.fill('nonzero'); }
+      const art = MAT_TILE_ART[m];
+      if (art) {
+        // one block sprite per tile of this material (Spelunky's bone blocks), clipped to the layer's rounded outline
+        bctx.save();
+        bctx.clip('nonzero');
+        for (let ty = y0 - 1; ty <= y0 + rows; ty++) for (let tx = x0 - 1; tx <= x0 + cols; tx++) {
+          if (world.tileAt(tx, ty) !== m) continue;
+          const img = artImg(art[((tx * 7 + ty * 13) >>> 0) % art.length]);
+          if (img) bctx.drawImage(img, (tx - x0) * s, (ty - y0) * s, s, s);
+        }
+        bctx.restore();
+      }
+      bctx.strokeStyle = MAT_RIM[m];
+      bctx.lineWidth = s * MAT_RIM_W[m];
+      pathFromLoops(bctx, loops);
+      bctx.stroke();
+      if (MAT_RIM2_W[m] > 0) {
+        bctx.strokeStyle = MAT_RIM2[m];
+        bctx.lineWidth = s * MAT_RIM2_W[m];
+        bctx.stroke();
+      }
+      if (m === MAT_ROCK && !hooked) runHook();
+    }
+    if (!hooked) runHook();
+    bctx.restore();
+    paintNoise(bctx, x0, y0, canvas.width, canvas.height);
+  }
+
   // r44: an endless chunk (32 x 24 tiles) is no longer one canvas (6.7 MB at 48 px per unit on a phone, three live plus a cap, 26 MB, far
   // more than the screen): it is cut into cells of cellTiles() tiles square, like the v2 bands, and only the cells on the screen (and half a cell
   // round them, kept until the camera is further away) are baked. Every cell carries the quarter-tile margin above and below (see CHUNK_MARGIN_PX) so the cap line works.
@@ -537,7 +629,9 @@ export function createRenderer(ctx, world) {
   const CELL_KEY = 4096; // key = band * CELL_KEY + column
   const BAKE_BUDGET_MS = 8;
   const bandCache = new Map(); // key -> {canvas, version}
-  const onArt = (key) => { if (key === 'rock') releaseCanvases(bandCache); }; // bake with the texture once it is there
+  // bake with the texture once it is there: the cells go stale (baked again on the frame budget, the old bake drawn meanwhile)
+  let artGen = 0;
+  const onArt = (key) => { if (MAT_ART_KEYS.has(key)) artGen++; };
   if (world.v2) ensureV2Art(onArt);
   let bandBakes = 0; // total bakes, for tests / perf checks
   let bandBakeMaxMs = 0, bandBakeLastMs = 0; // slowest / latest single cell bake
@@ -561,8 +655,9 @@ export function createRenderer(ctx, world) {
       canvas = acquireCanvas(wantW, wantH);
     }
     const t0 = performance.now();
-    paintWallCanvas(canvas, bandLoopsPx(bi, y0, x0), y0, x0);
-    bandCache.set(key, { canvas, version: world.bandVersion(bi) });
+    if (world.getLayerOutline) paintMaterialCell(canvas, bi, y0, x0, cols, rows);
+    else paintWallCanvas(canvas, bandLoopsPx(bi, y0, x0), y0, x0);
+    bandCache.set(key, { canvas, version: world.bandVersion(bi), art: artGen });
     bandBakes++;
     bandBakeLastMs = performance.now() - t0;
     if (bandBakeLastMs > bandBakeMaxMs) bandBakeMaxMs = bandBakeLastMs;
@@ -595,7 +690,7 @@ export function createRenderer(ctx, world) {
     }
     const t0 = performance.now();
     let baked = 0, missing = 0;
-    const need = (bi, ci) => { const c = bandCache.get(bi * CELL_KEY + ci); return !c || c.version !== world.bandVersion(bi); };
+    const need = (bi, ci) => { const c = bandCache.get(bi * CELL_KEY + ci); return !c || c.version !== world.bandVersion(bi) || c.art !== artGen; };
     // cells on screen first: a missing one must be baked, within the frame's budget but never fewer than one per frame
     for (let bi = w.visFrom; bi <= w.visTo; bi++) {
       for (let ci = w.cFrom; ci <= w.cTo; ci++) {
@@ -1304,6 +1399,23 @@ export function createRenderer(ctx, world) {
     const left = worldToScreen(camera, canvasW, canvasH, 0, 0).x;
     const right = worldToScreen(camera, canvasW, canvasH, chunkW, 0).x;
     ctx.save();
+    if (world.v2) {
+      // materials: beyond the level is the same indestructible bedrock as its border
+      if (left <= 0 && right >= canvasW) { ctx.restore(); return; }
+      const img = artImg('matBedrock');
+      const o = worldToScreen(camera, canvasW, canvasH, 0, 0), k = camera.pxPerUnit;
+      const fills = [MAT_FILL[MAT_BEDROCK]];
+      const pat = img ? ctx.createPattern(img, 'repeat') : null;
+      if (pat && pat.setTransform) { const kk = (4 * k) / img.naturalWidth; pat.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); fills.push(pat); }
+      fills.push(MAT_TINT[MAT_BEDROCK]);
+      for (const f of fills) {
+        ctx.fillStyle = f;
+        if (left > 0) ctx.fillRect(0, 0, left, canvasH);
+        if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
+      }
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = `rgb(${WALL_FILL_COLOR.join(',')})`;
     if (left > 0) ctx.fillRect(0, 0, left, canvasH);
     if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
@@ -1409,10 +1521,17 @@ export function createRenderer(ctx, world) {
     },
     /** r43: the slowest set-up step (plant anchors, one deep-rock step) and the slowest wall pass (cell bakes) of this level, in ms. */
     timing() { return { warmMax: +timing.warmMax.toFixed(1), wallsMax: +timing.wallsMax.toFixed(1) }; },
+    /** Materials test hook: bake (if needed) and return v2 wall cell (band bi, column ci) with its tile origin and px per tile. */
+    debugCell(bi, ci) {
+      const key = bi * CELL_KEY + ci;
+      const c = bandCache.get(key);
+      if (!c || c.version !== world.bandVersion(bi) || c.art !== artGen) bakeCell(bi, ci);
+      return { canvas: bandCache.get(key).canvas, x0: ci * cellTiles(), y0: bi * world.bandRows, cols: cellTiles(), rows: world.bandRows, s: BAKE_PX_PER_UNIT };
+    },
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1483,6 +1602,8 @@ export function createRenderer(ctx, world) {
       // `drawWalls`, so outer rock occludes the shafts exactly the same way
       // the level's own walls already do -- no shaft shows on rock anywhere.
       if (G(2)) drawOuterRock(canvasW, canvasH);
+      // materials: wall traps and pushable blocks sit below every terrain material, so the walls' edges overlap their bases
+      if (G(2) && preWallDraw) preWallDraw(ctx, camera, canvasW, canvasH);
       const tw0 = performance.now();
       if (G(2)) drawWalls(canvasW, canvasH, resident);
       timing.wallsMs = performance.now() - tw0; if (timing.wallsMs > timing.wallsMax) timing.wallsMax = timing.wallsMs;
