@@ -3,8 +3,7 @@
 // OVERNIGHT.md §4 M4-1.
 
 import { artUrl } from './v2-art.js';
-import { drawItemIcon } from './items-draw.js';
-import { onSpritesReady } from './sprites.js';
+import { drawItemIcon, itemArtVersion } from './items-draw.js';
 const HEART_SRC = new URL('../assets/ui-heart.webp', import.meta.url).href; // relative to this module, not the page (the test page lives in tests/)
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
@@ -83,7 +82,6 @@ export function createUI(root, handlers) {
   const itemsEl = el('div', 'octo-hud-items'); // its own row under the stats (never runs under the pause button)
   itemsEl.style.display = 'none';
   let itemsKey = '';
-  onSpritesReady(() => { itemsKey = null; }); // r46: the item icons are redrawn from the sprite atlas once it has loaded
   stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
   bar.append(heartsRow, stats, itemsEl);
 
@@ -190,7 +188,7 @@ export function createUI(root, handlers) {
     if (v2 && stageEl.textContent !== state.stage) stageEl.textContent = state.stage;
     shellsEl.style.display = v2 && state.shells !== undefined ? '' : 'none';
     if (state.shells !== undefined && shellsNum.textContent !== String(state.shells)) shellsNum.textContent = String(state.shells);
-    const key = state.items ? state.items.join() : '';
+    const key = state.items && state.items.length ? state.items.join() + '/' + itemArtVersion() : '';
     if (key !== itemsKey) {
       itemsKey = key;
       itemsEl.textContent = '';

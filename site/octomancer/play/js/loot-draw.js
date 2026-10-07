@@ -264,7 +264,7 @@ function drawRelic(ctx, x, y, ppu, time, present) {
   ctx.restore();
 }
 
-function drawBombItem(ctx, x, y, ppu) {
+export function drawBombItem(ctx, x, y, ppu) {
   const r = 0.2 * ppu;
   ctx.fillStyle = '#26303a'; ctx.strokeStyle = '#0b1218'; ctx.lineWidth = Math.max(1.5, r * 0.18);
   ctx.beginPath(); ctx.arc(x, y + r * 0.2, r, 0, TAU); ctx.fill(); ctx.stroke();
@@ -273,7 +273,7 @@ function drawBombItem(ctx, x, y, ppu) {
   ctx.fillStyle = '#ffb03a'; ctx.beginPath(); ctx.arc(x + r * 1.1, y - r * 0.9, r * 0.22, 0, TAU); ctx.fill();
 }
 
-function drawHeartItem(ctx, x, y, ppu) {
+export function drawHeartItem(ctx, x, y, ppu) {
   if (drawSprite(ctx, 'heart', x, y, 0.46 * ppu, 0, 0.5, 0.5)) return; // Milan's UI heart
   const r = 0.2 * ppu;
   ctx.fillStyle = '#ff5a6e'; ctx.strokeStyle = '#6b1222'; ctx.lineWidth = Math.max(1.5, r * 0.18);

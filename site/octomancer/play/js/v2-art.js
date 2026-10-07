@@ -17,12 +17,26 @@ const FILES = {
   banner: 'title-banner.webp',
   whirlpool: 'whirlpool-sheet.webp', // r42: Milan's Whirlpool animation (21 frames, 7 columns of 208 px)
 };
+/** r44: the same animation at about 0.55 scale (380 px cells), used only on a DPR >= 2 screen wider than 900 css px (a desktop at DPR 2 drew the normal sheet 1.9x too big and it looked soft). It loads under the key 'whirlpool' instead of the normal sheet, never both. */
+export const WHIRLPOOL_HI_FILE = 'whirlpool-sheet-hi.webp';
+/** 'hi' or 'lo': which whirlpool sheet this page loads. `?whirl=hi|lo` forces one (tests, review). */
+export function whirlpoolSheetKey() {
+  if (typeof window === 'undefined') return 'lo';
+  try { const q = new URLSearchParams(location.search).get('whirl'); if (q === 'hi' || q === 'lo') return q; } catch (e) { /* no URL: the default */ }
+  return pickWhirlSheet(window.devicePixelRatio || 1, window.innerWidth);
+}
+/** The rule: the big sheet only for a DPR >= 2 screen wider than 900 css px. */
+export function pickWhirlSheet(dpr, cssWidth) { return dpr >= 2 && cssWidth > 900 ? 'hi' : 'lo'; }
 
 export const ROCK_TILE_UNITS = 9;           // world units one rock texture tile spans
 export const COUNTER_SLICES = [60, 20, 68]; // px widths of the counter strip's left cap, middle, right cap (set from export_info.json)
 
 /** @type {Record<string, HTMLImageElement>} */
 export const art = {};
+/** r44: decoded copies (ImageBitmap) of the images that are drawn every frame at a scale. Drawing the <img> itself decodes it at the first real draw (at the scale
+ *  asked for: the 1 x 1 warm-up draw only decoded a thumbnail), which was a 17-47 ms drawImage when the hub's whirlpool first showed on a phone at 4x. */
+const bitmaps = {};
+const BITMAP_KEYS = new Set(['whirlpool']);
 const listeners = [];
 let started = false;
 
@@ -49,8 +63,12 @@ export function ensureV2Art(cb) {
   for (const key of Object.keys(FILES)) {
     const img = new Image();
     // r44: decode once, when it arrives (off the main thread), not at the first drawImage of a frame during play
-    img.addEventListener('load', () => { for (const f of listeners) f(key); warmImage(img); }, { once: true });
-    img.src = artUrl(FILES[key]);
+    img.addEventListener('load', () => {
+      if (BITMAP_KEYS.has(key) && typeof createImageBitmap === 'function') {
+        createImageBitmap(img).then((b) => { bitmaps[key] = b; for (const f of listeners) f(key); }, () => { for (const f of listeners) f(key); });
+      } else { for (const f of listeners) f(key); warmImage(img); }
+    }, { once: true });
+    img.src = key === 'whirlpool' && whirlpoolSheetKey() === 'hi' ? artUrl(WHIRLPOOL_HI_FILE) : artUrl(FILES[key]);
     art[key] = img;
   }
   return art;
@@ -63,6 +81,13 @@ export function offV2Art(cb) { const i = listeners.indexOf(cb); if (i >= 0) list
 export function artImg(key) {
   const im = art[key];
   return im && im.complete && im.naturalWidth ? im : null;
+}
+
+/** The decoded bitmap of `key` (see `bitmaps`), or null until it is ready; the image itself is the fallback for a browser without createImageBitmap. */
+export function artBitmap(key) {
+  if (bitmaps[key]) return bitmaps[key];
+  if (typeof createImageBitmap !== 'function') return artImg(key);
+  return null;
 }
 
 export const V2_ART_FILES = FILES;

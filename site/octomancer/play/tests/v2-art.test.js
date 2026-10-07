@@ -1,7 +1,8 @@
 // Round 24: generated Shallows art (js/v2-art.js, img/v2/*.webp): every file loads, sprites carry alpha,
 // the rock tile is seamless, the counter slices add up, the draw code runs with the art and without it,
 // the banner title card shows, and endless mode does not fetch any of it.
-import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS } from '../js/v2-art.js';
+import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS, whirlpoolSheetKey } from '../js/v2-art.js';
+import { WHIRL_SHEETS } from '../js/whirlpool-meta.js';
 import { DIVER_SCALE, drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
 import { drawV2Marks } from '../js/v2-draw.js';
 import { ATLAS_RECTS } from '../js/sprite-atlas.js';
@@ -32,7 +33,8 @@ export async function runV2ArtTests(assert) {
   let magenta = 0;
   for (const k of alphaKeys) { const d = pixels(artImg(k)).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 2] > 200 && d[i + 1] < 90) magenta++; }
   assert('v2 art: no key-colour (magenta) pixels are left opaque in any sprite', magenta < 40);
-  assert('v2 art: the whirlpool sheet is 7 columns x 3 rows of 208 px cells', artImg('whirlpool').naturalWidth === 7 * 208 && artImg('whirlpool').naturalHeight === 3 * 208);
+  const wsh = WHIRL_SHEETS[whirlpoolSheetKey()];
+  assert('v2 art: the whirlpool sheet in use is 7 columns x 3 rows of the cells its meta says (r44: 208 px, or 380 px for the DPR 2 desktop sheet)', artImg('whirlpool').naturalWidth === 7 * wsh.cell && artImg('whirlpool').naturalHeight === 3 * wsh.cell);
   const far = pixels(artImg('far')).data;
   let opaque = true; for (let i = 3; i < far.length; i += 4 * 97) if (far[i] !== 255) { opaque = false; break; }
   assert('v2 art: the far backdrop is fully opaque', opaque);

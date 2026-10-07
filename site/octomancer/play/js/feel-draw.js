@@ -2,7 +2,7 @@
 // Called by render.js right before the enemies (so the shadow lies under them and under the props
 // drawn later by the v2 extras). Reads the props struct-of-arrays and the enemy list; no allocation.
 
-import { PK_BOMB, PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PS_FREE } from './props.js';
+import { PK_BOMB, PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PK_FIND, PS_FREE } from './props.js';
 
 const SHADOW_ALPHA = 0.22;
 const FLOOR_SCAN = 1.6; // tiles below an enemy that are searched for the floor it stands on
@@ -41,7 +41,7 @@ export function drawContactShadows(ctx, camera, cw, ch, d, enemies, isSolid, oct
   for (let i = 0; i < d.n; i++) {
     if (!d.alive[i]) continue;
     const k = d.kind[i];
-    if (k !== PK_BOMB && k !== PK_POT && k !== PK_CLAM && k !== PK_CHEST && k !== PK_RELIC && k !== PK_ROCK) continue;
+    if (k !== PK_BOMB && k !== PK_POT && k !== PK_CLAM && k !== PK_CHEST && k !== PK_RELIC && k !== PK_ROCK && k !== PK_FIND) continue;
     if (k === PK_ROCK && d.state[i] === PS_FREE && Math.abs(d.vy[i]) > 1) continue; // a falling rock
     const r = d.radius[i];
     const fy = floorBelow(isSolid, d.x[i], d.y[i] + r * 0.5, r + 0.6);

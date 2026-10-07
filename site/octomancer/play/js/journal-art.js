@@ -112,6 +112,15 @@ export const FN = {
     c.strokeStyle = INK; c.lineWidth = 0.07; c.beginPath(); c.moveTo(-0.15, -0.8); c.lineTo(0.05, -0.4); c.lineTo(-0.15, -0.1); c.lineTo(0.12, 0.3); c.lineTo(-0.02, 0.8); c.stroke();
     c.strokeStyle = 'rgba(225,245,255,0.9)'; c.lineWidth = 0.05; c.beginPath(); c.arc(0.3, -0.05, 0.09, 0, TAU); c.moveTo(0.48, -0.3); c.arc(0.42, -0.3, 0.06, 0, TAU); c.stroke(); // a bubble seeping out
   },
+  buried(c) {
+    // a block of rock with a shell sealed in it, shown as the goggles see it: a pale silhouette and a few flecks
+    stroke(c, '#7d8b96', 0.1); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.18); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(190,232,220,0.35)'; c.beginPath(); c.arc(0.05, 0.05, 0.6, 0, TAU); c.fill();
+    c.fillStyle = '#d6f1e8'; c.strokeStyle = 'rgba(40,70,70,0.6)'; c.lineWidth = 0.05;
+    c.beginPath(); c.ellipse(0.05, 0.08, 0.36, 0.3, -0.4, 0, TAU); c.fill(); c.stroke();
+    c.beginPath(); c.arc(0.05, 0.08, 0.16, 0.5, 5.2); c.stroke();
+    c.fillStyle = 'rgba(236,226,200,0.8)'; for (const [x, y] of [[-0.55, -0.5], [-0.42, -0.58], [0.52, 0.55]]) { c.beginPath(); c.arc(x, y, 0.05, 0, TAU); c.fill(); }
+  },
   relic(c) {
     stroke(c, '#e7b94a', 0.09);
     c.beginPath(); c.roundRect(-0.55, 0.45, 1.1, 0.35, 0.08); c.fill(); c.stroke();
