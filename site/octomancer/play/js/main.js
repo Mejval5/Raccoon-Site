@@ -551,7 +551,7 @@ function step(dt) {
 
   if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
   const depth = Math.max(0, world.depth() - world.startY);
-  liveScore = computeScore(depth, pickups.totals, runKills);
+  if (!octo.dead) liveScore = computeScore(depth, pickups.totals, runKills); // a sinking corpse scores no depth
 
   if (octo.dead && !octo.gameoverEmitted && octo.deathTimer === 0) {
     octo.gameoverEmitted = true;
