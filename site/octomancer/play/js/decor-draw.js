@@ -15,6 +15,7 @@
 
 import { prefersReducedMotion } from './config.js';
 import { visibleObj, cullView } from './cull.js';
+import { getFoliageTable } from './foliage.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -33,11 +34,33 @@ const IMAGES = {
   rune5: loadImage(ASSET('decor-rune5.webp')),
   bush2: loadImage(ASSET('decor-bush2.webp')),
 };
+// the foliage sheet (data/foliage.json "art"): Daniel's six runes and the background crystals / pebbles live there
+let sheetImg = null;
+function sheet() { if (!sheetImg) sheetImg = loadImage(ASSET('foliage.webp')); return sheetImg; }
+function sheetCell(id) {
+  const T = getFoliageTable();
+  if (!T) return -1;
+  return T.ids.indexOf(id);
+}
 
 function ready(img) { return img.complete && img.naturalWidth > 0; }
 
-/** Kinds drawn in the second pass, on top of the wall bake: rune glyphs and (r37) the procedural fossils. */
-function onWallPass(kind) { return kind === 'rune1' || kind === 'rune3' || kind === 'rune5' || kind.startsWith('fossil'); }
+/** Kinds drawn in the second pass, on top of the wall bake: rune glyphs, (r37) the procedural fossils and the
+ * background generator's crystals and pebbles. */
+function onWallPass(kind) { return kind.startsWith('rune') || kind.startsWith('fossil') || kind === 'embed'; }
+
+/** A crystal / pebble cluster of the original's BackgroundPattern1, on the rock face, in its own colours. */
+function drawEmbedded(ctx, camera, worldToScreen, canvasW, canvasH, c) {
+  const T = getFoliageTable(), img = sheet();
+  if (!T || !ready(img)) return;
+  const k = c.fk, s = worldToScreen(camera, canvasW, canvasH, c.x, c.y);
+  const h = T.h[k] * c.scale * camera.pxPerUnit, w = T.w[k] * c.scale * camera.pxPerUnit;
+  ctx.save();
+  ctx.globalAlpha = T.alpha[k];
+  ctx.translate(s.x, s.y); ctx.rotate(-c.rot); if (c.flip) ctx.scale(-1, 1); // Unity z rotation is counter-clockwise, y up
+  ctx.drawImage(img, T.sx[k], T.sy[k], T.sw[k], T.sh[k], -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
 
 /**
  * r37: a fossil pressed into the rock, in the pale carving colour with a dark engraved edge: a spiral shell, a fish
@@ -97,13 +120,20 @@ const tintedRuneCache = {};
 function getTintedRune(kind) {
   const cached = tintedRuneCache[kind];
   if (cached) return cached;
-  const img = IMAGES[kind];
+  const img = IMAGES[kind] || sheet();
   if (!ready(img)) return null;
   const c = document.createElement('canvas');
-  c.width = img.naturalWidth;
-  c.height = img.naturalHeight;
   const cctx = c.getContext('2d');
-  cctx.drawImage(img, 0, 0);
+  if (IMAGES[kind]) {
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    cctx.drawImage(img, 0, 0);
+  } else { // rune2 / rune4 / rune6: a cell of the foliage sheet
+    const T = getFoliageTable(), k = sheetCell(kind);
+    if (k < 0) return null;
+    c.width = T.sw[k]; c.height = T.sh[k];
+    cctx.drawImage(img, T.sx[k], T.sy[k], T.sw[k], T.sh[k], 0, 0, c.width, c.height);
+  }
   cctx.globalCompositeOperation = 'source-atop';
   cctx.fillStyle = 'rgba(170,222,255,0.9)';
   cctx.fillRect(0, 0, c.width, c.height);
@@ -121,8 +151,10 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     drawFossil(ctx, s.x, s.y, camera.pxPerUnit * 0.85, c.kind, (c.phase - Math.PI) * 0.5, c.flip, 0.5);
     return;
   }
-  const img = IMAGES[c.kind];
-  if (!ready(img)) return;
+  if (c.kind === 'embed') { drawEmbedded(ctx, camera, worldToScreen, canvasW, canvasH, c); return; }
+  const isRune = c.kind.startsWith('rune');
+  const img = isRune ? getTintedRune(c.kind) : IMAGES[c.kind];
+  if (!img || (!isRune && !ready(img))) return;
   let worldSize = 0.6;
   let dx = 0, dy = 0, rot = 0, scaleY = 1, alpha = 1;
   let facingRight = null; // non-null overrides c.flip with a direction-of-travel mirror (fish, round-7)
@@ -157,7 +189,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // A slow, barely-visible crawl back and forth along its own wall cell.
     dx = c.onFloor || c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
     dy = !c.onFloor && !c.onCeiling ? Math.sin(t * 0.05 + c.phase) * 0.3 : 0;
-  } else if (c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5') {
+  } else if (isRune) {
     worldSize = 0.4;
     rot = Math.sin(t * 0.7 + c.phase) * 0.08;
     // Round-2 fix (Daniel's screenshot review: "the white rune glyphs float
@@ -176,7 +208,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
 
   const s = worldToScreen(camera, canvasW, canvasH, c.x + dx, c.y + dy);
   const h = worldSize * camera.pxPerUnit;
-  const w = h * (img.naturalWidth / img.naturalHeight);
+  const w = h * (isRune ? img.width / img.height : img.naturalWidth / img.naturalHeight);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(s.x, s.y);
@@ -212,9 +244,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
   // `bushmini` is gone entirely (see decor.js), and `bush2`'s own source art
   // is a plausible muted green already, so it draws unfiltered/native now,
   // same as every other critter/decor sprite.
-  const isRune = c.kind === 'rune1' || c.kind === 'rune3' || c.kind === 'rune5';
-  const drawImg = isRune ? (getTintedRune(c.kind) || img) : img;
-  ctx.drawImage(drawImg, -w / 2, -h / 2, w, h);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
 

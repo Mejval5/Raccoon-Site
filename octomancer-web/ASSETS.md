@@ -24,6 +24,8 @@ The dev deletes anything under `play/` that is not listed (OVERNIGHT.md §2).
 | `assets/bg-cave.webp` | `site/img/octomancer/cave-bg.webp` (already shipped on the title screen; itself sourced from `octomancer-unity\Assets\Sprites\Background\` per `octomancer-web/harvest/MANIFEST.md`, bucket A). Visual pass (this session): replaces `bg-far.webp` (removed), which was BGFar.png tiled every 40 world units — too bright/saturated and showed a stippled circle-pattern texture plus a visible seam at the tile boundary. Drawn once in world space near the surface instead of tiled, so Start Game's zoom also lands on the same art. | Milan Švancara |
 | `assets/plant1.webp` | `octomancer-unity\Assets\Sprites\Background\Plant1.png` | Milan Švancara |
 | `assets/plant2.webp` | `octomancer-unity\Assets\Sprites\Background\Plant2.png` | Milan Švancara |
+| `assets/foliage.webp` (round 46, one 512x378 sheet, cells in `play/data/foliage.json` "art", built by `tools/export_foliage.py`) | FGFoliageTiles plants `Assets\Sprites\NPCs\{Plant5,Plant8_2,Plant9,Plant24,Plant12,Plant13,uNPC25,Plant7Tint}.png`, `Assets\Sprites\Animations\Plant26Animation\Plant26Animation_character_img.png`, the Greenranha fish (top band of `Assets\Sprites\Animations\Greeranha\GreeranhaAnimation_character_img.png`); BGFoliage `Assets\Sprites\NPCs\{uNPC23,uNPC23Solo}.png`, `Assets\Sprites\NPCs\Greyscaled\uNPC20.png` (its prefab tint baked in) | Milan Švancara |
+| `assets/foliage.webp` (same sheet) | `Assets\Sprites\Runes\Rune1-6.png` | Daniel Necesal (bucket D, kept) |
 | `assets/bubble-bubble3.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\Bubble3.png` | Milan Švancara |
 | `assets/bubble-bubblepop.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\BubblePop.png` | Milan Švancara |
 | `assets/bubble-bubblesingle.webp` | `octomancer-unity\Assets\Sprites\Elements (Bubbles, flames...)\BubbleSingle.png` | Milan Švancara |
@@ -89,5 +91,6 @@ All rows: **generated, Milan style**. Made with the openai-image-gen skill (`ima
 | `img/v2/crack-wall.webp` | tall crack for the tutorial bomb wall | repeated and flipped down the wall |
 | `img/v2/hub-board.webp`, `hub-questsign.webp` | wall-mounted notice board and the quest signpost (with a painted "!") | one sheet, split |
 | `img/v2/title-banner.webp` | ribbon behind the level title card | |
+| `img/v2/item-goggles.webp` | Sea-glass Goggles (carried item): sea-glass lenses in kelp rims, braided kelp strap | buried-treasure round, 2026-10-07: one `edit` call (gpt-image-2, medium), `-i` a contact sheet of shell-blue, enemy-urchin, enemy-crab-slow, critter-snail, enemy-piranha, critter-jelly; magenta keyed by `octomancer-web/tools/export_goggles.py`, 192 px wide. Drawn by `items-draw.js drawItemIcon('goggles')` (HUD, shop pedestal, journal, rock silhouette) |
 
 Image budget: rock 1, backdrops 2, ring 1, stall 1, keeper 1, chest 1, vault crack 1, wall crack 1, boards 1, banner 1 = 11 (all medium; no separate low drafts were made to stay under 12, the four failed `--background transparent` calls never reached the model).

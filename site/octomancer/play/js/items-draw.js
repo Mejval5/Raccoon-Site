@@ -3,6 +3,24 @@
 
 const TAU = Math.PI * 2;
 
+// Sprites for the items that have one (generated, Milan style: img/v2/, octomancer-web/ASSETS.md). They load the first
+// time they are drawn; until then the code-drawn fallback below stands in. itemArtVersion() goes up when one arrives,
+// so a cached icon (the HUD's small canvases) can redraw.
+const SPRITES = { goggles: 'item-goggles.webp' };
+const sprites = {};
+let artVersion = 0;
+export function itemArtVersion() { return artVersion; }
+function sprite(id) {
+  if (!SPRITES[id] || typeof Image === 'undefined') return null;
+  let img = sprites[id];
+  if (!img) {
+    img = sprites[id] = new Image();
+    img.addEventListener('load', () => { artVersion++; }, { once: true });
+    img.src = new URL('../img/v2/' + SPRITES[id], import.meta.url).href;
+  }
+  return img.complete && img.naturalWidth ? img : null;
+}
+
 function outline(ctx, r, fill, stroke) {
   ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1.2, r * 0.16); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 }
@@ -10,7 +28,44 @@ function outline(ctx, r, fill, stroke) {
 export function drawItemIcon(ctx, id, x, y, r) {
   ctx.save();
   ctx.translate(x, y);
-  if (id === 'flippers') {
+  const img = sprite(id);
+  if (img) {
+    // the sprite fills the icon circle's width (2.1 r), keeping its aspect
+    const w = r * 2.15, h = w * img.naturalHeight / img.naturalWidth;
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  } else if (id === 'goggles') {
+    // fallback until the sprite has loaded: two sea-glass lenses in kelp rims, a kelp strap behind
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = '#2b2a10'; ctx.lineWidth = Math.max(2, r * 0.3);
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.1, r * 0.95, r * 0.55, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    ctx.strokeStyle = '#6b6a24'; ctx.lineWidth = Math.max(1.2, r * 0.18);
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.1, r * 0.95, r * 0.55, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    for (const s of [-1, 1]) {
+      outline(ctx, r, '#5e5c1e', '#22200a');
+      ctx.beginPath(); ctx.arc(s * r * 0.47, r * 0.12, r * 0.46, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = s < 0 ? '#a9cfae' : '#a6d3cf';
+      ctx.beginPath(); ctx.arc(s * r * 0.47, r * 0.12, r * 0.3, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = '#4e4c18'; ctx.beginPath(); ctx.arc(0, r * 0.14, r * 0.12, 0, TAU); ctx.fill();
+  } else if (id === 'siphon') {
+    // the Siphon Shell: a hollow spiral shell (a whelk), its long siphon canal pointing down-left, the octopus drinks through it
+    outline(ctx, r, '#d9c7a4', '#3a2a18');
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.92, r * 0.78); // the siphon tip
+    ctx.quadraticCurveTo(-r * 0.55, r * 0.55, -r * 0.35, r * 0.62);
+    ctx.bezierCurveTo(r * 0.25, r * 0.85, r * 0.95, r * 0.35, r * 0.82, -r * 0.25);
+    ctx.bezierCurveTo(r * 0.72, -r * 0.75, r * 0.2, -r * 0.98, -r * 0.12, -r * 0.62);
+    ctx.bezierCurveTo(-r * 0.55, -r * 0.2, -r * 0.6, r * 0.25, -r * 0.62, r * 0.42);
+    ctx.quadraticCurveTo(-r * 0.75, r * 0.6, -r * 0.92, r * 0.78);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // the whorls: a spiral of growth lines toward the apex, and the dark open mouth
+    ctx.strokeStyle = '#8a6f4a'; ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.beginPath();
+    for (let k = 0; k <= 36; k++) { const t = k / 36, a = -0.6 + t * 4.4, rr = r * (0.62 - t * 0.5); const px = r * 0.28 + Math.cos(a) * rr, py = -r * 0.12 + Math.sin(a) * rr * 0.85; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+    ctx.stroke();
+    ctx.fillStyle = '#5a3f2a'; ctx.beginPath(); ctx.ellipse(-r * 0.1, r * 0.3, r * 0.2, r * 0.32, 0.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(160,200,120,0.75)'; ctx.beginPath(); ctx.arc(-r * 0.86, r * 0.74, r * 0.09, 0, TAU); ctx.fill(); // a drop of juice at the tip
+  } else if (id === 'flippers') {
     // a pair of fins: two leaf shapes side by side
     outline(ctx, r, '#f59a2a', '#4a2406'); // orange: cyan vanished against the Shallows water on a pedestal
     for (const s of [-1, 1]) {
