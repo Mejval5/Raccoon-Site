@@ -188,6 +188,14 @@ await runSettingsTests(assert);
 import { runPerf43Tests } from './perf43.test.js';
 await runPerf43Tests(assert);
 
+// --- Round 44: portal states, seating, tint, the two sheets ---
+import { runPortalTests } from './portal.test.js';
+await runPortalTests(assert);
+
+// --- Buried treasure and the Sea-glass Goggles ---
+import { runEmbedTests } from './embed.test.js';
+await runEmbedTests(assert);
+
 // --- Section 14: fish juice, Ink Cloud, the ink jet, the hotbar and inventory, the new controls ---
 import { runSpellTests } from './spells.test.js';
 await runSpellTests(assert);

@@ -9,7 +9,7 @@ import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
@@ -19,8 +19,10 @@ import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
-import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
+import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
 import { drawLoot } from './loot-draw.js';
+import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
+import { drawEmbedded, drawPocketReveal } from './embed-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
@@ -39,7 +41,7 @@ import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, 
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks, drawV2Labels } from './v2-draw.js';
-import { resetPortalStates } from './portal-draw.js';
+import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey, portalMode, whirlpoolReady, ENTRY_S } from './portal-draw.js';
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
@@ -212,6 +214,7 @@ let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubb
 let hazards = createHazards(V2 ? props : null);
 if (V2) enemies.setHazardData(hazards.data);
 let loot = createLoot(V2 ? props : null);
+let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
 let bombs = createBombs(V2 ? props : null);
 let particles = createParticles();
 // section 14: fish juice droplets, ink clouds and the ink jet of this level (spells.js, inkjet.js)
@@ -411,6 +414,38 @@ window.addEventListener('keydown', (e) => {
 
 const autoDive = { path: [], recalc: 0 };
 
+// r44: entering a whirlpool. The octopus is pulled to the centre of the whirlpool while it shrinks and fades (octo.entering 0..1), the
+// whirlpool plays its Bounce (forced) and then swallows it (the Rise, reversed); only then does the level change (v2Event, which
+// starts the screen fade). ENTRY_S = BOUNCE_S + RISE_S = 1.33 s after the octopus touched the whirlpool.
+const NO_PRESS = { pressed: false, held: false };
+const NO_INPUT = { move: { x: 0, y: 0 }, dash: NO_PRESS, bomb: NO_PRESS, pause: NO_PRESS, attack: NO_PRESS, spell: NO_PRESS, inventory: NO_PRESS, cycle: 0, select: -1, src: { attack: 'key', spell: 'key', bomb: 'key' }, mode: 'keyboard' };
+let entry = null; // {ev, cx, cy, x0, y0, t, wall} while the sequence runs
+const ENTRY_PULL_S = 0.7; // the octopus reaches the centre this long after touching the whirlpool
+function beginEntry(ev, tx, ty) {
+  if (entry || transitioning) return;
+  const c = portalCenter(world.tileAt, tx, ty);
+  entry = { ev, cx: c.x, cy: c.y, x0: octo.x, y0: octo.y, t: 0, wall: performance.now() };
+  portalEnter(portalKey(tx, ty), sim.time);
+  octo.vx = octo.vy = 0;
+  entryLog = { start: entry.wall, simStart: sim.time, ev, fadeAt: 0, simFade: 0 };
+}
+let entryLog = null; // test hook: when the last entry started and when its fade began
+function stepEntry(dt) {
+  entry.t += dt;
+  const u = Math.min(1, entry.t / ENTRY_PULL_S), e = u * u * (3 - 2 * u); // smoothstep
+  octo.x = entry.x0 + (entry.cx - entry.x0) * e; octo.y = entry.y0 + (entry.cy - entry.y0) * e;
+  octo.vx = octo.vy = 0; octo.swimming = false;
+  octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; // nothing hurts it on the way down
+  const p = Math.min(1, entry.t / ENTRY_S);
+  octo.entering = p * p * (3 - 2 * p);
+  if (entry.t >= ENTRY_S - 1e-6) {
+    const ev = entry.ev;
+    if (entryLog) { entryLog.fadeAt = performance.now(); entryLog.simFade = sim.time; }
+    v2Event(ev);
+    entry = null;
+  }
+}
+
 function step(dt) {
   sim.time += dt;
   let snap = input.snapshot();
@@ -460,13 +495,15 @@ function step(dt) {
   if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) run.dive.time += dt; // the run summary's clock
+  if (entry) snap = NO_INPUT; // r44: the octopus is going into a whirlpool: no swimming, dashing or bombs
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
     else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
   }
   if (Math.hypot(snap.move.x, snap.move.y) > 0.25) { const l = Math.hypot(snap.move.x, snap.move.y); lastAim = { x: snap.move.x / l, y: snap.move.y / l }; }
   stepOctopus(octo, snap, dt, world);
-  if (V2 && !octo.dead) stepCombat(snap, dt);
+  if (entry) stepEntry(dt);
+  if (V2 && !octo.dead && !entry) stepCombat(snap, dt);
   if (octo.dashedThisStep) {
     sfx.dash();
     particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
@@ -512,7 +549,7 @@ function step(dt) {
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
     }
   }
-  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); }
+  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -716,7 +753,7 @@ function render(alpha, frameMs) {
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
   renderer.render(w, h, octo, alpha, sim.time, frameMs / 1000, {
-    warmOnly: holdDark, warmGroup: holdDark ? (holdFrame++ % 2 === 0 ? 0 : 1 + ((holdFrame >> 1) % 5)) : 0, // behind the dark screen: a set-up frame, then one group of the scene, alternating
+    warmOnly: holdDark, warmGroup: holdDark ? warmPhase() : 0, // behind the dark screen: a set-up frame, a frame of the simulation's first run, then one group of the scene, in turn
     resident,
     pickups: pickups.visible(resident),
     bubbles: decor.visibleBubbles(resident),
@@ -758,10 +795,9 @@ const debug = createDebugOverlay(debugEl, { loop, input });
 loop.start();
 if (V2) showLevelTitle(); // the first level's title card
 
-function resetWorld(newSeed, prebuilt = null) {
+function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
-  sfx.stopAll();
-  renderer.dispose();
+  timed('r:dispose', () => { sfx.stopAll(); renderer.dispose(); });
   if (V2) hudStage = stageLabel(run);
   resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
@@ -769,22 +805,26 @@ function resetWorld(newSeed, prebuilt = null) {
   octo = createOctopus(world.startX, world.startY);
   if (V2) { octo.feel = true; octo.sink = sinkNow; }
   if (V2) applyCarried(octo, run.items);
-  renderer = createRenderer(ctx, world);
-  pickups = createPickups();
-  decor = createDecor(world.width, world.chunkHeight);
-  enemies = createEnemies();
-  props = createProps();
-  hazards = createHazards(V2 ? props : null);
-  if (V2) enemies.setHazardData(hazards.data);
-  loot = createLoot(V2 ? props : null);
-  if (AUTO) autofire = createAutofire();
-  bombs = createBombs(V2 ? props : null);
-  particles = createParticles();
-  juiceDrops = createJuiceDrops();
-  inkClouds = createInkClouds();
-  inkJet = createInkJet();
-  if (V2) enemies.setInkClouds(inkClouds);
+  timed('r:renderer', () => { renderer = createRenderer(ctx, world); });
+  timed('r:objects', () => {
+    pickups = createPickups();
+    decor = createDecor(world.width, world.chunkHeight);
+    enemies = createEnemies();
+    props = createProps();
+    hazards = createHazards(V2 ? props : null);
+    if (V2) enemies.setHazardData(hazards.data);
+    loot = createLoot(V2 ? props : null);
+    embedded = createEmbedded(V2 ? props : null);
+    if (AUTO) autofire = createAutofire();
+    bombs = createBombs(V2 ? props : null);
+    particles = createParticles();
+    juiceDrops = createJuiceDrops();
+    inkClouds = createInkClouds();
+    inkJet = createInkJet();
+    if (V2) enemies.setInkClouds(inkClouds);
+  });
   sim.time = 0;
+  entry = null;
   runKills = 0;
   liveScore = 0;
   trailTimer = 0;
@@ -794,8 +834,9 @@ function resetWorld(newSeed, prebuilt = null) {
   ui.hideGameOver();
   ui.hideEnd();
   ui.setPrompt(null);
-  if (V2) setupLevelExtras();
-  if (V2) showLevelTitle();
+  // r44: a transition runs the level's extras (quest plan, shop, pools) in a later frame behind the dark screen (warmSim) and shows the title card when the screen is back
+  if (V2 && deferExtras) extrasPending = true;
+  else if (V2) { timed('r:extras', () => setupLevelExtras()); timed('r:title', () => showLevelTitle()); }
 }
 
 // --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
@@ -805,7 +846,34 @@ let lastDark = null; // {start, end} (performance.now) of the last transition's 
 let holdDark = false; // r43: the new level is being baked behind the dark screen: render only sets it up, draws nothing
 const FADE_MS = 320;
 const GENERATE_AT_MS = 80;     // r43: when, after the fade starts, the next level is generated
-const WARM_FRAMES = 12;        // r44: warm frames drawn behind the dark screen before the fade-in (every group of the scene at least once)
+const WARM_FRAMES = 18;        // r44: warm frames behind the dark screen before the fade-in (set-up, simulation and every group of the scene at least once, in turn)
+let warmGroupN = 0, warmSimN = 0, extrasPending = false;
+const WARM_SIM_STAGES = 7;
+function runPendingExtras() { if (extrasPending) { extrasPending = false; timed('extras', () => setupLevelExtras()); } }
+/** r44: what the next frame behind the dark screen does: 0 = a piece of the renderer's set-up, -1 = one module's first update (see warmSim), 1..5 = draw one group of the scene. */
+function warmPhase() {
+  const ph = holdFrame++ % 3;
+  if (ph === 0) return 0;
+  if (ph === 1) { warmSim(warmSimN++); return -1; }
+  return 1 + (warmGroupN++ % 5);
+}
+/** r44: the first update of each simulation module (enemy spawning from the slots, decor chunks, props, hazards, loot, bombs) is the cold path that made the first steps of a
+ *  level 15-25 ms at 4x on a phone. Run each once behind the dark screen, one per frame, with a time step too small to move anything. */
+function warmSim(n) {
+  const dt = 0.001, resident = world.residentChunks();
+  try {
+    switch (n) {
+      case 0: runPendingExtras(); break;
+      case 1: world.update(octo.y); pickups.update(dt, sim.time, octo, resident, world); break;
+      case 2: decor.update(dt, resident); break;
+      case 3: enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null); break;
+      case 4: if (V2) props.step(dt, world, octo, enemies.all()); break;
+      case 5: if (V2 && !isSafeState(run)) { hazards.update(dt, sim.time, octo, world, resident); loot.update(dt, octo, world, resident); loot.takeEvents(); } break;
+      case 6: bombs.update(dt, world, octo, enemies); break;
+      default: break;
+    }
+  } catch (e) { /* a warm-up only: never stops a level from starting */ }
+}
 const FADE_IN_MAX_MS = 2500;  // r43: the longest the screen stays dark waiting for the first view to bake
 let fadeEl = null;
 function ensureFade() {
@@ -852,20 +920,25 @@ function v2Event(ev) {
     if (!nextWorld) { setTimeout(proceed, 10); return; } // the generation is still running in its own tasks
     if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
     timed('arrive', () => { if (run.state === S_HUB) arriveInHub(); });
-    timed('reset', () => resetWorld(0, nextWorld));
+    timed('reset', () => resetWorld(0, nextWorld, true));
     if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     timed('discover', () => discoverStatePlace());
     if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
     holdDark = true;
+    warmGroupN = 0; warmSimN = 0;
+    setPortalHold(true); // the portals' Rise starts when the screen is back, not behind the dark screen
     holdFrame = 0;
     const fadeIn = () => {
       // r44: also not before every group of the scene has been drawn once behind the dark screen (holdFrame counts the warm frames:
       // a set-up frame, then groups 1..5 in turn). Otherwise the first visible frame is the first time the portals, people, octopus
       // and particles run their cold paths, which was an 85 ms task during the fade-in on a phone.
-      if ((!renderer.ready() || holdFrame < WARM_FRAMES) && performance.now() - t0 < FADE_IN_MAX_MS) { setTimeout(fadeIn, 30); return; }
+      if ((!renderer.ready() || holdFrame < WARM_FRAMES || warmGroupN < 5 || warmSimN < WARM_SIM_STAGES || !whirlpoolReady()) && performance.now() - t0 < FADE_IN_MAX_MS) { setTimeout(fadeIn, 30); return; }
       holdDark = false;
+      runPendingExtras(); // (normally done in the first warm frames; only a slow bake that hit the time limit gets here with it pending)
+      showLevelTitle();
+      setPortalHold(false);
       lastDark = { start: darkStart, end: performance.now() }; // the dark part of the transition, for the tests
       fade.style.opacity = '0';
       sfx.hold(false);
@@ -931,6 +1004,7 @@ function poolCameraBias() {
 /** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
+  if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
     if (questUpdate(quest, octo, world, STEP)) payQuest();
     if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
@@ -953,15 +1027,15 @@ function stepV2(snap) {
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
-    v2Event(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT);
+    beginEntry(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT, lv.exitX, lv.exitY);
     return;
   }
   if (run.state === S_HUB && run.shortcut && lv.shortcutX >= 0 && Math.hypot(octo.x - (lv.shortcutX + 0.5), octo.y - (lv.shortcutY + 0.5)) < 1.2) {
-    v2Event(EV_ENTER_SHORTCUT);
+    beginEntry(EV_ENTER_SHORTCUT, lv.shortcutX, lv.shortcutY);
     return;
   }
   if (run.state === S_HUB && run.shortcut3 && lv.shortcut3X >= 0 && Math.hypot(octo.x - (lv.shortcut3X + 0.5), octo.y - (lv.shortcut3Y + 0.5)) < 1.2) {
-    v2Event(EV_ENTER_SHORTCUT3);
+    beginEntry(EV_ENTER_SHORTCUT3, lv.shortcut3X, lv.shortcut3Y);
     return;
   }
   if (run.state === S_HUB) hubStep(lv);
@@ -1049,6 +1123,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
+    drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: !!octo.seeBuried, tileAt: world.tileAt });
+    if (octo.seeBuried) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
@@ -1094,6 +1170,27 @@ function takeCarried(id, x, y) {
     ui.showToast('Already carried: +3 shells');
   }
   particles.pickupSparkle(x, y, '#fff2a0'); sfx.chime();
+}
+/** Buried treasure (embed.js): a find dropped out of broken rock, or was taken. */
+function handleEmbedEvents() {
+  for (const ev of embedded.takeEvents()) {
+    if (ev.type === 'released') {
+      discover('loot-buried');
+      journal.bump('loot-buried', STAT_COLLECTED);
+      continue;
+    }
+    if (ev.ek === EK_SHELL) {
+      const v = shellValue(ev.sub);
+      gainShells(run, v);
+      discover('item-shell'); journal.bump('item-shell', STAT_COLLECTED);
+      particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
+      if (v > 1) ui.showToast('A ' + EMBED_SHELLS[ev.sub].name.toLowerCase() + ', +' + v + ' shells');
+    } else if (ev.ek === EK_BOMB) {
+      for (let k = 0; k < ev.sub; k++) addBomb(octo);
+      discover('item-bomb');
+      particles.pickupSparkle(ev.x, ev.y, '#cfe8ff'); sfx.chime();
+    } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
+  }
 }
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
@@ -1553,6 +1650,12 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
     return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
   },
+  /** v2: the buried treasure of this level (embed.js): tile, kind, tier / item code, state (0 buried, 1 loose, 2 taken), position. */
+  embedded() {
+    const d = embedded.data, out = [];
+    for (let i = 0; i < d.n; i++) out.push({ tx: d.tx[i], ty: d.ty[i], ek: d.ek[i], sub: d.sub[i], state: d.state[i], x: d.x[i], y: d.y[i] });
+    return { items: out, goggles: !!octo.seeBuried };
+  },
   /** Section 14 test hooks: the jar, droplets, clouds, the ink jet, the hotbar and the inventory. */
   juice() {
     const hb = run ? hotbar() : null;
@@ -1615,6 +1718,11 @@ window.__octo = {
   renderReady() { return renderer.ready(); },
   /** r43 test hook: when the last transition started and when its screen began to fade back in (performance.now ms). */
   lastTransition() { return lastDark ? { ...lastDark } : null; },
+  /** r44 test hook: the entry sequence now ({t, pulled to, entering}) or null, and the last one's timing (start, when its fade began, wall ms and sim s). */
+  entry() { return entry ? { t: entry.t, cx: entry.cx, cy: entry.cy, entering: octo.entering || 0 } : null; },
+  lastEntry() { return entryLog ? { ...entryLog } : null; },
+  /** r44 test hook: the exit / dive whirlpool's play state ('appear', 'idle', 'near', 'enter', 'swallow', 'gone'). */
+  portalMode() { const lv = world.level; return portalMode(portalKey(lv.exitX, lv.exitY)); },
   /** r41: the live audio sources: synthesised ones (kind, loop) and the music elements. */
   audioSources() { return audio.sources(); },
   /** r41 test hook: play a synthesised effect by name (dash, hurt, chime, bomb). */

@@ -53,6 +53,7 @@ export function createOctopus(x, y) {
     swimMul: 1,   // flippers: 1.2
     lightR: 0,    // tiles of clear sight in the dim Shallows (0 = no dimming), set by the level
     magnetR: 0,   // shell magnet: pulls shells this close (tiles)
+    seeBuried: false, // sea-glass goggles: buried treasure and hidden pockets show through the rock (embed-draw.js)
     // --- game feel (v2 only: main.js sets feel = true and sink) ---
     feel: false,  // turns on the idle sink, the dash recoil and the landing squash
     sink: 0,      // u/s^2 pulling down while not swimming (config OCTO_IDLE_SINK)
