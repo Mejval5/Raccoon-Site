@@ -49,8 +49,8 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
     console.log(`  viewport 412x915 at DPR 3: canvas budget ${budget.w}x${budget.h} px (DPR capped at ${budget.dpr})`);
 
     // --- transitions ---
-    // the events that move between levels: tutorial -> 1-1 -> 1-2 -> 1-3 -> (end screen, no transition) -> hub -> 1-1 ...; 'x' marks the end screen
-    const seq = ['exit', 'exit', 'exit', 'x', 'continue', 'enter', 'exit', 'exit', 'x', 'continue', 'enter', 'exit', 'exit', 'x', 'continue', 'enter'];
+    // the events that move between levels: tutorial -> 1-1 -> 1-2 -> 1-3 -> rest grotto -> (end screen, no transition) -> hub -> 1-1 ...; 'x' marks the end screen
+    const seq = ['exit', 'exit', 'exit', 'exit', 'x', 'continue', 'enter', 'exit', 'exit', 'exit', 'x', 'continue', 'enter', 'exit', 'exit', 'exit', 'x', 'continue', 'enter'];
     const rows = [];
     let longTasks = [];
     const lateTasks = [];

@@ -131,7 +131,7 @@ export function createJuiceDrops() {
       for (let i = 0; i < MAX_DROPS; i++) {
         if (!d.alive[i]) continue;
         d.age[i] += dt;
-        if (d.age[i] >= JUICE.life) { d.alive[i] = 0; d.live--; continue; } // dissolved into the water
+        if (d.age[i] >= JUICE.life || world.isSolid(d.x[i], d.y[i])) { d.alive[i] = 0; d.live--; continue; } // dissolved into the water (or leaked into rock)
         const dx = octo.x - d.x[i], dy = octo.y - d.y[i], dist = Math.hypot(dx, dy);
         const ready = d.age[i] >= JUICE.pickupDelay && !octo.dead && room - events.collected > 0;
         if (ready && dist < reach) {

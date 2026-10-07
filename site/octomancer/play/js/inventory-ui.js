@@ -88,7 +88,7 @@ export function createInventoryUI(root, handlers = {}) {
     const bomb = el('div', 'octo-inv-row octo-inv-item octo-inv-bomb');
     bomb.appendChild(iconCanvas(40, (ctx, px) => drawBombSlotIcon(ctx, px / 2, px / 2, px * 0.38)));
     const bt = el('div', 'octo-inv-text');
-    bt.append(el('div', 'octo-inv-name', 'Bombs ' + state.bombs + '/' + state.bombMax), el('div', 'octo-inv-blurb', 'throw one with B or X'));
+    bt.append(el('div', 'octo-inv-name', 'Bombs ' + state.bombs + '/' + state.bombMax), el('div', 'octo-inv-blurb', state.touch ? 'throw one with the Bomb button' : 'throw one with B, X or the middle button'));
     bomb.append(bt, el('span', 'octo-inv-tag octo-inv-tag-active', 'active'));
     sec.appendChild(bomb);
     for (const [id, count] of stackItems(state.items)) {
@@ -116,7 +116,7 @@ export function createInventoryUI(root, handlers = {}) {
     const ctx = c.getContext('2d');
     if (ctx) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawJarIcon(ctx, 0, 0, 32, 44, state.cap > 0 ? state.juice / state.cap : 0, total); }
     const t = el('div', 'octo-inv-text');
-    t.append(el('div', 'octo-inv-name', casts + ' of ' + total + ' casts'), el('div', 'octo-inv-blurb', 'blended up fishes: kills fill the jar, spells drink it'));
+    t.append(el('div', 'octo-inv-name', casts + ' of ' + total + ' casts'), el('div', 'octo-inv-blurb', 'blended-up fishes: spells drink it; the spring at the end of a zone refills it'));
     row.append(c, t);
     sec.appendChild(row);
     return sec;

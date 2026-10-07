@@ -229,3 +229,9 @@
 /* The desktop bar owns the bottom centre: toasts sit above it and the controls hint stops short of it. */
 #hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-toast { bottom: calc(86px + var(--safe-b)); }
 #hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-controls-help { max-width: min(560px, calc(50vw - 130px)); }
+/* Phones: the bar sits at the top, so the prompt banner moves a little lower; in portrait the touch buttons own the bottom right
+   (two rows) and a centred toast would run under them, so toasts sit above them. */
+#hud:has(> .octo-hotbar.is-compact) > .octo-prompt { top: calc(112px + var(--safe-t)); }
+@media (max-width: 600px) {
+  #hud:has(> .octo-hotbar.is-compact) > .octo-toast { bottom: calc(176px + var(--safe-b)); }
+}

@@ -328,7 +328,7 @@ if (!V2) hotbarUI.setVisible(false);
 hotbarUI.setCompact(isCoarsePointer());
 let inventoryOpen = false;
 function inventoryState() {
-  return { ...hotbarState(), items: run.items.slice(), spellRow: spellById };
+  return { ...hotbarState(), items: run.items.slice(), spellRow: spellById, touch: input.mode() === 'touch' };
 }
 function hotbarState() {
   const hb = hotbar();
@@ -612,7 +612,7 @@ function stepCombat(snap, dt) {
   const hb = hotbar();
   if (snap.select >= 0) selectIndex(hb, snap.select);
   for (let k = snap.cycle | 0; k !== 0; k -= Math.sign(k)) selectNext(hb, Math.sign(k));
-  if (snap.attack.held) {
+  if (snap.attack.held || snap.attack.pressed) { // pressed too: a quick tap (key down and up between two steps) still fires
     let dir = lastAim;
     const src = snap.src ? snap.src.attack : 'key';
     if (src === 'mouse') { const w = cursorWorld(); if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) dir = { x: w.x - octo.x, y: w.y - octo.y }; }
@@ -879,7 +879,7 @@ function v2Event(ev) {
 
 /** Level title card at each level start: "Shallows 1-2", plus the seed on a seeded run (?seed=). */
 function showLevelTitle() {
-  if (V2 && run.state === S_REST) { ui.showTitle(REST_NAME, 'Rest, heal and fill your jar'); return; }
+  if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
   const t = levelTitle(run, true);
   if (t) ui.showTitle(t.text, t.sub);
 }
@@ -1061,10 +1061,10 @@ function v2Extra(c, camera, w2s, cw, ch) {
   }
   if (siphonSpot && !siphonSpot.taken && visibleAt(cullFlags('siphon', 1), 0, siphonSpot.x, siphonSpot.y, 1)) {
     const ppu = camera.pxPerUnit;
-    drawItemIcon(c, 'siphon', cw / 2 + (siphonSpot.x - camera.x) * ppu, ch / 2 + (siphonSpot.y - 0.08 + Math.sin(t * 1.4) * 0.03 - camera.y) * ppu, ppu * 0.3);
+    drawItemIcon(c, 'siphon', cw / 2 + (siphonSpot.x - camera.x) * ppu, ch / 2 + (siphonSpot.y - 0.08 + Math.sin(t * 1.4) * 0.03 - camera.y) * ppu, ppu * 0.36);
   }
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
-  drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t);
+  drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t, JUICE.life);
   inkJet.draw(c, camera, cw, ch, t);
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
 }
@@ -1561,6 +1561,9 @@ window.__octo = {
       cloudList: Array.from({ length: inkClouds.data.n }, (_, i) => i).filter((i) => inkClouds.data.alive[i]).map((i) => ({ x: inkClouds.data.x[i], y: inkClouds.data.y[i], r: inkClouds.data.r[i], age: inkClouds.data.age[i] })),
       hotbar: hb ? { slots: hb.slots.map((sl) => sl.ids.slice()), sel: hb.sel, spell: selectedSpell(hb) } : null,
       inventory: inventoryOpen, ...runStats, jet: inkJet.count(), jetCooldown: inkJet.cooldown(),
+      siphonSpot: siphonSpot ? { ...siphonSpot } : null, siphonLevel: run && run.state === S_BIOME ? siphonLevel() : -1, spring: restSpring ? { ...restSpring } : null, state: run ? run.state : -1,
+      hearts: octo.hearts, heartMax: octo.heartMax, siphonR: octo.siphonR || 0,
+      dropList: Array.from({ length: juiceDrops.data.n }, (_, i) => i).filter((i) => juiceDrops.data.alive[i]).map((i) => [+juiceDrops.data.x[i].toFixed(2), +juiceDrops.data.y[i].toFixed(2)]), octo: [+octo.x.toFixed(2), +octo.y.toFixed(2)],
     };
   },
   setJuice(n) { if (run) run.juice = Math.max(0, Math.min(juiceCap(), n | 0)); return run ? run.juice : 0; },

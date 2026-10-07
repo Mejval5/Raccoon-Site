@@ -8,7 +8,8 @@ const TAU = Math.PI * 2;
 const INK = '#10202c';
 const DROP_PX = 64;   // droplet sprite size (the droplet is about 0.36 tiles across, the glow more)
 const PUFF_PX = 128;  // one ink billow
-let dropSprite = null, puffSprite = null;
+let dropSprite = null, puffSprite = null, murkSprite = null;
+const DISSOLVE = 1.4; // s: the last part of a droplet's life it clouds out and fades into the water
 
 /** A juice droplet: a murky green bead with a dark outline, a purple glow around it and a pale glint. */
 function bakeDrop() {
@@ -30,8 +31,19 @@ function bakeDrop() {
   body.addColorStop(0, '#9cbf63'); body.addColorStop(0.55, '#6f9447'); body.addColorStop(1, '#5a4f86');
   g.fillStyle = body; g.fill();
   g.lineWidth = DROP_PX * 0.05; g.strokeStyle = INK; g.lineJoin = 'round'; g.stroke();
-  g.fillStyle = 'rgba(232,246,214,0.85)';
+  g.fillStyle = 'rgba(226,240,208,0.6)';
   g.beginPath(); g.ellipse(m - r * 0.38, m - r * 0.05, r * 0.2, r * 0.32, -0.4, 0, TAU); g.fill();
+  return c;
+}
+
+/** The murk a leaking droplet trails: a soft, murky green-violet cloud. */
+function bakeMurk() {
+  const c = sharedCanvas(document.createElement('canvas'));
+  c.width = c.height = DROP_PX;
+  const g = c.getContext('2d'), m = DROP_PX / 2;
+  const gr = g.createRadialGradient(m, m, 2, m, m, m);
+  gr.addColorStop(0, 'rgba(104,132,80,0.7)'); gr.addColorStop(0.45, 'rgba(92,82,124,0.38)'); gr.addColorStop(1, 'rgba(90,80,120,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, DROP_PX, DROP_PX);
   return c;
 }
 
@@ -50,19 +62,30 @@ function bakePuff() {
   return c;
 }
 
-/** Fish juice droplets (spells.js createJuiceDrops().data). */
-export function drawJuiceDrops(ctx, camera, cw, ch, d, time) {
+/**
+ * Fish juice leaking out of a beaten creature (spells.js createJuiceDrops().data): each droplet trails a little murk, and over its
+ * last DISSOLVE seconds (JUICE.life `life`) it clouds out and fades into the water.
+ */
+export function drawJuiceDrops(ctx, camera, cw, ch, d, time, life = 3.5) {
   if (!d.live) return;
-  if (!dropSprite) dropSprite = bakeDrop();
+  if (!dropSprite) { dropSprite = bakeDrop(); murkSprite = bakeMurk(); }
   cullView(camera, cw, ch);
   const flags = cullFlags('juice', d.n), ppu = camera.pxPerUnit;
+  ctx.save();
   for (let i = 0; i < d.n; i++) {
-    if (!d.alive[i] || !visibleAt(flags, i, d.x[i], d.y[i], 0.5)) continue;
+    if (!d.alive[i] || !visibleAt(flags, i, d.x[i], d.y[i], 0.8)) continue;
+    const age = d.age[i], fade = Math.max(0, Math.min(1, (life - age) / DISSOLVE)); // 1 until it starts to dissolve, then down to 0
     const bob = Math.sin(time * 3.1 + d.ph[i]) * 0.04;
-    const size = ppu * (0.62 + 0.05 * Math.sin(time * 4.3 + d.ph[i] * 2)) * Math.min(1, 0.4 + d.age[i] * 4);
     const sx = cw / 2 + (d.x[i] - camera.x) * ppu, sy = ch / 2 + (d.y[i] + bob - camera.y) * ppu;
+    // the murk: grows as the droplet ages, a wisp left a little behind it (it oozes upward)
+    const ms = ppu * (1.0 + 0.8 * Math.min(1, age / life) + 0.9 * (1 - fade));
+    ctx.globalAlpha = Math.min(1, age * 3) * (0.4 + 0.6 * fade);
+    ctx.drawImage(murkSprite, sx - ms / 2, sy - ms / 2 + ppu * 0.12, ms, ms);
+    const size = ppu * (0.52 + 0.05 * Math.sin(time * 4.3 + d.ph[i] * 2)) * Math.min(1, 0.4 + age * 4) * (0.6 + 0.4 * fade);
+    ctx.globalAlpha = 0.9 * fade;
     ctx.drawImage(dropSprite, sx - size / 2, sy - size / 2, size, size);
   }
+  ctx.restore();
 }
 
 const BILLOWS = 7; // around the centre, plus the centre one
