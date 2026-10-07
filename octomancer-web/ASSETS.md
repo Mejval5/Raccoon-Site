@@ -91,5 +91,6 @@ All rows: **generated, Milan style**. Made with the openai-image-gen skill (`ima
 | `img/v2/crack-wall.webp` | tall crack for the tutorial bomb wall | repeated and flipped down the wall |
 | `img/v2/hub-board.webp`, `hub-questsign.webp` | wall-mounted notice board and the quest signpost (with a painted "!") | one sheet, split |
 | `img/v2/title-banner.webp` | ribbon behind the level title card | |
+| `img/v2/item-goggles.webp` | Sea-glass Goggles (carried item): sea-glass lenses in kelp rims, braided kelp strap | buried-treasure round, 2026-10-07: one `edit` call (gpt-image-2, medium), `-i` a contact sheet of shell-blue, enemy-urchin, enemy-crab-slow, critter-snail, enemy-piranha, critter-jelly; magenta keyed by `octomancer-web/tools/export_goggles.py`, 192 px wide. Drawn by `items-draw.js drawItemIcon('goggles')` (HUD, shop pedestal, journal, rock silhouette) |
 
 Image budget: rock 1, backdrops 2, ring 1, stall 1, keeper 1, chest 1, vault crack 1, wall crack 1, boards 1, banner 1 = 11 (all medium; no separate low drafts were made to stay under 12, the four failed `--background transparent` calls never reached the model).
