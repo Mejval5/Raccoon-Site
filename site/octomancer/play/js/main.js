@@ -9,7 +9,7 @@ import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld } from './camera.js';
 import { createPickups } from './pickups.js';
@@ -19,8 +19,10 @@ import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId } from './hazards.js';
 import { drawHazards } from './hazards-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
-import { applyCarried, giveItem, itemJournalId, pickupText } from './items.js';
+import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
 import { drawLoot } from './loot-draw.js';
+import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
+import { drawEmbedded, drawPocketReveal } from './embed-draw.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
@@ -201,6 +203,7 @@ let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubb
 let hazards = createHazards(V2 ? props : null);
 if (V2) enemies.setHazardData(hazards.data);
 let loot = createLoot(V2 ? props : null);
+let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
 let bombs = createBombs(V2 ? props : null);
 let particles = createParticles();
 let autoDiveOn = false;
@@ -467,7 +470,7 @@ function step(dt) {
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
     }
   }
-  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); }
+  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -653,6 +656,7 @@ function resetWorld(newSeed, prebuilt = null) {
   hazards = createHazards(V2 ? props : null);
   if (V2) enemies.setHazardData(hazards.data);
   loot = createLoot(V2 ? props : null);
+  embedded = createEmbedded(V2 ? props : null);
   if (AUTO) autofire = createAutofire();
   bombs = createBombs(V2 ? props : null);
   particles = createParticles();
@@ -914,6 +918,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
+    drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: !!octo.seeBuried, tileAt: world.tileAt });
+    if (octo.seeBuried) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawHazards(c, camera, cw, ch, hazards.data, t, solidForSight);
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
@@ -946,6 +952,27 @@ function takeCarried(id, x, y) {
     ui.showToast('Already carried: +3 shells');
   }
   particles.pickupSparkle(x, y, '#fff2a0'); sfx.chime();
+}
+/** Buried treasure (embed.js): a find dropped out of broken rock, or was taken. */
+function handleEmbedEvents() {
+  for (const ev of embedded.takeEvents()) {
+    if (ev.type === 'released') {
+      discover('loot-buried');
+      journal.bump('loot-buried', STAT_COLLECTED);
+      continue;
+    }
+    if (ev.ek === EK_SHELL) {
+      const v = shellValue(ev.sub);
+      gainShells(run, v);
+      discover('item-shell'); journal.bump('item-shell', STAT_COLLECTED);
+      particles.pickupSparkle(ev.x, ev.y, '#ffe38a'); sfx.chime();
+      if (v > 1) ui.showToast('A ' + EMBED_SHELLS[ev.sub].name.toLowerCase() + ', +' + v + ' shells');
+    } else if (ev.ek === EK_BOMB) {
+      for (let k = 0; k < ev.sub; k++) addBomb(octo);
+      discover('item-bomb');
+      particles.pickupSparkle(ev.x, ev.y, '#cfe8ff'); sfx.chime();
+    } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
+  }
 }
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
@@ -1355,6 +1382,12 @@ window.__octo = {
     const d = loot.data, out = [];
     for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
     return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
+  },
+  /** v2: the buried treasure of this level (embed.js): tile, kind, tier / item code, state (0 buried, 1 loose, 2 taken), position. */
+  embedded() {
+    const d = embedded.data, out = [];
+    for (let i = 0; i < d.n; i++) out.push({ tx: d.tx[i], ty: d.ty[i], ek: d.ek[i], sub: d.sub[i], state: d.state[i], x: d.x[i], y: d.y[i] });
+    return { items: out, goggles: !!octo.seeBuried };
   },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
   god(on) { godMode = on == null ? !godMode : !!on; return godMode; },
