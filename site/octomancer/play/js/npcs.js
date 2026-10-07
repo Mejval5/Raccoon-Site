@@ -1,7 +1,7 @@
 // Friendly NPCs that can be hurt, killed and turned against you (V2-PLAN 16 point 5). Marlo (the diver), Pip (the critter),
 // Quill (the collector) and the pool host each have a health pool. A bomb blast, a dash at speed and the Ink Jet (hit()) hurt
 // them; the first hit makes them HOSTILE for the rest of the dive and fails their encounter. The shopkeeper is not ours: an
-// attack of ours that reaches him calls shopAggro (shop.js) and nothing else.
+// attack of ours that reaches him calls shopAggro (shop-aggro.js, the Shop owner's) and nothing else.
 //
 //   calm      the owner of the NPC (quests.js state, the hub, the pool plan) says where it is: main.js calls place() each step
 //   hostile   this module moves it. Marlo keeps 4-7 tiles away, AIMS for 0.7 s (a dashed sight line, his gun raised) and fires a
@@ -15,7 +15,7 @@
 
 import { hurtOctopus, heavyHitOctopus } from './octopus.js';
 import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
-import { shopAggro } from './shop.js';
+import { shopAggro } from './shop-aggro.js';
 import { createTalk, say, talkStep } from './speech.js';
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
@@ -60,7 +60,7 @@ export function npcByName(name) { return NPC_IDS.indexOf(name); }
 /**
  * @param {{isSolid:(x:number,y:number)=>boolean}} world
  * @param {{moods?:any, hub?:boolean, lines?:Record<string,{hurt?:string[],angry?:string[]}>, onKeeper?:(reason:string)=>void}} [opts]
- *   lines: speech by npc id (data/quests.json 'hurt' / 'angry'); onKeeper defaults to shop.js shopAggro (tests inject their own)
+ *   lines: speech by npc id (data/quests.json 'hurt' / 'angry'); onKeeper defaults to shop-aggro.js shopAggro (tests inject their own)
  */
 export function createNpcs(world, opts = {}) {
   const moods = opts.moods || createMoods();

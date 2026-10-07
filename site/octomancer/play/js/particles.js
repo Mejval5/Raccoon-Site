@@ -75,6 +75,13 @@ export function createParticles() {
         spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.09, 'rgba(20,15,30,0.75)');
       }
     },
+    /** Section 14: an ink jet blob bursting on rock or a creature: a few dark droplets. */
+    inkSplat(x, y) {
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2, speed = 0.6 + Math.random() * 1.3;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.25 + Math.random() * 0.15, 0.05 + Math.random() * 0.03, i & 1 ? 'rgba(26,16,48,0.85)' : 'rgba(58,42,92,0.8)');
+      }
+    },
     /** M7-1: a bright sparkle on any pickup (plankton/shell), colour
      * matching what was collected. */
     pickupSparkle(x, y, color = '#dff3ff') {

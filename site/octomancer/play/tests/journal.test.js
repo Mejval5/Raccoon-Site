@@ -33,8 +33,8 @@ export async function runJournalTests(assert) {
 
   // --- round 38: tabs, art, counters ---
   assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
-  assert('journal tabs (r39): Items holds only things you pick up, buy or open (items and loot); scenery props (rune, fossil, bush, weed, boulder) sit in Places beside the places',
-    TABS.find((t) => t.id === 'items').cats.join() === 'item,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 5 &&
+  assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells and loot); scenery props (rune, fossil, bush, weed, boulder) sit in Places beside the places',
+    TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 5 &&
     ENTRIES.filter((e) => TABS.find((t) => t.id === 'items').cats.includes(e.cat)).every((e) => !e.id.startsWith('prop-')));
   assert('journal data (r39): descriptions match the game (no manta spit, no piranha chase, no ceiling-only horns, no score for shells)',
     !/spits/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) && /dives/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) &&
@@ -83,8 +83,8 @@ export async function runJournalTests(assert) {
       counterRows(jl.list('place')[0]).map((r) => r[0]).join() === 'Visited' && counterRows(jl.list('person')[0]).map((r) => r[0]).join() === 'Met,Freed,Angered,Killed');
     // r39: a collectable shows only the counter that means something (no per-dive Seen next to a per-event Collected); the keeper has Bought, not Helped
     const labelsOf = (id) => counterRows(jl.list().find((e) => e.id === id)).map((r) => r[0]).join();
-    assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought',
-      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought' && labelsOf('person-collector') === 'Met,Relics given,Angered,Killed');
+    assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought / Angered / Killed you',
+      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought,Angered,Killed you' && labelsOf('person-collector') === 'Met,Relics given,Angered,Killed');
     assert('journal counters: nothing labelled Seen anywhere (it counts dives, so it says so)', !ENTRIES.some((e) => e.counters.some(([k, l]) => l === 'Seen')) && ENTRIES.filter((e) => e.counters.some(([k]) => k === 'seen') && ['item', 'loot'].includes(e.cat)).length === 0);
     // completion math: percentages per tab and overall are floor(100 * found / total); 100% only when everything is found
     const c0 = completion(jl);

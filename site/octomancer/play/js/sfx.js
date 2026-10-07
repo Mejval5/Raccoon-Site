@@ -68,6 +68,34 @@ export function createSfx(audio) {
     hold(on) { held = !!on; },
     /** r41: level teardown: drop pending notes and stop every live source. */
     stopAll() { for (const id of timers) clearTimeout(id); timers.clear(); audio.stopSfx(); },
+    /** Section 14: the ink jet, a short wet squirt. */
+    inkJet() {
+      play((ctx, dest) => {
+        noiseBurst(audio, ctx, dest, { dur: 0.08, gain: 0.12, filterFreq: 2200 });
+        tone(audio, ctx, dest, { freq: 420, sweep: 180, dur: 0.07, type: 'triangle', gain: 0.07 });
+      });
+    },
+    /** Ink Cloud: a soft, low puff of ink. */
+    inkPuff() {
+      play((ctx, dest) => {
+        noiseBurst(audio, ctx, dest, { dur: 0.45, gain: 0.3, filterFreq: 600 });
+        tone(audio, ctx, dest, { freq: 160, sweep: 55, dur: 0.4, type: 'sine', gain: 0.22 });
+      });
+    },
+    /** A fish juice droplet goes into the jar: a quick rising slurp. */
+    slurp() {
+      play((ctx, dest) => {
+        tone(audio, ctx, dest, { freq: 260, sweep: 620, dur: 0.09, type: 'sine', gain: 0.1 });
+        later(() => play((c, d) => tone(audio, c, d, { freq: 380, sweep: 820, dur: 0.07, type: 'sine', gain: 0.07 })), 45);
+      });
+    },
+    /** A cast with too little juice: two dull clunks of an empty jar. */
+    emptyJar() {
+      play((ctx, dest) => {
+        tone(audio, ctx, dest, { freq: 150, sweep: 110, dur: 0.08, type: 'square', gain: 0.08 });
+        later(() => play((c, d) => tone(audio, c, d, { freq: 130, sweep: 95, dur: 0.1, type: 'square', gain: 0.07 })), 85);
+      });
+    },
     hurt() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 180, sweep: 70, dur: 0.22, type: 'square', gain: 0.22 })); },
     /** V2-PLAN 16: a boulder flattening the octopus: a low thud, a wet filtered-noise crunch and a few crackling pops after it. */
     splat() {

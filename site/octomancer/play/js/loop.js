@@ -25,9 +25,14 @@ export function createLoop(step, render) {
     rafId = requestAnimationFrame(frame);
     if (paused) { last = now; return; }
     if (!last) last = now;
-    const frameStart = performance.now();
-    let dtMs = now - last;
+    const dtMs = now - last;
     last = now;
+    advance(dtMs);
+  }
+
+  /** One frame: the fixed steps the elapsed time pays for, then a render interpolated between the last two steps. */
+  function advance(dtMs) {
+    const frameStart = performance.now();
     // Guard against huge gaps (tab was frozen, debugger paused, etc).
     if (dtMs > 250) dtMs = 250;
     acc += dtMs / 1000;
@@ -50,6 +55,12 @@ export function createLoop(step, render) {
     const frameMs = performance.now() - frameStart;
     frameTimes.push(frameMs);
     if (frameTimes.length > MAX_SAMPLES) frameTimes.shift();
+  }
+
+  /** Tests: run n frames of dtMs each synchronously (steps + interpolated render), as a display at 1000/dtMs Hz would; call
+   *  stop() first so the real rAF loop does not run frames in between. */
+  function manualFrames(n, dtMs, after) {
+    for (let i = 0; i < n; i++) { advance(dtMs); if (after) after(i); }
   }
 
   function start() {
@@ -97,5 +108,5 @@ export function createLoop(step, render) {
   // silently overriding the other (e.g. a focus event must not resume a
   // manually-paused game). See main.js's `applyPaused()`.
 
-  return { start, stop, setPaused, manualStep, metrics, get paused() { return paused; }, get stepCount() { return stepCount; }, get drawCount() { return drawCount; } };
+  return { start, stop, setPaused, manualStep, manualFrames, metrics, get paused() { return paused; }, get stepCount() { return stepCount; }, get drawCount() { return drawCount; } };
 }

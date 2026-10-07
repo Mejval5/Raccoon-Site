@@ -54,6 +54,7 @@ export function createOctopus(x, y) {
     swimMul: 1,   // flippers: 1.2
     lightR: 0,    // tiles of clear sight in the dim Shallows (0 = no dimming), set by the level
     magnetR: 0,   // shell magnet: pulls shells this close (tiles)
+    seeBuried: false, // sea-glass goggles: buried treasure and hidden pockets show through the rock (embed-draw.js)
     // --- game feel (v2 only: main.js sets feel = true and sink) ---
     feel: false,  // turns on the idle sink, the dash recoil and the landing squash
     sink: 0,      // u/s^2 pulling down while not swimming (config OCTO_IDLE_SINK)
@@ -81,7 +82,7 @@ export function createOctopus(x, y) {
  * invulnerable or dead (OVERNIGHT.md M3-2: "no second loss within 1s").
  * V2-PLAN 16: `opts` {dmg (hearts, default 1), knock (u/s, default HURT_KNOCKBACK), stun (s of incapacitation, default 0)}. */
 export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
-  if (o.invulnTimer > 0 || o.dead) return false;
+  if (o.invulnTimer > 0 || o.dead || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
   const dmg = opts && opts.dmg !== undefined ? opts.dmg : 1;
   const knock = opts && opts.knock !== undefined ? opts.knock : HURT_KNOCKBACK;
   const stun = opts && opts.stun ? opts.stun : 0;
@@ -123,9 +124,10 @@ export function heavyHitOctopus(o, fromX, fromY, cause) {
  * Instant kill (Beholder touch, spikes, a boulder, a clam): bypasses hearts and invulnerability entirely.
  * `style` (V2-PLAN 16): '' (the plain death), 'impale' / 'splat' / 'clam' / 'eaten' pin the body at (px, py) with `angle`
  * (degrees, 0 = up) and it stays there: no drift, no ragdoll. Returns true when it killed.
+ * r45: nothing kills it while sealed (going into a whirlpool).
  */
 export function killOctopus(o, cause, style = '', px = NaN, py = NaN, angle = NaN) {
-  if (o.dead) return false;
+  if (o.dead || o.sealed) return false;
   if (o.noKill && style) return false; // test hook: scripted playthroughs (godMode) are not killed by traps either
   if (cause) o.cause = cause;
   o.hearts = 0;

@@ -1,7 +1,8 @@
 // r42: the portals (level exit, the hub's dive well, the shortcut rings) are Milan Svancara's Whirlpool sprite animation from the
 // original game (octomancer-unity/Assets/Sprites/Elements/Whirlpool; img/v2/whirlpool-sheet.webp, made by
 // octomancer-web/tools/export_whirlpool.py): the idle loop (WhirlpoolAnimation1-5, 12 fps), and when the octopus comes in the
-// Bounce (10 frames) once and then the Rise (6 frames), as the .anim files give them.
+// Bounce (10 frames) and the Rise (6 frames), as the .anim files give them. r44: the Rise plays forward only when a portal appears (a
+// level starts, a ring unlocks) and reversed only as the swallow when the octopus goes in; a Bounce from swimming near returns straight to idle.
 // The code-drawn whirlpool of r41 (below) is kept only as the fallback while the sheet has not loaded.
 
 // r41: the portals (level exit, the hub's dive well, the shortcut rings) as an animated whirlpool drawn in code, like the
@@ -123,76 +124,143 @@ export function drawWhirlpoolCode(ctx, cx, cy, R, time, o = {}) {
   ctx.restore();
 }
 
-// ---------------------------------------------------------------- sprite whirlpool (r42)
+// ---------------------------------------------------------------- sprite whirlpool (r42, r44)
 
-import { artImg } from './v2-art.js';
+import { artBitmap, whirlpoolSheetKey } from './v2-art.js';
 import { sharedCanvas, unshareCanvas } from './canvas-pool.js';
+import { WHIRL_SHEETS } from './whirlpool-meta.js';
 
-const CELL = 208, COLS = 7, FPS = 12;
+const COLS = 7, FPS = 12;
 const IDLE = [0, 5], BOUNCE = [5, 15], RISE = [15, 21]; // frame ranges in the sheet: [from, to)
-const IDLE_PX = 167;       // the idle whirlpool's width in the sheet (557 px x 0.30), so a frame scales by (wanted px / IDLE_PX)
+// r44: two sheets (octomancer-web/tools/export_whirlpool.py, js/whirlpool-meta.js): the normal one for most screens, a 0.55-scale one for a
+// DPR >= 2 desktop. Every number that depends on the scale (cell size, the idle width, each frame's visible bottom) comes from the sheet's own meta.
+let sheetKey = null, SH = null;
+function sheetMeta() { const k = whirlpoolSheetKey(); if (k !== sheetKey) { sheetKey = k; SH = WHIRL_SHEETS[k] || WHIRL_SHEETS.lo; } return SH; }
+const mean = (a, from, to) => { let t = 0; for (let i = from; i < to; i++) t += a[i]; return t / (to - from); };
 export const PORTAL_TILES = 2.2;   // the idle whirlpool is this many tiles wide
 export const PORTAL_SQUASH = 0.5; // lying in the floor: seen at a slant, height / width
+/** How far the visible bottom of a seated frame sinks below the floor line, in tiles: the rim of a lying whirlpool touches the rock, it does not hover over it. */
+export const PORTAL_SEAT = 0.03;
 
-/** Light tints only (a wash over Milan's blue-grey, never a saturated colour): exit and hub dive none, the shortcut a little warm. */
+/** r44: the tints. They colour only the LIGHT arms (a hue shift on the light pixels, in proportion to how light they are); the dark core and the dark arms stay neutral, so the ring does not turn muddy brown. `mul` is the colour the light pixels move towards, `k` how far. */
 export const PORTAL_TINTS = {
   none: null,
-  warm: 'rgba(255,150,80,0.22)',  // the shortcut ring
-  gold: 'rgba(255,205,110,0.18)', // Marlo's ring
+  warm: { mul: [1.0, 0.66, 0.42], k: 0.7 },  // the shortcut ring
+  gold: { mul: [1.0, 0.84, 0.40], k: 0.7 },  // Marlo's ring
 };
-// r43: a tinted frame is one 208 x 208 canvas made when it is first drawn (the whole tinted sheet was one 1456 x 624 canvas, 3.6 MB,
-// bigger than a phone screen, and one per tint); they are dropped when a level is torn down (resetPortalStates)
-const tinted = new Map(); // 'tint|frame' -> canvas
+const LIGHT_LO = 105, LIGHT_HI = 185; // luminance (0-255) where a pixel starts / finishes counting as 'light arm'
+
+// r43: a tinted frame is one cell-sized canvas made when it is first drawn; they are dropped when a level is torn down (resetPortalStates)
+const tinted = new Map(); // 'tint|frame' -> {cv, img}
+function tintedCell(src, sx, sy, cell, tint) {
+  const t = PORTAL_TINTS[tint];
+  const cv = sharedCanvas(document.createElement('canvas'));
+  cv.width = cell; cv.height = cell;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(src, sx, sy, cell, cell, 0, 0, cell, cell);
+  const id = g.getImageData(0, 0, cell, cell), d = id.data;
+  const lum = t.mul[0] * 0.3 + t.mul[1] * 0.59 + t.mul[2] * 0.11;
+  const mr = t.mul[0] / lum, mg = t.mul[1] / lum, mb = t.mul[2] / lum;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    if (l <= LIGHT_LO) continue;
+    const w = (l >= LIGHT_HI ? 1 : (l - LIGHT_LO) / (LIGHT_HI - LIGHT_LO)) * t.k;
+    d[i] += (Math.min(255, l * mr) - d[i]) * w;
+    d[i + 1] += (Math.min(255, l * mg) - d[i + 1]) * w;
+    d[i + 2] += (Math.min(255, l * mb) - d[i + 2]) * w;
+  }
+  g.putImageData(id, 0, 0);
+  return cv;
+}
 function frameFor(tint, frame) {
-  const img = artImg('whirlpool');
-  if (!img) return null;
-  const wash = PORTAL_TINTS[tint];
-  const sx = (frame % COLS) * CELL, sy = ((frame / COLS) | 0) * CELL;
-  if (!wash) return { src: img, sx, sy };
+  const bmp = artBitmap('whirlpool');
+  if (!bmp) return null;
+  const sh = sheetMeta(), cell = sh.cell;
+  const sx = (frame % COLS) * cell, sy = ((frame / COLS) | 0) * cell;
+  if (!PORTAL_TINTS[tint]) return { src: bmp, sx, sy };
   const key = tint + '|' + frame;
   let c = tinted.get(key);
-  if (!c || c.img !== img) {
-    const cv = sharedCanvas(document.createElement('canvas'));
-    cv.width = CELL; cv.height = CELL;
-    const g = cv.getContext('2d');
-    g.drawImage(img, sx, sy, CELL, CELL, 0, 0, CELL, CELL);
-    g.globalCompositeOperation = 'source-atop';
-    g.fillStyle = wash; g.fillRect(0, 0, CELL, CELL);
-    tinted.set(key, c = { cv, img });
+  if (!c || c.img !== bmp) {
+    if (c) unshareCanvas(c.cv);
+    tinted.set(key, c = { cv: tintedCell(bmp, sx, sy, cell, tint), img: bmp });
   }
   return { src: c.cv, sx: 0, sy: 0 };
 }
-export function whirlpoolReady() { return !!artImg('whirlpool'); }
+/** True once the sheet is decoded and can be drawn without a first-use decode (the level's fade-in waits for it). */
+export function whirlpoolReady() { return !!artBitmap('whirlpool'); }
 
-// per-portal play state: idle until the octopus is close, then the Bounce once, then the Rise once, then idle (until it has left)
+// ---- the play state of one portal ----
+// APPEAR  the Rise, forward, once: when the portal appears (the level starts, a ring unlocks)
+// IDLE    the idle loop; the octopus swimming near (not in) starts NEAR once, then back to IDLE until it has gone away
+// NEAR    the Bounce once, then straight back to the idle loop (no Rise)
+// ENTER   the octopus went in: the Bounce, forced; then SWALLOW: the Rise reversed (the pool closes over it); then GONE (the last frame)
+const M_APPEAR = 0, M_IDLE = 1, M_NEAR = 2, M_ENTER = 3, M_SWALLOW = 4, M_GONE = 5;
 const states = new Map();
 export const BOUNCE_S = (BOUNCE[1] - BOUNCE[0]) / FPS, RISE_S = (RISE[1] - RISE[0]) / FPS;
-/** Frame index in the sheet for a portal at `key`, given the time and whether the octopus is near. */
-export function portalFrame(key, time, near, far) {
+/** The shortest the whirlpool's part of an entry takes: the Bounce, then the swallow (r45: main.js's entry is 1.5 s, the idle loop fills the gap). */
+export const ENTRY_S = BOUNCE_S + RISE_S;
+export const portalKey = (tx, ty) => tx + ',' + ty;
+let held = false;
+/** While the new level is baked behind the dark screen the appear clock does not start: the Rise plays once the screen is back. */
+export function setPortalHold(h) { held = !!h; }
+function stateOf(key, time) {
   let st = states.get(key);
-  if (!st) { st = { mode: 0, t0: 0 }; states.set(key, st); if (states.size > 12) states.delete(states.keys().next().value); }
-  if (st.mode === 0 && near) { st.mode = 1; st.t0 = time; }
-  if (st.mode === 1 && time - st.t0 >= BOUNCE_S) { st.mode = 2; st.t0 += BOUNCE_S; }
-  if (st.mode === 2 && time - st.t0 >= RISE_S) { st.mode = 3; }
-  if (st.mode === 3 && far) st.mode = 0;
-  if (time < st.t0 - 0.5) st.mode = 0; // the clock went back (a new run)
-  if (st.mode === 1) return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor((time - st.t0) * FPS));
-  if (st.mode === 2) return RISE[0] + Math.min(RISE[1] - RISE[0] - 1, Math.floor((time - st.t0) * FPS));
-  return IDLE[0] + (Math.floor(time * FPS) % (IDLE[1] - IDLE[0]));
+  if (!st) { st = { mode: M_APPEAR, t0: held ? null : time, armed: false, entered: undefined }; states.set(key, st); if (states.size > 12) states.delete(states.keys().next().value); }
+  else if (st.t0 === null && !held) st.t0 = time;
+  return st;
+}
+/** Make the state exist (so the appear clock starts) even if the portal is not drawn this frame (it is far off screen). */
+export function portalTouch(key, time) { stateOf(key, time); }
+/** The octopus has touched this portal: play the Bounce now whatever it was doing, then the swallow. r45: with `total` (the entry's length,
+ *  1.5 s) the idle loop plays between the Bounce and the swallow so that the swallow ends exactly when the entry does. */
+export function portalEnter(key, time, total = ENTRY_S) { const st = stateOf(key, time); st.mode = M_ENTER; st.t0 = time; st.entered = time; st.hold = Math.max(0, total - ENTRY_S); }
+/** Which mode a portal is in, as a word (tests). */
+export function portalMode(key) { const st = states.get(key); return st ? ['appear', 'idle', 'near', 'enter', 'swallow', 'gone'][st.mode] : null; }
+/** Frame index in the sheet for a portal at `key`, given the time and whether the octopus is near / far. */
+export function portalFrame(key, time, near, far) {
+  const st = stateOf(key, time);
+  if (st.t0 === null) return RISE[0]; // held: the first Rise frame, the clock not started
+  if (time < st.t0 - 0.5) { st.mode = M_IDLE; st.t0 = time; st.armed = true; } // the clock went back (a new run)
+  if (st.mode === M_APPEAR && time - st.t0 >= RISE_S) { st.mode = M_IDLE; st.armed = !!near; }
+  if (st.mode === M_IDLE) { if (st.armed) { if (far) st.armed = false; } else if (near) { st.mode = M_NEAR; st.t0 = time; } }
+  if (st.mode === M_NEAR && time - st.t0 >= BOUNCE_S) { st.mode = M_IDLE; st.armed = true; } // straight back to the idle loop
+  if (st.mode === M_ENTER && time - st.t0 >= BOUNCE_S + (st.hold || 0)) { st.mode = M_SWALLOW; st.t0 += BOUNCE_S + (st.hold || 0); }
+  if (st.mode === M_SWALLOW && time - st.t0 >= RISE_S) st.mode = M_GONE;
+  const el = time - st.t0;
+  switch (st.mode) {
+    case M_APPEAR: return RISE[0] + Math.min(RISE[1] - RISE[0] - 1, Math.floor(el * FPS));
+    case M_ENTER: if (el >= BOUNCE_S) return IDLE[0] + (Math.floor((el - BOUNCE_S) * FPS) % (IDLE[1] - IDLE[0])); // r45: the idle loop until the swallow
+      return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor(el * FPS));
+    case M_NEAR: return BOUNCE[0] + Math.min(BOUNCE[1] - BOUNCE[0] - 1, Math.floor(el * FPS));
+    case M_SWALLOW: return RISE[1] - 1 - Math.min(RISE[1] - RISE[0] - 1, Math.floor(el * FPS));
+    case M_GONE: return RISE[0];
+    default: return IDLE[0] + (Math.floor(time * FPS) % (IDLE[1] - IDLE[0]));
+  }
 }
 export function resetPortalStates() { states.clear(); for (const c of tinted.values()) unshareCanvas(c.cv); tinted.clear(); }
 
+/** Scale of a sprite frame for an idle whirlpool `w` px wide: px per sheet px. */
+function scaleFor(w) { return w / sheetMeta().idlePx; }
+/** The idle whirlpool's height in px for a width `w` and a squash (the visible part of the first idle frames). */
+export function idleHeightPx(w, squash) { const sh = sheetMeta(); return (mean(sh.bottoms, IDLE[0], IDLE[1]) - mean(sh.tops, IDLE[0], IDLE[1])) * scaleFor(w) * squash; }
+/** Where a frame's visible bottom lies, in px, relative to its cell's centre (tests, and the seat of a frame). */
+export function frameBottomPx(frame, w, squash) { const sh = sheetMeta(); return (sh.bottoms[frame] - sh.cell / 2) * scaleFor(w) * squash; }
+
 /**
  * Draw the sprite whirlpool. `w` is the width in px of the IDLE whirlpool (the Bounce frames are a little bigger, the Rise
- * starts small, as in the sheet); `squash` 1 = upright, PORTAL_SQUASH = lying in the floor. (cx, cy) is the centre.
- * Returns false when the sheet is not loaded (the caller draws the fallback).
+ * starts small, as in the sheet); `squash` 1 = upright, PORTAL_SQUASH = lying in the floor. (cx, seatY) is where the frame's own
+ * visible bottom goes: r44, every frame is seated by its stored visible bottom, so the Bounce frames (which sit lower in their
+ * cells than the idle ones) and the idle ones all rest on the same line instead of lifting and hovering.
+ * Returns false when the sheet is not decoded yet (the caller draws the fallback).
  */
-export function drawWhirlpoolSprite(ctx, cx, cy, w, squash, frame, tint) {
+export function drawWhirlpoolSprite(ctx, cx, seatY, w, squash, frame, tint) {
   const f = frameFor(tint, frame);
   if (!f) return false;
-  const k = w / IDLE_PX;
-  const dw = CELL * k, dh = CELL * k * squash;
-  ctx.drawImage(f.src, f.sx, f.sy, CELL, CELL, cx - dw / 2, cy - dh / 2, dw, dh);
+  const sh = sheetMeta(), cell = sh.cell;
+  const k = scaleFor(w);
+  const dw = cell * k, dh = cell * k * squash;
+  ctx.drawImage(f.src, f.sx, f.sy, cell, cell, cx - dw / 2, seatY - sh.bottoms[frame] * k * squash, dw, dh);
   return true;
 }
 
@@ -223,4 +291,11 @@ export function portalPlace(tileAt, tx, ty) {
   const left = tx - L, right = tx + R + 1, margin = Math.min(avail, w * 1.2) / 2;
   const cx = Math.min(Math.max(tx + 0.5, left + margin), right - margin);
   return { flat, w, cx, floorY, cy: row + 0.5 };
+}
+
+/** r44: the centre of the idle whirlpool in tile units (where the entering octopus is pulled to), the same place drawV2Marks seats it. */
+export function portalCenter(tileAt, tx, ty) {
+  const pl = portalPlace(tileAt, tx, ty);
+  if (!pl.flat) return { x: pl.cx, y: pl.cy };
+  return { x: pl.cx, y: pl.floorY + PORTAL_SEAT - idleHeightPx(pl.w, PORTAL_SQUASH) / 2 };
 }

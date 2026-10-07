@@ -82,7 +82,7 @@ function shellIcon(ctx, x, y, size) {
   else { ctx.fillStyle = '#7fc4ff'; ctx.beginPath(); ctx.arc(x, y, size * 0.4, 0, TAU); ctx.fill(); }
 }
 
-function itemGlyph(ctx, glyph, x, y, r, time) {
+export function itemGlyph(ctx, glyph, x, y, r, time) {
   if (isItem(glyph)) drawItemIcon(ctx, glyph, x, y, r * 1.15);
   else if (glyph === 'heart') heartGlyph(ctx, x, y, r);
   else if (glyph === 'bombs3') {
@@ -576,7 +576,15 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('SHOP', kx, signY + ppu * 0.02);
 
-  // keeper: round body, spiral shell on its back, stalk eyes, a smile
+  // keeper: round body, spiral shell on its back, stalk eyes, a smile (only while he sits calm behind the counter)
+  if (st.keeperCalm !== false) drawFallbackKeeper(ctx, kx, ky, ppu, lw, time);
+  for (let i = 0; i < 3; i++) {
+    if ((st.pedGone && st.pedGone[i]) || (st.ware && st.ware[i] !== 0 && !st.sold[i])) continue;
+    drawFallbackPlinth(ctx, st, i, sx, sy, ppu, lw, time, shells);
+  }
+}
+
+function drawFallbackKeeper(ctx, kx, ky, ppu, lw, time) {
   const bob = Math.sin(time * 1.6) * ppu * 0.07;
   const by = ky + bob, r = ppu * 0.55;
   ctx.strokeStyle = '#4a2410'; ctx.lineWidth = lw;
@@ -593,9 +601,10 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
   for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(kx + sd * r * 0.4 + r * 0.04, by - r * 0.1, r * 0.11, 0, TAU); ctx.fill(); }
   ctx.strokeStyle = '#4a2410'; ctx.lineWidth = Math.max(1, lw * 0.8);
   ctx.beginPath(); ctx.arc(kx, by + r * 0.28, r * 0.28, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+}
 
-  // plinths, item icons and prices
-  for (let i = 0; i < 3; i++) {
+function drawFallbackPlinth(ctx, st, i, sx, sy, ppu, lw, time, shells) {
+  {
     const item = st.items[st.stock[i]];
     const px = sx(st.px[i * 2]), py = sy(st.px[i * 2 + 1]);
     const base = sy(Math.floor(st.px[i * 2 + 1]) + 1) - ppu * 0.2;
@@ -606,7 +615,8 @@ export function drawShop(ctx, camera, cw, ch, st, shells, time, tileAt) {
     const iy = py - ppu * 0.2 + Math.sin(time * 2.2 + i * 1.7) * ppu * 0.05;
     if (!sold) itemGlyph(ctx, item.glyph, px, iy - ppu * 0.2, ppu * 0.36, time + i);
     const ty = py - ppu * 1.15;
-    if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); continue; }
+    if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); return; }
+    if (st.free) return;
     const afford = shells >= item.price;
     const text = String(item.price);
     ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;
@@ -625,6 +635,19 @@ const CNT_SRC_H = 181, CNT_TOP = 49, CNT_FOOT = 176; // counter strip: sprite he
 const CNT_SCALE = 0.0035;                              // tiles per source pixel: the body is about 0.45 tile tall
 const SIGN_ROPE = 0.16;                                // rope x of the sign sprite, from each side (fraction of its width)
 const SIGN_W = 2.6, KEEPER_W = 1.5, PED_W = 0.8;       // tiles
+
+/** Clip to the floor columns (world x from x0 to x1, the floor row fy) that are still rock; false (and no clip) when all stand. */
+function clipToFloor(ctx, sx, sy, x0, x1, fy, tileAt, ppu) {
+  const a = Math.floor(x0), b = Math.floor(x1);
+  let gone = false;
+  for (let tx = a; tx <= b; tx++) if (tileAt(tx, fy) === 0) { gone = true; break; }
+  if (!gone) return false;
+  ctx.save();
+  ctx.beginPath();
+  for (let tx = a; tx <= b; tx++) if (tileAt(tx, fy) !== 0) ctx.rect(sx(tx) - 0.5, sy(fy) - ppu * 3, ppu + 1, ppu * 4);
+  ctx.clip();
+  return true;
+}
 
 function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   const { ppu, sx, sy } = view(camera, cw, ch);
@@ -648,9 +671,12 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   const cy0 = sy(floorTop) - CNT_FOOT * gp;            // dest y of the strip's top
   const [lw0, mw0, rw0] = COUNTER_SLICES;
   const capL = lw0 * gp, capR = rw0 * gp;
+  // 2026-10-07: the stall breaks like any rock; the counter stays only over floor tiles that still stand
+  const clipped = tileAt ? clipToFloor(ctx, sx, sy, st.px[0] - 1.1, st.px[4] + 1.1, floorTop, tileAt, ppu) : false;
   ctx.drawImage(counter, 0, 0, lw0, CNT_SRC_H, xL, cy0, capL, CNT_SRC_H * gp);
   ctx.drawImage(counter, lw0, 0, mw0, CNT_SRC_H, xL + capL - 0.5, cy0, xR - xL - capL - capR + 1, CNT_SRC_H * gp);
   ctx.drawImage(counter, lw0 + mw0, 0, rw0, CNT_SRC_H, xR - capR, cy0, capR, CNT_SRC_H * gp);
+  if (clipped) ctx.restore();
   const counterTopY = cy0 + CNT_TOP * gp;
 
   // keeper: sits behind / on the counter between the first two pedestals
@@ -661,7 +687,7 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
   const kBottom = counterTopY + ppu * 0.06 + bob;
   const shud = fl > 0 ? Math.sin(time * 70) * fl * ppu * 0.07 : 0;
   const khh = kh * (1 - fl * 0.08);
-  ctx.drawImage(keeper, kx - kw / 2 + shud, kBottom - khh, kw, khh);
+  if (st.keeperCalm !== false) ctx.drawImage(keeper, kx - kw / 2 + shud, kBottom - khh, kw, khh); // an angry or dead keeper is drawn by shopkeeper-draw.js
 
   // sign: hangs from ropes that reach the rock ceiling above it; with no ceiling in reach it stands on a
   // post at the counter's left END (never behind the keeper)
@@ -708,12 +734,15 @@ function drawShopArt(ctx, camera, cw, ch, st, shells, time, tileAt) {
     const item = st.items[st.stock[i]];
     const px = sx(st.px[i * 2]), py = sy(st.px[i * 2 + 1]);
     const pBottom = counterTopY + ppu * 0.1;
+    if (st.pedGone && st.pedGone[i]) continue; // its floor was blown away: the pedestal fell (a loose ware is drawn by drawLooseWares)
     ctx.drawImage(ped, px - pw / 2, pBottom - phh, pw, phh);
     const sold = st.sold[i] === 1;
     const iy = pBottom - phh - ppu * 0.36 + Math.sin(time * 2.2 + i * 1.7) * ppu * 0.05;
+    if (!sold && st.ware && st.ware[i] !== 0) continue; // knocked off or taken: an empty pedestal
     if (!sold) itemGlyph(ctx, item.glyph, px, iy, ppu * 0.36, time + i);
     const ty = iy - ppu * 0.72;
     if (sold) { label(ctx, 'SOLD', px, ty, ppu * 0.3, '#c9d3dc'); continue; }
+    if (st.free) continue; // nobody minds the stall now: no prices
     const afford = shells >= item.price;
     const text = String(item.price);
     ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.36))}px Quicksand, sans-serif`;

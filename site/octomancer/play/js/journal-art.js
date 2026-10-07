@@ -5,6 +5,7 @@
 
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
+import { drawSpellIcon, drawJarIcon } from './spell-icons.js';
 import { ENTRIES } from './journal.js';
 import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
 import { drawPoolHost } from './pool-draw.js';
@@ -63,6 +64,19 @@ export const FN = {
     stroke(c, '#d7dfe6', 0.08);
     for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(i * 0.24 - 0.11, 0.38); c.lineTo(i * 0.24, -0.38); c.lineTo(i * 0.24 + 0.11, 0.38); c.closePath(); c.fill(); c.stroke(); }
   },
+  // section 14: the fish juice jar (two thirds full) and the Ink Cloud spell, drawn at pixel scale like the boulder
+  juice(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawJarIcon(c, -0.6 * u, -0.85 * u, 1.2 * u, 1.7 * u, 0.67, 3); c.restore(); },
+  inkcloud(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'ink-cloud', 0, 0, 0.85 * u); c.restore(); },
+  // the rest grotto's spring: pale stones round a clear upwelling, a few rising bubbles and a kelp frond
+  spring(c) {
+    c.fillStyle = 'rgba(150,215,200,0.55)'; c.beginPath(); c.ellipse(0, 0.35, 0.62, 0.22, 0, 0, TAU); c.fill();
+    for (const [x, y, rx, ry] of [[-0.66, 0.42, 0.26, 0.18], [0.66, 0.42, 0.27, 0.19], [-0.32, 0.6, 0.24, 0.15], [0.3, 0.6, 0.25, 0.15], [0, 0.66, 0.2, 0.13]]) {
+      stroke(c, '#b8b4a6', 0.06); c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.fill(); c.stroke();
+    }
+    c.strokeStyle = 'rgba(210,245,235,0.9)'; c.lineWidth = 0.06;
+    for (const [x, y, r] of [[0, 0.05, 0.09], [0.12, -0.25, 0.12], [-0.08, -0.55, 0.08], [0.06, -0.82, 0.11]]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); }
+    stroke(c, '#5f8a4a', 0.06); c.beginPath(); c.moveTo(-0.82, 0.3); c.quadraticCurveTo(-0.98, -0.2, -0.7, -0.6); c.quadraticCurveTo(-0.72, -0.15, -0.66, 0.3); c.closePath(); c.fill(); c.stroke();
+  },
   // the in-game boulder, drawn at pixel scale (drawBoulder's outline widths are in pixels: in unit space they were 80 px thick, a black blob)
   rock(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawBoulder(c, 0, 0, 0.78 * u, 7, 0.3); c.restore(); },
   fish(c) {
@@ -112,6 +126,15 @@ export const FN = {
     stroke(c, '#7d8b96', 0.1); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.18); c.fill(); c.stroke();
     c.strokeStyle = INK; c.lineWidth = 0.07; c.beginPath(); c.moveTo(-0.15, -0.8); c.lineTo(0.05, -0.4); c.lineTo(-0.15, -0.1); c.lineTo(0.12, 0.3); c.lineTo(-0.02, 0.8); c.stroke();
     c.fillStyle = '#ffe38a'; c.beginPath(); c.arc(0.4, 0.2, 0.09, 0, TAU); c.fill();
+  },
+  buried(c) {
+    // a block of rock with a shell sealed in it, shown as the goggles see it: a pale silhouette and a few flecks
+    stroke(c, '#7d8b96', 0.1); c.beginPath(); c.roundRect(-0.8, -0.8, 1.6, 1.6, 0.18); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(190,232,220,0.35)'; c.beginPath(); c.arc(0.05, 0.05, 0.6, 0, TAU); c.fill();
+    c.fillStyle = '#d6f1e8'; c.strokeStyle = 'rgba(40,70,70,0.6)'; c.lineWidth = 0.05;
+    c.beginPath(); c.ellipse(0.05, 0.08, 0.36, 0.3, -0.4, 0, TAU); c.fill(); c.stroke();
+    c.beginPath(); c.arc(0.05, 0.08, 0.16, 0.5, 5.2); c.stroke();
+    c.fillStyle = 'rgba(236,226,200,0.8)'; for (const [x, y] of [[-0.55, -0.5], [-0.42, -0.58], [0.52, 0.55]]) { c.beginPath(); c.arc(x, y, 0.05, 0, TAU); c.fill(); }
   },
   relic(c) {
     stroke(c, '#e7b94a', 0.09);

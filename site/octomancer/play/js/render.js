@@ -63,7 +63,8 @@ import { updateCamera, worldToScreen, computePxPerUnit } from './camera.js';
 import { acquireCanvas, releaseCanvas, sharedCanvas } from './canvas-pool.js';
 import { visibleAt, visibleObj, cullFlags, cullFrame, cullEnd } from './cull.js';
 import { drawOctopus } from './octopus-draw.js';
-import { depthTint, findPlantAnchors, findClusterMates } from './decor.js';
+import { depthTint } from './decor.js';
+import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
 import { prefersReducedMotion } from './config.js';
@@ -142,6 +143,7 @@ function getSharedArt() {
     plants: [loadImage(ASSET('plant1.webp')), loadImage(ASSET('plant2.webp'))],
     // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates only (reuses decor.js's bush2 art)
     clusterBush: loadImage(ASSET('decor-bush2.webp')),
+    foliage: loadImage(ASSET('foliage.webp')), // r46: every original foliage sprite on one sheet (data/foliage.json)
     shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')), kinds: [null, loadImage(ASSET('shell-cowrie.webp')), loadImage(ASSET('shell-conch.webp')), loadImage(ASSET('shell-nautilus.webp')), loadImage(ASSET('shell-pearl.webp'))] }, // kinds: by value (shells.js)
     noise,
     deepTint: null,
@@ -247,6 +249,7 @@ export function createRenderer(ctx, world) {
   // decor.js), not new art, so a floor cluster can mix a bush in alongside
   // the vine/frond plants per the brief ("clusters of 2-4 mixed items").
   const clusterBush = sa.clusterBush;
+  const sheetImg = sa.foliage;
   const shellImgs = sa.shellImgs;
   const camera = { x: 0, y: 0, pxPerUnit: 32 };
   const chunkW = world.width, chunkH = world.chunkHeight;
@@ -1089,91 +1092,112 @@ export function createRenderer(ctx, world) {
   // density never regresses `findPlantAnchors`'s own floating/into-rock
   // guarantees for the anchor itself -- only the decorative mates can be
   // skipped, never the anchor.
-  const PLANT_BASE_SCALE = 1.9; // was 1.4 (round-12/13): closer to the video stills' bolder growth
-  const SWAY_AMPLITUDE = 0.035; // radians, gentle -- not a wave effect
+  // (r46: the vines' 1.9-tile height, their 0.035 rad sway and PLANT_INTO_WALL's 0.4 sink now live in data/foliage.json
+  // as plant1 / plant2's "h", "sway" and "sink", next to every other kind's)
   const SWAY_SPEED = 0.7; // rad/s equivalent, per-plant phase-shifted below
 
-  function drawOnePlant(cx, cy, tiltRad, mirrorY, seed, sizeMul = 1, img = plants[seed % 2]) {
+  // Round 46 (Daniel: "add some horizontal or vertical offset... specific offsets per each plant", "I had way more types
+  // of foliage"): the plants come from foliage.js's placement -- every original FoliageItem (data/foliage.json) with its own
+  // offsets, jitter, Perlin patches and caps, a per-instance scale / mirror / sway phase, no kind repeated on the next cell.
+  // Each instance is drawn with its base point (inside the rock, under the wall bake) at the origin, turned to its surface.
+  const FALLBACK_SEED = 0x51a7;
+  function drawFoliageInstance(F, i, ox, oy, time, reduced) {
+    const T = getFoliageTable();
+    const k = F.kind[i], surf = F.surf[i], base = T.base[k];
+    const ext = T.ext[k];
+    const img = ext ? plants[ext === 'plant2' ? 1 : 0] : sheetImg;
     if (!img.complete || !img.naturalWidth) return;
-    const s = worldToScreen(camera, canvasW_, canvasH_, cx, cy);
-    const h = camera.pxPerUnit * PLANT_BASE_SCALE * sizeMul;
-    if (s.x < -h || s.x > canvasW_ + h || s.y < -h * 0.3 || s.y > canvasH_ + h * 1.3) return; // r36: off screen (levels carry about twice the plants now)
-    const w = h * (img.naturalWidth / img.naturalHeight);
+    const ppu = camera.pxPerUnit, sc = F.scale[i];
+    const iw = ext ? img.naturalWidth : T.sw[k], ih = ext ? img.naturalHeight : T.sh[k];
+    const h = T.h[k] * sc * ppu, w = T.w[k] > 0 ? T.w[k] * sc * ppu : h * (iw / ih);
+    const s = worldToScreen(camera, canvasW_, canvasH_, F.x[i] + ox, F.y[i] + oy);
+    const r = Math.max(w, h);
+    if (s.x < -r || s.x > canvasW_ + r || s.y < -r || s.y > canvasH_ + r) return;
+    const ph = F.phase[i];
     ctx.save();
     ctx.translate(s.x, s.y);
-    if (tiltRad) ctx.rotate(tiltRad);
-    if (mirrorY) ctx.scale(1, -1);
-    ctx.drawImage(img, -w / 2, -h, w, h);
+    if (surf === SURF_HOVER) { // the little green fish: bobs and drifts under its ceiling, facing its way
+      const t = reduced ? 0 : time;
+      ctx.translate(Math.sin(t * 0.5 + ph) * 0.15 * ppu, Math.sin(t * 1.3 + ph * 1.7) * 0.06 * ppu);
+      ctx.scale(Math.cos(t * 0.5 + ph) > 0 ? -1 : 1, 1);
+      ctx.drawImage(img, T.sx[k], T.sy[k], iw, ih, -w / 2, -h / 2, w, h);
+      ctx.restore();
+      return;
+    }
+    // turn the art so its base edge faces the rock
+    if (surf === SURF_WALL) {
+      const rockRight = F.nx[i] < 0;
+      if (base === BASE_BOTTOM) ctx.rotate(rockRight ? -Math.PI / 2 : Math.PI / 2);
+      else if (!rockRight) ctx.scale(-1, 1); // base 'right': mirrored for rock on the left
+    } else if (surf === SURF_CEIL && base === BASE_BOTTOM && T.mirror[k]) ctx.scale(1, -1); // floor art hung from a ceiling
+    const sway = reduced ? 0 : Math.sin(time * SWAY_SPEED * (0.8 + 0.4 * ((k * 7 + 3) % 5) / 5) + ph) * T.sway[k];
+    if (sway) ctx.rotate(sway);
+    if (F.flip[i] && surf !== SURF_WALL) ctx.scale(-1, 1);
+    const dx = base === BASE_RIGHT ? -w : -w / 2, dy = base === BASE_TOP ? 0 : base === BASE_RIGHT ? -h / 2 : -h;
+    if (ext) ctx.drawImage(img, dx, dy, w, h); else ctx.drawImage(img, T.sx[k], T.sy[k], iw, ih, dx, dy, w, h);
     ctx.restore();
   }
 
   // worldToScreen/camera don't need per-call canvas dims beyond what the
   // caller already has; stashed on module-local vars each call so
-  // `drawOnePlant` (used from three separate loops below) doesn't need its
-  // own canvasW/canvasH parameters threaded through every call site.
+  // `drawFoliageInstance` doesn't need its own canvasW/canvasH parameters.
   let canvasW_ = 0, canvasH_ = 0;
   const plantCache = new WeakMap();
 
-  /** v2: the anchors and cluster mates of a chunk, worked out once per tile change (r43: also warmed up on a level's first frame). */
+  /** A chunk's foliage, worked out once per tile change (or keep-out change: a quest cage added after the level was made). */
   // r43: the anchors are found in one go, the cluster mates a few at a time (PLANT_MATES_MS per call, about 4 ms), so a new level or a
-  // bomb does not cost one 30-60 ms task; an anchor whose mates are not worked out yet is drawn alone for the frames it takes
+  // bomb does not cost one 30-60 ms task; until the new placement is ready the previous one keeps drawing
   const PLANT_MATES_MS = 4;
   function plantEntry(chunk, index) {
+    const T = getFoliageTable();
+    if (!T) return null;
     let e = plantCache.get(chunk);
-    if (!e || e.ver !== world.tileVersion) {
-      const list = findPlantAnchors(chunk, chunkW, chunkH, index);
-      e = { ver: world.tileVersion, anchors: list, mates: new Array(list.length).fill(NO_MATES), vis: new Uint8Array(list.length), next: 0 };
-      plantCache.set(chunk, e);
-      return e;
+    const ver = world.v2 ? world.tileVersion : 0, kv = chunk.keepVer | 0;
+    if (!e) { e = { ver: -1, kv: -1, F: null, vis: null, job: null }; plantCache.set(chunk, e); }
+    // one piece per call on v2 (r44's set-up budget): the anchors, then cluster mates PLANT_MATES_MS at a time, then the placement
+    if (e.ver !== ver || e.kv !== kv) {
+      e.ver = ver; e.kv = kv; e.job = createFoliageCandidates(chunk, chunkW, chunkH, index);
+      if (world.v2) return e;
     }
-    if (e.next < e.anchors.length) {
-      const t0 = performance.now();
-      while (e.next < e.anchors.length && performance.now() - t0 < PLANT_MATES_MS) {
-        const a = e.anchors[e.next];
-        e.mates[e.next++] = findClusterMates(chunk, chunkW, chunkH, a.tx, a.ty, a.onCeiling, a.hash);
-      }
+    if (e.job && !e.job.done) { stepFoliageCandidates(e.job, world.v2 ? PLANT_MATES_MS : Infinity); if (world.v2) return e; }
+    if (e.job && e.job.done) {
+      e.F = placeFoliageCells(T, chunk, chunkW, chunkH, e.job.cand, chunk.salt === undefined ? (FALLBACK_SEED + index * 2654435761) >>> 0 : chunk.salt);
+      e.vis = new Uint8Array(e.F.n); e.job = null;
     }
     return e;
   }
-  const NO_MATES = [];
+  /** True once a chunk's foliage is placed for its current tiles and keep-outs. */
+  function plantsReady(chunk) {
+    const e = plantCache.get(chunk);
+    return !!e && e.ver === (world.v2 ? world.tileVersion : 0) && e.kv === (chunk.keepVer | 0) && !e.job && !!e.F;
+  }
+  /** r44: ONE piece of a new level's set-up per frame behind the dark screen (before, a set-up frame did the plant anchors of every chunk, a
+   *  deep-rock step and the cell bakes together: a 50-80 ms task at 4x on a phone): one piece of one chunk's foliage (r46: its
+   *  anchors, a few cluster mates, or the placement), then the deep-rock steps one by one, then the wall cells (updateCells keeps its
+   *  own per-frame budget). */
+  function setupPiece(canvasW, canvasH, resident) {
+    if (getFoliageTable()) {
+      for (const { index, chunk } of resident) {
+        if (!plantsReady(chunk)) { plantEntry(chunk, index); return; }
+      }
+    }
+    plantsWarm = true;
+    if (deepStage < 3 && stepDeepRock()) return;
+    updateCells(canvasW, canvasH);
+  }
   let plantsWarm = false;
   const timing = { warmMs: 0, warmMax: 0, wallsMs: 0, wallsMax: 0 }; // r43: the level's set-up steps and the wall drawing (with its cell bakes), worst frame so far
 
   function drawPlants(canvasW, canvasH, resident, time = 0, reduced = false) {
-    if (!plants[0].complete || !plants[0].naturalWidth) return;
     canvasW_ = canvasW; canvasH_ = canvasH;
     for (const { index, yOffset, chunk } of resident) {
-      // r36 (v2): the anchors and their cluster mates are worked out once per tile change, not every frame
-      let anchors, matesOf = null, vis;
-      if (world.v2) {
-        const e = plantEntry(chunk, index);
-        anchors = e.anchors; matesOf = e.mates; vis = e.vis;
-      } else { anchors = findPlantAnchors(chunk, chunkW, chunkH, index); vis = cullFlags('plants', anchors.length); }
-      for (let ai = 0; ai < anchors.length; ai++) {
-        const { tx, ty, onCeiling, hash: h } = anchors[ai];
-        if (!visibleAt(vis, ai, tx + 0.5, ty + yOffset, 3)) continue; // r43: off-screen foliage is not swayed or drawn
-        const sway = reduced ? 0 : Math.sin(time * SWAY_SPEED + (h % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
-        if (!onCeiling) {
-          // Floor cap: solid here, open water directly above -- grows up.
-          const cx = tx + 0.5, cy = ty + yOffset + PLANT_INTO_WALL;
-          drawOnePlant(cx, cy, sway, false, h);
-          // Round-14: 1-3 cluster-mates (mixed plant1/plant2/bush2) beside
-          // most floor anchors -- offsets/safety come from decor.js's
-          // `findClusterMates` (shared with decor.test.js) so this loop only
-          // turns each validated slot into a draw call.
-          for (const { dx, hash: h2 } of matesOf ? matesOf[ai] : findClusterMates(chunk, chunkW, chunkH, tx, ty, false, h)) {
-            const useBush = false; // r15 review: decor-bush2 clashes with the pale vines; vine-only clusters
-            const mateSway = reduced ? 0 : Math.sin(time * SWAY_SPEED * 1.3 + (h2 % 1000) / 1000 * Math.PI * 2) * SWAY_AMPLITUDE;
-            drawOnePlant(tx + dx + 0.5, cy + 0.05, mateSway, false, h2, useBush ? 0.9 : 0.7, useBush ? clusterBush : undefined);
-          }
-        } else {
-          // Ceiling cap: solid here, open water directly below -- hangs
-          // down (mirrored vertically, same art). No side-wall variant:
-          // decor.js's own round-5 note already found this exact art (a
-          // tall vine/frond growing from one narrow root) doesn't read
-          // right rotated onto a side-wall face -- not repeating that here.
-          drawOnePlant(tx + 0.5, ty + yOffset + 1 - PLANT_INTO_WALL, sway, true, h);
-        }
+      const e = plantEntry(chunk, index);
+      if (!e || !e.F) continue;
+      const F = e.F;
+      for (let i = 0; i < F.n; i++) {
+        if (chunk.tiles[F.support[i]] === 0) continue; // its rock was bombed away (the new placement follows in a few frames)
+        if (!visibleAt(e.vis, i, F.x[i], F.y[i] + yOffset, 3)) continue; // r43: off-screen foliage is not swayed or drawn
+        drawFoliageInstance(F, i, 0, yOffset, time, reduced);
       }
     }
   }
@@ -1344,13 +1368,20 @@ export function createRenderer(ctx, world) {
   }
 
   function drawOcto(o, alpha, canvasW, canvasH, time) {
+    if (o.hidden) { o.__drawn = null; return; } // r45: gone into a whirlpool
     const ix = o.prevX + (o.x - o.prevX) * alpha;
     const iy = o.prevY + (o.y - o.prevY) * alpha;
     const s = worldToScreen(camera, canvasW, canvasH, ix, iy);
+    // r45: going into a whirlpool (main.js stepEntry): the turn and the scale come from the scripted pose, interpolated like the position
+    const e = o.entry;
+    const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
+    const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
+    o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
     ctx.save();
     ctx.translate(s.x, s.y);
-    ctx.rotate((o.angle * Math.PI) / 180);
-    ctx.scale(camera.pxPerUnit, camera.pxPerUnit);
+    ctx.rotate((rot * Math.PI) / 180);
+    const sc = camera.pxPerUnit * k;
+    ctx.scale(sc, sc);
     o.__t = time;
     o.__speed = Math.hypot(o.vx, o.vy);
     // Invulnerability blink (M3-2): flicker the octopus while it can't be
@@ -1366,7 +1397,7 @@ export function createRenderer(ctx, world) {
     // image at that alpha, which is exactly an "x-ray" look. Passing the
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
-    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
+    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
     drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }
@@ -1421,15 +1452,11 @@ export function createRenderer(ctx, world) {
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
       updateCamera(camera, canvasW, canvasH, followX, followY, world.width, world.height, frameDt, octo.vx, octo.vy, camX, camY);
+      if (warmOnly && warmGroup < 0) return; // r44: a frame behind the dark screen that main.js uses to run the simulation's first updates: nothing to set up or draw
       if (warmOnly && warmGroup <= 0) {
         // r43: the screen is dark while a new level's first view bakes: do only the set-up (plant anchors, the deep rock, the wall
         // cells) and draw nothing, so these frames stay cheap
-        if (world.v2) {
-          for (const { index, chunk } of resident) plantEntry(chunk, index); // the anchors, then a few cluster mates per frame
-          if (plantsWarm) stepDeepRock();
-          plantsWarm = true;
-          updateCells(canvasW, canvasH);
-        }
+        if (world.v2) setupPiece(canvasW, canvasH, resident);
         return;
       }
       // r43: a warm-up frame (warmGroup 1..5, behind the dark screen) draws one group of the scene so the first real frame does not

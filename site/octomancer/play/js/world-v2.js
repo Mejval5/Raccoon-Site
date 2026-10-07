@@ -8,13 +8,14 @@
 //     (same padded-window trace world.js does per chunk), lazily, and each
 //     band's outline is kept until a bomb changes it; a bomb retraces only
 //     the band(s) its tiles touch;
-//   - bombs break any interior rock (tile 1) but never the border (isBedrock).
+//   - bombs break any interior rock (tile 1), the shop room's included, but never the border (isBedrock).
 //
 // Bands are the unit render.js caches wall canvases in; `configureBands(rows)`
 // lets the renderer pick the band height (about 512 px of baked canvas).
 
 import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
+import { planPools } from './pool.js';
 import {
   traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
   OUTLINE_PAD, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO,
@@ -64,7 +65,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       ...(level.shortcutX >= 0 && level.shortcutX !== undefined ? [{ x0: level.shortcutX - 2, x1: level.shortcutX + 3, y0: level.shortcutY - 2, y1: level.shortcutY + 2 }] : []),
       ...(level.shortcut3X >= 0 && level.shortcut3X !== undefined ? [{ x0: level.shortcut3X - 2, x1: level.shortcut3X + 3, y0: level.shortcut3Y - 2, y1: level.shortcut3Y + 2 }] : []),
       ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
+      // r46: the whirlpool pedestal (its plinth, the portal ring above it and the prize chest beside it)
+      ...(level.setPieces ? planPools(level).map((p) => ({ x0: Math.floor(p.x) - 3, x1: Math.floor(p.x) + 3, y0: p.floorY - 4, y1: p.floorY + 1 })) : []),
     ],
+    keepVer: 0, // bumped when a keep-out is added later (a quest's cage): render.js re-places the foliage
     plantFree: level.shop ? {
       x0: Math.min(level.shop.px[0], level.shop.kx) - 3, x1: Math.max(level.shop.px[4], level.shop.kx) + 4,
       y0: level.shop.ky - 5, y1: Math.max(level.shop.px[1], level.shop.px[3], level.shop.px[5]) + 3,
@@ -73,6 +77,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
   const shopRect = level.shop || null;
   function inShop(x, y) { return shopRect !== null && x >= shopRect.x0 && x < shopRect.x1 && y >= shopRect.y0 && y < shopRect.y1; }
+  // 2026-10-07: the shop is ordinary breakable world (Spelunky: bombing the stall is how you anger the keeper). Every shop
+  // tile broken is counted, so main.js can tell the stall was damaged. When the Materials owner's shop-frame material
+  // (timber / masonry) lands, its tiles break the same way: only the border (isBedrock) is unbreakable.
+  let shopBroken = 0;
 
   let deepestY = startY;
 
@@ -175,14 +183,19 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     isBedrock: bedrock,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      return !bedrock(x, y) && !inShop(x, y) && tileAt(x, y) !== 0;
+      return !bedrock(x, y) && tileAt(x, y) !== 0;
     },
+    /** Shop tiles broken on this level so far (main.js: a change angers the shopkeepers). */
+    get shopTilesBroken() { return shopBroken; },
+    /** Whether tile (tx, ty) is part of the shop room (its frame, floor, walls). */
+    inShop(tx, ty) { return inShop(Math.floor(tx), Math.floor(ty)); },
     /** Bomb break: any interior rock, never the 2-tile border. */
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (bedrock(x, y) || inShop(x, y)) return false; // the stall's room is unbreakable: its planks, keeper and pedestals never end up floating
+      if (bedrock(x, y)) return false;
       if (tiles[y * W + x] === 0) return false;
       setTile(x, y, 0);
+      if (inShop(x, y)) shopBroken++; // the stall breaks like any rock: its pedestals fall, the keeper is angered (main.js, shop.js)
       return true;
     },
 
@@ -196,6 +209,8 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
     getWallOutline,
     wallSegmentsNear,
+    /** r46: no foliage in tile rect [x0, x1) x [y0, y1) (a quest's person or cage, placed after the level). */
+    addPlantKeepOut(x0, y0, x1, y1) { chunk.plantKeepOut.push({ x0, y0, x1, y1 }); chunk.keepVer++; },
 
     // ---- bands (render.js) ----
     configureBands(rows) {

@@ -4,14 +4,14 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
-export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person', CAT_PROP = 'prop';
-export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_LOOT, CAT_PROP];
+export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person', CAT_PROP = 'prop', CAT_SPELL = 'spell';
+export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_SPELL, CAT_LOOT, CAT_PROP];
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
 export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
 export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_COUNT = 5;
 
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
 /**
  * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
@@ -53,6 +53,7 @@ export function causeEntryId(cause) {
   if (cause === 'bomb') return 'item-bomb';
   if (cause === 'chest') return 'loot-chest';
   if (cause === 'clam') return 'creature-gclam';
+  if (cause === 'shopkeeper') return 'person-keeper';
   for (const pre of ['creature-', 'hazard-']) if (INDEX.has(pre + cause)) return pre + cause;
   return null;
 }

@@ -17,6 +17,7 @@ import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
 import { makeCreatureRecord } from './creatures.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
+import { planEmbedded } from './embed.js';
 import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT, ROOM_W, ROOM_H } from './rooms.js';
 
 export const START_SAFE_RADIUS = 7;
@@ -455,6 +456,23 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       kept = kept.filter((r) => !r.pairId || cnt.get(r.pairId) === 2);
     }
     for (const r of kept) spawns.push(r);
+  }
+  // buried treasure (embed.js): shells, bombs and items sealed in rock the octopus can bomb its way to. Never in the
+  // border, the shop's room and its calm ring, a quest vault's walls (the 6x6 block around each sealed pocket), a hidden-pocket tile or a
+  // fossil / rune carving. Its own random stream, so everything above is unchanged by it.
+  {
+    const block = new Uint8Array(W * H);
+    const mark = (x0, y0, x1, y1) => {
+      for (let y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++) for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++) block[idx(x, y)] = 1;
+    };
+    if (shop) mark(shop.x0 - 5, shop.y0 - 5, shop.x1 + 4, shop.y1 + 4); // the stall and its calm ring
+    for (let i = 0; i < (level.nPockets || 0); i++) mark(level.pockets[i * 3] - 2, level.pockets[i * 3 + 1] - 2, level.pockets[i * 3] + 3, level.pockets[i * 3 + 1] + 3);
+    for (const r of spawns) {
+      const tx = Math.floor(r.x), ty = Math.floor(r.y);
+      if (r.type === 'loot' && r.lk === LK_POCKET) mark(tx, ty, tx, ty);
+      else if (r.type === 'decor' && (r.dk === 'fossil' || r.dk === 'rune')) mark(tx - 1, ty - 1, tx + 1, ty + 1);
+    }
+    for (const r of planEmbedded(t, W, H, BORDER, reached, (x, y) => block[idx(x, y)] === 1, runSeed, levelIndex)) spawns.push(r);
   }
   return { spawns, openCells: openCells.length };
 }
