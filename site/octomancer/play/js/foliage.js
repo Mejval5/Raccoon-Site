@@ -119,9 +119,13 @@ export function createFoliageCandidates(chunk, W, H, chunkIndex) {
 }
 function addCand(c, s, x, y, d) {
   const key = ((s * 4 + d + 1) * c.H + y) * c.W + x;
-  if (c.seen.has(key) || keptOut(c.chunk, x, y)) return;
+  if (c.seen.has(key) || !naturalStone(c.chunk.tiles[y * c.W + x]) || keptOut(c.chunk, x, y)) return;
   c.seen.add(key); c.cand.push(s, x, y, d);
 }
+/** Plants grow on the main terrain only: material id 1 (MAT_ROCK) or 2 (MAT_BEDROCK, the same stone made unbreakable), never on
+ * the Materials owner's bone blocks (3), timber platforms (4) or the shop's masonry (5). Today every rock tile is 1. */
+export function naturalStone(m) { return m === 1 || m === 2; }
+
 /** One rule for every cell (anchors and cluster mates alike): nothing within a tile of an enemy, hazard or loot anchor,
  * nothing in the shop stall or a keep-out (exit ring, shortcut, journal board, pool pedestal, a quest's cage). */
 export function keptOut(chunk, tx, ty) {

@@ -154,12 +154,15 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
       check('... but it keeps patrolling: its position changed while it was culled', e1 && Math.hypot(e1.x - e0.x, e1.y - e0.y) > 0.2 && e1.drawn === false, e1 ? `moved ${Math.hypot(e1.x - e0.x, e1.y - e0.y).toFixed(2)} tiles` : '');
       // the octopus comes back into view: it is drawn again, and it bites
       const hearts0 = await page.evaluate(() => { const s = __octo.state(); return s.octopus.hearts; });
-      await page.evaluate((e) => { __octo.god(false); __octo.teleport(e.x + e.dir * 2.2, e.y); }, e1); // right in front of its nose
+      // r44: in front of its nose as it is NOW (it patrols and turns, so the position sampled a moment ago can be behind it or in rock)
+      const front = await page.evaluate((i) => { const e = __octo.enemies().find((x) => x.id === i); const l = __octo.level(); const open = (x, y) => l.tiles[Math.floor(y) * l.w + Math.floor(x)] === 0; const dx = open(e.x + e.dir * 2.2, e.y) ? e.dir : -e.dir; __octo.god(false); __octo.teleport(e.x + dx * 2.2, e.y); return dx; }, id);
       await sleep(300);
       const e2 = await page.evaluate((i) => __octo.enemies().find((e) => e.id === i), id);
       check('... it is drawn again once the octopus is near', e2 && e2.drawn === true);
       let hurt = false;
       for (let k = 0; k < 12 && !hurt; k++) {
+        // keep the octopus in the piranha's lane while it is still patrolling or winding up (the octopus sinks, and the piranha turns)
+        await page.evaluate((i) => { const e = __octo.enemies().find((x) => x.id === i); if (e && e.st < 2) { const l = __octo.level(); const o = (x, y) => l.tiles[Math.floor(y) * l.w + Math.floor(x)] === 0; const dx = o(e.x + e.dir * 2.2, e.y) ? e.dir : -e.dir; __octo.teleport(e.x + dx * 2.2, e.y); } }, id);
         await page.evaluate(() => __octo.step(25));
         const h = await page.evaluate(() => __octo.state().octopus.hearts);
         hurt = h < hearts0;
