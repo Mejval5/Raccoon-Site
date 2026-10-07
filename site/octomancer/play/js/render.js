@@ -1354,14 +1354,19 @@ export function createRenderer(ctx, world) {
   }
 
   function drawOcto(o, alpha, canvasW, canvasH, time) {
+    if (o.hidden) { o.__drawn = null; return; } // r45: gone into a whirlpool
     const ix = o.prevX + (o.x - o.prevX) * alpha;
     const iy = o.prevY + (o.y - o.prevY) * alpha;
     const s = worldToScreen(camera, canvasW, canvasH, ix, iy);
+    // r45: going into a whirlpool (main.js stepEntry): the turn and the scale come from the scripted pose, interpolated like the position
+    const e = o.entry;
+    const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
+    const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
+    o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
     ctx.save();
     ctx.translate(s.x, s.y);
-    ctx.rotate((o.angle * Math.PI) / 180);
-    const swallow = o.entering || 0; // r44: going into a whirlpool: shrinks to 15% and fades out (main.js stepEntry)
-    const sc = camera.pxPerUnit * (1 - 0.85 * swallow);
+    ctx.rotate((rot * Math.PI) / 180);
+    const sc = camera.pxPerUnit * k;
     ctx.scale(sc, sc);
     o.__t = time;
     o.__speed = Math.hypot(o.vx, o.vy);
@@ -1378,7 +1383,7 @@ export function createRenderer(ctx, world) {
     // image at that alpha, which is exactly an "x-ray" look. Passing the
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
-    const octoAlpha = (o.invulnTimer > 0 && !o.dead && !o.noBlink ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1) * (1 - swallow);
+    const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
     drawOctopus(ctx, o, octoAlpha);
     ctx.restore();
   }
