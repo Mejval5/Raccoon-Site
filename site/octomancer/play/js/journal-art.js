@@ -7,7 +7,7 @@ import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { ENTRIES } from './journal.js';
 import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
-import { drawSprite, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
+import { drawSprite, drawSpriteColumns, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
@@ -188,8 +188,12 @@ function paint(ctx, id, px) {
     }
   } else if (a.sprite) {
     ensureSprites();
-    const asp = spriteAspect(a.sprite), d = px * 0.84;
-    drawSprite(ctx, a.sprite, 0, 0, asp >= 1 ? d : d * asp, asp >= 1 ? d / asp : d, 0.5, 0.5);
+    // `cols` [u0, u1]: only that part of a long sprite (a few spines of the strip); `rot`: turned (the eel lies across the plate)
+    const c = a.cols || [0, 1], asp = spriteAspect(a.sprite) * (c[1] - c[0]) * (a.rot ? 1 / (spriteAspect(a.sprite) ** 2) : 1), d = px * 0.84;
+    const w = asp >= 1 ? d : d * asp, h = asp >= 1 ? d / asp : d;
+    if (a.rot) { ctx.rotate(a.rot * Math.PI / 180); drawSprite(ctx, a.sprite, 0, 0, h, w, 0.5, 0.5); }
+    else if (a.cols) drawSpriteColumns(ctx, a.sprite, c[0], c[1], -w / 2, -h / 2, w, h);
+    else drawSprite(ctx, a.sprite, 0, 0, w, h, 0.5, 0.5);
   } else if (a.item) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
   } else if (a.game && GAME_DRAW[a.game]) {

@@ -61,5 +61,13 @@ export function drawSpriteSlice(ctx, name, v0, v1, dx, dy, dw, dh) {
   return true;
 }
 
+/** Draw a vertical strip [u0, u1) (fractions of the sprite's width) of sprite `name` into the box (dx, dy, dw, dh). */
+export function drawSpriteColumns(ctx, name, u0, u1, dx, dy, dw, dh) {
+  const r = spriteRect(name);
+  if (!r) return false;
+  ctx.drawImage(img, r[0] + r[2] * u0, r[1], Math.max(1, r[2] * (u1 - u0)), r[3], dx, dy, dw, dh);
+  return true;
+}
+
 /** The aspect w / h of a sprite (1 when unknown): sizes can be worked out before the atlas has loaded. */
 export function spriteAspect(name) { const r = ATLAS_RECTS[name]; return r ? r[2] / r[3] : 1; }

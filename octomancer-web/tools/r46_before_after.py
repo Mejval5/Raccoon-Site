@@ -1,6 +1,6 @@
 """Round 46: the before/after sheet of every replaced item at in-game scale (desktop, ppu 72), each pair next to the octopus and a
 piranha at the same scale. Inputs are the gallery figures (tests/art-gallery.html, octomancer-web/night/r46-art/{before,after}-*.png)
-and in-game crops (game-{before,after}-*-dpr1.png). Output: octomancer-web/night/r46-art/before-after.png"""
+and in-game crops (game-{before,after}-*-dpr1.png). Output: octomancer-web/night/r46-art/before-after.webp"""
 import os
 from PIL import Image, ImageDraw
 
@@ -38,7 +38,7 @@ for name, b, a in pairs:
     blk.paste(bi, (REF_W, 22)); blk.paste(ai, (REF_W + bi.width + 8, 22))
     blocks.append(blk)
 
-W = 1500
+W = max(1500, max(b.width for b in blocks))
 x = y = rh = 0
 pos = []
 for blk in blocks:
@@ -48,6 +48,6 @@ for blk in blocks:
 sheet = Image.new('RGB', (W, y + rh), (6, 12, 18))
 for blk, p in zip(blocks, pos):
     sheet.paste(blk, p)
-out = os.path.join(D, 'before-after.png')
-sheet.save(out)
+out = os.path.join(D, 'before-after.webp')
+sheet.save(out, quality=88, method=6)
 print(out, sheet.size, len(blocks), 'pairs')
