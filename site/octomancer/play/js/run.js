@@ -27,14 +27,14 @@ export const SHORTCUT3_LEVEL = 3;
 export const CAUSE_TEXT = {
   piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'horned growth', manta: 'a manta',
   shot: 'a stray shot', bomb: 'its own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
-  eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', unknown: 'the dark',
+  eel: 'an electric eel', anemone: 'an anemone', jet: 'a current jet', chest: 'a trapped chest', shopkeeper: 'the Shopkeeper', unknown: 'the dark',
 };
 
 /** The same causes as capitalised nouns, for list rows (the journal stats page: 'Piranha', 'Spike wall'). */
 export const CAUSE_NAME = {
   piranha: 'Piranha', crab: 'Crab', urchin: 'Urchin', horns: 'Horned growth', manta: 'Manta',
   shot: 'Stray shot', bomb: 'Own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
-  eel: 'Electric eel', anemone: 'Anemone', jet: 'Current jet', chest: 'Trapped chest', unknown: 'The dark',
+  eel: 'Electric eel', anemone: 'Anemone', jet: 'Current jet', chest: 'Trapped chest', shopkeeper: 'Shopkeeper', unknown: 'The dark',
 };
 
 /** The per-dive stats the run summary reports (reset by every dive). */
@@ -55,6 +55,8 @@ export function createRun(seed, opts = {}) {
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
+    shopAggro: false,    // Spelunky aggro: the shopkeepers are hostile for the rest of this dive (shop-aggro.js); a new dive resets it
+    shopAggroWhy: '',    // what angered them first: 'hurt' | 'shop' | 'theft' | 'kill' | ...
     juice: 0,            // fish juice droplets in the jar (spells.js): kept between levels, reset by a death or a new dive
     juiceStart: opts.juiceStart | 0, // droplets every dive starts with (spells.js juiceStart(): one cast)
     rest: !!opts.rest,   // the zone ends in the rest grotto (S_REST) before the clear screen
@@ -102,6 +104,7 @@ function startDive(run, level = 1) {
   run.levelsCleared = 0;
   run.shells = 0;
   run.items = [];
+  run.shopAggro = false; run.shopAggroWhy = '';
   run.juice = run.juiceStart;
   run.hotbar = null;
   run.dive = newDive(level);
@@ -117,6 +120,7 @@ export function runEvent(run, ev, cause) {
     run.deaths++;
     if (run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
     run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
+    run.shopAggro = false; run.shopAggroWhy = '';
     run.juice = 0; run.hotbar = null;
     return true;
   }
@@ -150,6 +154,7 @@ export function runEvent(run, ev, cause) {
         sum.shortcutNew = !run.shortcut; // first clear: the hub ring unlocks
         run.shortcut = true;
         run.state = S_END; run.level = 0;
+        run.shopAggro = false; run.shopAggroWhy = ''; // the dive is over: the next one starts with calm keepers
       }
       return true;
     case S_REST: {
