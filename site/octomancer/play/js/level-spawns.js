@@ -331,7 +331,7 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         }
       }
     }
-    // V2-PLAN 16: jet + spikes pairs need a rare spot (a flat floor and a flat ceiling 5-12 rows apart, open water beside), so they
+    // V2-PLAN 16: jet + spikes pairs need a rarer spot (a floor cell under a flat ceiling 5-12 rows up, open water beside), so they
     // are picked first, before the crowd of other spawns fills the level and takes their space
     {
       const pairRng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x1e75b));

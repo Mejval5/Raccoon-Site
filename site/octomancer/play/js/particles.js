@@ -183,7 +183,7 @@ export function createParticles() {
           const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
           if (isSolid && isSolid(nx, ny)) { p.stuck = true; p.vx = p.vy = 0; p.life = Math.min(p.life, 3 + (i % 5) * 0.2); continue; } // stays where it hit, a few seconds
           p.x = nx; p.y = ny;
-          p.vx *= 0.97; p.vy = p.vy * 0.97 + 9 * dt; // a heavy chunk: it arcs down
+          p.vx *= 0.97; p.vy = p.vy * 0.97 + 15 * dt; // a heavy chunk: it arcs down fast (no floaty bits hanging in the water)
           continue;
         }
         p.x += p.vx * dt;
