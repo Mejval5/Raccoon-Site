@@ -41,11 +41,6 @@
         "source": "/preverenges/fr",
         "destination": "/preverenges/?lang=fr",
         "type": 301
-      },
-      {
-        "source": "/chess",
-        "destination": "/chess/",
-        "type": 301
       }
     ],
     "headers": [
@@ -110,6 +105,13 @@
         "source": "/api/dary/**",
         "function": {
           "functionId": "dary",
+          "region": "europe-west1"
+        }
+      },
+      {
+        "source": "/chess",
+        "run": {
+          "serviceId": "chess",
           "region": "europe-west1"
         }
       },
