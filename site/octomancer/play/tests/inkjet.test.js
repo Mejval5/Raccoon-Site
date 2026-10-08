@@ -20,8 +20,8 @@ function run(jet, world, list, hurt, seconds) {
 
 export function runInkJetTests(assert) {
   try {
-    assert('INKJET tuning: range 6.5, speed 13, damage 4, cooldown 0.42, radius 0.16',
-      INKJET.range === 6.5 && INKJET.speed === 13 && INKJET.damage === 4 && INKJET.cooldown === 0.42 && INKJET.radius === 0.16);
+    assert('INKJET tuning: range 6.5, speed 13, damage 4, cooldown 1.5 (rare: Actions tuning), radius 0.16',
+      INKJET.range === 6.5 && INKJET.speed === 13 && INKJET.damage === 4 && INKJET.cooldown === 1.5 && INKJET.radius === 0.16);
     assert('INKJET is frozen', Object.isFrozen(INKJET));
 
     // aim: velocity is the unit direction toward the cursor, spawn is offset by the owner radius
@@ -44,15 +44,19 @@ export function runInkJetTests(assert) {
       const jet = createInkJet();
       assert('first shot fires', jet.fire(0, 0, 1, 0));
       assert('second shot straight away fails', !jet.fire(0, 0, 1, 0));
-      for (let i = 0; i < 15; i++) jet.update(STEP, open, [], noHurt); // 0.30 s
-      assert('still on cooldown after 0.30 s', !jet.fire(0, 0, 1, 0) && jet.cooldown() > 0.1);
-      for (let i = 0; i < 7; i++) jet.update(STEP, open, [], noHurt); // 0.44 s
-      assert('fires again after the cooldown', jet.fire(0, 0, 1, 0));
+      for (let i = 0; i < 60; i++) jet.update(STEP, open, [], noHurt); // 1.2 s
+      assert('still on cooldown after 1.2 s (the old 0.42 s rate is gone)', !jet.fire(0, 0, 1, 0) && jet.cooldown() > 0.2);
+      assert('charge() shows the ink sac refilling (0.8 after 1.2 of 1.5 s)', Math.abs(jet.charge() - 0.8) < 0.02);
+      for (let i = 0; i < 16; i++) jet.update(STEP, open, [], noHurt); // 1.52 s
+      assert('fires again after the 1.5 s cooldown, charge() back at 1 first', jet.charge() === 1 && jet.fire(0, 0, 1, 0) && jet.charge() === 0);
       // holding: call fire every step for 2 s
       const h = createInkJet();
       let shots = 0;
       for (let t = 0; t < 2 - 1e-9; t += STEP) { if (h.fire(0, 0, 1, 0)) shots++; h.update(STEP, open, [], noHurt); }
-      assert('holding fire for 2 s gives about 5 shots (' + shots + ')', shots >= 4 && shots <= 6);
+      assert('holding fire for 2 s gives 2 shots (' + shots + ')', shots === 2);
+      let shots5 = 0; const h5 = createInkJet();
+      for (let t = 0; t < 5 - 1e-9; t += STEP) { if (h5.fire(0, 0, 1, 0)) shots5++; h5.update(STEP, open, [], noHurt); }
+      assert('holding fire for 5 s gives 4 shots, not 12 (' + shots5 + ')', shots5 === 4);
     }
 
     // range
@@ -99,6 +103,7 @@ export function runInkJetTests(assert) {
       let r = run(jet, open, list, hurt, 0.6);
       assert('first blob hits the piranha (hp 6 -> 2), no kill yet', r.hits === 1 && r.kills === 0 && p.hp === 2 && !p.dead);
       assert('the hit leaves a splat', r.splats === 1);
+      run(jet, open, [], noHurt, 1.0); // the ink sac refills
       jet.fire(0, 0, 1, 0, 0.5);
       r = run(jet, open, list, hurt, 0.6);
       assert('second blob kills the piranha and counts a kill', r.hits === 1 && r.kills === 1 && p.dead);
@@ -234,6 +239,7 @@ export function runInkJetTests(assert) {
       jet.fire(5, 0, 1, 0, 0);
       const r = run(jet, open, [crab], hurt, 0.5);
       assert('an ink hit on an enemy sets its stain timer and leaves no stain on rock', r.hits === 1 && crab.inkStain > 3.5 && crab.inkHits === 1 && jet.stainedCount() === 1 && jet.stainCount() === 0);
+      run(jet, open, [], noHurt, 1.0); // the ink sac refills
       jet.fire(5, 0, 1, 0, 0);
       run(jet, open, [crab], hurt, 0.5);
       assert('a second hit adds a blotch and renews the timer', crab.inkHits === 2 && crab.inkStain > 3.5);

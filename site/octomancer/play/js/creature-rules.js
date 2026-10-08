@@ -20,7 +20,7 @@
 //   6. stun  = src.stun * row.stunScale, 0 when row.immuneKnockout
 // Aggro (the keeper, the NPCs) follows the hit's blame: only a hit the octopus caused turns them on her (byOcto).
 
-import { STUN_S, STUN_KNOCKBACK, HEAVY_HIT_DMG, HEAVY_KNOCKBACK } from './config.js';
+import { STUN_S, STUN_KNOCKBACK, HEAVY_HIT_DMG, HEAVY_KNOCKBACK, BOMB_RADIUS } from './config.js';
 
 // physics kinds: how a body moves when something shoves it
 export const PH_SWIM = 'swim';         // free swimmer: thrown by blasts, drifts in jets, flies onto spikes
@@ -43,7 +43,9 @@ export const SOURCES = {
   block:    { dmg: 20, crush: true,  knock: 3,  stun: 0.35, blame: 'cause', octo: { hearts: 1 } },
   jet:      { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'none',  push: true, octo: {} },
   ink:      { dmg: 4,  crush: false, knock: 0.5, stun: 0,   blame: 'octo',  octo: {} },
-  dash:     { dmg: 2,  crush: true,  knock: 1,  stun: 0,    blame: 'octo',  octo: {} },
+  // Actions tuning (2026-10-08): a bare dash hurts nothing (it only gives the octopus i-frames); the Urchin Cap's ram is 'helmet'
+  dash:     { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'octo',  octo: {} },
+  helmet:   { dmg: 2,  crush: true,  knock: 1,  stun: 0,    blame: 'octo',  octo: {} }, // the old dash, now only with the Urchin Cap (strikes.js)
   trap:     { dmg: 6,  crush: false, knock: 4,  stun: 0,    blame: 'cause', octo: { hearts: 1 } },
   shock:    { dmg: 2,  crush: false, knock: 2,  stun: 1.0,  blame: 'none',  octo: { hearts: 1, stun: 1.0, knock: STUN_KNOCKBACK } },
   anemone:  { dmg: 2,  crush: false, knock: 3,  stun: 0,    blame: 'none',  touch: true, octo: { hearts: 1 } },
@@ -75,7 +77,7 @@ export const HAZARD_COOL = 0.6;
 export const BLAME_S = 2;
 
 // the sources a shut shell (a giant clam, a tentacle curled in its shell) stops
-const SHELL = ['ink', 'dash', 'shock', 'anemone', 'shot', 'harpoon', 'thrown', 'claw', 'bite'];
+const SHELL = ['ink', 'dash', 'helmet', 'shock', 'anemone', 'shot', 'harpoon', 'thrown', 'claw', 'bite'];
 
 /**
  * The creature table. family: which system holds the body; hp: ink units; mass: knockback divisor; physics: PH_*;
@@ -88,7 +90,7 @@ export const CREATURES = {
   crab:     { family: 'enemy', hp: 10, mass: 1.2, physics: PH_WALK, oneHitSplat: true, touch: true },
   manta:    { family: 'enemy', hp: 16, mass: 1.5, physics: PH_SWIM, oneHitSplat: true, touch: true },
   cannon:   { family: 'enemy', hp: 14, mass: 3,   physics: PH_ANCHORED },
-  urchin:   { family: 'enemy', hp: 10, mass: 3,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, immune: ['ink', 'dash'],
+  urchin:   { family: 'enemy', hp: 10, mass: 3,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, immune: ['ink', 'dash', 'helmet'],
               why: 'all spines: an ink blob splats off it and a dash into it hurts the octopus instead (Daniel Q7: a hazard to avoid, not to shoot); it has no behaviour to knock out, it only pulses' },
   horns:    { family: 'enemy', hp: 0,  mass: 9,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, invulnerable: true,
               why: 'a spike growth of the rock itself: part of the wall, it only goes when its rock is bombed away' },
@@ -104,7 +106,7 @@ export const CREATURES = {
   pip:      { family: 'npc', hp: 2, mass: 0.6, physics: PH_SWIM },
   quill:    { family: 'npc', hp: 4, mass: 1.2, physics: PH_SWIM },
   host:     { family: 'npc', hp: 5, mass: 1,   physics: PH_SWIM },
-  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25, riptide: 0.5 },
+  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25, helmet: 0.25, riptide: 0.5 },
               why: 'super buff (Spelunky shopkeeper): ink and dashes barely scratch him, bombs, boulders and spikes really hurt' },
   octopus:  { family: 'octo', hp: 3, mass: 1, physics: PH_SWIM },
 };
@@ -114,8 +116,8 @@ export const CREATURE_KINDS = Object.keys(CREATURES);
 const DEFAULT_ROW = { family: 'enemy', hp: 4, mass: 1, physics: PH_SWIM, oneHitSplat: true };
 export function rowOf(kind) { return CREATURES[kind] || DEFAULT_ROW; }
 
-/** Can this kind be killed by a dash (a body hit) at all: oneHitSplat and not immune to it. */
-export function dashKillable(kind) { const r = rowOf(kind); return !!r.oneHitSplat && !r.invulnerable && !(r.immune && r.immune.includes('dash')); }
+/** Can this kind be splatted by the octopus's body at all (a ram with the Urchin Cap, source 'helmet'): oneHitSplat and not immune to it. */
+export function dashKillable(kind) { const r = rowOf(kind); return !!r.oneHitSplat && !r.invulnerable && !(r.immune && r.immune.includes('helmet')); }
 
 /** The reusable outcome resolveHit fills (never keep a reference across calls). */
 export const OUTCOME = { ignore: false, dmg: 0, kill: false, knock: 0, stun: 0, why: '' };
@@ -146,6 +148,58 @@ export function pushScale(kind, src) { const r = rowOf(kind); return r.resist &&
 
 /** Does `kind` take anything at all from `src` (ignoring a shell's state)? For tests, the journal and the docs. */
 export function affects(kind, src) { return !resolveHit(kind, src).ignore; }
+
+// ---------------------------------------------------------------- chain reactions (2026-10-08, "chain reactions - oh yeah!")
+//
+// Spelunky-style chains: a source does not only DAMAGE bodies (SOURCES, resolveHit), it can also SET OFF things: a lit bomb, a
+// hanging boulder, a giant clam's snap, a tentacle, an eel's shock, a pot or loot clam, a fragile tile, a jet's surge, a
+// chest's trap. TRIGGERS says, per source, which TARGET kinds it sets off and how far (tiles); chain.js turns that into a queue
+// of delayed links (the chain reads, one link after the other) with a budget, a cap and the off-screen rule. No system checks
+// a kind or a source by hand: every link is a row here. See octomancer-web/CREATURES.md, section 5.
+//
+//   sets:  target kind -> reach in tiles (the target's centre within it, from the source's point)
+//   idle:  the targets a SPONTANEOUS event sets off (one not caused by a chain: a clam snapping at the octopus, an eel's own
+//          periodic shock). A periodic creature would otherwise keep its neighbours ticking forever. Omitted: same as `sets`.
+//   delay: [nearest, farthest] s from the source going off to the target going off (0.1-0.3: each link reads on its own)
+
+/** What a trigger target is and what setting it off does (for the docs, the tests). */
+export const TRIGGER_TARGETS = {
+  bomb:     { why: 'a lit bomb: its fuse is cut and it goes off at once' },
+  rock:     { why: 'a hanging boulder: its support is shaken, it rumbles a moment and drops' },
+  clam:     { why: 'a giant clam: it snaps shut (an open one with the octopus in its mouth still kills)' },
+  tentacle: { why: 'a dormant tentacle: it wakes and uncoils' },
+  eel:      { why: 'an eel: it discharges its shock early' },
+  pot:      { why: 'a breakable pot or loot clam: it bursts and spills its shells' },
+  tile:     { why: 'a fragile tile (bone, timber: materials.js MAT_BOULDER_BREAKS): it shatters' },
+  jet:      { why: 'a current jet: it surges, throwing whatever is in its stream' },
+  trap:     { why: 'a trapped chest: its trap springs (spike burst, or the piranha swarm); the chest stays shut and is safe after' },
+};
+export const TRIGGER_TARGET_NAMES = Object.keys(TRIGGER_TARGETS);
+
+/** Per source (a SOURCES name): which targets it sets off and how far (tiles). */
+export const TRIGGERS = {
+  // a bomb going off: other bombs inside its blast radius (BOMB_RADIUS), everything else out to the shove ring (2 radii; fragile
+  // tiles and traps 1.6 radii)
+  bomb:    { delay: [0.12, 0.26], sets: { bomb: BOMB_RADIUS, rock: BOMB_RADIUS * 2, clam: BOMB_RADIUS * 2, tentacle: BOMB_RADIUS * 2, eel: BOMB_RADIUS * 2, pot: BOMB_RADIUS * 2, tile: BOMB_RADIUS * 1.6, jet: BOMB_RADIUS * 2, trap: BOMB_RADIUS * 1.6 } },
+  // a falling boulder (a hazard rock, a chase rock) landing: what it lands on, and a shake that loosens boulders near by
+  boulder: { delay: [0.1, 0.24], sets: { bomb: 1.3, clam: 2.2, pot: 1.3, rock: 4.5, tile: 1.3, trap: 1.3 } },
+  // a giant clam's snap: the slam startles the clams next to it and cracks pots; at the octopus (spontaneous) only a bomb in its mouth
+  snap:    { delay: [0.14, 0.28], sets: { clam: 3, pot: 1.6, bomb: 1.6 }, idle: { bomb: 1.6 } },
+  // an eel's shock: it jumps to the eels near by, sets off bombs and makes clams flinch; its own periodic shock only reaches bombs
+  shock:   { delay: [0.1, 0.22], sets: { eel: 4, bomb: 3, clam: 2.5 }, idle: { bomb: 3 } },
+  // a thrown or flung prop hitting a creature (INFIGHT.projectile, infight.js 'thrown'): the clam it smacks snaps, a pot right
+  // there cracks. Not bombs: a thrown bomb would set itself off, and props knocking into bombs is not a hit anywhere else either
+  thrown:  { delay: [0.1, 0.16], sets: { clam: 1.2, pot: 1.0 } },
+};
+export const TRIGGER_SOURCES = Object.keys(TRIGGERS);
+
+/** The reach (tiles) at which `src` sets off `target` (0: it does not). spontaneous: the event was not itself caused by a chain. */
+export function triggerReach(src, target, spontaneous = false) {
+  const row = TRIGGERS[src];
+  if (!row) return 0;
+  const set = spontaneous && row.idle ? row.idle : row.sets;
+  return set[target] || 0;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Enemy infighting (2026-10-08, Daniel: "enemy infighting - yes, but Spelunky style: mostly they should ignore each other, aside

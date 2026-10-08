@@ -20,6 +20,7 @@
 // sprites and their idle motion (bob/sway/blink/tiny crawl) are drawn by
 // decor-draw.js, called from render.js's per-frame draw list.
 
+import { isAmbientDead } from './ambient.js';
 import { getFoliageTable, pickEmbedded, SURF_EMBED } from './foliage.js';
 
 const BUBBLE_RISE_SPEED = 1.4; // u/s
@@ -611,6 +612,7 @@ export function createDecor(chunkW, chunkH) {
         if (!entry) continue;
         for (const c of entry.critters) {
           if (c.support !== undefined && chunk.tiles[c.support] === 0) continue; // its rock was bombed away
+          if (c.kind === 'fish' && isAmbientDead(c.x, c.y)) continue; // inked (ambient.js)
           out.push(c);
         }
       }

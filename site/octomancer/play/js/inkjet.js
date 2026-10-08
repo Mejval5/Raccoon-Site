@@ -6,7 +6,19 @@
 // a hit splats (main.js -> particles.inkSplat with the flight direction); a splat on rock leaves a stain that stays
 // SPLAT_LIFE seconds (SPLAT_CAP at once, oldest recycled); a hit enemy gets an `inkStain` timer (STAIN_LIFE) that
 // enemy-draw.js paints as dark blotches over its sprite.
+//
+// Actions tuning (2026-10-08, Daniel: "slow down the shooting of the ink, it should be kind of rare"): ONE shot, then a
+// COOLDOWN of 1.5 s, shown as a refilling ink sac on the hotbar (hotbar-ui.js). Chosen over a small recharging reserve:
+// a reserve still lets you empty 2-3 blobs in a burst, which is the spam the request wants gone; a single slow shot makes
+// every squirt a decision, and holding the button just fires on each refill.
+//
+// Physics (update's `phys` = {props, corpses}): a blob is a physical projectile. It stops at every solid tile (all terrain
+// materials are tiles !== 0, so world.isSolid covers rock, bedrock, bone, timber, masonry); a pushable block stops it dead
+// (no push, a block is heavy); any other loose prop (a bomb, pot, rock, find, rubble) and every corpse is shoved along the
+// flight (props.nudge / corpses.nudge, INK_PUSH u/s per unit mass) and the blob splats on it; a prop held on its wall stays.
+// A creature is hit through the caller's `hurt(e, damage)`, the single damage call site (main.js inkHurt).
 import { hasLineOfSight } from './pathfind.js';
+import { PK_BLOCK, PK_BODY } from './props.js';
 import { crumbleAt, CR_INK } from './fragile.js';
 import { cullView, cullFlags, visibleAt } from './cull.js';
 
@@ -14,11 +26,13 @@ export const INKJET = Object.freeze({
   range: 6.5, // tiles a blob flies before it fades
   speed: 13, // tiles/s
   damage: 4,
-  cooldown: 0.42, // s between shots; holding the button repeats at this rate
+  cooldown: 1.5, // s between shots (was 0.42): rare and deliberate; holding the button fires on each refill
   radius: 0.16, // tiles (draw + hit)
 });
 
 const POOL = 32;
+export const INK_PUSH = 4; // u/s a blob gives a unit-mass prop (a bomb) along its flight; heavier props move less
+export const INK_PUSH_CORPSE = 3; // u/s a blob gives a corpse
 const MAX_SPLAT = 32; // splat points per update (x,y pairs)
 const MAX_SUB = 0.08; // longest sub-step in tiles, so a blob cannot skip a wall or a small enemy
 const TAU = Math.PI * 2;
@@ -38,7 +52,8 @@ export function createInkJet() {
   };
   // splat: x, y pairs; splatDir: the blob's flight direction (unit) at the hit; splatOn: 1 on a creature, 0 on rock
   const events = {
-    hits: 0, kills: 0, nSplat: 0, splat: new Float32Array(MAX_SPLAT * 2),
+    hits: 0, kills: 0, pushes: 0, blocked: 0, nSplat: 0, nProp: 0, propHit: new Int32Array(MAX_SPLAT), // propHit: props hit this step (main.js: a pot or clam breaks)
+    splat: new Float32Array(MAX_SPLAT * 2),
     splatDir: new Float32Array(MAX_SPLAT * 2), splatOn: new Uint8Array(MAX_SPLAT),
   };
   const flags = cullFlags('inkjet', POOL);
@@ -96,8 +111,43 @@ export function createInkJet() {
     return true;
   }
 
-  function update(dt, world, list, hurt) {
-    events.hits = 0; events.kills = 0; events.nSplat = 0;
+  /** The first loose prop or corpse the blob at (x, y) touches: shove it and return true (the blob splats). */
+  function hitPhys(phys, x, y, ux, uy) {
+    const R = INKJET.radius;
+    const P = phys.props;
+    if (P) {
+      const d = P.data;
+      for (let j = 0; j < d.n; j++) {
+        if (!d.alive[j]) continue;
+        const k = d.kind[j];
+        if (k === PK_BODY) continue;
+        const dx = d.x[j] - x, dy = d.y[j] - y, rr = d.radius[j] + R;
+        if (k === PK_BLOCK) { // a box: blocked
+          if (Math.abs(dx) < rr && Math.abs(dy) < rr) { events.blocked++; return true; }
+          continue;
+        }
+        if (dx * dx + dy * dy > rr * rr) continue;
+        if (P.nudge(j, ux, uy, INK_PUSH)) events.pushes++;
+        if (events.nProp < MAX_SPLAT) events.propHit[events.nProp++] = j;
+        return true;
+      }
+    }
+    const C = phys.corpses;
+    if (C) {
+      const d = C.data;
+      for (let j = 0; j < d.n; j++) {
+        if (!d.alive[j]) continue;
+        const dx = d.x[j] - x, dy = d.y[j] - y, rr = d.radius[j] + R;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        if (C.nudge(j, ux, uy, INK_PUSH_CORPSE)) events.pushes++;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function update(dt, world, list, hurt, phys = null) {
+    events.hits = 0; events.kills = 0; events.pushes = 0; events.blocked = 0; events.nSplat = 0; events.nProp = 0;
     if (cd > 0) cd -= dt;
     n = 0;
     if (nStains) for (let i = 0; i < SPLAT_CAP; i++) if (son[i] && (sage[i] += dt) >= SPLAT_LIFE) { son[i] = 0; nStains--; }
@@ -136,6 +186,10 @@ export function createInkJet() {
           if (!e.dead) stain(e);
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
           splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); data.alive[i] = 0; done = true; break;
+        }
+        if (!done && phys) {
+          const sp = Math.hypot(data.vx[i], data.vy[i]) || 1, ux = data.vx[i] / sp, uy = data.vy[i] / sp;
+          if (hitPhys(phys, x, y, ux, uy)) { splat(x, y, ux, uy, true); data.alive[i] = 0; done = true; }
         }
       }
       if (done) continue;
@@ -210,13 +264,15 @@ export function createInkJet() {
   return {
     data, events, fire, update, draw, addStain,
     cooldown() { return cd > 0 ? cd : 0; },
+    /** 0..1: how full the ink sac is (1 = a shot is ready). The hotbar draws it. */
+    charge() { return cd > 0 ? 1 - cd / INKJET.cooldown : 1; },
     count() { return n; },
     /** Ink stains on rock right now (tests, perf). */
     stainCount() { return nStains; },
     /** Enemies currently inked. */
     stainedCount() { return nStained; },
     clear() {
-      data.alive.fill(0); n = 0; cd = 0; events.hits = events.kills = events.nSplat = 0;
+      data.alive.fill(0); n = 0; cd = 0; events.hits = events.kills = events.pushes = events.blocked = events.nSplat = 0;
       son.fill(0); nStains = 0; shead = 0;
       for (let k = 0; k < nStained; k++) { stained[k].inkStain = 0; stained[k] = null; }
       nStained = 0;
@@ -229,7 +285,7 @@ export function autoAimTarget(octo, list, isSolid) {
   let best = null, bestD = INKJET.range * INKJET.range;
   for (let j = 0; j < list.length; j++) {
     const e = list[j];
-    if (e.dead || e.ghost || e.hp === undefined) continue;
+    if (e.dead || e.ghost || e.hp === undefined || e.ambient) continue; // never auto-aim at a harmless background fish
     const dx = e.x - octo.x, dy = e.y - octo.y, d2 = dx * dx + dy * dy;
     if (d2 >= bestD) continue;
     if (!hasLineOfSight(isSolid, octo.x, octo.y, e.x, e.y)) continue;

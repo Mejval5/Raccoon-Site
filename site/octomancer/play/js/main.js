@@ -17,17 +17,17 @@ import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
-import { createHazards, hazardJournalId } from './hazards.js';
+import { createHazards, hazardJournalId, makeHazardRecord } from './hazards.js';
 import { drawHazards, drawImpaleOverlay, drawSplatRock } from './hazards-draw.js';
 import { createCreatures, creatureJournalId, CREATURE_CODE, CR_GCLAM, CL_OPENING, CL_OPEN, CL_TREMBLE, TN_DORMANT, TN_RETRACT, TN_FED } from './creatures.js';
 import { drawCreaturesBack, drawCreaturesFront } from './creatures-draw.js';
 import { drawBlocks } from './blocks-draw.js';
-import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
+import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES, LOOT_CODE as LOOT_CODE_ } from './loot.js';
 import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
-import { MAT_ROCK, MAT_BONE, setTileDrawHook } from './materials.js';
+import { MAT_ROCK, MAT_BONE, MAT_BOULDER_BREAKS, setTileDrawHook } from './materials.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
@@ -58,7 +58,7 @@ import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey,
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
-import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_MEET, ST_ACTIVE, ST_DONE, ST_FAILED as ST_FAILED_Q, questReact } from './quests.js';
+import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questInk, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_MEET, ST_ACTIVE, ST_DONE, ST_FAILED as ST_FAILED_Q, questReact } from './quests.js';
 import { createPeople, G_ANGRY, G_DEAD } from './people.js';
 import { pickOutcome, beatSeed, DUE_REST } from './visitors.js';
 import { createIdle, idleStep, idleReact, idleLift } from './idle.js';
@@ -69,8 +69,10 @@ import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
 import { createDamage, proxyFamily } from './damage.js';
+import { createChain } from './chain.js';
+import { drawChain } from './chain-draw.js';
+import { TRIGGERS, TRIGGER_TARGET_NAMES as TRIGGER_NAMES_, INFIGHT_KILL } from './creature-rules.js';
 import { createInfight } from './infight.js';
-import { INFIGHT_KILL } from './creature-rules.js';
 import { CREATURES, SOURCES, resolveHit } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
@@ -97,6 +99,7 @@ import { runeForLevel, takeRune, runeName, PICKUP_DWELL, PEDESTAL_R } from './ru
 import { drawSpellFx, drawRunePedestal, drawAnchorHeld } from './spell-fx-draw.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { CR_DASH } from './fragile.js';
 import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
@@ -278,6 +281,43 @@ damage.register(proxyFamily('keeper', () => (V2 && run && run.state === S_BIOME 
 // lure hook, on the same damage entry; the getters follow the current level's corpses and props
 const infight = createInfight(damage, { corpses: () => corpses, props: () => props });
 if (V2) wireDamage();
+// chain reactions (chain.js, creature-rules.js TRIGGERS): one queue of delayed links; its target adapters forward to this level's
+// systems (like the damage families), so they are registered once
+const chain = createChain();
+const chainProxy = (name, get) => ({ name, each(x, y, r, cb) { const a = get(); if (a) a.each(x, y, r, cb); }, fire(i, c) { const a = get(); return a ? a.fire(i, c) : false; } });
+const hzTargets = () => hazards.chainA || (hazards.chainA = hazards.chainTargets());
+const crTargets = () => creatures.chainA || (creatures.chainA = creatures.chainTargets());
+const ltTargets = () => loot.chainA || (loot.chainA = loot.chainTargets());
+chain.register(chainProxy('bomb', () => bombs.chainA || (bombs.chainA = bombs.chainTarget())));
+chain.register(chainProxy('rock', () => hzTargets()[0]));
+chain.register(chainProxy('eel', () => hzTargets()[1]));
+chain.register(chainProxy('jet', () => hzTargets()[2]));
+chain.register(chainProxy('clam', () => crTargets()[0]));
+chain.register(chainProxy('tentacle', () => crTargets()[1]));
+chain.register(chainProxy('pot', () => ltTargets()[0]));
+chain.register(chainProxy('trap', () => ltTargets()[1]));
+chain.register({ // fragile tiles (bone, timber; materials.js MAT_BOULDER_BREAKS): index = ty * width + tx
+  name: 'tile',
+  each(x, y, r, cb) {
+    if (!world.smashTile || !world.tileAt) return;
+    const W = world.width, x0 = Math.floor(x - r), x1 = Math.floor(x + r), y0 = Math.floor(y - r), y1 = Math.floor(y + r);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      if (tx < 0 || ty < 0 || tx >= W || Math.hypot(tx + 0.5 - x, ty + 0.5 - y) > r || !MAT_BOULDER_BREAKS[world.tileAt(tx, ty)]) continue;
+      cb(ty * W + tx, tx + 0.5, ty + 0.5);
+    }
+  },
+  fire(i) { const W = world.width, tx = i % W, ty = (i - tx) / W; return !!world.smashTile(tx, ty); },
+});
+/** What a fired link looks and sounds like on top of its target's own reaction (chain-draw.js draws the motes and rings). */
+function handleChainEvents() {
+  for (const ev of chain.events) {
+    sfx.chainTick(ev.depth);
+    if (ev.target === 'tile') particles.bombDebris(ev.x, ev.y);
+    else if (ev.target === 'jet') for (let k = 0; k < 5; k++) particles.trailBubble(ev.x + (k - 2) * 0.25, ev.y - k * 0.3);
+    else if (ev.target === 'rock') particles.bombDebris(ev.x, ev.y - 0.5);
+  }
+  if (chain.events.length) { handleCreatureEvents(); handleLootEvents(); }
+}
 // materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
 if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
 let embedBaked = null; // the embedded set whose tiles were last marked for a re-bake
@@ -287,6 +327,9 @@ let particles = createParticles();
 let juiceDrops = createJuiceDrops();
 let inkClouds = createInkClouds();
 let inkJet = createInkJet();
+const inkPhys = { props: null, corpses: null }; // what an ink blob shoves (inkjet.js hitPhys); refreshed each step
+let inkResident = null; // this step's resident chunks, for the ambient fish the blobs can hit (inkAmbientTargets)
+
 if (V2) enemies.setInkClouds(inkClouds);
 // SPELLS-PICK.md: the level side of Riptide, Coral Wall, Anchor and the Delayed motes (spell-fx.js); the rune pedestal of this level (runes.js)
 let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
@@ -418,7 +461,7 @@ function inventoryState() {
 }
 function hotbarState() {
   const hb = hotbar();
-  return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast };
+  return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast, jetCharge: inkJet.charge() };
 }
 const inventoryUI = createInventoryUI(hudEl, {
   onClose() { closeInventory(); },
@@ -538,7 +581,7 @@ function beginEntry(ev, tx, ty) {
     x: octo.x, y: octo.y, px: octo.x, py: octo.y, rot: octo.angle, prot: octo.angle, sc: 1, psc: 1, wall: performance.now(),
   };
   octo.entry = entry; octo.sealed = true;
-  octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0;
+  octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0; octo.dashInvuln = 0;
   octo.dashedThisStep = octo.bouncedThisStep = octo.landedThisStep = false;
   hitStop = 0;
   portalEnter(portalKey(tx, ty), sim.time, ENTRY_S);
@@ -694,6 +737,8 @@ function step(dt) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
+      else if (ev.type === 'rockImpact') chain.emit('boulder', ev.x, ev.y, ev.chain >= 0 ? ev : null, ev.byOcto); // chain.js: what it hit goes off
+      else if (ev.type === 'shock') chain.emit('shock', ev.x, ev.y, ev.chain >= 0 ? ev : null, false, { target: 'eel', i: ev.i });
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
       else if (ev.type === 'impaled') { particles.deathPoof(ev.x, ev.y, '#150d1c'); particles.shakeFx(5, 0.22); sfx.impale(); } // V2-PLAN 16: skewered, an ink puff and a small shake
       else if (ev.type === 'shocked') { particles.shockSparks(ev.x, ev.y); sfx.zap(); } // eel: yellow sparks
@@ -715,14 +760,22 @@ function step(dt) {
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
     audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
+  if (V2 && !isSafeState(run)) { chain.step(dt); handleChainEvents(); } // chain.js: links due now go off (a bomb set off here explodes just below)
   bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
-    inkJet.update(dt, world, inkTargets(), inkHurt); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
+    inkPhys.props = props; inkPhys.corpses = corpses; inkResident = resident;
+    inkJet.update(dt, world, inkTargets(), inkHurt, inkPhys); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
     for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
     if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
     if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
+    if (quest && inkJet.events.nSplat) for (let i = 0; i < inkJet.events.nSplat; i++) questInk(quest, inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]); // a caged critter's cage breaks
+    if (inkJet.events.nProp && !isSafeState(run)) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
+      let broke = false;
+      for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
+      if (broke) handleLootEvents();
+    }
     inkClouds.update(dt, currentAt);
     stepJuice(dt);
   }
@@ -739,7 +792,8 @@ function step(dt) {
     if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
     if (V2 && npcs) npcs.drain(onNpcEvent);
     if (V2 && !isSafeState(run)) {
-      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2);
+      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents();
+      chain.emit('bomb', ev.x, ev.y, ev.chain >= 0 ? ev : null, true); // chain.js: the bombs, boulders, clams, eels, pots ... it sets off (replaces hazards.blast)
       for (let i = 0; i < creatures.data.n; i++) creatures.releaseNear(i, ev.x, ev.y, BOMB_RADIUS, octo); // a tentacle lets a held octopus go
       handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS);
     }
@@ -951,7 +1005,7 @@ function stepJuice(dt) {
   if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
   discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
 }
-const runStats = { shots: 0, spellsCast: 0, empty: 0, refused: 0, byEffect: {} }; // test hook counters (__octo.combat())
+const runStats = { shots: 0, spellsCast: 0, empty: 0, fish: 0, refused: 0, byEffect: {} }; // test hook counters (__octo.combat())
 
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -1020,6 +1074,7 @@ function checkPerfStepDown() {
 }
 
 let deathTintA = 0; // fade-in of the death tint (0..1)
+const deathTintLook = { x: 0, y: 0, hole: 0, outer: 0, alpha: 0 }; // what the last frame drew (CSS px), for __octo.deathTint()
 function render(alpha, frameMs) {
   checkPerfStepDown();
   const w = canvas.width, h = canvas.height;
@@ -1062,8 +1117,10 @@ function render(alpha, frameMs) {
       g.addColorStop(1, `rgba(4, 12, 18, ${(0.3 * deathTintA).toFixed(3)})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
+      deathTintLook.x = p.x / dpr; deathTintLook.y = p.y / dpr; deathTintLook.hole = hole / dpr; deathTintLook.outer = hole * 2.6 / dpr; deathTintLook.alpha = 0.3 * deathTintA;
     } else deathTintA = 0;
   } else deathTintA = 0;
+  if (!deathTintA) deathTintLook.alpha = 0;
   if (entry && !holdDark) { // r45: the black hole closes on the whirlpool, on the entry's clock (interpolated like the octopus)
     const c = worldToScreen(renderer.camera, w, h, entry.cx, entry.cy);
     if (!entry.far) entry.far = farCorner(w, h, c.x, c.y);
@@ -1127,6 +1184,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     creatures = createCreatures();
     loot = createLoot(V2 ? props : null);
     if (V2) wireDamage();
+    chain.reset(); // its links point at the old level's things
     embedded = createEmbedded(V2 ? props : null);
     if (AUTO) autofire = createAutofire();
     bombs = createBombs(V2 ? props : null);
@@ -1134,6 +1192,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     juiceDrops = createJuiceDrops();
     inkClouds = createInkClouds();
     inkJet = createInkJet();
+    resetAmbient(); // the background fish inked on the last level
     if (V2) enemies.setInkClouds(inkClouds);
     spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
@@ -1578,6 +1637,7 @@ function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
   drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
+  if (run.state === S_BIOME) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
@@ -1613,7 +1673,7 @@ function handleCreatureEvents() {
         break;
       }
       case 'grabCreature': particles.deathPoof(ev.x, ev.y, '#b0304a'); particles.shakeFx(2, 0.15); break; // INFIGHT.grab
-      case 'snap': if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
+      case 'snap': chain.emit('snap', ev.x, ev.y - 0.4, ev.chain >= 0 ? ev : null, false, { target: 'clam', i: ev.i }); if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
       case 'grab':
         particles.shakeFx(3, 0.2);
         if (!grabCueShown) { grabCueShown = true; ui.showToast('Dash to break free!', 1800); }
@@ -1717,7 +1777,7 @@ function handleLootEvents() {
         ui.showToast('Relic taken, +' + ev.shells + ' shells. The ceiling is coming down!', 4200);
         break;
       case 'chaseEnd': ui.showToast('The rumbling stops'); break;
-      case 'rockLanded': particles.bombDebris(ev.x, ev.y); break;
+      case 'rockLanded': particles.bombDebris(ev.x, ev.y); chain.emit('boulder', ev.x, ev.y - 0.45, null, true); break; // a chase rock (her relic) sets off what it lands on
       case 'hurt': particles.deathPoof(ev.x, ev.y, '#d9cdb8'); break;
       default: break;
     }
@@ -1929,7 +1989,7 @@ function drainInfight() {
   for (let n = 0; n < evs.length; n++) {
     const ev = evs[n];
     if (ev.type === 'frenzyBite') { particles.deathPoof(ev.x, ev.y, '#a3263a'); if (ev.gone) particles.deathPoof(ev.x, ev.y - 0.2, '#d8485a'); }
-    else if (ev.src === 'thrown') particles.bouncePuff(ev.x, ev.y, 0, -1);
+    else if (ev.src === 'thrown') { particles.bouncePuff(ev.x, ev.y, 0, -1); chain.emit('thrown', ev.x, ev.y, null, false); } // chain.js: the clam it smacked snaps (TRIGGERS.thrown)
     infightLog++;
   }
   evs.length = 0;
@@ -1972,6 +2032,7 @@ function inkTargets() {
   return list;
 }
 function inkHurt(e, d) {
+  if (e.v16 === 3) { inkAmbient(e); return; }
   if (e.v16 === 1) { creatures.hit(e.x, e.y, e.radius, d, 'ink', octo); handleCreatureEvents(); return; }
   if (e.v16 === 2) { if (npcs) { npcs.hit(e.x, e.y, 0.2, d, 'ink'); npcs.drain(onNpcEvent); } return; }
   if (!e.keeper) { enemies.hurt(e, d); return; }
@@ -2019,8 +2080,35 @@ function inkV16Targets(list) {
     }
   }
   if (npcs) {
-    for (const n of npcs.list()) list.push(inkV16Proxy(2, n.x, n.cy, 0.45, n.hostile));
+    for (const n of npcs.list()) if (!n.dead) list.push(inkV16Proxy(2, n.x, n.cy, 0.45, n.hostile));
   }
+  inkAmbientTargets(list);
+}
+
+// Actions tuning: the harmless background fish (ambient.js) as ink targets, at the spot they are drawn: decor.js's open-water
+// critters and the foliage's hover fish (the little greenranha). Built only while a blob is in flight; never auto-aimed.
+const ambPool = [], hoverOut = [];
+function ambProxy(n, kind, bx, by, phase, t, reduced) {
+  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false });
+  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false;
+  ambientPos(kind, bx, by, phase, t, reduced, p);
+  return p;
+}
+function inkAmbientTargets(list) {
+  if (!inkResident || !inkJet.data.alive.some((a) => a === 1)) return;
+  const t = sim.time, reduced = prefersReducedMotion();
+  let n = 0;
+  for (const c of decor.visibleCritters(inkResident)) if (c.kind === 'fish') list.push(ambProxy(n++, 'fish', c.x, c.y, c.phase, t, reduced));
+  const m = renderer.hoverFish ? renderer.hoverFish(inkResident, hoverOut) : 0;
+  for (let i = 0; i < m; i++) list.push(ambProxy(n++, 'greenranha', hoverOut[i].x, hoverOut[i].y, hoverOut[i].phase, t, reduced));
+}
+/** A blob hit a background fish: it dies, Spelunky style (struck off the level, a small belly-up corpse sinks). */
+function inkAmbient(p) {
+  killAmbient(p.bx, p.by);
+  p.dead = true;
+  if (V2) corpses.add('ambient-' + p.kind, p.x, p.y, 0, 0.5, 1);
+  particles.deathPoof(p.x, p.y, '#cfe8a0');
+  runStats.fish = (runStats.fish || 0) + 1;
 }
 
 /** What the keepers did this step: hits on them anger the run, a dead keeper leaves his shells, claws whoosh. */
@@ -2497,6 +2585,10 @@ window.__octo = {
       panel: ui.gameOverPanelRect(), shown: ui.isGameOverShown(), viewW: window.innerWidth, viewH: window.innerHeight,
     };
   },
+  /** The death tint drawn on the game canvas last frame (CSS px): the clear hole's centre and radius, where it reaches full
+   * strength (outer) and its strongest alpha; alpha 0 when no tint is drawn. Read instead of the canvas pixels: a getImageData
+   * on the game canvas could switch it to software rendering. */
+  deathTint() { return { ...deathTintLook }; },
   restart() {
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
@@ -2563,11 +2655,50 @@ window.__octo = {
     return creatures.add({ type: 'creature', ck: CREATURE_CODE[kind], x, y, dx, dy, side: 1, tilt: 0 });
   },
   creatureHit(x, y, r, dmg, src) { return creatures.hit(x, y, r, dmg, src, octo); },
+  /** Chain reactions (chain.js): its stats, the pending links and the TRIGGERS table. */
+  chain() {
+    const q = chain.queue, links = [];
+    for (let k = 0; k < q.n; k++) links.push({ target: TRIGGER_NAMES_[q.tgt[k]], i: q.idx[k], due: q.due[k] - chain.now(), depth: q.depth[k], chain: q.chain[k], sx: q.sx[k], sy: q.sy[k], tx: q.tx[k], ty: q.ty[k] });
+    return { stats: { ...chain.stats }, now: chain.now(), links, triggers: TRIGGERS };
+  },
+  chainInfo(id) { return chain.chainInfo(id); },
+  /** Test hook: `src` (a TRIGGERS source) goes off at (x, y) as a new chain; returns its id. */
+  chainEmit(src, x, y, byOcto = true) { return chain.emit(src, x, y, null, byOcto); },
+  /** Test hook: a lit bomb at (x, y) with `fuse` s, pinned in place unless `loose`, costing nothing. Returns its id (or -1). */
+  bombAt(x, y, fuse = 2.5, loose = false) {
+    if (!bombs.place(octo, x, y, null, { pinned: !loose, fuse, free: true })) return -1;
+    const b = bombs.list()[bombs.list().length - 1];
+    if (b.pid >= 0) { props.data.vx[b.pid] = 0; props.data.vy[b.pid] = 0; } // set down, not tossed
+    return b.id;
+  },
+  bombs() { return bombs.list().map((b) => ({ id: b.id, x: b.x, y: b.y, fuse: b.fuse, exploded: b.exploded, chain: b.chain, depth: b.depth })); },
+  /** Test hook: put a hazard down by name ('rock', 'eel', 'jet', ...) at the anchor cell (x, y), facing (dx, dy), from this level's tiles. */
+  addHazard(name, x, y, dx = 0, dy = 0) {
+    const lv = world.level; const rec = makeHazardRecord(name, x, y, dx, dy, lv.tiles, world.width, world.height);
+    return rec ? hazards.add(rec) : -1;
+  },
+  /** Test hook: put loot down ('pot' | 'clam' | 'chest'), held on the cell under it; trap: 0 none, 1 spikes, 2 swarm (a chest). */
+  addLoot(name, x, y, trap = 0) { return loot.add({ lk: LOOT_CODE_[name], x, y, dx: 0, dy: -1, n: 2, aux: trap, item: 0 }); },
   /** v2: the loot of this level (kind name, position, state) for tests and review. */
   loot() {
     const d = loot.data, out = [];
     for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
     return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
+  },
+  /** Actions tuning test hook: put a clam or pot ('clam' | 'pot') holding `n` shells at (x, y); returns its loot index. */
+  spawnLoot(kind, x, y, n = 2) { return loot.add({ lk: LOOT_NAMES.indexOf(kind), x, y, n }); },
+  /** Test hook: is world point (x, y) solid rock? */
+  isSolid(x, y) { return world.isSolid(x, y); },
+  /** Actions tuning test hook: fire the Ink Jet from the octopus along (dx, dy) (cooldown applies); true when it fired. */
+  fireInk(dx, dy) { return inkJet.fire(octo.x, octo.y, dx, dy, octo.radius + 0.1); },
+  /** Actions tuning test hook: the live background fish ({kind, x, y} where they are drawn now) and how many were inked. */
+  ambientFish() {
+    const save = inkResident, list = [];
+    inkResident = world.residentChunks();
+    const alive = inkJet.data.alive, was = alive[0];
+    alive[0] = 1; inkAmbientTargets(list); alive[0] = was; // build the list as if a blob were flying
+    inkResident = save;
+    return { fish: list.map((p) => ({ kind: p.kind, x: p.x, y: p.y })), killed: ambientDeadCount(), stats: runStats.fish };
   },
   /** V2-PLAN 16: the NPC slots (who, x, y, hp, hostile, dead, state, aim timer ...), the harpoons in flight and the dive's mood record. */
   npcs() { return npcs ? npcs.list() : []; },

@@ -67,7 +67,8 @@ import { depthTint } from './decor.js';
 import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
-import { prefersReducedMotion } from './config.js';
+import { isAmbientDead } from './ambient.js';
+import { prefersReducedMotion, DASH_IFRAMES } from './config.js';
 import { SHELL_SIZE, SK_MOON } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, artBitmap, ROCK_TILE_UNITS } from './v2-art.js';
@@ -91,6 +92,29 @@ const MAT_RIM2_W = new Float32Array([0, 0, 0.035, 0.03, 0.03, 0.03, 0.03]);
 /** Texture keys the wall bake uses (a cell baked before one loaded is baked again when it arrives). */
 const MAT_ART_KEYS = new Set(['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone', 'matCoral']);
 export const MATERIAL_STYLE = { MAT_FILL, MAT_RIM, MAT_RIM_W };
+
+// The bedrock beyond the level's sides (drawOuterRock, every frame the camera shows past the level, e.g. under the death
+// camera): one tile canvas with the fill, the texture and the tint already composited, and one pattern made from it, both
+// built once. A pattern made from the ImageBitmap and filled on the game canvas each frame made Chrome read the canvas back
+// and redraw it on the CPU per fill (RasterImplementation::ReadbackImagePixels), and after about 100 of those it switched the
+// game canvas to software rendering for the rest of the page's life: the death screen fell to ~8 fps and stayed slow in the
+// hub and every later level until a reload.
+let bedrockTile = null;
+function bedrockTileFor(img) {
+  if (!img) return null;
+  if (bedrockTile && bedrockTile.img === img) return bedrockTile;
+  const size = img.width || img.naturalWidth;
+  if (!size) return null;
+  const c = sharedCanvas(document.createElement('canvas'));
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  g.fillStyle = MAT_FILL[MAT_BEDROCK]; g.fillRect(0, 0, size, size);
+  g.drawImage(img, 0, 0, size, size);
+  g.fillStyle = MAT_TINT[MAT_BEDROCK]; g.fillRect(0, 0, size, size);
+  if (bedrockTile) bedrockTile.canvas.width = 0;
+  bedrockTile = { img, size, canvas: c, pattern: g.createPattern(c, 'repeat') };
+  return bedrockTile;
+}
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -1387,6 +1411,7 @@ export function createRenderer(ctx, world) {
       const F = e.F;
       for (let i = 0; i < F.n; i++) {
         if (chunk.tiles[F.support[i]] === 0) continue; // its rock was bombed away (the new placement follows in a few frames)
+        if (F.surf[i] === SURF_HOVER && isAmbientDead(F.x[i], F.y[i] + yOffset)) continue; // inked (ambient.js)
         if (!visibleAt(e.vis, i, F.x[i], F.y[i] + yOffset, 3)) continue; // r43: off-screen foliage is not swayed or drawn
         drawFoliageInstance(F, i, 0, yOffset, time, reduced);
       }
@@ -1512,17 +1537,12 @@ export function createRenderer(ctx, world) {
     if (world.v2) {
       // materials: beyond the level is the same indestructible bedrock as its border
       if (left <= 0 && right >= canvasW) { ctx.restore(); return; }
-      const img = artImg('matBedrock');
+      const tile = bedrockTileFor(artImg('matBedrock'));
       const o = worldToScreen(camera, canvasW, canvasH, 0, 0), k = camera.pxPerUnit;
-      const fills = [MAT_FILL[MAT_BEDROCK]];
-      const pat = img ? ctx.createPattern(img, 'repeat') : null;
-      if (pat && pat.setTransform) { const kk = (4 * k) / (img.naturalWidth || img.width); pat.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); fills.push(pat); }
-      fills.push(MAT_TINT[MAT_BEDROCK]);
-      for (const f of fills) {
-        ctx.fillStyle = f;
-        if (left > 0) ctx.fillRect(0, 0, left, canvasH);
-        if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
-      }
+      if (tile && tile.pattern.setTransform) { const kk = (4 * k) / tile.size; tile.pattern.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); ctx.fillStyle = tile.pattern; }
+      else ctx.fillStyle = MAT_FILL[MAT_BEDROCK];
+      if (left > 0) ctx.fillRect(0, 0, left, canvasH);
+      if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
       ctx.restore();
       return;
     }
@@ -1595,6 +1615,22 @@ export function createRenderer(ctx, world) {
     const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
     const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
     o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
+    // Actions tuning: dash i-frames (octopus.js dashInvuln) read as a brief translucent smear: two faint after-images trailing
+    // back along the velocity (dark ink silhouettes), fading with the i-frames, and the body itself a touch see-through. No blink.
+    const phase = !o.dead && !e && o.dashInvuln > 0 ? Math.min(1, o.dashInvuln / DASH_IFRAMES) : 0;
+    if (phase > 0) {
+      const sp = Math.hypot(o.vx, o.vy) || 1, back = 0.22 * Math.min(sp, 20) * camera.pxPerUnit / 20 * 1.6;
+      for (let g = 2; g >= 1; g--) {
+        ctx.save();
+        ctx.translate(s.x - (o.vx / sp) * back * g, s.y - (o.vy / sp) * back * g);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.scale(camera.pxPerUnit * k, camera.pxPerUnit * k);
+        o.__t = time; o.__speed = sp;
+        if ('filter' in ctx) ctx.filter = 'brightness(0.15)'; // an ink-dark silhouette: no second pair of eyes in the smear
+        drawOctopus(ctx, o, (g === 1 ? 0.35 : 0.18) * phase);
+        ctx.restore();
+      }
+    }
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate((rot * Math.PI) / 180);
@@ -1616,7 +1652,7 @@ export function createRenderer(ctx, world) {
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
     const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
-    drawOctopus(ctx, o, octoAlpha);
+    drawOctopus(ctx, o, phase > 0 ? Math.min(octoAlpha, 1 - 0.15 * phase) : octoAlpha);
     ctx.restore();
   }
 
@@ -1630,6 +1666,24 @@ export function createRenderer(ctx, world) {
       releaseCanvases(wallCache); releaseCanvases(bandCache); releaseCanvases(capCache);
       resetDeepRock(); deepLevel = null;
       releaseCanvas(caveArtFeathered); caveArtFeathered = null;
+    },
+    /** Actions tuning: the live foliage hover fish (the little greenranha) of the resident chunks, as {x, y, phase} in world
+     *  tiles (their base: ambient.js ambientPos adds the drawn drift). Writes into `out` (reused objects) and returns the count. */
+    hoverFish(resident, out) {
+      let n = 0;
+      for (const { index, yOffset, chunk } of resident) {
+        const e = plantCache.get(chunk);
+        if (!e || !e.F) continue;
+        const F = e.F;
+        for (let i = 0; i < F.n; i++) {
+          if (F.surf[i] !== SURF_HOVER || chunk.tiles[F.support[i]] === 0) continue;
+          const y = F.y[i] + yOffset;
+          if (isAmbientDead(F.x[i], y)) continue;
+          const o = out[n] || (out[n] = { x: 0, y: 0, phase: 0 });
+          o.x = F.x[i]; o.y = y; o.phase = F.phase[i]; n++;
+        }
+      }
+      return n;
     },
     /** r43: the first screen of this level is baked (every wall cell on screen, the deep rock's blobs): the level may fade in. */
     ready() { return !world.v2 || (wallsReady && deepStage >= 2); },

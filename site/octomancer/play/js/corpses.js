@@ -28,6 +28,7 @@ const JET_ACC_FALLBACK = 17, JET_HALF_WIDTH_FALLBACK = 1.1; // hazards.js update
 /** Body radius per kind (tiles); anything else (an NPC, a new creature) uses RADIUS_DEFAULT. */
 export const KIND_RADIUS = {
   piranha: 0.45, crab: 0.4, 'crab-fast': 0.4, manta: 0.6, urchin: 0.42, cannon: 0.45, horns: 0.35, gclam: 0.9, tentacle: 0.6,
+  'ambient-fish': 0.16, 'ambient-greenranha': 0.18, // ambient.js: a little background fish killed by ink
 };
 const RADIUS_DEFAULT = 0.5;
 export function corpseRadius(kind) { return KIND_RADIUS[kind] !== undefined ? KIND_RADIUS[kind] : RADIUS_DEFAULT; }
@@ -118,6 +119,14 @@ export function createCorpses(cap = CAP) {
   function clampSpeed(i) {
     const s = Math.hypot(d.vx[i], d.vy[i]);
     if (s > MAX_SPEED) { const m = MAX_SPEED / s; d.vx[i] *= m; d.vy[i] *= m; }
+  }
+  /** A small hit (an ink blob): dv u/s along (ux, uy), a little spin, and it wakes. */
+  function nudge(i, ux, uy, dv) {
+    if (!d.alive[i]) return false;
+    d.vx[i] += ux * dv; d.vy[i] += uy * dv; d.spin[i] += (ux >= 0 ? 1 : -1) * dv * 0.8;
+    d.state[i] = CS_FREE; d.still[i] = 0; d.restT[i] = 0;
+    clampSpeed(i);
+    return true;
   }
   function wake(i) { if (d.alive[i] && d.state[i] === CS_REST) { d.state[i] = CS_FREE; d.still[i] = 0; d.restT[i] = 0; } }
 
@@ -220,7 +229,7 @@ export function createCorpses(cap = CAP) {
 
   return {
     data: d,
-    add, remove, blast, wake, alphaOf,
+    add, remove, blast, wake, nudge, alphaOf,
     count() { return d.live; },
     clear() { for (let i = 0; i < d.n; i++) d.alive[i] = 0; d.n = 0; d.live = 0; lastVersion = -1; },
     /** One fixed step. `world` is the level world (wallSegmentsNear / isSolid / tileVersion), `hazardsData` is hazards.data. */

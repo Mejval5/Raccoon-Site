@@ -1,6 +1,7 @@
 // The spell hotbar on screen: carved stone slots for the spells, the bomb slot (active-use item) and the fish juice jar.
 // update(state) is called every frame, so it only touches the DOM / redraws a canvas when its own key changed (as ui.js does).
-// state = { slots, sel, spellName(id), bombs, bombMax, juice, cap, perCast }.
+// state = { slots, sel, spellName(id), bombs, bombMax, juice, cap, perCast, jetCharge (0..1, optional) }.
+// The Ink Jet slot (Actions tuning): the ink sac refills from the bottom while the jet cools down (inkjet.js charge()).
 
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon, drawRuneBadge } from './spell-icons.js';
 import { resolveSlot, modById } from './spells.js';
@@ -15,6 +16,22 @@ function el(tag, className, text) {
 
 const ICON_PX = 48;                      // canvas size of a slot icon in css px (the css scales it down when compact)
 const JAR_W = 22, JAR_H = 30;
+
+/** The Ink Jet slot's icon: a dark ink droplet with a soft violet highlight (the blob the jet fires). */
+function drawInkSacIcon(ctx, x, y, r) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = '#1a1030'; ctx.strokeStyle = '#0b0618'; ctx.lineWidth = Math.max(1.5, r * 0.12); ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 1.05);
+  ctx.bezierCurveTo(r * 0.35, -r * 0.55, r * 0.95, -r * 0.05, r * 0.82, r * 0.42);
+  ctx.bezierCurveTo(r * 0.7, r * 0.95, -r * 0.7, r * 0.95, -r * 0.82, r * 0.42);
+  ctx.bezierCurveTo(-r * 0.95, -r * 0.05, -r * 0.35, -r * 0.55, 0, -r * 1.05);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(150,130,200,0.5)';
+  ctx.beginPath(); ctx.ellipse(-r * 0.3, r * 0.1, r * 0.16, r * 0.28, 0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 
 function makeCanvas(w, h) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -40,12 +57,21 @@ export function createHotbarUI(root, handlers = {}) {
   const bombCount = el('span', 'octo-hb-count', '');
   const bombKey = el('span', 'octo-hb-key octo-hb-key-bomb', 'B');
   bombSlot.append(bombCv.c, bombCount, bombKey);
+  const jetSlot = el('div', 'octo-hb-slot octo-hb-jet');
+  const jetCv = makeCanvas(ICON_PX, ICON_PX);
+  jetCv.c.className = 'octo-hb-icon';
+  if (jetCv.ctx) drawInkSacIcon(jetCv.ctx, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.34);
+  const jetShade = el('span', 'octo-hb-jetshade');
+  const jetKey = el('span', 'octo-hb-key octo-hb-key-jet', 'J');
+  jetSlot.append(jetCv.c, jetShade, jetKey);
+  jetSlot.title = 'Ink Jet (left click / J)';
+  let jetShown = -1;
   const jarEl = el('div', 'octo-hb-jar');
   const jarCv = makeCanvas(JAR_W, JAR_H);
   jarCv.c.className = 'octo-hb-jarcv';
   const jarCasts = el('span', 'octo-hb-casts', '');
   jarEl.append(jarCv.c, jarCasts);
-  bar.append(slotsEl, sep, bombSlot, jarEl);
+  bar.append(slotsEl, sep, jetSlot, bombSlot, jarEl);
   root.appendChild(bar);
 
   let slotKey = null;          // ids joined: rebuild the slot elements when this changes
@@ -99,6 +125,12 @@ export function createHotbarUI(root, handlers = {}) {
           slotEls[i].setAttribute('aria-pressed', on ? 'true' : 'false');
         }
         selShown = state.sel;
+      }
+      const jq = state.jetCharge === undefined ? 20 : Math.max(0, Math.min(20, Math.floor(state.jetCharge * 20 + 1e-6))); // 5% steps
+      if (jq !== jetShown) {
+        jetShown = jq;
+        jetShade.style.height = ((20 - jq) * 5) + '%';
+        jetSlot.classList.toggle('is-ready', jq >= 20);
       }
       const bk = state.bombs + '/' + state.bombMax;
       if (bk !== bombKeyShown) {

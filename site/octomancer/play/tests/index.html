@@ -237,6 +237,8 @@ import { runSpellSetTests } from './spell-set.test.js';
 await runSpellSetTests(assert);
 import { runInkJetTests } from './inkjet.test.js';
 runInkJetTests(assert);
+import { runActionsTests } from './actions.test.js';
+await runActionsTests(assert);
 import { runHotbarTests } from './hotbar.test.js';
 await runHotbarTests(assert);
 import { runRestTests } from './rest.test.js';
@@ -274,6 +276,10 @@ await runRagdollTests(assert);
 // --- 2026-10-08: time pressure (the Beholder as the Spelunky ghost) and the Swift Current bonus ---
 import { runTimePressureTests } from './timepressure.test.js';
 await runTimePressureTests(assert);
+
+// --- 2026-10-08: chain reactions (chain.js, creature-rules.js TRIGGERS) ---
+import { runChainTests } from './chain.test.js';
+await runChainTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

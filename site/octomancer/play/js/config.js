@@ -33,6 +33,9 @@ export const DASH_IMPULSE = 20;
 // flat 0.6s cooldown so keyboard/touch dash-spam does not read as free
 // invincibility-by-speed. Tunable; logged in NIGHT-LOG.md.
 export const DASH_COOLDOWN = 0.6;
+// Actions tuning (2026-10-08): a dash is invincible from its first frame for this long (i-frames, octopus.js `dashInvuln`).
+// It no longer hurts anything by itself: ramming damage comes from the Urchin Cap item (strikes.js).
+export const DASH_IFRAMES = 0.3;
 
 // World / tiles: 1 tile = 1 world unit (OVERNIGHT.md §2 "Physics"/"Camera").
 export const TILE_SIZE = 1;
