@@ -85,7 +85,8 @@ export function createBombs(props = null) {
     }
     // Daniel 2026-10-08: inside the radius the blast kills her outright (SOURCES.bomb.octo = kill; i-frames do not help); the tutorial
     // sets octo.bombNoKill, so its bomb floor only costs a heart. A dead body takes a hit (flash, knock).
-    if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill && !octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
+    // (a dead body: hurtOctopus hits it away from the blast)
+    if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill || octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
     if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
       if (d < reach) {
