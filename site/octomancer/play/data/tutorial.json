@@ -50,7 +50,7 @@
    "r": 6.5,
    "title": "Bomb the floor",
    "refillBomb": true,
-   "desktop": "This floor is in the way. Swim over it and press B to drop a bomb: it sinks straight down and sits where it lands. Middle-click throws one at the cursor instead: it sticks to the first rock it hits. Then swim away, the blast hurts you too.",
+   "desktop": "This floor is in the way. Swim over it and press B to drop a bomb: it sinks straight down and sits where it lands. Or pick the bomb on the bar and right-click at the cursor: a thrown one sticks to the first rock it hits. Then swim away, the blast hurts you too.",
    "touch": "This floor is in the way. Hover over the floor and tap Bomb (your bombs are picked on the bar at the top): it drops straight down and sits where it lands. Then swim away: the blast hurts you too."
   },
   {
@@ -58,8 +58,8 @@
    "y": 14.5,
    "r": 8,
    "title": "The exit",
-   "desktop": "Swim into the whirlpool to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good.",
-   "touch": "Swim into the whirlpool to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good."
+   "desktop": "Swim to the whirlpool and press F (or middle-click) to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good.",
+   "touch": "Swim to the whirlpool and tap Enter to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good."
   }
  ],
  "spawns": [
