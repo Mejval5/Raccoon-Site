@@ -2518,6 +2518,7 @@ function altarAvoid(x, y) {
   const hd = hazards.data; for (let i = 0; i < hd.n; i++) if (Math.abs(hd.x[i] - x) < 3.5 && Math.abs(hd.y[i] - (y - 1)) < 3.5) return true;
   const os = altarSpawnsOf(); for (let i = 0; i < os.length; i += 2) if (Math.abs(os[i] - x) < 3 && Math.abs(os[i + 1] - (y - 1)) < 2.5) return true; // the level's own pots, clams, enemies, hazards
   for (let i = 0; i < keepers.n; i++) if (Math.hypot(keepers.x[i] - x, keepers.y[i] - y) < 6) return true;
+  const bk = world.level && world.level.back; if (bk && Math.hypot(bk.doorX + 0.5 - x, bk.doorY + 0.5 - y) < 4.5) return true; // back rooms: not on the kelp curtain
   return false;
 }
 /** SPELLS-PICK: this level's rune pedestal: the next rune of the dive's order on a floor 8-22 tiles from the start (never the Siphon Shell's spot). */
