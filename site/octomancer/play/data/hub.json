@@ -34,8 +34,8 @@
    "r": 10,
    "when": "sealed",
    "title": "Welcome to the Shallows",
-   "desktop": "The dive is sealed with kelp until you finish the tutorial. Swim into the Tutorial ring on the floor to learn the ropes.",
-   "touch": "The dive is sealed with kelp until you finish the tutorial. Swim into the Tutorial ring on the floor to learn the ropes."
+   "desktop": "The dive is sealed with kelp until you finish the tutorial. Swim to the Tutorial ring on the floor and press F to learn the ropes.",
+   "touch": "The dive is sealed with kelp until you finish the tutorial. Swim to the Tutorial ring on the floor and tap Enter to learn the ropes."
   },
   {
    "x": 17.5,
@@ -51,8 +51,8 @@
    "y": 12,
    "r": 10,
    "title": "Welcome to the Shallows",
-   "desktop": "Swim into the whirlpool in the floor to dive. Press Tab or I (or open the pause menu) to read your journal.",
-   "touch": "Swim into the whirlpool in the floor to dive. Tap pause, then Journal, to read your journal.",
+   "desktop": "Swim to the whirlpool in the floor and press F to dive. Press Tab or I (or open the pause menu) to read your journal.",
+   "touch": "Swim to the whirlpool in the floor and tap Enter to dive. Tap pause, then Journal, to read your journal.",
    "when": "open"
   }
  ],

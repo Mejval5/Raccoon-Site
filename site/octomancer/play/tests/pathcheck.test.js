@@ -11,7 +11,7 @@ import { createRun, runEvent, levelSpec, EV_ENTER_DIVE, EV_EXIT } from '../js/ru
 import { createTutorialState, tutorialStep, tutorialActed, IDLE_HINT_S, TUTORIAL_BOMBS_GUARANTEED } from '../js/tutorial.js';
 import { loadBiome1Json } from './biome1.test.js';
 import { loadRoomsJson } from './rooms.test.js';
-import { createBotSim, tick, follow, wait } from './bot.js';
+import { createBotSim, tick, follow, wait, enterExit } from './bot.js';
 
 /** Build a tiny map from rows ('#' rock) and test pathSolvable between two marked cells. */
 function solvable(rows, opts) {
@@ -156,7 +156,7 @@ export async function runPathcheckTests(assert) {
     const w = createLevelWorld(1, 0, { level: parseAuthoredMap(hubJson) });
     const sim = createBotSim(w);
     const r = follow(sim, w.exitX, w.exitY, 1.0, 3000);
-    assert('bot hub: swims from the start to the dive ring using real input and physics', r.ok && w.reachedExit(sim.octo.x, sim.octo.y));
+    assert('bot hub: swims from the start to the dive ring using real input and physics', r.ok && enterExit(sim));
   }
   {
     // the scripted tutorial: swim, dash, waste the bombs, bomb the wall, reach the exit
@@ -191,7 +191,7 @@ export async function runPathcheckTests(assert) {
       }
       out.bombsPlaced = bombsPlaced;
       r = follow(sim, w.exitX, w.exitY, 1.05, 3500);
-      out.exit = r.ok && w.reachedExit(sim.octo.x, sim.octo.y);
+      out.exit = r.ok && enterExit(sim);
       out.hearts = sim.minHearts;
       results.push(out);
     }
@@ -228,7 +228,7 @@ export async function runPathcheckTests(assert) {
         const sim = createBotSim(w);
         const r = follow(sim, w.exitX, w.exitY, 1.05, 5000);
         ran++;
-        if (r.ok && w.reachedExit(sim.octo.x, sim.octo.y)) done++; else fails.push(seed + '/1-' + (k + 1) + ':' + r.reason);
+        if (r.ok && enterExit(sim)) done++; else fails.push(seed + '/1-' + (k + 1) + ':' + r.reason);
         runEvent(run, EV_EXIT);
       }
     }

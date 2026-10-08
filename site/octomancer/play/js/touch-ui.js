@@ -32,7 +32,7 @@ export function createTouchUI(root, input, field = root) {
     { id: 'octo-use-btn', label: 'Use', btn: 'use', col: 1, row: 1 },
     { id: 'octo-spell-btn', label: 'Spell', btn: 'spell', col: 0, row: 1 },
   ];
-  const HAND_LABEL = { grab: 'Grab', use: 'Talk', throw: 'Throw' };
+  const HAND_LABEL = { grab: 'Grab', use: 'Talk', throw: 'Throw', enter: 'Enter' };
   const btnEls = BUTTONS.map((b) => {
     const e = document.createElement('div');
     e.className = 'octo-btn' + (b.btn === 'spell' ? ' octo-btn-spell' : '');
