@@ -8,7 +8,7 @@
 //                          - no aim (B / X, C or right click with the cursor on the octopus, the Use button with no
 //                            stick): DROPPED, a heavy bomb straight down under the octopus that sinks like a rock, never
 //                            bounces or rolls and sits where it lands; the fuse (BOMB_FUSE_V2) runs from the drop.
-//                          - aimed (right / middle click at the cursor, the stick held, a bomb thrown from the hand):
+//                          - aimed (right click at the cursor, the stick held, a bomb thrown from the hand):
 //                            an URCHIN-MINE that flies on and clings to the first rock, push block or creature it meets;
 //                            the fuse starts when it clings (or after STICKY_ARM_S of flight, whatever comes first).
 //                        The explosion breaks rock (tile centres within BOMB_RADIUS, the radius that is drawn), kills

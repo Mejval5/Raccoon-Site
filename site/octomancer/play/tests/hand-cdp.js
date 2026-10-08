@@ -120,7 +120,9 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
 
     // ================================================================== hotbar: Q / E / wheel / 1-9 and right click / C
     let hb = await page.evaluate(() => __octo.juice().hotbar);
-    check('hotbar: a dive starts with the spell and the bomb stack', hb.slots.length === 2 && hb.slots[1][0] === 'bomb' && hb.sel === 0);
+    // (no slot indices are assumed: the HUD owner orders the bar, the bomb stack may come first)
+    const nS = hb.slots.length, s0 = hb.sel, bombI = hb.slots.findIndex((x) => x[0] === 'bomb'), spellI = hb.slots.findIndex((x) => x[0] !== 'bomb');
+    check('hotbar: a dive starts with the spell and the bomb stack', nS === 2 && bombI >= 0 && spellI >= 0);
     await page.keyboard.press('KeyE'); await step(page, 1);
     const afterE = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await page.keyboard.press('KeyQ'); await step(page, 1);
@@ -128,9 +130,9 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     await page.mouse.move(700, 450);
     await page.mouse.wheel({ deltaY: 100 }); await step(page, 1);
     const afterWheel = (await page.evaluate(() => __octo.juice().hotbar)).sel;
-    await page.keyboard.press('Digit1'); await step(page, 1);
+    await page.keyboard.press('Digit' + (spellI + 1)); await step(page, 1);
     const after1 = (await page.evaluate(() => __octo.juice().hotbar)).sel;
-    check(`hotbar: E next (${afterE}), Q back (${afterQ}), the wheel (${afterWheel}), 1 (${after1})`, afterE === 1 && afterQ === 0 && afterWheel === 1 && after1 === 0);
+    check(`hotbar: E next (${afterE}), Q back (${afterQ}), the wheel (${afterWheel}), ${spellI + 1} (${after1})`, afterE === (s0 + 1) % nS && afterQ === s0 && afterWheel === (s0 + 1) % nS && after1 === spellI);
     // right click with the spell selected: casts
     const j0 = await page.evaluate(() => __octo.juice());
     o = await octoAt(page);
@@ -146,7 +148,8 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // ================================================================== bombs: dropped and aimed
     const pb = await open(browser, 'desktop', '?at=1&seed=5');
     await pb.evaluate(() => __octo.giveBombs(5));
-    await pb.keyboard.press('Digit2'); await step(pb, 1);
+    const pbI = await pb.evaluate(() => __octo.juice().hotbar.slots.findIndex((x) => x[0] === 'bomb'));
+    await pb.keyboard.press('Digit' + (pbI + 1)); await step(pb, 1);
     o = await octoAt(pb);
     // right click on the octopus: a drop
     at = await toScreen(pb, o.x + 0.3, o.y);
@@ -177,7 +180,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
       for (let i = 0; i < 6; i++) { await step(pb, 5); await shot(pb, 'bomb-sticky-wait-' + i); }
       for (let i = 0; i < 20; i++) { await step(pb, 3); if (!(await pb.evaluate(() => __octo.bombsLive().length))) { await shot(pb, 'bomb-sticky-blast'); break; } }
     } else check('a wall near the start to throw a mine at', false);
-    // B drops, middle click throws
+    // B drops; the middle click is the hand (no bomb)
     await step(pb, 40);
     await pb.keyboard.press('KeyB'); await step(pb, 1);
     bl = await pb.evaluate(() => __octo.bombsLive());
@@ -185,9 +188,21 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     await step(pb, 100);
     o = await octoAt(pb);
     at = await toScreen(pb, o.x + 3, o.y - 1);
+    const nb0 = await pb.evaluate(() => __octo.state().octopus.bombs);
     await pb.mouse.click(at.x, at.y, { button: 'middle' }); await step(pb, 1);
     bl = await pb.evaluate(() => __octo.bombsLive());
-    check('the middle click is the quick bomb: a sticky mine at the cursor', bl.length === 1 && bl[0].mode === 2 && bl[0].vx > 3);
+    check('the middle click throws no bomb (bombs come from their hotbar slot)', bl.length === 0 && (await pb.evaluate(() => __octo.state().octopus.bombs)) === nb0);
+    // the middle click is the hand: grab a pot, throw it at the cursor, hold to put one down
+    o = await octoAt(pb);
+    await pb.evaluate((o) => { __octo.addLoot('pot', o.x + 0.8, o.y); }, o);
+    await step(pb, 4);
+    await pb.mouse.click(at.x, at.y, { button: 'middle' }); await step(pb, 2);
+    let mh = await pb.evaluate(() => __octo.hand());
+    check('middle click grabs the pot in reach (like F)', mh.held === 'pot');
+    await pb.mouse.click(at.x, at.y, { button: 'middle' }); await step(pb, 1);
+    mh = await pb.evaluate(() => __octo.hand());
+    const fl = await pb.evaluate(() => __octo.props().filter((p) => p.kind === 'pot').map((p) => p.vx));
+    check('middle click again throws it toward the cursor', mh.held === '' && mh.throws >= 1 && fl.some((v) => v > 3), JSON.stringify(fl));
     await pb.close();
 
     // ================================================================== shop: buy with F, shoot a ware off
@@ -304,7 +319,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
       const p = await open(browser, 'desktop', '?at=tutorial&seed=7');
       for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(37.5, 11.5); __octo.stepDraw(1); });
       const pr = await p.evaluate(() => ({ text: (document.querySelector('.octo-prompt') || document.body).textContent, hb: __octo.juice().hotbar }));
-      check('tutorial: the bomb prompt names B (drop) and the middle click (sticky), and the bomb is picked on the bar', /press B/.test(pr.text) && /sticks/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
+      check('tutorial: the bomb prompt names B (drop) and right-click (sticky), and the bomb is picked on the bar', /press B/.test(pr.text) && /sticks/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
       await p.keyboard.press('KeyB'); await step(p, 1);
       await p.evaluate(() => __octo.input({ move: { x: -1, y: -0.3 } }));
       await step(p, 40); await p.evaluate(() => __octo.input(null));
@@ -313,6 +328,23 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
       const open1 = await p.evaluate(() => { const lv = __octo.level(); let broken = 0; for (let x = 34; x <= 41; x++) for (let y = 14; y <= 15; y++) if (!__octo.tileAt(x, y)) broken++; return broken; });
       check(`tutorial: one dropped bomb breaks through the floor (${open1} tiles)`, open1 >= 4 && await p.evaluate(() => !__octo.tileAt(37, 14) && !__octo.tileAt(37, 15)));
       await shot(p, 'tutorial-bomb-after');
+      await p.close();
+    }
+    // ================================================================== whirlpools on F only (Daniel 2026-10-08)
+    for (const vp of ['desktop', 'phone']) {
+      const p = await open(browser, vp, '?at=1&seed=5');
+      await p.evaluate(() => { const l = __octo.level(); for (let i = 0; i < 30; i++) { __octo.teleport(l.exitX + 0.5, l.exitY + 0.2); __octo.stepDraw(1); } });
+      const hov = await p.evaluate(() => ({ e: !!__octo.entry(), t: __octo.hand().target, phone: __octo.hand().phone, stage: __octo.level().stage }));
+      check(`${vp}: floating in the exit whirlpool does not enter; it is the hand's target (portal)`, !hov.e && hov.t && hov.t.kind === 'portal', JSON.stringify(hov));
+      if (vp === 'phone') {
+        await p.touchscreen.tap(100, 600); await step(p, 2);
+        const sb = await p.evaluate(() => document.getElementById('octo-spell-btn').textContent);
+        check(`phone: in the whirlpool the Spell button reads Enter (${sb})`, sb === 'Enter');
+      }
+      await shot(p, 'portal-' + vp);
+      if (vp === 'desktop') await p.keyboard.press('KeyF'); else await p.evaluate(() => __octo.pressHand());
+      await step(p, 2);
+      check(`${vp}: F (the hand) starts the whirlpool entry`, await p.evaluate(() => !!__octo.entry()));
       await p.close();
     }
     check('desktop: no console errors', page.errs.length === 0, page.errs.slice(0, 3).join(' | '));

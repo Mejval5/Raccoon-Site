@@ -250,7 +250,7 @@ export async function runSpellTests(assert) {
     mouse('mousedown', 2); s = input.snapshot(); window.dispatchEvent(new MouseEvent('mouseup', { button: 2 })); input.snapshot();
     assert('input: right button uses the selected hotbar slot toward the cursor', s.use.pressed && s.src.use === 'mouse' && !s.dash.pressed);
     mouse('mousedown', 1); s = input.snapshot(); window.dispatchEvent(new MouseEvent('mouseup', { button: 1 })); input.snapshot();
-    assert('input: middle button throws a bomb at the cursor', s.bomb.pressed && s.src.bomb === 'mouse');
+    assert('input: middle button is the hand (Daniel 2026-10-08), it throws no bomb', s.hand.pressed && !s.bomb.pressed);
     const cm = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); canvas.dispatchEvent(cm);
     assert('input: no browser context menu over the canvas', cm.defaultPrevented);
     canvas.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); s = input.snapshot();
