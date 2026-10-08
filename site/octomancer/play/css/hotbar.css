@@ -91,7 +91,7 @@
 /* the Ink Jet slot: a dark veil over the ink sac that shrinks to nothing as the jet refills (hotbar-ui.js jetShade) */
 #hud .octo-hotbar .octo-hb-slot.octo-hb-jet { border-radius: 50%; } /* also in the compact bar */
 .octo-hb-jet { cursor: default; overflow: hidden; border: 1.5px dashed rgba(201, 184, 236, 0.55); background: rgba(20, 12, 34, 0.55); }
-.octo-hb-key-jet { display: none; } /* no J: it is not a slot to pick */
+.octo-hb-key-jet, .octo-hb-key-bomb { display: none; } /* no J (not a slot to pick), no B (bombs are picked by their slot number) */
 .octo-hb-jetshade { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(8, 14, 22, 0.62); pointer-events: none; }
 .octo-hb-jet:not(.is-ready) .octo-hb-icon { opacity: 0.6; }
 .octo-hb-bomb .octo-hb-icon { top: -4px; height: calc(100% - 8px); }

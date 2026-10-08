@@ -119,11 +119,12 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
         const jet = document.querySelector('.octo-hb-jet'), sep = document.querySelector('.octo-hb-sep');
         const slots = [...document.querySelectorAll('.octo-hb-slots > .octo-hb-slot')].filter(vis);
         const r = (e) => e.getBoundingClientRect();
-        return { jetVis: vis(jet), jetKey: vis(jet.querySelector('.octo-hb-key')), jetBtn: jet.tagName, jetLeft: r(jet).right <= r(sep).left + 0.5 && r(sep).right <= r(slots[0]).left + 0.5,
+        return { noLetters: [...document.querySelectorAll('.octo-hb-key-bomb, .octo-hb-key-jet')].every((k) => !vis(k) || getComputedStyle(k).display === 'none'),
+          jetVis: vis(jet), jetKey: vis(jet.querySelector('.octo-hb-key')), jetBtn: jet.tagName, jetLeft: r(jet).right <= r(sep).left + 0.5 && r(sep).right <= r(slots[0]).left + 0.5,
           keys: slots.map((sl) => sl.querySelector('.octo-hb-key').textContent), sel: slots.findIndex((sl) => sl.classList.contains('is-selected')),
           first: __octo.juice().hotbar.slots.map((sl) => sl[0]) };
       });
-      check('hotbar: the Ink Jet tile sits first, left of a divider, with no key number and not a button', row.jetVis && !row.jetKey && row.jetBtn !== 'BUTTON' && row.jetLeft, JSON.stringify(row));
+      check('hotbar: the Ink Jet tile sits first, left of a divider, with no key number and not a button; no J or B letters anywhere', row.noLetters && row.jetVis && !row.jetKey && row.jetBtn !== 'BUTTON' && row.jetLeft, JSON.stringify(row));
       check('hotbar: slot 1 is the bomb stack, slot 2 Ink Cloud (selected), numbered 1, 2', row.first[0] === 'bomb' && row.first[1] === 'ink-cloud' && row.keys.join() === '1,2' && row.sel === 1, JSON.stringify(row));
       await page.evaluate(() => __octo.fireInk(1, 0)); await sleep(250);
       check('timers: the Ink Jet tile darkens after a shot', (await jetShade()) > 40, String(await jetShade()));
@@ -136,7 +137,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       h = await H(page);
       check('timers: the dash slider drops on a dash and is full again after its cooldown', d1 < 1 && h.dash === 1, `${d1} -> ${h.dash}`);
       check('effects: none at rest', h.effects.length === 0, h.effects.join());
-      await page.evaluate(() => { __octo.setSlots([['anchor'], ['ink-cloud']], 0); __octo.setJuice(99); });
+      await page.evaluate(() => { __octo.setSlots([['bomb'], ['anchor'], ['ink-cloud']], 1); __octo.setJuice(99); });
       await sleep(150);
       const cast = await page.evaluate(() => __octo.cast());
       await sleep(200);
@@ -155,7 +156,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
         const box = document.querySelector('.octo-hud-effects'); let n = 0;
         const mo = new MutationObserver((l) => { n += l.length; });
         mo.observe(box, { subtree: true, childList: true, characterData: true, attributes: true });
-        __octo.setSlots([['anchor'], ['ink-cloud']], 0); __octo.setJuice(99); __octo.cast();
+        __octo.setSlots([['bomb'], ['anchor'], ['ink-cloud']], 1); __octo.setJuice(99); __octo.cast();
         await new Promise((r) => setTimeout(r, 1000));
         mo.disconnect(); return n;
       });
@@ -165,6 +166,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
     // ---------------------------------------------------------------- layout at four viewports
     for (const [w, ht, mobile, tag] of [[1440, 900, false, 'desktop'], [412, 915, true, 'portrait'], [915, 412, true, 'landscape'], [375, 812, true, 'small-portrait']]) {
       const page = await open(w, ht, mobile, '?at=2&seed=5');
+      if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `hud-${tag}-fresh.png`) }); // a fresh dive, as the player sees it
       await page.evaluate(() => { __octo.god(true); __octo.giveShells(14500); for (const id of ['lantern', 'flippers', 'magnet', 'goggles', 'urchincap']) __octo.giveItem(id); __octo.setClocks(65.4, 3599.5); __octo.setSlots([['bomb'], ['ink-cloud'], ['anchor'], ['riptide']], 1); });
       await sleep(400);
       const r = await page.evaluate(() => {
