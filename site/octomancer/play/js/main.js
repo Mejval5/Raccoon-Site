@@ -56,7 +56,7 @@ import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey,
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
-import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
+import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questInk, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
 import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
 import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
@@ -84,6 +84,7 @@ import { STAT_ANGERED } from './journal.js';
 import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
@@ -250,6 +251,7 @@ let juiceDrops = createJuiceDrops();
 let inkClouds = createInkClouds();
 let inkJet = createInkJet();
 const inkPhys = { props: null, corpses: null }; // what an ink blob shoves (inkjet.js hitPhys); refreshed each step
+let inkResident = null; // this step's resident chunks, for the ambient fish the blobs can hit (inkAmbientTargets)
 
 if (V2) enemies.setInkClouds(inkClouds);
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
@@ -674,11 +676,17 @@ function step(dt) {
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
-    inkPhys.props = props; inkPhys.corpses = corpses;
+    inkPhys.props = props; inkPhys.corpses = corpses; inkResident = resident;
     inkJet.update(dt, world, inkTargets(), inkHurt, inkPhys); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
     for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
     if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
     if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
+    if (quest && inkJet.events.nSplat) for (let i = 0; i < inkJet.events.nSplat; i++) questInk(quest, inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]); // a caged critter's cage breaks
+    if (inkJet.events.nProp && !isSafeState(run)) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
+      let broke = false;
+      for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
+      if (broke) handleLootEvents();
+    }
     inkClouds.update(dt);
     stepJuice(dt);
   }
@@ -827,7 +835,7 @@ function stepJuice(dt) {
   if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
   discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
 }
-const runStats = { shots: 0, spellsCast: 0, empty: 0 }; // test hook counters (__octo.combat())
+const runStats = { shots: 0, spellsCast: 0, empty: 0, fish: 0 }; // test hook counters (__octo.combat())
 
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -999,6 +1007,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     juiceDrops = createJuiceDrops();
     inkClouds = createInkClouds();
     inkJet = createInkJet();
+    resetAmbient(); // the background fish inked on the last level
     if (V2) enemies.setInkClouds(inkClouds);
   });
   sim.time = 0;
@@ -1740,6 +1749,7 @@ function inkTargets() {
   return list;
 }
 function inkHurt(e, d) {
+  if (e.v16 === 3) { inkAmbient(e); return; }
   if (e.v16 === 1) { creatures.hit(e.x, e.y, e.radius, d, 'ink', octo); handleCreatureEvents(); return; }
   if (e.v16 === 2) { if (npcs) { npcs.hit(e.x, e.y, 0.2, d, 'ink'); npcs.drain(onNpcEvent); } return; }
   if (!e.keeper) { enemies.hurt(e, d); return; }
@@ -1787,8 +1797,35 @@ function inkV16Targets(list) {
     }
   }
   if (npcs) {
-    for (const n of npcs.list()) list.push(inkV16Proxy(2, n.x, n.cy, 0.45, n.hostile));
+    for (const n of npcs.list()) if (!n.dead) list.push(inkV16Proxy(2, n.x, n.cy, 0.45, n.hostile));
   }
+  inkAmbientTargets(list);
+}
+
+// Actions tuning: the harmless background fish (ambient.js) as ink targets, at the spot they are drawn: decor.js's open-water
+// critters and the foliage's hover fish (the little greenranha). Built only while a blob is in flight; never auto-aimed.
+const ambPool = [], hoverOut = [];
+function ambProxy(n, kind, bx, by, phase, t, reduced) {
+  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false });
+  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false;
+  ambientPos(kind, bx, by, phase, t, reduced, p);
+  return p;
+}
+function inkAmbientTargets(list) {
+  if (!inkResident || !inkJet.data.alive.some((a) => a === 1)) return;
+  const t = sim.time, reduced = prefersReducedMotion();
+  let n = 0;
+  for (const c of decor.visibleCritters(inkResident)) if (c.kind === 'fish') list.push(ambProxy(n++, 'fish', c.x, c.y, c.phase, t, reduced));
+  const m = renderer.hoverFish ? renderer.hoverFish(inkResident, hoverOut) : 0;
+  for (let i = 0; i < m; i++) list.push(ambProxy(n++, 'greenranha', hoverOut[i].x, hoverOut[i].y, hoverOut[i].phase, t, reduced));
+}
+/** A blob hit a background fish: it dies, Spelunky style (struck off the level, a small belly-up corpse sinks). */
+function inkAmbient(p) {
+  killAmbient(p.bx, p.by);
+  p.dead = true;
+  if (V2) corpses.add('ambient-' + p.kind, p.x, p.y, 0, 0.5, 1);
+  particles.deathPoof(p.x, p.y, '#cfe8a0');
+  runStats.fish = (runStats.fish || 0) + 1;
 }
 
 /** What the keepers did this step: hits on them anger the run, a dead keeper leaves his shells, claws whoosh. */
@@ -2203,6 +2240,21 @@ window.__octo = {
     const d = loot.data, out = [];
     for (let i = 0; i < d.n; i++) out.push({ kind: LOOT_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], state: d.state[i], count: d.count[i], aux: d.aux[i] });
     return { items: out, chase: loot.chaseLeft(), rocks: d.nr };
+  },
+  /** Actions tuning test hook: put a clam or pot ('clam' | 'pot') holding `n` shells at (x, y); returns its loot index. */
+  spawnLoot(kind, x, y, n = 2) { return loot.add({ lk: LOOT_NAMES.indexOf(kind), x, y, n }); },
+  /** Test hook: is world point (x, y) solid rock? */
+  isSolid(x, y) { return world.isSolid(x, y); },
+  /** Actions tuning test hook: fire the Ink Jet from the octopus along (dx, dy) (cooldown applies); true when it fired. */
+  fireInk(dx, dy) { return inkJet.fire(octo.x, octo.y, dx, dy, octo.radius + 0.1); },
+  /** Actions tuning test hook: the live background fish ({kind, x, y} where they are drawn now) and how many were inked. */
+  ambientFish() {
+    const save = inkResident, list = [];
+    inkResident = world.residentChunks();
+    const alive = inkJet.data.alive, was = alive[0];
+    alive[0] = 1; inkAmbientTargets(list); alive[0] = was; // build the list as if a blob were flying
+    inkResident = save;
+    return { fish: list.map((p) => ({ kind: p.kind, x: p.x, y: p.y })), killed: ambientDeadCount(), stats: runStats.fish };
   },
   /** V2-PLAN 16: the NPC slots (who, x, y, hp, hostile, dead, state, aim timer ...), the harpoons in flight and the dive's mood record. */
   npcs() { return npcs ? npcs.list() : []; },

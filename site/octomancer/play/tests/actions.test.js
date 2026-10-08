@@ -11,6 +11,9 @@ import { DASH_IFRAMES, DASH_KILL_SPEED } from '../js/config.js';
 import { ITEM_IDS, ITEM_DEFS, giveItem, applyCarried } from '../js/items.js';
 import { octoRams, octoPhasing, RAM_SPEED } from '../js/strikes.js';
 import { createHotbarUI } from '../js/hotbar-ui.js';
+import { createQuestState, questInk, Q_RESCUE, CAGE_INK_R } from '../js/quests.js';
+import { killAmbient, isAmbientDead, resetAmbient, ambientPos } from '../js/ambient.js';
+import { createLoot, LK_POT } from '../js/loot.js';
 
 const DT = 0.02;
 const OPEN = { isSolid: () => false, breakTile() {} };
@@ -122,6 +125,35 @@ export async function runActionsTests(assert) {
     fly(jet, OPEN, en.all(), (e, dmg) => { calls++; en.hurt(e, dmg); }, { props: createProps(), corpses: createCorpses() }, 0.6);
     assert('ink: a creature is hurt through the shared hurt entry exactly once', calls === 1 && p.hp < 6);
     setHpMode(false); // module-level global: do not leak
+  }
+
+  // ================================================================ Ink: pots, the cage, the background fish (unit level)
+  {
+    const props = createProps(), loot = createLoot(props);
+    const li = loot.add({ lk: LK_POT, x: 10, y: 5, n: 2 });
+    const jet = createInkJet();
+    jet.fire(6, 5, 1, 0, 0);
+    let broke = false;
+    for (let t = 0; t < 0.6; t += DT) {
+      jet.update(DT, OPEN, [], noHurt, { props, corpses: null });
+      for (let k = 0; k < jet.events.nProp; k++) broke = loot.hitProp(jet.events.propHit[k], 'ink') || broke;
+    }
+    const ev = loot.takeEvents().find((e) => e.type === 'break');
+    assert('ink: a blob reports the pot prop it hit and loot.hitProp breaks it (how ink)', broke && loot.data.state[li] === 1 && ev && ev.how === 'ink' && ev.shells === 2);
+  }
+  {
+    const L = { meet: 'a', ask: 'b', help: 'c', thank: 'd' };
+    const st = createQuestState({ qi: 0, kindId: Q_RESCUE, id: 'q', npc: 'pip', name: 'Q', reward: 4, count: 1, need: 0, max: 0, lines: L, done: 'd', journal: 'person-critter', variant: '', floorY: 11.05, pos: Float32Array.of(10.5, 10.5) });
+    const miss = questInk(st, st.cx + CAGE_INK_R + 0.3, st.cy);
+    const hit = questInk(st, st.cx - 0.5, st.cy);
+    assert('ink: a blob splatting on the critter cage breaks it (he follows); a near miss does not', !miss && hit && st.following && st.brokenBy === 'ink');
+  }
+  {
+    resetAmbient();
+    killAmbient(12.37, 8.5);
+    const p = ambientPos('fish', 12, 8, 1.2, 3, false, {});
+    assert('ambient: a struck fish stays struck (by its base spot), others do not; drift matches the art (+-0.5 tiles)', isAmbientDead(12.37, 8.5) && !isAmbientDead(12, 8) && Math.abs(p.x - 12) <= 0.5 && Math.abs(p.y - 8) <= 0.12);
+    resetAmbient();
   }
 
   // ================================================================ Dash: i-frames from the first frame, no damage

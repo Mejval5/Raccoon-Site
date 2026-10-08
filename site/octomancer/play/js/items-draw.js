@@ -24,6 +24,9 @@ function sprite(id) {
   return img.complete && img.naturalWidth ? img : null;
 }
 
+// start loading the item sprites at once, so a panel drawn once (the inventory) already has them, not the fallback
+if (typeof Image !== 'undefined') for (const id of Object.keys(SPRITES)) sprite(id);
+
 function outline(ctx, r, fill, stroke) {
   ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1.2, r * 0.16); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 }

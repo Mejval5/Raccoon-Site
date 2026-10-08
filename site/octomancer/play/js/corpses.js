@@ -28,6 +28,7 @@ const JET_ACC_FALLBACK = 17, JET_HALF_WIDTH_FALLBACK = 1.1; // hazards.js update
 /** Body radius per kind (tiles); anything else (an NPC, a new creature) uses RADIUS_DEFAULT. */
 export const KIND_RADIUS = {
   piranha: 0.45, crab: 0.4, 'crab-fast': 0.4, manta: 0.6, urchin: 0.42, cannon: 0.45, horns: 0.35, gclam: 0.9, tentacle: 0.6,
+  'ambient-fish': 0.16, 'ambient-greenranha': 0.18, // ambient.js: a little background fish killed by ink
 };
 const RADIUS_DEFAULT = 0.5;
 export function corpseRadius(kind) { return KIND_RADIUS[kind] !== undefined ? KIND_RADIUS[kind] : RADIUS_DEFAULT; }

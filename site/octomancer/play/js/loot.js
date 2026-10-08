@@ -274,6 +274,16 @@ export function createLoot(props = null) {
     /** Events since the last call (main.js reacts to them), cleared. */
     takeEvents() { return events.splice(0, events.length); },
 
+    /** An Ink Jet blob hit prop `pid`: an intact clam or pot it belongs to breaks ('ink'). Returns true when one broke. */
+    hitProp(pid, how = 'ink') {
+      for (let i = 0; i < d.n; i++) {
+        if (d.pid[i] !== pid || d.state[i] !== ST_INTACT || (d.kind[i] !== LK_CLAM && d.kind[i] !== LK_POT)) continue;
+        breakObject(i, how);
+        return true;
+      }
+      return false;
+    },
+
     /** A bomb went off at (x, y): clams and pots in the blast break. (Pockets are rock tiles: bomb.js breaks them.) */
     explode(x, y, r = BOMB_RADIUS) {
       for (let i = 0; i < d.n; i++) {

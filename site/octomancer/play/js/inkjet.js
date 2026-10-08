@@ -51,7 +51,8 @@ export function createInkJet() {
   };
   // splat: x, y pairs; splatDir: the blob's flight direction (unit) at the hit; splatOn: 1 on a creature, 0 on rock
   const events = {
-    hits: 0, kills: 0, pushes: 0, blocked: 0, nSplat: 0, splat: new Float32Array(MAX_SPLAT * 2),
+    hits: 0, kills: 0, pushes: 0, blocked: 0, nSplat: 0, nProp: 0, propHit: new Int32Array(MAX_SPLAT), // propHit: props hit this step (main.js: a pot or clam breaks)
+    splat: new Float32Array(MAX_SPLAT * 2),
     splatDir: new Float32Array(MAX_SPLAT * 2), splatOn: new Uint8Array(MAX_SPLAT),
   };
   const flags = cullFlags('inkjet', POOL);
@@ -126,6 +127,7 @@ export function createInkJet() {
         }
         if (dx * dx + dy * dy > rr * rr) continue;
         if (P.nudge(j, ux, uy, INK_PUSH)) events.pushes++;
+        if (events.nProp < MAX_SPLAT) events.propHit[events.nProp++] = j;
         return true;
       }
     }
@@ -144,7 +146,7 @@ export function createInkJet() {
   }
 
   function update(dt, world, list, hurt, phys = null) {
-    events.hits = 0; events.kills = 0; events.pushes = 0; events.blocked = 0; events.nSplat = 0;
+    events.hits = 0; events.kills = 0; events.pushes = 0; events.blocked = 0; events.nSplat = 0; events.nProp = 0;
     if (cd > 0) cd -= dt;
     n = 0;
     if (nStains) for (let i = 0; i < SPLAT_CAP; i++) if (son[i] && (sage[i] += dt) >= SPLAT_LIFE) { son[i] = 0; nStains--; }
@@ -281,7 +283,7 @@ export function autoAimTarget(octo, list, isSolid) {
   let best = null, bestD = INKJET.range * INKJET.range;
   for (let j = 0; j < list.length; j++) {
     const e = list[j];
-    if (e.dead || e.ghost || e.hp === undefined) continue;
+    if (e.dead || e.ghost || e.hp === undefined || e.ambient) continue; // never auto-aim at a harmless background fish
     const dx = e.x - octo.x, dy = e.y - octo.y, d2 = dx * dx + dy * dy;
     if (d2 >= bestD) continue;
     if (!hasLineOfSight(isSolid, octo.x, octo.y, e.x, e.y)) continue;
