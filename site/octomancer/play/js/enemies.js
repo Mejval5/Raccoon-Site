@@ -709,14 +709,17 @@ export function createEnemies() {
         break;
       }
       case PS_LUNGE: {
+        // a frenzy lunge homes on its prey (a bleeding fish keeps swimming); a lunge at the octopus stays locked (she can dodge it)
+        if (e.tg && trackPrey(e)) { const dx = e.tgx - e.x, dy = e.tgy - e.y, d = Math.hypot(dx, dy); if (d > 0.3) { e.lx = dx / d; e.ly = dy / d; e.face = sgn(e.lx, e.face); } }
         e.vx = e.lx * PIRANHA_LUNGE_SPEED; e.vy = e.ly * PIRANHA_LUNGE_SPEED;
         e.x += e.vx * dt; e.y += e.vy * dt;
         collideWithWalls(e, world);
         const moved = Math.hypot(e.x - px, e.y - py);
         e.ltrav += moved; e.t -= dt;
         // a frenzy lunge bites at its nose: the corpse it hunts, or any prey (bleeding, knocked out) it meets; a healthy body it
-        // swims into is left alone (touch enemies never hurt each other)
-        if (e.tg && inf && inf.bite(e.tgid, e.x + e.lx * 0.55, e.y + e.ly * 0.55, 0.5, e.id)) { piranhaRecover(e, true); e.tg = 0; break; }
+        // swims into is left alone (touch enemies never hurt each other). The nose is the sprite's (PIRANHA_BODY_HALF_LEN): the
+        // separation pass keeps two piranhas about 1.8 tiles apart side by side, so a bite circle nearer the centre never lands
+        if (e.tg && inf && inf.bite(e.tgid, e.x + e.lx * PIRANHA_BODY_HALF_LEN, e.y + e.ly * PIRANHA_BODY_HALF_LEN, 0.6, e.id)) { piranhaRecover(e, true); e.tg = 0; break; }
         if (moved < 0.4 * PIRANHA_LUNGE_SPEED * dt || e.t <= 0 || e.ltrav >= e.lmax) { piranhaRecover(e, false); e.tg = 0; }
         break;
       }

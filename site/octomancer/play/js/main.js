@@ -2198,7 +2198,7 @@ window.__octo = {
   },
   /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
   enemies() {
-    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead, tg: e.tg || 0, frenzy: e.frenzy || 0 }));
   },
   shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
