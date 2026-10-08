@@ -18,7 +18,7 @@
 //   6. stun  = src.stun * row.stunScale, 0 when row.immuneKnockout
 // Aggro (the keeper, the NPCs) follows the hit's blame: only a hit the octopus caused turns them on her (byOcto).
 
-import { STUN_S, STUN_KNOCKBACK, HEAVY_HIT_DMG, HEAVY_KNOCKBACK } from './config.js';
+import { STUN_S, STUN_KNOCKBACK, HEAVY_HIT_DMG, HEAVY_KNOCKBACK, BOMB_RADIUS } from './config.js';
 
 // physics kinds: how a body moves when something shoves it
 export const PH_SWIM = 'swim';         // free swimmer: thrown by blasts, drifts in jets, flies onto spikes
@@ -158,8 +158,9 @@ export const TRIGGER_TARGET_NAMES = Object.keys(TRIGGER_TARGETS);
 
 /** Per source (a SOURCES name): which targets it sets off and how far (tiles). */
 export const TRIGGERS = {
-  // a bomb going off: other bombs inside its blast radius (2.5), everything else out to the shove ring (2 radii)
-  bomb:    { delay: [0.12, 0.26], sets: { bomb: 2.5, rock: 5, clam: 5, tentacle: 5, eel: 5, pot: 5, tile: 4, jet: 5, trap: 4 } },
+  // a bomb going off: other bombs inside its blast radius (BOMB_RADIUS), everything else out to the shove ring (2 radii; fragile
+  // tiles and traps 1.6 radii)
+  bomb:    { delay: [0.12, 0.26], sets: { bomb: BOMB_RADIUS, rock: BOMB_RADIUS * 2, clam: BOMB_RADIUS * 2, tentacle: BOMB_RADIUS * 2, eel: BOMB_RADIUS * 2, pot: BOMB_RADIUS * 2, tile: BOMB_RADIUS * 1.6, jet: BOMB_RADIUS * 2, trap: BOMB_RADIUS * 1.6 } },
   // a falling boulder (a hazard rock, a chase rock) landing: what it lands on, and a shake that loosens boulders near by
   boulder: { delay: [0.1, 0.24], sets: { bomb: 1.3, clam: 2.2, pot: 1.3, rock: 4.5, tile: 1.3, trap: 1.3 } },
   // a giant clam's snap: the slam startles the clams next to it and cracks pots; at the octopus (spontaneous) only a bomb in its mouth

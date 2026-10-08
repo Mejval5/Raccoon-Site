@@ -77,7 +77,7 @@ export function jetForceAt(d, i, x, y) {
   const rx = x - d.x[i], ry = y - d.y[i];
   const s = rx * dx + ry * dy, l = -rx * dy + ry * dx;
   if (s < 0 || s > d.len[i] || Math.abs(l) > JET_HALF_WIDTH) return 0;
-  const f = JET_ACC * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]) * (1 + JET_SURGE_GAIN * Math.min(1, d.surge[i] / JET_SURGE_T));
+  const f = JET_ACC * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]) * (d.surge && d.surge[i] > 0 ? 1 + JET_SURGE_GAIN * Math.min(1, d.surge[i] / JET_SURGE_T) : 1); // a surge (chain.js); hand-made data has none
   jetOut.fx = dx * f; jetOut.fy = dy * f;
   return jetOut;
 }

@@ -194,7 +194,7 @@ bodies (section 2); it can also **set off** things. That is a second table next 
 
 | Source (what went off) | Sets off (reach in tiles) | Delay |
 |---|---|---|
-| bomb (a blast) | bomb 2.5 (its radius), rock, clam, tentacle, eel, pot, jet 5 (the shove ring), tile, trap 4 | 0.12-0.26 s |
+| bomb (a blast) | bomb R (its radius, `BOMB_RADIUS`), rock, clam, tentacle, eel, pot, jet 2R (the shove ring), tile, trap 1.6R | 0.12-0.26 s |
 | boulder (its impact: the first hard stop of a drop) | bomb 1.3, clam 2.2, pot 1.3, tile 1.3, trap 1.3, rock 4.5 (the shake) | 0.10-0.24 s |
 | snap (a giant clam) | clam 3, pot 1.6, bomb 1.6; spontaneous: bomb only | 0.14-0.28 s |
 | shock (an eel) | eel 4, bomb 3, clam 2.5; spontaneous: bomb only | 0.10-0.22 s |
