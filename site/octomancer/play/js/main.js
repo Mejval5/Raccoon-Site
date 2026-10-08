@@ -27,7 +27,7 @@ import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from 
 import { drawLoot } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
-import { MAT_ROCK, setTileDrawHook } from './materials.js';
+import { MAT_ROCK, MAT_BONE, setTileDrawHook } from './materials.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
@@ -92,6 +92,7 @@ import { STAT_ANGERED } from './journal.js';
 import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { CR_DASH } from './fragile.js';
 import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
@@ -749,6 +750,7 @@ function step(dt) {
   }
   // blasts shove the corpses (the ones this very blast made too, so they are thrown, not just dropped)
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
+  if (V2) handleCrumbles(dt);
   particles.update(dt, solidForSight);
   if (snap.bomb.pressed) {
     const aim = V2 ? bombAim(snap) : null;
@@ -774,6 +776,28 @@ function step(dt) {
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
 }
+// --- fragile terrain (fragile.js): fish-bone tiles broken this step by a dash, a projectile, a flung prop, a bomb or a
+// boulder: bone shards that bounce and fade, a puff of silt that hangs, one crunch per step; a dash through gets a hair
+// of freeze and a small shake. A buried find in the tile drops out by itself (embed.js sees the tile gone).
+let crunchCool = 0;
+function handleCrumbles(dt) {
+  if (!world.takeCrumbles) return;
+  crunchCool = Math.max(0, crunchCool - dt);
+  const c = world.takeCrumbles();
+  if (!c.length) return;
+  let dash = false;
+  const sp = Math.hypot(octo.vx, octo.vy) || 1;
+  for (let k = 0; k < c.length; k += 3) {
+    const x = c[k] + 0.5, y = c[k + 1] + 0.5, isDash = c[k + 2] === CR_DASH;
+    if (isDash) dash = true;
+    particles.boneShards(x, y, isDash ? octo.vx / sp : 0, isDash ? octo.vy / sp : 0);
+  }
+  if (world.fresh) world.fresh.haze(c[0] + 0.5, c[1] + 0.5, 1); // one light haze per step, not per tile
+  if (crunchCool <= 0) { sfx.crunch(dash); crunchCool = 0.06; }
+  if (dash) { particles.shakeFx(2, 0.12); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, 0.035); }
+  if (!isSafeState(run)) { discover('prop-fishbone'); for (let k = 0; k < c.length; k += 3) journal.bump('prop-fishbone', STAT_KILLED); }
+}
+
 // --- V2-PLAN 14: the ragdoll (js/ragdoll.js): a limp or dead octopus is a physics body the world keeps throwing about
 const NOBODY = { x: -1e6, y: -1e6, vx: 0, vy: 0, radius: 0, magnetR: 0, dead: true }; // what pickups see once the octopus is dead
 let prevBodyHits = 0;
@@ -2070,6 +2094,10 @@ function discoverScenery() {
     if (s.type !== 'decor') continue;
     const dx = s.x - octo.x, dy = s.y - octo.y;
     if (dx * dx + dy * dy < 42) discover(DECOR_JOURNAL[s.dk]);
+  }
+  if (world.tileAt) { // fish bone (fragile.js): met when within 4 tiles
+    const ox = Math.floor(octo.x), oy = Math.floor(octo.y);
+    for (let ty = oy - 4; ty <= oy + 4; ty++) for (let tx = ox - 4; tx <= ox + 4; tx++) if (world.tileAt(tx, ty) === MAT_BONE) { discover('prop-fishbone'); ty = oy + 5; break; }
   }
   for (const c of decor.visibleCritters(world.residentChunks())) {
     const dx = c.x - octo.x, dy = c.y - octo.y;
