@@ -48,6 +48,7 @@ export function createAltar(x, floorY, sign = false, seed = 0) {
     gulp: 0,           // 1 -> 0 after something is taken (the basin clouds, bubbles rise)
     rage: 0,           // 1 -> 0 after it is angered (the silt burst)
     dwell: new Map(),  // body key -> s in the zone
+    seen: new Set(),   // scratch: keys in the zone this step (kept, so a step allocates nothing)
     events: [],        // {type: 'offer', kind, value, live} | {type: 'gift', gift, tier} | {type: 'anger', why}
   };
 }
@@ -127,7 +128,7 @@ export function stepAltar(a, dt, live = {}) {
   a.gulp = Math.max(0, a.gulp - dt * 0.8);
   a.rage = Math.max(0, a.rage - dt * 0.6);
   if (a.angry) return a.events;
-  const seen = new Set();
+  const seen = a.seen; seen.clear();
   const c = live.corpses;
   if (c) {
     const d = c.data;
@@ -161,7 +162,7 @@ export function stepAltar(a, dt, live = {}) {
       break;
     }
   }
-  for (const key of a.dwell.keys()) if (!seen.has(key)) a.dwell.delete(key);
+  if (a.dwell.size) for (const key of a.dwell.keys()) if (!seen.has(key)) a.dwell.delete(key);
   return a.events;
 }
 

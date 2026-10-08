@@ -15,8 +15,10 @@ import { MAT_ROCK, MAT_BEDROCK } from './materials.js';
 
 export const ALTAR_JOURNAL = 'place-altar';
 const SEE_R = 9; // tiles: met (journal) this close
+const NEAR_R = 22; // tiles: bodies are only checked while the octopus is this close
 
 export function createAltarLevel(g) {
+  const live = { corpses: null, kindName: g.kindName, enemies: null, keepers: null, keeperDead: g.keeperDead };
   const self = {
     altar: null,
     sign: null,     // [{sign: [tx, ty], label, x, y, r}] for drawTutorialSigns, or null
@@ -56,7 +58,10 @@ export function createAltarLevel(g) {
       if (!a) return;
       const o = g.octo();
       if (!self.met && Math.hypot(o.x - a.x, o.y - a.y) < SEE_R) { self.met = true; g.discover(ALTAR_JOURNAL); }
-      const evs = stepAltar(a, dt, { corpses: g.corpses(), kindName: g.kindName, enemies: g.enemies(), keepers: g.keepers(), keeperDead: g.keeperDead });
+      // far from the octopus nothing is carried to it: only the glow eases (no enemy list is built)
+      const near = Math.abs(o.x - a.x) < NEAR_R && Math.abs(o.y - a.y) < NEAR_R;
+      live.corpses = near ? g.corpses() : null; live.enemies = near ? g.enemies() : null; live.keepers = near ? g.keepers() : null;
+      const evs = stepAltar(a, dt, live);
       for (const ev of evs) handle(ev);
     },
     blast(x, y, r) {
