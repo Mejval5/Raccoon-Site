@@ -92,3 +92,24 @@ Counts: 12 PASS, 7 FIXED, 0 FAIL.
   - The runs feel like Spelunky in structure: room-template levels, shop aggro, traps that kill outright, and corpses.
   - The Noita side is still thin: there is one spell, and there are no material interactions beyond bombs breaking rock.
   - Both are feature work, not verification, so none was added.
+
+## Vibe fixes (2026-10-08, Opus owner + five Sonnet devs)
+
+The coordinator's picks from VIBE-REVIEW.md section 3 (items 1-7, 9, 10; item 8, level shape variety, deferred) and the leftovers above. No new systems.
+
+- **1 Hazards hit the cast:** a falling boulder kills enemies under it through `enemies.kill(e, 'crush')` (a corpse, like a push block) and hurts NPCs and the shopkeeper once per drop. Spikes kill an enemy that is stunned or moving 5 u/s or more into the strip (a calm patrolling crab is safe). Jets push free swimmers, stunned enemies and loose props. An enemy under a boulder can set it off. Shopkeeper rule (`hazards.js crushUnder`, `main.js boulderBodies`): he always takes the damage, but turns on the octopus only when she caused the fall (she stood under it, or her bomb released it). Spikes do not touch him.
+- **6 Nothing starts off-screen:** a boulder triggers, a tentacle wakes and a cannon charges only inside the camera view (`cull.js setGameView / inCameraView`, set by main.js after each render; defaults to "in view" for tests).
+- **2 Bombs:** the drawn blast edge is exactly `BOMB_RADIUS` (`BLAST_DRAW_RADIUS`), no rays. Bomb drag after the throw: dropped in open water it sinks about 1.3 tiles in the first second (was 1.9) and settles; a throw still carries about 2 tiles.
+- **3 Natural blast and stun:** ink-dark core, pale shock ring, white-blue bubbles, a soft grey-brown silt cloud that lingers 2-3 s (drawn from a baked soft sprite, no hard discs). Stunned enemies show three circling bubbles. Fuse fizz is pale bubbles.
+- **4 Traces:** rubble rests, sleeps and stays (cap 60, oldest recycled, never starves bombs or bodies). Broken faces get a pale raw-stone line and chips that fade over 24 s (`fresh.js`, culled, nothing re-baked), plus a faint silt haze.
+- **5 Ink jet:** 1.5x blob with a wobbling tail, a splash on hit and on rock, rock stains for 8 s (cap 24), stains on hit enemies for 4 s, a 30 ms hit-stop. No balance change.
+- **7 HUD:** the controls line retires after two finished levels (`helpDone` in the save) and stays in Settings; journal toasts only for new entries, batched within 1.8 s, none for plants and props, 2 s; smaller banner that fades after 1.5 s, seed only for a seeded run; narrower hub and grotto prompts on phones.
+- **9 Death titles** (`run.js DEATH_TITLE`): Impaled, Crushed, Clammed, Swallowed, Harpooned, Shredded by a piranha, Shopkeeper's justice, etc. 'The dark took you' only for the Beholder and unknown.
+- **10 Outliers:** the push block is grey-green stone and spawns only where it can move (`blockCanMove`, tested over seeds 1-150); treasure marks are faint hand-drawn fossil outlines.
+- **Leftovers:** NPC corpses tip onto their side at rest; every Challenge Pool gets both vents (1-3 seed 1's second pool was cut off from the swim region; 62 pools over seeds 1-150 tested); the splat is a bruised ink-violet pancake on an ink pool; Marlo's hub spot moved off the corner buttons; the pool host fallback's hat band is sea-glass green.
+- **Long-task rule:** `phone-cdp.js` / `entry-cdp.js` now fail when 2 or more of 3 runs have a task over 50 ms. With the old code that failed most of the time (a 50-95 ms task in about half the runs). Causes found with a Chrome trace and frame timers:
+  - Big images (octopus sheet, sprite atlas, backdrop layers, material textures) were decoded lazily inside a frame, and again after the browser dropped them from its decode cache ('Decode Image' 50-80 ms at 4x). They are now ImageBitmaps decoded off the main thread (`v2-art.js decodeBitmap`: fetch + `createImageBitmap(blob)`; `createImageBitmap(img)` decodes on the main thread).
+  - The quest planner built a path grid, a flood fill and an A* route in one warm frame (5-50 ms at 4x). The level worker now computes it with the level (`quests.js questPathFor`, used while the tiles still match).
+  - After the fix: phone-cdp 8 of 8 runs clean on the old game plus these fixes; on the final branch 1 hitch (59 ms) in 7 runs; entry-cdp clean in every run.
+- **Tests:** full page PASS 3035/3035, bot 30/30, every `*-cdp.js` passes. Before/after frames: `night/vibe2-*-{before,after}-{desktop,phone}.png` (bomb, ink, boulder, death) and the devs' `night/vibefix-*.png`.
+- **Not done:** the controls line does not also retire per control used (levels route only); spikes do not hurt the shopkeeper; a boulder that hurts an NPC angers that NPC even when an enemy set it off; no visual capture for item 6 (covered by tests in `hazards.test.js`).
