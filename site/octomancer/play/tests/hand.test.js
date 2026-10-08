@@ -167,6 +167,23 @@ export async function runHandTests(assert) {
     assert('sticky: a mine clings to the creature it hits and moves with it', !!b5.stickE && Math.abs(b5.x - f5.x) < 0.8 && Math.abs(b5.y - f5.y) < 0.8 && s5.props.data.state[b5.pid] === PS_CARRY);
   }
 
+  // ---------------------------------------------------------------- Daniel 2026-10-08: a blast kills the octopus outright
+  {
+    const blastAt = (setup) => {
+      const s = stage(); const o = s.octo; o.x = 10; o.y = 10; setup(o);
+      s.bombs.place(o, 10.5, 10, null, { pinned: true, free: true });
+      const dm = { killInRadius() { return 0; }, all: () => [] };
+      for (let n = 0; n < 100 && s.bombs.list().some((b) => !b.exploded); n++) { s.props.step(DT, s.world, null); s.bombs.update(DT, s.world, o, dm); }
+      return o;
+    };
+    const a = blastAt((o) => { o.invulnTimer = 5; });
+    assert('bomb kill: inside the radius the blast kills the octopus, i-frames or not (cause bomb)', a.dead && a.cause === 'bomb');
+    const b = blastAt((o) => { o.bombNoKill = true; });
+    assert('bomb kill: in the tutorial (bombNoKill) it costs one heart, never the life', !b.dead && b.hearts === 2);
+    const c = blastAt((o) => { o.x = 12.7; });
+    assert('bomb kill: just outside the 2.0 radius she lives', !c.dead && c.hearts === 3);
+  }
+
   // ---------------------------------------------------------------- the hand: grab / carry / throw / drop, every kind
   {
     // a pot

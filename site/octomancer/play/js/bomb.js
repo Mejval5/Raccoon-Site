@@ -16,7 +16,7 @@
 //                        octopus, and 4-8 rubble props where rock was blown away.
 
 import { BOMB_FUSE, BOMB_RADIUS } from './config.js';
-import { tryUseBomb } from './octopus.js';
+import { tryUseBomb, hurtOctopus } from './octopus.js';
 import { octoHit } from './damage.js';
 import { PK_BOMB, PK_RUBBLE, PROP_RADIUS, THROW_SPEED, BM_PLAIN, BM_HEAVY, BM_STICKY, PS_HELD, PS_CARRY } from './props.js';
 
@@ -83,7 +83,9 @@ export function createBombs(props = null) {
       enemies.killInRadius(b.x, b.y, r);
       if (props && enemies.knockInRadius) enemies.knockInRadius(b.x, b.y, r * BLAST_REACH, ENEMY_BLAST_IMPULSE, ENEMY_STUN);
     }
-    if (dist(octo.x, octo.y, b.x, b.y) <= r) octoHit(octo, 'bomb', b.x, b.y, 'bomb'); // dead: a hit on the body (flash, knock)
+    // Daniel 2026-10-08: inside the radius the blast kills her outright (SOURCES.bomb.octo = kill; i-frames do not help); the tutorial
+    // sets octo.bombNoKill, so its bomb floor only costs a heart. A dead body takes a hit (flash, knock).
+    if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill && !octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
     if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
       if (d < reach) {

@@ -669,6 +669,7 @@ function step(dt) {
   }
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { if (entry) hitStop = 0; else { hitStop = Math.max(0, hitStop - dt); return; } } // r45: never during the entry, which runs on its own clock
+  octo.bombNoKill = V2 && !!run && run.state === S_TUTORIAL; // the tutorial's bomb floor never kills (a heart at most); everywhere else a blast does
   octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) run.dive.time += dt; // the run summary's clock
@@ -1563,6 +1564,10 @@ function stepV2(snap) {
     }
     // controls 2026-10-08: at the tutorial's bomb floor the bomb is picked on the hotbar once, so Use / right click / C drop one
     if (best && best.refillBomb && !tutState.bombPicked) { tutState.bombPicked = true; const hb = hotbar(), bi = hb.slots.findIndex((sl) => sl.ids[0] === BOMB_SLOT); if (bi >= 0) selectIndex(hb, bi); }
+    // Daniel 2026-10-08: bombs kill outright (not in the tutorial, which only costs a heart): while one of ours is lit there, the prompt says get clear
+    if (run.state === S_TUTORIAL && bombs.list().some((b) => !b.exploded && Math.hypot(b.x - octo.x, b.y - octo.y) < 4)) {
+      best = { title: 'Swim away!', desktop: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.', touch: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.' };
+    }
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
   } else ui.setPrompt(null);
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
