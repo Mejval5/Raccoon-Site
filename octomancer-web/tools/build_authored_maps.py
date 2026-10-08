@@ -1,4 +1,4 @@
-"""Build site/octomancer/play/data/hub.json and tutorial.json (authored ASCII maps).
+"""Build site/octomancer/play/data/hub.json (authored ASCII map; historical: the hub has been edited by hand since). The tutorial is built by tutorial_map.py now.
 
 Legend: '#' rock, '.' water, 'S' start, 'E' exit (the dive entrance in the hub),
 'L' Quill's perch (hub only; the journal board 'J' was removed 2026-10-08), 'Q' quest sign (hub only), 'W' a breakable wall tile (rock; the tutorial bomb wall).
@@ -122,7 +122,7 @@ tut_json = {
                {'type': 'plankton-swarm', 'x': 47.5, 'y': 11.5, 'count': 7}],
 }
 
-for name, data in (('hub', hub_json), ('tutorial', tut_json)):
+for name, data in (('hub', hub_json),):  # tutorial.json: tutorial_map.py
     width = len(data['rows'][0])
     assert all(len(r) == width for r in data['rows']), name
     with open(os.path.join(out_dir, name + '.json'), 'w', encoding='utf8') as f:

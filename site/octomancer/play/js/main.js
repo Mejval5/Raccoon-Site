@@ -90,7 +90,8 @@ import { CREATURES, SOURCES, resolveHit, HAZARD_COOL } from './creature-rules.js
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares, drawWare } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
-import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
+import { createTutorialState, tutorialStep, tutorialActed, tutorialRooms, openAllDoors } from './tutorial.js';
+import { drawTutorialSigns } from './tutorial-draw.js';
 import { drawContactShadows } from './feel-draw.js';
 import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, SPLAT_SHAKE_PX, SPLAT_HITSTOP, prefersReducedMotion, setMotionSettings, osPrefersReducedMotion } from './config.js';
 import { createSettingsPanel } from './settings-ui.js';
@@ -375,6 +376,7 @@ let shopBrokenSeen = 0;        // world.shopTilesBroken already answered with ag
 const wareEvents = [];
 let poolSts = []; // r39: this level's Challenge Pools (pool.js), one per pool room
 let tutState = createTutorialState();
+let tutBuys = 0; // wares taken from the tutorial's free stall (its room's goal)
 let story = getStory(); // the stage of Marlo, Pip and Quill, relics handed over, pool wagers (save.js): who waits in the hub
 let diveStory = { ...story }; // the story as the dive began: people move on between dives, never within one
 const diveDone = new Set(); // people whose scene was finished in this dive (nobody appears twice in a dive)
@@ -812,6 +814,7 @@ function step(dt) {
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { if (entry) hitStop = 0; else { hitStop = Math.max(0, hitStop - dt); return; } } // r45: never during the entry, which runs on its own clock
   octo.bombNoKill = V2 && !!run && run.state === S_TUTORIAL; // the tutorial's bomb floor never kills (a heart at most); everywhere else a blast does
+  octo.practice = octo.bombNoKill; // the tutorial's practice rooms: a hurt never takes the last heart (octopus.js hurtOctopus)
   octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) { run.dive.time += dt; levelClock += dt; } // the run summary's clock and the HUD's level clock
@@ -870,11 +873,11 @@ function step(dt) {
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) { damage.tick(dt); infight.tick(dt); }
-  if (V2 && !isSafeState(run)) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
+  if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
   if (V2 && !entry && !octo.hidden) stepHandWorld(dt); // the held thing follows the tentacles; thrown things hit what they meet
   if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world, infight);
-  if (V2 && !isSafeState(run)) {
+  if (V2 && liveWorld()) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
@@ -890,8 +893,8 @@ function step(dt) {
     }
   }
   if (V2) { spellFx.update(dt, octo); handleSpellFxEvents(); } // Delayed motes, coral growing and crumbling, an Anchor landing
-  if (V2 && !isSafeState(run)) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
-  if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
+  if (V2 && liveWorld()) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
+  if (V2 && liveWorld()) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
@@ -901,7 +904,7 @@ function step(dt) {
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
     audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
-  if (V2 && !isSafeState(run)) { chain.step(dt); handleChainEvents(); } // chain.js: links due now go off (a bomb set off here explodes just below)
+  if (V2 && liveWorld()) { chain.step(dt); handleChainEvents(); } // chain.js: links due now go off (a bomb set off here explodes just below)
   bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
@@ -913,7 +916,7 @@ function step(dt) {
     if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
     if (inkJet.events.nSplat && shopSt) inkSplatWares(); // Daniel 2026-10-08: shooting a ware off its pedestal is theft
     if (quest && inkJet.events.nSplat) for (let i = 0; i < inkJet.events.nSplat; i++) questInk(quest, inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]); // a caged critter's cage breaks
-    if (inkJet.events.nProp && !isSafeState(run)) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
+    if (inkJet.events.nProp && liveWorld()) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
       let broke = false;
       for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
       if (broke) handleLootEvents();
@@ -933,7 +936,7 @@ function step(dt) {
     // 2026-10-08: the creatures, NPCs and keepers already took the blast inside bombs.update (damage.js blast, by the creature table)
     if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
     if (V2 && npcs) npcs.drain(onNpcEvent);
-    if (V2 && !isSafeState(run)) {
+    if (V2 && liveWorld()) {
       loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents();
       chain.emit('bomb', ev.x, ev.y, ev.chain >= 0 ? ev : null, true); // chain.js: the bombs, boulders, clams, eels, pots ... it sets off (replaces hazards.blast)
       for (let i = 0; i < creatures.data.n; i++) creatures.releaseNear(i, ev.x, ev.y, BOMB_RADIUS, octo); // a tentacle lets a held octopus go
@@ -1212,6 +1215,7 @@ function thrownHit(x, y, r, vx, vy, dmg, rec) {
 function shelfWares() { let n = 0; if (shopSt) for (let i = 0; i < shopSt.ware.length; i++) if (shopSt.ware[i] === W_SHELF && !shopSt.sold[i]) n++; return n; }
 /** The octopus knocked a ware off its pedestal (ink, a throw, a blast, a dash): the keeper notices, and it is theft. */
 function wareKnocked(reason = 'theft') {
+  if (V2 && run && run.state === S_TUTORIAL) { ui.showToast('In a real shop that is theft: the keeper would come for you', 2600); return; }
   if (!V2 || !run || run.state !== S_BIOME) return;
   keeperNotice = 0.9;
   runStats.knocked++;
@@ -1495,7 +1499,7 @@ function warmSim(n) {
       case 2: decor.update(dt, resident); break;
       case 3: enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null); break;
       case 4: if (V2) { addBlocks(resident); props.step(dt, world, octo, enemies.all()); } break;
-      case 5: if (V2 && !isSafeState(run)) { hazards.update(dt, sim.time, octo, world, resident); loot.update(dt, octo, world, resident); loot.takeEvents(); } break;
+      case 5: if (V2 && liveWorld()) { hazards.update(dt, sim.time, octo, world, resident); loot.update(dt, octo, world, resident); loot.takeEvents(); } break;
       case 6: bombs.update(dt, world, octo, enemies); break;
       case 7: if (V2) { updateTarget(hand, octo, handCtx); hotbarUI.update(hotbarState()); } break; // controls 2026-10-08: the hand's target search and the hotbar (bomb stack) of the new run
       default: break;
@@ -1517,6 +1521,8 @@ function ensureFade() {
 }
 if (V2) ensureFade(); // r44: made at startup, long before the first dive
 
+/** The world's hazards, creatures and loot run: a dive, and the tutorial's practice rooms (no Beholder clock there). */
+function liveWorld() { return !isSafeState(run) || run.state === S_TUTORIAL; }
 /** Apply a run event; on a state change fade out, load the next level, fade in. */
 function v2Event(ev, cause) {
   if (!V2 || transitioning) return false;
@@ -1658,6 +1664,11 @@ function showEndScreen(rank) {
 
 const SEE_RANGE = 9; // tiles: a creature this close in line of sight counts as seen
 let seeTick = 0;
+function stickyIntact(lv) {
+  const l = lv.sticky || [];
+  for (let i = 0; i < l.length; i += 2) if (world.tileAt(l[i], l[i + 1]) !== 0) return true;
+  return false;
+}
 function wallIntact(lv) {
   for (let i = 0; i < lv.walls.length; i += 2) if (world.tileAt(lv.walls[i], lv.walls[i + 1]) !== 0) return true;
   return false;
@@ -1782,6 +1793,7 @@ function stepV2(snap) {
     }
   }
   if (run.state === S_REST) stepRest();
+  if (run.state === S_TUTORIAL) stepTutorial();
   if (run.state === S_BIOME || run.state === S_REST) stepPeople();
   if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
   const sealedHere = run.state === S_HUB && !MOVETEST && hubSeal() > 0;
@@ -1803,8 +1815,10 @@ function stepV2(snap) {
     const touchy = snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer());
     // tutorial: bombs never run out while the wall stands, and an idle player gets the bomb hint back
     if (run.state === S_TUTORIAL) {
-      tutorialStep(tutState, octo, wallIntact(lv), STEP);
-      if (tutState.hint) { const bp = lv.prompts.find((p) => p.refillBomb); if (bp) best = bp; }
+      const floorUp = wallIntact(lv);
+      tutorialStep(tutState, octo, floorUp || stickyIntact(lv), STEP, floorUp);
+      const inBombRoom = lv.rooms && lv.rooms[tutState.room] && lv.rooms[tutState.room].goal === 'walls';
+      if (tutState.hint && inBombRoom) { const bp = lv.prompts.find((p) => p.refillBomb); if (bp) best = bp; }
     }
     // controls 2026-10-08: at the tutorial's bomb floor the bomb is picked on the hotbar once, so Use / right click / C drop one
     if (best && best.refillBomb && !tutState.bombPicked) { tutState.bombPicked = true; const hb = hotbar(), bi = hb.slots.findIndex((sl) => sl.ids[0] === BOMB_SLOT); if (bi >= 0) selectIndex(hb, bi); }
@@ -1877,8 +1891,13 @@ function v2Extra(c, camera, w2s, cw, ch) {
     seal: run.state === S_HUB && !MOVETEST ? hubSeal() : 0, sealWobble: sealBumpAt, sealLabel: 'Finish the tutorial first',
   }, sim.time);
   const t = sim.time;
-  if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
-    drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
+  if (run.state === S_TUTORIAL) {
+    if (lv.walls && lv.walls.length) drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
+    if (lv.sticky && lv.sticky.length) drawWallCue(c, camera, cw, ch, { walls: lv.sticky, tileAt: world.tileAt, attention: 0 }, t);
+    drawTutorialSigns(c, camera, cw, ch, lv.prompts, octo.x, octo.y, t);
+    drawLoot(c, camera, cw, ch, loot.data, t);
+    drawCreaturesBack(c, camera, cw, ch, creatures.data, t);
+    if (shopSt) { drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt); drawLooseWares(c, camera, cw, ch, shopSt, props, t); }
   }
   drawRubble(c, camera, cw, ch, props.data);
   if (world.fresh) world.fresh.draw(c, camera, cw, ch, world.tileAt); // raw edges and silt haze over a fresh crater (fresh.js)
@@ -2003,7 +2022,7 @@ function v2PreWall(c, camera, cw, ch) {
   const mr = run.state === S_HUB ? world.level.mirror : null;
   if (mr) drawMirrorShell(c, camera, cw, ch, mr.x, mr.y, !!(hand.target && hand.target.kind === 'mirror'));
   drawBlocks(c, camera, cw, ch, props.data); // blocks only exist in generated levels, so no state test
-  if (run.state === S_BIOME) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
+  if (run.state === S_BIOME || run.state === S_TUTORIAL) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
 }
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
@@ -2011,18 +2030,18 @@ function v2People(c, camera, w2s, cw, ch) {
   drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
   drawHeld(c, camera, w2s, cw, ch, t); // what the hand holds: over the body, gripped by its arm
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
-  if (run.state === S_BIOME) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
+  if (run.state === S_BIOME || run.state === S_TUTORIAL) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
   if (skinGifts.busy()) drawSkinGifts(c, camera, cw, ch, skinGifts, octo, t);
   if (run.state === S_BIOME && !(npcs && (npcs.owns(NPC_HOST) || npcGone('host')))) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
   if (npcs) drawNpcs(c, camera, cw, ch, npcs, t, octo); // the ones that turned on you, their sight lines and the harpoons
-  if (run.state === S_BIOME) { // V2-PLAN 16: the skewering spikes show through the body, the boulder sits on the pancake
+  if (run.state === S_BIOME || run.state === S_TUTORIAL) { // V2-PLAN 16: the skewering spikes show through the body, the boulder sits on the pancake
     if (octo.deathStyle === 'impale') drawImpaleOverlay(c, camera, cw, ch, octo, hazards.data, t, solidForSight);
     drawSplatRock(c, camera, cw, ch, hazards.data, t, octo);
   }
-  if (run.state === S_BIOME) drawCreaturesFront(c, camera, cw, ch, creatures.data, t, octo);
+  if (run.state === S_BIOME || run.state === S_TUTORIAL) drawCreaturesFront(c, camera, cw, ch, creatures.data, t, octo);
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
   if (run.state === S_BIOME || run.state === S_REST) drawPeopleExtras(c, camera, cw, ch, t);
   if (keeperNotice > 0 && shopSt && shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n) drawKeeperNotice(c, camera, cw, ch, keepers.x[shopSt.keeperIdx], keepers.y[shopSt.keeperIdx] - 1.3, keeperNotice / 0.9, t);
@@ -2218,14 +2237,45 @@ function stepRest() {
   if (ev) onShopEvent(ev);
 }
 
+// --- the tutorial's rooms (tutorial.js, data/tutorial.json): coral doors that open on each room's goal, a free stall ---
+function setupTutorial() {
+  const lv = world.level;
+  tutBuys = 0;
+  if (lv.shop) { shopSt = createShopState(lv.shop, shopItems, 7, 0, run.items); shopSt.free = true; } // a free stall: F takes a ware, nobody minds
+  run.juice = Math.max(run.juice, juiceCap()); // a full jar for the Ink Cloud room
+  if (run.tutorialDone) for (const d of openAllDoors(tutState, lv)) openDoor(d, false); // a replay: every door open, skip to any lesson
+}
+/** Break door `d`'s coral (with crumbs and a chime when `fx`). */
+function openDoor(d, fx) {
+  const list = world.level.doors && world.level.doors[d];
+  if (!list) return;
+  for (let i = 0; i < list.length; i += 2) {
+    const x = list[i], y = list[i + 1];
+    if (world.breakTile(x, y) && fx) { particles.bombDebris(x + 0.5, y + 0.5); crumbleTile[0] = x; crumbleTile[1] = y; spawnRubble(props, crumbleTile, 1, x + 0.5, y); }
+  }
+  if (fx) { sfx.chime(); particles.shakeFx(1.5, 0.15); }
+}
+/** One step of the tutorial's rooms: goals open doors, a new room tops up the hearts, the jar never runs dry, the stall works. */
+function stepTutorial() {
+  const lv = world.level;
+  const r = tutorialRooms(tutState, lv, { x: octo.x, y: octo.y, throws: hand.throws, casts: runStats.spellsCast, buys: tutBuys, tileAt: world.tileAt }, STEP);
+  for (const d of r.open) openDoor(d, true);
+  if (r.entered > 0 && !octo.dead && octo.hearts < octo.heartMax) { octo.hearts = octo.heartMax; prevHearts = octo.hearts; } // each room starts with full hearts
+  if (castsOf(run.juice) < 1) run.juice = juiceCap(); // practice: the jar refills (in a dive it only does at the rest grotto)
+  const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false);
+  if (ev) onShopEvent(ev);
+  if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP, false)) onShopEvent(we); }
+}
+
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null; swift = null; runeSpot = null;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(run.state === S_TUTORIAL ? world.level : null); relicHeld = false; siphonSpot = null; restSpring = null; swift = null; runeSpot = null;
   npcs = makeNpcs();
   if (run.state === S_BIOME || run.state === S_REST) for (let w = 1; w < 5; w++) { // r3: a grudge lasts the whole dive (the grotto too)
     if (people.grudge[w] === G_ANGRY) npcMoods.hostile[w] = 1;
     else if (people.grudge[w] === G_DEAD) { npcMoods.hostile[w] = 1; npcMoods.dead[w] = 1; }
   }
+  if (run.state === S_TUTORIAL) setupTutorial();
   if (run.state === S_REST) {
     const lv = world.level;
     if (lv.springX >= 0) restSpring = { x: lv.springX, y: lv.springY, used: false };
@@ -2423,7 +2473,7 @@ function enterPortal(p) {
 }
 const handEnv = {
   get props() { return props; }, get corpses() { return corpses; }, get enemies() { return enemies; },
-  get loot() { return V2 && run && run.state === S_BIOME ? loot : null; }, get bombs() { return bombs; },
+  get loot() { return V2 && run && (run.state === S_BIOME || run.state === S_TUTORIAL) ? loot : null; }, get bombs() { return bombs; },
   get shopSt() { return shopSt; }, get world() { return world; }, get run() { return run; },
   onShopEvent(ev) { onShopEvent(ev); },
 };
@@ -2908,6 +2958,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
 function onShopEvent(ev) {
   if (ev.type === 'fell') { particles.bombDebris(ev.x, ev.y + 0.5); return; }
   if (ev.type === 'knocked') { particles.bouncePuff(ev.x, ev.y, 0, -1); if (ev.by) wareKnocked(); return; } // a dash knocked it off: theft
+  if (ev.type === 'stolen' || ev.type === 'bought') { if (run.state === S_TUTORIAL) tutBuys++; }
   if (ev.type === 'stolen') {
     if (ev.item.journal) discover(ev.item.journal);
     sfx.chime();
@@ -2933,7 +2984,7 @@ if (V2) {
   ui.setGameOverLabels('The dark took you', 'Restart run', 'Back to the hub');
   // the tutorial is offered at launch until it has been finished once (the dive stays sealed until then); ?at= and the test room skip it
   if (run.state === S_HUB && !MOVETEST && !run.tutorialDone && !params.get('at') && params.get('offer') !== '0') {
-    ui.showOffer('New to the Shallows?', 'The dive is sealed with kelp until you finish the tutorial: a short cave that teaches swimming, dashing and bombs. You can replay it from its ring in the hub.',
+    ui.showOffer('New to the Shallows?', 'The dive is sealed with kelp until you finish the tutorial: a few small caves that teach swimming, dashing, ink, the hand, bombs, spells, the shop and the dangers below. You can replay it from its ring in the hub.',
       'Play the tutorial', 'Look around the hub first', (yes) => { if (yes) v2Event(EV_ENTER_TUTORIAL); });
   }
   setupLevelExtras();
@@ -3111,6 +3162,19 @@ window.__octo = {
    * strength (outer) and its strongest alpha; alpha 0 when no tint is drawn. Read instead of the canvas pixels: a getImageData
    * on the game canvas could switch it to software rendering. */
   deathTint() { return { ...deathTintLook }; },
+  /** The tutorial's rooms: the room the octopus is in, goals done, doors opened (and how many coral tiles each still has), the prompt shown. */
+  tutorial() {
+    const lv = world.level, rooms = lv.rooms || [];
+    const doors = {};
+    for (const [k, l] of Object.entries(lv.doors || {})) { let n = 0; for (let i = 0; i < l.length; i += 2) if (world.tileAt(l[i], l[i + 1]) !== 0) n++; doors[k] = n; }
+    const pe = document.querySelector('.octo-prompt');
+    return {
+      state: run.state, tutorial: run.state === S_TUTORIAL, room: tutState.room, roomId: tutState.room >= 0 && rooms[tutState.room] ? rooms[tutState.room].id : '',
+      rooms: rooms.map((r, i) => ({ id: r.id, goal: r.goal, door: r.door || 0, done: !!(tutState.done && tutState.done[i]), t: tutState.roomT ? tutState.roomT[i] : 0 })),
+      open: { ...tutState.open }, doors, buys: tutBuys, throws: hand.throws, casts: runStats.spellsCast, hearts: octo.hearts, bombs: octo.bombs, juice: run.juice,
+      prompt: pe && pe.offsetParent !== null ? pe.textContent : '', practice: !!octo.practice,
+    };
+  },
   restart() {
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;

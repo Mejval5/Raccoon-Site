@@ -320,16 +320,16 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // ================================================================== the tutorial's bomb floor
     {
       const p = await open(browser, 'desktop', '?at=tutorial&seed=7');
-      for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(37.5, 11.5); __octo.stepDraw(1); });
+      for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(61.5, 11.4); __octo.stepDraw(1); });
       const pr = await p.evaluate(() => ({ text: (document.querySelector('.octo-prompt') || document.body).textContent, hb: __octo.juice().hotbar }));
-      check('tutorial: the bomb prompt names B (drop) and right-click (sticky), and the bomb is picked on the bar', /press B/.test(pr.text) && /sticks/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
+      check('tutorial: the bomb prompt names C (drop) and B / X (quick bomb), and the bomb is picked on the bar', /press C/.test(pr.text) && /B or X/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
       await p.keyboard.press('KeyB'); await step(p, 1);
       await p.evaluate(() => __octo.input({ move: { x: -1, y: -0.3 } }));
       await step(p, 40); await p.evaluate(() => __octo.input(null));
       await shot(p, 'tutorial-bomb');
       await step(p, 80);
-      const open1 = await p.evaluate(() => { const lv = __octo.level(); let broken = 0; for (let x = 34; x <= 41; x++) for (let y = 14; y <= 15; y++) if (!__octo.tileAt(x, y)) broken++; return broken; });
-      check(`tutorial: one dropped bomb breaks through the floor (${open1} tiles)`, open1 >= 4 && await p.evaluate(() => !__octo.tileAt(37, 14) && !__octo.tileAt(37, 15)));
+      const open1 = await p.evaluate(() => { const lv = __octo.level(); let broken = 0; for (let x = 58; x <= 65; x++) for (let y = 13; y <= 14; y++) if (!__octo.tileAt(x, y)) broken++; return broken; });
+      check(`tutorial: one dropped bomb breaks through the floor (${open1} tiles)`, open1 >= 4 && await p.evaluate(() => !__octo.tileAt(61, 13) && !__octo.tileAt(61, 14)));
       await shot(p, 'tutorial-bomb-after');
       await p.close();
     }

@@ -2,77 +2,397 @@
  "id": "tutorial",
  "name": "Tutorial",
  "rows": [
-  "################################################################",
-  "################################################################",
-  "################################################################",
-  "################################################################",
-  "################################################################",
-  "########.......#################################################",
-  "######...........###############################################",
-  "####...............###############........######################",
-  "###.................#############..........#####################",
-  "###.....##..........############............######.........#####",
-  "##......##...........###########............####..............##",
-  "##......##...............##.................###...............##",
-  "##.......................##.................###...............##",
-  "##...S.......................###............###.....##........##",
-  "##............###............#####WWWWWWWW#####.....##........##",
-  "###...........###...##############WWWWWWWW#####...............##",
-  "###...........###...#############............................###",
-  "####...............#############......##.................E.#####",
-  "######...........################..............#################",
-  "########.......#################################################",
-  "################################################################",
-  "################################################################",
-  "################################################################",
-  "################################################################"
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "###..............#####........BB....#..............#..................##",
+  "###..............#####........BB....#..............#..................##",
+  "###..............#####..............#..............#..................##",
+  "###..............#####..............#..............#..................##",
+  "###..............#####....###.......1..............2..................##",
+  "###...S..........#####..............1..............2..................##",
+  "###.................................1..........BB..2..................##",
+  "###.................................1..........BB..2..................##",
+  "##########################################################WWWWWWWW######",
+  "##########################################################WWWWWWWW######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "##########################################################........######",
+  "######XXXXXXXXXXXXX#######################################........######",
+  "######X...XXXXXXXXX###############................########........######",
+  "######X...XXXXX...X#.............#................##..................##",
+  "######X...X...X...X#.............#................##..................##",
+  "######X...X...X...X#.............#................##..................##",
+  "###...XXXXXXXXXXXXX#.............#................##..................##",
+  "###................4.............3................VV..................##",
+  "###................4.............3................VV..................##",
+  "###................4.............3................VV..................##",
+  "###.E..............4.K..P..P..P..3................VV..................##",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################"
+ ],
+ "rooms": [
+  {
+   "id": "swim",
+   "rect": [
+    3,
+    5,
+    21,
+    12
+   ],
+   "goal": "pass",
+   "goalX": 21.5
+  },
+  {
+   "id": "ink",
+   "rect": [
+    22,
+    5,
+    35,
+    12
+   ],
+   "goal": "bone",
+   "door": 1
+  },
+  {
+   "id": "hand",
+   "rect": [
+    37,
+    5,
+    50,
+    12
+   ],
+   "goal": "throw",
+   "door": 2
+  },
+  {
+   "id": "bomb",
+   "rect": [
+    52,
+    5,
+    69,
+    24
+   ],
+   "goal": "walls"
+  },
+  {
+   "id": "sticky",
+   "rect": [
+    52,
+    25,
+    69,
+    32
+   ],
+   "goal": "sticky"
+  },
+  {
+   "id": "cloud",
+   "rect": [
+    34,
+    24,
+    49,
+    32
+   ],
+   "goal": "cast",
+   "door": 3
+  },
+  {
+   "id": "shop",
+   "rect": [
+    20,
+    25,
+    32,
+    32
+   ],
+   "goal": "buy",
+   "door": 4
+  },
+  {
+   "id": "hazards",
+   "rect": [
+    7,
+    29,
+    18,
+    32
+   ],
+   "goal": "pass",
+   "goalX": 6.5,
+   "dir": -1
+  },
+  {
+   "id": "exit",
+   "rect": [
+    3,
+    28,
+    6,
+    32
+   ],
+   "goal": "exit"
+  }
  ],
  "prompts": [
   {
-   "x": 7,
-   "y": 12.5,
-   "r": 7,
    "title": "Swim",
-   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at; the ink takes a moment to refill. F grabs, talks and buys.",
-   "touch": "Touch and drag on the left of the screen to swim."
-  },
-  {
-   "x": 25,
-   "y": 12.5,
-   "r": 7,
-   "title": "Dash",
-   "desktop": "Press Space or Shift for a burst of speed. Creatures cannot touch you mid-dash.",
-   "touch": "Tap the Dash button for a burst of speed. Creatures cannot touch you mid-dash."
-  },
-  {
-   "x": 38,
-   "y": 10.5,
+   "label": "Swim",
+   "x": 8,
+   "y": 9,
    "r": 6.5,
-   "title": "Bomb the floor",
-   "refillBomb": true,
-   "desktop": "This floor is in the way. Swim over it and press B to drop a bomb: it sinks straight down and sits where it lands. Or pick the bomb on the bar and right-click at the cursor: a thrown one sticks to the first rock it hits. Then swim away, the blast hurts you too.",
-   "touch": "This floor is in the way. Hover over the floor and tap Bomb (your bombs are picked on the bar at the top): it drops straight down and sits where it lands. Then swim away: the blast hurts you too."
+   "sign": [
+    9,
+    12
+   ],
+   "desktop": "WASD or the arrow keys swim. Head right.",
+   "touch": "Drag anywhere on the left of the screen to swim. Head right."
   },
   {
-   "x": 54,
-   "y": 14.5,
+   "title": "Dash",
+   "label": "Dash",
+   "x": 16,
+   "y": 11,
+   "r": 4.5,
+   "sign": [
+    15,
+    12
+   ],
+   "desktop": "Space or Shift dashes. Mid-dash nothing can hurt you: get close, then dash through the urchins.",
+   "touch": "Tap Dash for a burst of speed. Mid-dash nothing can hurt you: get close, then dash through the urchins."
+  },
+  {
+   "title": "Ink Jet",
+   "label": "Ink",
+   "x": 28,
+   "y": 9,
+   "r": 7.5,
+   "sign": [
+    24,
+    12
+   ],
+   "desktop": "Left click squirts ink at the cursor (J or K: straight ahead). It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral.",
+   "touch": "Tap Jet to squirt ink at what is near. It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral."
+  },
+  {
+   "title": "Grab and throw",
+   "label": "Grab",
+   "x": 43,
+   "y": 9,
+   "r": 7.5,
+   "sign": [
+    38,
+    12
+   ],
+   "desktop": "F or middle click grabs a pot. Press again to throw it at the cursor, hold to set it down. Throw one at the fish bones. A carried pot takes a hit for you.",
+   "touch": "Stop next to a pot and tap Grab. Tap Throw to fling it the way you swim. Throw one at the fish bones. A carried pot takes a hit for you."
+  },
+  {
+   "title": "Bomb the floor",
+   "label": "Bombs",
+   "x": 61,
+   "y": 9,
+   "r": 8.5,
+   "sign": [
+    54,
+    12
+   ],
+   "desktop": "Your bomb is picked on the bar. Over the cracked floor press C (or right click on yourself) to drop it, then swim clear. B or X drops one any time. Outside the tutorial a blast kills you.",
+   "touch": "Your bomb is picked on the bar. Over the cracked floor tap Bomb to drop it, then swim clear. Outside the tutorial a blast kills you.",
+   "refillBomb": true
+  },
+  {
+   "title": "Sticky mine",
+   "label": "Sticky",
+   "x": 58,
+   "y": 29,
    "r": 8,
-   "title": "The exit",
-   "desktop": "Swim to the whirlpool and press F (or middle-click) to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good.",
-   "touch": "Swim to the whirlpool and tap Enter to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good."
+   "sign": [
+    55,
+    32
+   ],
+   "desktop": "Point at the cracked wall and right click: the bomb flies there and sticks to the rock. Then back off.",
+   "touch": "Hold the stick toward the cracked wall and tap Bomb: the bomb flies there and sticks to the rock. Then back off."
+  },
+  {
+   "title": "Spells",
+   "label": "Spells",
+   "x": 42,
+   "y": 28,
+   "r": 8.5,
+   "sign": [
+    47,
+    32
+   ],
+   "desktop": "Q, E, the wheel or 1-9 pick a slot on your bar. Pick Ink Cloud and right click or press C: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
+   "touch": "Tap Spell to puff an Ink Cloud: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell."
+  },
+  {
+   "title": "Shop",
+   "label": "Shop",
+   "x": 26,
+   "y": 29,
+   "r": 7,
+   "sign": [
+    32,
+    32
+   ],
+   "desktop": "Swim up to a ware and press F to buy it. Today it is free. In a real shop, carrying off or shooting a ware makes the keeper come for you.",
+   "touch": "Stop next to a ware and tap Grab to buy it. Today it is free. In a real shop, carrying off or shooting a ware makes the keeper come for you."
+  },
+  {
+   "title": "Boulders",
+   "label": "Boulder",
+   "x": 9,
+   "y": 31,
+   "r": 2.0,
+   "sign": [
+    8,
+    32
+   ],
+   "desktop": "A boulder drops when you swim under it. Blasts shake them loose too: one thing sets off the next.",
+   "touch": "A boulder drops when you swim under it. Blasts shake them loose too: one thing sets off the next."
+  },
+  {
+   "title": "Spikes",
+   "label": "Spikes",
+   "x": 12.5,
+   "y": 31,
+   "r": 2.2,
+   "sign": [
+    12,
+    32
+   ],
+   "desktop": "Spikes kill at once, hearts or not. Look before you sink.",
+   "touch": "Spikes kill at once, hearts or not. Look before you sink."
+  },
+  {
+   "title": "Clams and jets",
+   "label": "Clam",
+   "x": 16.5,
+   "y": 31,
+   "r": 2.2,
+   "sign": [
+    17,
+    32
+   ],
+   "desktop": "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up.",
+   "touch": "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up."
+  },
+  {
+   "title": "Dive",
+   "label": "Dive",
+   "x": 5,
+   "y": 30.5,
+   "r": 3.2,
+   "sign": [
+    6,
+    32
+   ],
+   "desktop": "Swim to the whirlpool and press F (or middle click) to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
+   "touch": "Swim into the whirlpool and tap Enter to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
   }
  ],
  "spawns": [
   {
+   "type": "enemy",
+   "kind": "urchin",
+   "placement": "ceiling",
+   "x": 19.5,
+   "y": 11.5
+  },
+  {
+   "type": "enemy",
+   "kind": "urchin",
+   "placement": "floor",
+   "x": 19.5,
+   "y": 12.5
+  },
+  {
+   "type": "loot",
+   "name": "pot",
+   "x": 27.5,
+   "y": 8.5
+  },
+  {
+   "type": "loot",
+   "name": "pot",
+   "x": 33.5,
+   "y": 12.5
+  },
+  {
+   "type": "loot",
+   "name": "pot",
+   "x": 40.5,
+   "y": 12.5
+  },
+  {
+   "type": "loot",
+   "name": "pot",
+   "x": 42.5,
+   "y": 12.5
+  },
+  {
+   "type": "enemy",
+   "kind": "piranha",
+   "placement": "open",
+   "x": 41.5,
+   "y": 27.5
+  },
+  {
+   "type": "hazard",
+   "name": "rock",
+   "x": 8.5,
+   "y": 24.5,
+   "dx": 0,
+   "dy": 1
+  },
+  {
+   "type": "creature",
+   "name": "gclam",
+   "x": 16.5,
+   "y": 27.5,
+   "dx": 0,
+   "dy": -1
+  },
+  {
+   "type": "hazard",
+   "name": "spikes",
+   "x": 12.5,
+   "y": 27.5,
+   "dx": 0,
+   "dy": -1
+  },
+  {
+   "type": "hazard",
+   "name": "jet",
+   "x": 14.5,
+   "y": 32.5,
+   "dx": 0,
+   "dy": -1
+  },
+  {
    "type": "plankton-swarm",
-   "x": 29.5,
-   "y": 12.5,
+   "x": 9.5,
+   "y": 7.5,
    "count": 6
   },
   {
    "type": "plankton-swarm",
-   "x": 53.5,
-   "y": 11.5,
+   "x": 62.5,
+   "y": 28.5,
    "count": 7
   }
  ]
