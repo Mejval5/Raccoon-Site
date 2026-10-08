@@ -72,6 +72,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       ...(level.shortcut3X >= 0 && level.shortcut3X !== undefined ? [{ x0: level.shortcut3X - 2, x1: level.shortcut3X + 3, y0: level.shortcut3Y - 2, y1: level.shortcut3Y + 2 }] : []),
       ...(level.tutorialX >= 0 && level.tutorialX !== undefined ? [{ x0: level.tutorialX - 2, x1: level.tutorialX + 3, y0: level.tutorialY - 2, y1: level.tutorialY + 2 }] : []),
       ...(level.boardX >= 0 && level.boardX !== undefined ? [{ x0: level.boardX - 1, x1: level.boardX + 2, y0: level.boardY - 1, y1: level.boardY + 3 }] : []),
+      ...(level.keepOut || []), // the hub village's rooms (hub-rooms.js): no plants over the furniture
       // r46: the whirlpool pedestal (its plinth, the portal ring above it and the prize chest beside it)
       ...(level.setPieces ? planPools(level).map((p) => ({ x0: Math.floor(p.x) - 3, x1: Math.floor(p.x) + 3, y0: p.floorY - 4, y1: p.floorY + 1 })) : []),
     ],

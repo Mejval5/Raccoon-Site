@@ -7,6 +7,9 @@
 // Rest grotto (data/rest.json, end of the zone): 'H' the spring's centre (level.springX / springY, tile centre, -1 when absent),
 // 'K' the shop keeper's tile and three 'P' the pedestal tiles (level.shop = { kx, ky, px:Int16Array(6) } like level.js, null when absent;
 // pedestals sorted left to right). All of them are water tiles; the floor under them is rock, as in a generated shop room.
+// Hub village (data/hub-rooms.json): '1'..'9' a room's anchor (where its person stands), lowercase letters a room's door tiles,
+// 'A' the wardrobe alcove (level.wardrobeX / wardrobeY), 'G' the Ink Jet practice target, 'L' the hidden keepsake. All water tiles,
+// listed in level.points[char] as x, y pairs.
 // Materials (materials.js): 'X' bedrock, 'B' bone block, '=' timber, 'M' masonry. The 2-tile border is written as rock
 // and becomes bedrock (the world treats it as unbreakable).
 
@@ -16,6 +19,7 @@ import { MAT_CHARS, MAT_ROCK, MAT_BEDROCK } from './materials.js';
 
 export const MK_BOARD = 9, MK_SIGN = 10, MK_SHORTCUT = 11, MK_SHORTCUT3 = 12, MK_TUTORIAL = 13;
 export const AUTHORED_BORDER = 2;
+const POINT_RE = /^[1-9a-zAGL]$/;
 
 /**
  * @param {{id:string, name?:string, rows:string[], prompts?:any[], spawns?:any[]}} json
@@ -28,6 +32,7 @@ export function parseAuthoredMap(json) {
   const walls = [];
   let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1, qx = -1, qy = -1, rx = -1, ry = -1, tx3 = -1, ty3 = -1, ux = -1, uy = -1, hx = -1, hy = -1, kx = -1, ky = -1;
   const ped = [];
+  const points = {};
   for (let y = 0; y < h; y++) {
     if (rows[y].length !== w) throw new Error('map ' + json.id + ' row ' + y + ' has width ' + rows[y].length + ', expected ' + w);
     for (let x = 0; x < w; x++) {
@@ -45,6 +50,7 @@ export function parseAuthoredMap(json) {
       else if (ch === 'H') { hx = x; hy = y; }
       else if (ch === 'K') { kx = x; ky = y; }
       else if (ch === 'P') ped.push([x, y]);
+      else if (POINT_RE.test(ch)) (points[ch] || (points[ch] = [])).push(x, y);
       else if (ch !== '.') throw new Error('map ' + json.id + ': unknown character ' + ch);
       tiles[y * w + x] = t;
     }
@@ -67,6 +73,7 @@ export function parseAuthoredMap(json) {
   return {
     authored: true, id: json.id, name: json.name || json.id, w, h, tiles, marks, nMarks,
     startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by, signX: qx, signY: qy, shortcutX: rx, shortcutY: ry, shortcut3X: tx3, shortcut3Y: ty3, tutorialX: ux, tutorialY: uy,
+    points, wardrobeX: points.A ? points.A[0] : -1, wardrobeY: points.A ? points.A[1] : -1,
     springX: hx >= 0 ? hx + 0.5 : -1, springY: hy >= 0 ? hy + 0.5 : -1, shop,
     walls: Int16Array.from(walls), // x,y pairs of the bomb wall tiles
     prompts: json.prompts || [], spawns: json.spawns || [],

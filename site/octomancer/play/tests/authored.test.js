@@ -31,20 +31,26 @@ export async function runAuthoredTests(assert) {
   const hub = parseAuthoredMap(hubJson), tut = parseAuthoredMap(tutJson);
 
   // --- hub ---
-  assert(`authored hub: ${hub.w}x${hub.h}, one or two screens (34 wide, at most 2x24 tall)`, hub.w === 34 && hub.h >= 20 && hub.h <= 48);
-  assert('authored hub: has a start, a dive entrance (E) and a journal board (J)', hub.startX >= 0 && hub.exitX >= 0 && hub.boardX >= 0);
+  assert(`authored hub: ${hub.w}x${hub.h}, a cave village of about 2 x 2 screens (60-80 wide, 36-50 tall)`, hub.w >= 60 && hub.w <= 80 && hub.h >= 36 && hub.h <= 50);
+  assert('authored hub: has a start and a dive entrance (E); no journal board (Tab opens the journal)', hub.startX >= 0 && hub.exitX >= 0 && hub.boardX < 0);
   assert('authored hub: the dive entrance is below the start, at the bottom of a shaft (swim down into it)', hub.exitY > hub.startY + 4);
-  assert('authored hub: marks list holds start, exit, board, the resident anchor (Q: no sign is drawn), the two shortcut rings (R, and the T of Marlo) and the tutorial ring (U)', (() => {
+  assert('authored hub: marks list holds start, exit, the resident anchor (Q: no sign is drawn), the two shortcut rings (R, and the T of Marlo) and the tutorial ring (U)', (() => {
     const kinds = []; for (let k = 0; k < hub.nMarks; k++) kinds.push(hub.marks[k * 3 + 2]);
-    return kinds.length === 7 && kinds.includes(MK_BOARD) && kinds.includes(MK_SIGN) && kinds.includes(MK_SHORTCUT) && kinds.includes(MK_SHORTCUT3) && kinds.includes(MK_TUTORIAL);
+    return kinds.length === 6 && !kinds.includes(MK_BOARD) && kinds.includes(MK_SIGN) && kinds.includes(MK_SHORTCUT) && kinds.includes(MK_SHORTCUT3) && kinds.includes(MK_TUTORIAL);
   })());
+  assert('authored hub: the village markers (room anchors 1-6, doors, the wardrobe A, the target G, the keepsake L) are water tiles in level.points',
+    ['1', '2', '3', '4', '5', '6', 'A', 'G', 'L', 'm', 'p', 'q', 'h', 'k'].every((c) => hub.points[c] && hub.points[c].length >= 2 && hub.tiles[hub.points[c][1] * hub.w + hub.points[c][0]] === 0)
+    && hub.wardrobeX === hub.points.A[0] && hub.wardrobeY === hub.points.A[1] && tut.wardrobeX === -1);
   assert('authored hub: the tutorial ring (U) lies on a floor near the start, reachable without bombs, not under the start (an idle octopus sinks straight down) and away from the dive',
     hub.tutorialX >= 0 && hub.tiles[(hub.tutorialY + 1) * hub.w + hub.tutorialX] !== 0 && fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.tutorialX, hub.tutorialY)
     && Math.abs(hub.tutorialX - hub.startX) >= 2 && hub.tutorialY < hub.exitY && Math.hypot(hub.tutorialX - hub.startX, hub.tutorialY - hub.startY) < 8);
   assert('authored hub: sealed-dive prompts (when: sealed) and the welcome for an open dive (when: open)', hub.prompts.some((p) => p.when === 'sealed') && hub.prompts.some((p) => p.when === 'open'));
   assert('authored hub: start reaches the dive entrance without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.exitX, hub.exitY));
-  assert('authored hub: start reaches the journal board without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.boardX, hub.boardY));
-  assert('authored hub: start reaches both shortcut rings (R and the T of Marlo) without bombs, three tiles or more apart', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcutX, hub.shortcutY) && fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcut3X, hub.shortcut3Y) && Math.abs(hub.shortcut3X - hub.exitX) >= 3 && Math.abs(hub.shortcutX - hub.exitX) >= 3);
+  assert('authored hub: start reaches both shortcut rings (R and the T of Marlo, in his workshop) without bombs, three tiles or more apart', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcutX, hub.shortcutY) && fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcut3X, hub.shortcut3Y) && Math.abs(hub.shortcut3X - hub.exitX) >= 3 && Math.abs(hub.shortcutX - hub.exitX) >= 3);
+  assert('authored hub: every ring has open water above it to hover in while pressing F (3 wide, 3 tall)', [[hub.exitX, hub.exitY], [hub.tutorialX, hub.tutorialY], [hub.shortcutX, hub.shortcutY], [hub.shortcut3X, hub.shortcut3Y]].every(([x, y]) => {
+    for (let yy = y - 2; yy <= y; yy++) for (let xx = x - 1; xx <= x + 1; xx++) if (hub.tiles[yy * hub.w + xx] !== 0) return false;
+    return hub.tiles[(y + 1) * hub.w + x] !== 0;
+  }));
   assert('authored hub: no wall tiles, no enemies (safe state)', hub.walls.length === 0 && !hub.spawns.some((s) => s.type === 'enemy-slot'));
   assert('authored hub: has a welcome prompt', hub.prompts.length >= 1 && hub.prompts.every((p) => p.title && p.desktop && p.touch && p.r > 0));
 

@@ -104,7 +104,7 @@ export function createOctopus(x, y) {
  * V2-PLAN 16: `opts` {dmg (hearts, default 1), knock (u/s, default HURT_KNOCKBACK), stun (s of incapacitation, default 0)}. */
 export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
   if (o.dead) return hitBody(o, fromX, fromY); // V2-PLAN 14: the dead body takes the hit (a knock and a flash)
-  if (o.invulnTimer > 0 || o.dashInvuln > 0 || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
+  if (o.invulnTimer > 0 || o.dashInvuln > 0 || o.sealed || o.safe) return false; // o.safe: the hub village (main.js). r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
   // controls 2026-10-08: a carried pot or clam takes the hit instead and breaks (hand.js sets o.shieldHit while it holds one)
   if (o.shieldHit && o.shieldHit(fromX, fromY, cause)) { o.invulnTimer = Math.max(o.invulnTimer, HURT_INVULN * 0.5); return false; }
   const dmg = opts && opts.dmg !== undefined ? opts.dmg : 1;
@@ -152,7 +152,7 @@ export function heavyHitOctopus(o, fromX, fromY, cause) {
  */
 export function killOctopus(o, cause, style = '', px = NaN, py = NaN, angle = NaN) {
   if (o.dead) { hitBody(o, o.x, o.y + 0.3); return false; } // V2-PLAN 14: already dead: a hit on the body
-  if (o.sealed) return false;
+  if (o.sealed || o.safe) return false; // o.safe: the hub village, where nothing hurts (main.js stepV2)
   if (o.noKill && style) return false; // test hook: scripted playthroughs (godMode) are not killed by traps either
   if (cause) o.cause = cause;
   o.hearts = 0;

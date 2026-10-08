@@ -143,7 +143,7 @@ export async function runPoolTests(assert) {
   {
     const hub = await (await fetch('../data/hub.json')).json();
     const lv = parseAuthoredMap(hub);
-    assert('hub: the map has Marlo\'s ring (T) beside the dive well and the shortcut ring, and no quest sign art', lv.shortcut3X >= 0 && lv.shortcut3Y === lv.exitY && lv.shortcut3X !== lv.shortcutX && lv.shortcut3X !== lv.exitX);
+    assert('hub: the map has Marlo\'s ring (T) in his workshop (room anchor 1), apart from the dive well and the shortcut ring', lv.shortcut3X >= 0 && lv.shortcut3X !== lv.shortcutX && lv.shortcut3X !== lv.exitX && lv.shortcut3Y === lv.points['1'][1] && Math.abs(lv.shortcut3X - lv.points['1'][0]) <= 8);
     const r = createRun(3, { tutorialDone: true });
     assert('hub ring: locked until Marlo has been freed in three runs', !runEvent(r, EV_ENTER_SHORTCUT3) && r.state === S_HUB);
     const u = createRun(3, { tutorialDone: true, shortcut3: true });

@@ -211,7 +211,11 @@ function stateOf(key, time) {
   return st;
 }
 /** Make the state exist (so the appear clock starts) even if the portal is not drawn this frame (it is far off screen). */
-export function portalTouch(key, time) { stateOf(key, time); }
+export function portalTouch(key, time) {
+  const st = stateOf(key, time);
+  // hub village: a portal off screen (the dive is far below the start) finishes its Rise on the clock, so it idles when first seen
+  if (st.mode === M_APPEAR && st.t0 !== null && time - st.t0 >= RISE_S) { st.mode = M_IDLE; st.armed = false; }
+}
 /** The octopus has touched this portal: play the Bounce now whatever it was doing, then the swallow. r45: with `total` (the entry's length,
  *  1.5 s) the idle loop plays between the Bounce and the swallow so that the swallow ends exactly when the entry does. */
 export function portalEnter(key, time, total = ENTRY_S) { const st = stateOf(key, time); st.mode = M_ENTER; st.t0 = time; st.entered = time; st.hold = Math.max(0, total - ENTRY_S); }

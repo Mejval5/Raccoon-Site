@@ -110,6 +110,10 @@ import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, move
 import { createHotbarUI } from './hotbar-ui.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawSpring, springReach } from './spring-draw.js';
+import { fetchHubRooms, roomStates, applyHubRooms, roomOf, roomAt, kelpPush, openMask, ROOMS_KEY } from './hub-rooms.js';
+import { drawHubRooms } from './hub-rooms-draw.js';
+import { spriteAspect } from './sprites.js';
+import { artImg } from './v2-art.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -138,12 +142,14 @@ let authoredJson = null;
 let run = null;
 let questTable = null;
 let shopItems = [];
+let hubRooms = null; // the hub village's rooms (data/hub-rooms.json, hub-rooms.js)
 setFoliageTable(await fetchFoliage()); // r46: every original foliage kind, its offsets and spawn rules (data/foliage.json)
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
   setPatternTable(await fetchPatterns());
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
+  hubRooms = await fetchHubRooms();
   shopItems = await fetchShopItems();
   run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut(), shortcut3: getStory().marlo >= DIVER_RUNS, juiceStart: juiceStart(), rest: true });
   run.nextSeed = seedFromText(getSettings().seed); // the seed typed in the settings menu for the next dive (null = random)
@@ -214,11 +220,28 @@ function makeWorldSteps(done) {
   }, 0);
   }
 }
+/**
+ * The hub map with its rooms laid in (hub-rooms.js): who lives here decides which doors are open. The story is read as it will
+ * stand once arriveInHub has run (Quill moves in after the first dive), so a room never opens one visit late.
+ */
+function hubLevel() {
+  const lv = parseAuthoredMap(authoredJson.hub);
+  if (hubRooms) applyHubRooms(lv, hubRooms, roomStates(hubRooms, hubRoomCtx()), spriteAspect);
+  return lv;
+}
+const STAT_BY_NAME = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, used: STAT_USED, carried: STAT_CARRIED };
+function hubRoomCtx() {
+  const st = getStory();
+  const key = collectorArrives(st, getMeta().dives);
+  if (key) st[key] = 1;
+  const stats = getJournalStats() || {};
+  return { story: st, stat: (id, name) => { const row = stats[id]; return row ? row[STAT_BY_NAME[name] | 0] | 0 : 0; } };
+}
 function makeWorld(runSeed) {
   if (!V2) return createWorld(runSeed);
   const spec = levelSpec(run);
   if (MOVETEST) return createLevelWorld(spec.seed, 0, { level: movetestLevel() });
-  if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.hub) });
+  if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: hubLevel() });
   if (spec.kind === 'tutorial') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.tutorial) });
   if (spec.kind === 'rest') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.rest) });
   return createLevelWorld(spec.seed, spec.levelIndex);
@@ -980,6 +1003,7 @@ function bombAim(snap, src) {
 /** Drop or throw a bomb (the quick bomb, or the bomb slot used from the hotbar). */
 function placeBomb(snap, src) {
   if (!V2) { bombs.place(octo, octo.x, octo.y, null); return; }
+  if (run.state === S_HUB && !MOVETEST) { if (sim.time - hubBombSaidAt > 3) { hubBombSaidAt = sim.time; ui.showToast('No bombs in the village.', 2000); } return; } // the hub is safe
   const aim = bombAim(snap, src);
   let bx = octo.x, by = octo.y;
   if (aim) { // starts half a tile out along the throw, unless that is rock
@@ -988,6 +1012,7 @@ function placeBomb(snap, src) {
   if (bombs.place(octo, bx, by, aim)) { discover('item-bomb'); journal.bump('item-bomb', STAT_USED); tutorialActed(tutState); }
   else if (octo.bombs <= 0) hotbarUI.shakeSlot(BOMB_SLOT);
 }
+let hubBombSaidAt = -99;
 /** The way a thrown thing goes: at the cursor with a mouse, along the move keys / stick, else forward (null). */
 function throwAim(snap) {
   if (snap.mode !== 'touch' && input.mode() !== 'touch' && input.mouse.seen) { // anyone who uses the mouse aims throws with it (F is a key)
@@ -1500,6 +1525,7 @@ function v2Event(ev, cause) {
     if (newDive) { diveStory = { ...story }; diveDone.clear(); people.newDive(); } // a new dive: the story as it stands now
     timed('reset', () => resetWorld(0, nextWorld, true));
     if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME && !quick) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    if (run.state === S_HUB && !MOVETEST) villageArrived(); // rooms that open for the first time: who moved in
     if (run.state === S_HUB && run.diveUnlocked) startUnlock(); // the first finished tutorial: the octopus comes out beside the dive and the kelp lets go
     timed('discover', () => discoverStatePlace());
     if (newDive && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) { discover('item-lantern'); journal.bump('item-lantern', STAT_COLLECTED); } // Quill's lantern: no words
@@ -1697,6 +1723,7 @@ function endOfDiveNpcs() {
 /** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
+  octo.safe = run.state === S_HUB && !MOVETEST; // the hub village: nothing hurts the octopus (octopus.js hurtOctopus / killOctopus)
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
     questUpdate(quest, octo, world, STEP);
@@ -1835,6 +1862,12 @@ function v2Extra(c, camera, w2s, cw, ch) {
     seal: run.state === S_HUB && !MOVETEST ? hubSeal() : 0, sealWobble: sealBumpAt, sealLabel: 'Finish the tutorial first',
   }, sim.time);
   const t = sim.time;
+  if (run.state === S_HUB && lv.rooms && hubRooms) {
+    const d = villageDraw;
+    d.story = story; d.tileAt = world.tileAt; d.octo = octo; d.targetHitAt = village.targetHitAt; d.kelpBumpAt = village.kelpBumpAt;
+    d.targetHits = village.roundOn || t - village.wonAt < 2.5 ? village.hits : 0; d.keepsakeTaken = (story.hubSecret | 0) > 0;
+    drawHubRooms(c, camera, cw, ch, lv, hubRooms, t, d);
+  }
   if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
     drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
   }
@@ -2294,12 +2327,20 @@ if (V2) {
           const d = Math.hypot(o.x - pl.x, o.y - y);
           if (d <= bd) { bd = d; best = { x: pl.x, y, ref: r.id }; }
         }
+        const den = keeperHome(world.level); // the keeper, off duty in his den
+        if (den) { const kp = keeperSpot(den), d = Math.hypot(o.x - kp.x, o.y - (kp.y - 0.8)); if (d <= bd) { bd = d; best = { x: kp.x, y: kp.y - 0.8, ref: 'keeper' }; } }
         return best;
       }
       if (run.state === S_BIOME && quest && quest.talk && talking(quest.talk) && Math.hypot(o.x - quest.cx, o.y - quest.cy) <= reach) return { x: quest.cx, y: quest.cy, ref: '' };
       return null;
     },
     use(t) {
+      if (t.ref === 'keeper') {
+        const tk = village.keeperTalk, den = keeperHome(world.level);
+        if (!talking(tk)) { if (den && den.room.lines.length) keeperSpeak(den); return true; }
+        tk.left = Math.min(tk.left, 1e-4); talkStep(tk, 1e-3);
+        return true;
+      }
       const tk = t.ref ? hubTalk.talk : quest.talk;
       if (t.ref && hubTalk.who !== t.ref) { // a hub resident who is not speaking: their turn now
         if (talking(tk)) { tk.q.length = 0; tk.left = 0; tk.text = ''; hubTalk.who = ''; }
@@ -2319,6 +2360,10 @@ const wareProxies = [];
 function inkTargets() {
   const list = enemies.all();
   if (V2) inkV16Targets(list);
+  if (V2 && run && run.state === S_HUB && world.level.points && world.level.points.G) { // the hub's practice target (it never breaks)
+    const G = world.level.points.G;
+    list.push(inkV16Proxy(4, G[0] + 0.5, G[1] + 1 - 1.15, 0.55, true));
+  }
   if (V2 && shopSt && run.state === S_BIOME) { // a ware on its pedestal stops a blob (it has no hp: inkSplatWares knocks it off)
     for (let i = 0; i < shopSt.ware.length; i++) {
       if (shopSt.ware[i] !== W_SHELF || shopSt.sold[i]) continue;
@@ -2338,6 +2383,7 @@ function inkTargets() {
 }
 function inkHurt(e, d) {
   if (e.v16 === 3) { inkAmbient(e); return; }
+  if (e.v16 === 4) { hubTargetHit(); return; }
   if (e.v16 === 1) { creatures.hit(e.x, e.y, e.radius, d, 'ink', octo); handleCreatureEvents(); return; }
   if (e.v16 === 2) { if (npcs) { npcs.hit(e.x, e.y, 0.2, d, 'ink'); npcs.drain(onNpcEvent); } return; }
   if (!e.keeper) { enemies.hurt(e, d); return; }
@@ -2668,6 +2714,12 @@ const HUB_TALK_R = 3.4;
 const HUB_TALK_CUT = 1.6; // r40: swimming this far beyond HUB_TALK_R cuts a resident's speech
 /** Where a resident is: x, y of the feet (or the centre for the swimmers) and the head height for the bubble. */
 function hubPlace(lv, id, t, which = 0) {
+  const rm = lv.rooms ? roomOf(lv, id) : null; // the hub village: a person with an open room lives in it
+  if (rm && rm.open) {
+    const ax = rm.ax + 0.5, fy = rm.ay + 1;
+    if (id === 'pip') return { x: ax + Math.sin(t * 0.55) * 1.6, y: rm.ay + 0.4 + Math.sin(t * 1.3) * 0.3, head: 0.7, fly: true };
+    return { x: ax, y: fy, head: id === 'marlo' ? 1.35 : 1.3, fly: false };
+  }
   switch (id) {
     case 'marlo': return { x: lv.signX + 0.5, y: lv.signY + 1, head: 1.35, fly: false };
     case 'quill': return { x: lv.boardX + 2.3, y: lv.boardY, head: 1.3, fly: false };
@@ -2681,13 +2733,14 @@ function hubDistance(lv, id, t) { const pl = hubPlace(lv, id, t); return Math.hy
 
 function hubStep(lv) {
   if (lv.signX === undefined || lv.signX < 0) return;
+  villageStep(lv);
   // Quill with a relic in hand to take: whatever he was saying makes way for it as soon as the octopus is beside him
   if ((story.relics | 0) > (story.relicsGiven | 0) && hubTalk.who === 'quill' && talking(hubTalk.talk)) {
     const q = hubPlace(lv, 'quill', sim.time);
     if (Math.hypot(octo.x - q.x, octo.y - (q.y - 0.8)) < HUB_TALK_R && (story.relicsGiven | 0) < RELICS_NEEDED) { hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = ''; hubTalk.who = ''; }
   }
   // r40: swim away from the one who is talking and they stop (beyond the talk radius plus a margin), so the nearest resident gets the turn
-  if (hubTalk.who && talking(hubTalk.talk) && hubDistance(lv, hubTalk.who, sim.time) > HUB_TALK_R + HUB_TALK_CUT) {
+  if (hubTalk.who && talking(hubTalk.talk) && hubDistance(lv, hubTalk.who, sim.time) > HUB_TALK_R + HUB_TALK_CUT + (hubTalk.far ? 9 : 0)) {
     const who = hubTalk.who;
     hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = '';
     hubTalk.visits[who] = Math.max(0, (hubTalk.visits[who] | 0) - 1); // the cut visit does not count: the thank-you is said next time
@@ -2696,7 +2749,7 @@ function hubStep(lv) {
     hubTalk.cool[who] = sim.time + 3; hubTalk.who = ''; hubTalk.undo = [];
   }
   talkStep(hubTalk.talk, STEP);
-  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; hubTalk.undo = []; }
+  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; hubTalk.undo = []; hubTalk.far = false; }
   if (talking(hubTalk.talk)) return;
   const t = sim.time;
   // the nearest resident in range (off their cool-down) takes the turn
@@ -2714,13 +2767,108 @@ function hubStep(lv) {
     const visit = hubTalk.visits[r.id] | 0;
     const v = hubVisit(questTable, story, r.id, visit);
     say(hubTalk.talk, v.lines);
-    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id;
+    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id; hubTalk.far = false;
     hubTalk.undo = v.set.filter(([k]) => k.startsWith('said')).map(([k]) => [k, story[k] | 0]);
     for (const [k, n] of v.set) { if (/^(gift|boon)/.test(k)) setStoryExact(k, n); else setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
     if (v.gift) { sfx.chime(); particles.pickupSparkle(octo.x, octo.y, '#c8f5e6'); } // r3: a gift for the next dive
     story = getStory();
     for (const id of v.discover) discover(id);
   }
+}
+
+// --- the hub village (hub-rooms.js, data/hub-rooms.json): rooms that fill up as people move in, the practice target, the keepsake ---
+const hubIdle = {}; // person id -> idle.js record (they face the octopus, glance about)
+function idleOf(id) { return hubIdle[id] || (hubIdle[id] = createIdle(id.charCodeAt(0) * 0.37 + id.length)); }
+const village = { targetHitAt: -99, hits: 0, roundAt: -99, roundOn: false, wonAt: -99, kelpBumpAt: -99, kelpSaid: false, tick: 0, keeperTalk: createTalk(), keeperCool: 0, keeperLine: 0 };
+const villageDraw = { story: null, tileAt: null, octo: null, targetHitAt: -99, targetHits: 0, kelpBumpAt: -99, keepsakeTaken: false };
+function hostHome(lv) { const rm = lv.rooms ? roomOf(lv, 'host') : null; return !!(rm && rm.open && activeResidents().some((r) => r.id === 'host')); }
+function keeperHome(lv) { const rm = lv.rooms ? roomOf(lv, 'keeper') : null; return rm && rm.open ? rm : null; }
+function keeperSpot(rm) { return { x: rm.ax + 0.5, y: rm.ay + 1 }; }
+
+/** Arrived in the hub: the rooms open for the first time say who moved in, and every open room is remembered (story.hubRooms). */
+function villageArrived() {
+  const lv = world.level;
+  village.roundOn = false; village.hits = 0; village.kelpSaid = false;
+  village.keeperTalk.q.length = 0; village.keeperTalk.left = 0; village.keeperTalk.text = '';
+  if (!lv.rooms || !hubRooms) return;
+  const old = story[ROOMS_KEY] | 0, mask = old | openMask(lv.rooms);
+  if (mask !== old) { setStoryExact(ROOMS_KEY, mask); story = getStory(); }
+  const fresh = lv.rooms.filter((r) => r.isNew && r.room.moved);
+  fresh.forEach((r, i) => ui.showToast(r.room.moved, 3400, i > 0)); // one line each (toasts do not wrap on a phone)
+  for (const r of lv.rooms) r.isNew = false;
+}
+function hostSay(line) {
+  const tk = hubTalk.talk;
+  tk.q.length = 0; tk.left = 0; tk.text = '';
+  say(tk, [line]);
+  hubTalk.who = 'host'; hubTalk.undo = []; hubTalk.far = true; // he calls across his arena: swimming off to shoot does not cut him
+}
+function keeperSpeak(den) { say(village.keeperTalk, [den.room.lines[village.keeperLine++ % den.room.lines.length]]); village.keeperCool = sim.time + 8; }
+/** An ink blob on the practice target: a round of `hits` within `window` seconds; the host (when he lives here) calls it. */
+function hubTargetHit() {
+  const T = hubRooms && hubRooms.target, t = sim.time, lv = world.level;
+  village.targetHitAt = t;
+  sfx.thud();
+  if (!T) return;
+  if (!village.roundOn) { village.roundOn = true; village.roundAt = t; village.hits = 0; if (hostHome(lv)) hostSay(T.lines.start); }
+  village.hits++;
+  if (village.hits >= T.hits) {
+    village.roundOn = false; village.wonAt = t;
+    sfx.chime();
+    addStory('hubPractice'); story = getStory();
+    if (hostHome(lv)) hostSay(T.lines.win[(story.hubPractice | 0) % T.lines.win.length]);
+  }
+}
+/** The village's own step (in the hub, before the residents talk): kelp curtains, faces, discoveries, the round, the keepsake, the keeper. */
+function villageStep(lv) {
+  if (!lv.rooms || !hubRooms) return;
+  const t = sim.time;
+  if (kelpPush(lv, octo)) {
+    if (t - village.kelpBumpAt > 0.8) { village.kelpBumpAt = t; sfx.thud(); }
+    if (!village.kelpSaid) { village.kelpSaid = true; ui.showToast('The kelp will not part. Nobody lives here yet.', 2600); }
+  }
+  for (const r of activeResidents()) { const pl = hubPlace(lv, r.id, t); idleStep(idleOf(r.id), pl.x, pl.fly ? pl.y : pl.y - 0.8, octo, STEP); }
+  if ((village.tick++ & 15) === 0) { const rm = roomAt(lv, octo.x, octo.y); if (rm && rm.open && rm.room.journal) discover(rm.room.journal); }
+  const T = hubRooms.target;
+  if (village.roundOn && T && t - village.roundAt > T.window) { village.roundOn = false; village.hits = 0; if (hostHome(lv)) hostSay(T.lines.miss); }
+  // the keepsake behind the fish bone: a bomb for the next dive, once
+  const L = lv.points && lv.points.L, K = hubRooms.keepsake;
+  if (L && K && !(story[K.story] | 0) && Math.hypot(octo.x - (L[0] + 0.5), octo.y - (L[1] + 0.5)) < 1.3) {
+    setStory(K.story, 1);
+    for (const b of ['bombs', 'shells', 'juice']) if (K.boon && K.boon[b]) setStoryExact('boon' + capName(b), (story['boon' + capName(b)] | 0) + K.boon[b]);
+    story = getStory();
+    discover('place-hollow');
+    sfx.chime(); particles.pickupSparkle(L[0] + 0.5, L[1] + 0.6, '#c8f5e6');
+    ui.showToast(K.lines[0], 4200);
+  }
+  // the keeper, off duty in his den
+  talkStep(village.keeperTalk, STEP);
+  const den = keeperHome(lv);
+  if (den) {
+    const kp = keeperSpot(den);
+    idleStep(idleOf('keeper'), kp.x, kp.y - 0.8, octo, STEP);
+    const d = Math.hypot(octo.x - kp.x, octo.y - (kp.y - 0.8));
+    if (talking(village.keeperTalk) && d > HUB_TALK_R + HUB_TALK_CUT) { village.keeperTalk.q.length = 0; village.keeperTalk.left = 0; village.keeperTalk.text = ''; }
+    else if (!talking(village.keeperTalk) && d < HUB_TALK_R && t > village.keeperCool && den.room.lines.length) keeperSpeak(den);
+    if ((village.tick & 15) === 8 && d < 6) discover('person-keeper');
+  }
+}
+/** The folk of the village drawn with the residents: Pip's mother by the shell house, the keeper in his chair, his words. */
+function drawVillageFolk(c, camera, cw, ch, lv, t) {
+  if (!lv.rooms) return;
+  const nook = roomOf(lv, 'pip');
+  if (nook && nook.open && (story.mamaPip | 0) >= 1 && !npcGone('pip')) drawCritter(c, camera, cw, ch, nook.ax - 2.4 + Math.sin(t * 0.4) * 0.5, nook.ay + 1.7 + Math.sin(t * 1.1) * 0.2, true, t, 0, 'mama');
+  const den = keeperHome(lv);
+  if (!den) return;
+  const kp = keeperSpot(den), img = artImg('keeper'), ppu = camera.pxPerUnit;
+  const px = cw / 2 + (kp.x - camera.x) * ppu, py = ch / 2 + (kp.y - camera.y) * ppu;
+  if (img && px > -ppu * 3 && px < cw + ppu * 3 && py > -ppu * 3 && py < ch + ppu * 4) {
+    const W = ppu * 1.5, H = W * (img.naturalHeight / img.naturalWidth);
+    c.save(); c.translate(px, py - ppu * 0.12 + Math.sin(t * 1.3) * ppu * 0.02); c.scale(idleOf('keeper').face, 1);
+    c.drawImage(img, -W / 2, -H * 0.95, W, H);
+    c.restore();
+  }
+  if (village.keeperTalk.text) drawSpeech(c, camera, cw, ch, kp.x, kp.y - 1.6, village.keeperTalk.text, talkAlpha(village.keeperTalk), 'The Keeper');
 }
 
 function drawHubPeople(c, camera, cw, ch, lv, t) {
@@ -2730,11 +2878,13 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
   for (const r of activeResidents()) {
     const pl = hubPlace(lv, r.id, t);
     if (!visibleAt(fl, k++ & 7, pl.x, pl.y, 3)) continue; // r43: a resident far from the camera is not animated or drawn (its bubble below still is)
-    if (r.id === 'marlo') drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
-    else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
-    else if (r.id === 'host') drawPerson(c, camera, cw, ch, 'host', '', pl.x, pl.y, t, octo.x >= pl.x ? 1 : -1, 0);
+    const idl = idleOf(r.id);
+    if (r.id === 'marlo') drawPerson(c, camera, cw, ch, 'marlo', '', pl.x, pl.y, t, idl.face, idleLift(idl), { wave: true });
+    else if (r.id === 'quill') drawPerson(c, camera, cw, ch, 'quill', '', pl.x, pl.y, t, idl.face, idleLift(idl), { lantern: r.stage >= 2 });
+    else if (r.id === 'host') drawPerson(c, camera, cw, ch, 'host', '', pl.x, pl.y, t, idl.face, 0);
     else drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
   }
+  drawVillageFolk(c, camera, cw, ch, lv, t);
   if (hubTalk.who && hubTalk.talk.text) {
     const pl = hubPlace(lv, hubTalk.who, t);
     drawSpeech(c, camera, cw, ch, pl.x, pl.y - pl.head, hubTalk.talk.text, talkAlpha(hubTalk.talk), questTable.npcById.get(hubTalk.who).name);
@@ -2773,6 +2923,7 @@ if (V2) {
       'Play the tutorial', 'Look around the hub first', (yes) => { if (yes) v2Event(EV_ENTER_TUTORIAL); });
   }
   setupLevelExtras();
+  if (run.state === S_HUB && !MOVETEST) villageArrived();
   showLevelTitle(); // the first level's title card (after the extras: it carries the Swift Current target)
   discoverStatePlace();
   if (run.state === S_END) showEndScreen();
@@ -3186,6 +3337,18 @@ window.__octo = {
     return v2Event(ev);
   },
   /** Tutorial unlock / quick restart test hooks: the hub's seal (1 shut .. 0 open), the unlock moment, the offer and the buttons shown. */
+  /** Hub village test hook: the rooms (open, seal, anchor, area, door), where the residents stand, the practice round, who talks. */
+  hubRooms() {
+    const lv = world.level;
+    if (run.state !== S_HUB || !lv.rooms) return null;
+    return {
+      rooms: lv.rooms.map((r) => ({ id: r.id, npc: r.room.npc, open: r.open, seal: r.seal, ax: r.ax, ay: r.ay, x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1, dx0: r.dx0, dy0: r.dy0, dx1: r.dx1, dy1: r.dy1 })),
+      residents: activeResidents().map((r) => ({ id: r.id, ...hubPlace(lv, r.id, sim.time) })),
+      points: lv.points, keeper: keeperHome(lv) ? keeperSpot(keeperHome(lv)) : null, keeperSays: village.keeperTalk.text,
+      round: { on: village.roundOn, hits: village.hits, wonAt: village.wonAt, hitAt: village.targetHitAt }, talk: { who: hubTalk.who, text: hubTalk.talk.text },
+      story: { hubRooms: story.hubRooms | 0, hubSecret: story.hubSecret | 0, hubPractice: story.hubPractice | 0, boonBombs: story.boonBombs | 0 }, safe: !!octo.safe,
+    };
+  },
   hubSeal() { return { seal: hubSeal(), open: diveOpen(run), tutorialDone: run.tutorialDone, savedDone: getTutorialDone(), unlock: unlockAnim ? { t: unlockAnim.t, seal: unlockAnim.seal } : null, offer: ui.isOfferShown(), bumpAt: sealBumpAt, tutorialX: world.level.tutorialX, tutorialY: world.level.tutorialY }; },
   answerOffer(yes) { ui.answerOffer(yes); return ui.isOfferShown(); },
   uiButtons() { return ui.buttons(); },

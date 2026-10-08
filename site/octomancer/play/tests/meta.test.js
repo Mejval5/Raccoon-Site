@@ -312,7 +312,7 @@ export async function runMetaTests(assert) {
   {
     const hubJson = await (await fetch('../data/hub.json')).json();
     const hub = parseAuthoredMap(hubJson);
-    assert('hub shortcut: the hub has an R marker next to the dive ring', hub.shortcutX >= 0 && Math.abs(hub.shortcutY - hub.exitY) <= 1 && hub.shortcutX - hub.exitX >= 3 && hub.shortcutX - hub.exitX <= 6);
+    assert('hub shortcut: the hub has an R marker next to the dive ring', hub.shortcutX >= 0 && Math.abs(hub.shortcutY - hub.exitY) <= 1 && Math.abs(hub.shortcutX - hub.exitX) >= 3 && Math.abs(hub.shortcutX - hub.exitX) <= 6);
     const grid = createPathGrid(hub.w, hub.h, (x, y) => hub.tiles[y * hub.w + x] !== 0);
     assert('hub shortcut: reachable from the start (A*, real octopus radius)', findPath(grid, hub.startX + 0.5, hub.startY + 0.5, hub.shortcutX + 0.5, hub.shortcutY + 0.5) !== null);
     const w = createLevelWorld(1, 0, { level: parseAuthoredMap(hubJson) });

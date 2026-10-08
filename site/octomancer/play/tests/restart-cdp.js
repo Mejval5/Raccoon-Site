@@ -130,8 +130,8 @@ const VPS = [
       const norm = (x) => {
         const o = JSON.parse(JSON.stringify(x));
         delete o.time; delete o.seenDive; delete o.paused; delete o.dive.time; delete o.save; // save: compared below
-        for (const k of Object.keys(o.diveStory)) if (/^said/.test(k)) delete o.diveStory[k]; // the hub residents' greetings (a hub visit talks)
-        for (const k of Object.keys(o.story)) if (/^said/.test(k)) delete o.story[k];
+        for (const k of Object.keys(o.diveStory)) if (/^said|^hubRooms$/.test(k)) delete o.diveStory[k]; // the hub residents' greetings (a hub visit talks); the village rooms seen open (a hub visit sees them)
+        for (const k of Object.keys(o.story)) if (/^said|^hubRooms$/.test(k)) delete o.story[k];
         return JSON.stringify(o);
       };
       const diff = [];

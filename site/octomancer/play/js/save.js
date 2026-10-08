@@ -24,7 +24,10 @@ const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'reli
   // owners round 3 (quests rework): the host's stage (moves into the hub after a won wager), gifts promised for the hub (an outcome index,
   // quests.js table.gifts), boons waiting for the next dive, later meetings kept, Quill met on a dig, Pip's mother met
   'host', 'saidHost', 'giftMarlo', 'giftPip', 'giftQuill', 'giftHost', 'boonBombs', 'boonShells', 'boonJuice',
-  'laterMarlo', 'laterPip', 'laterQuill', 'laterHost', 'digQuill', 'mamaPip', 'explorePip'];
+  'laterMarlo', 'laterPip', 'laterQuill', 'laterHost', 'digQuill', 'mamaPip', 'explorePip',
+  // the hub village (hub-rooms.js): hubRooms = bit mask of the rooms seen open (a room once open stays open), hubSecret = the keepsake
+  // behind the fish bone was found, hubPractice = practice rounds won at the host's target
+  'hubRooms', 'hubSecret', 'hubPractice'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };

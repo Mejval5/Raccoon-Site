@@ -187,9 +187,10 @@ const VPS = {
       await page.goto(BASE + '?at=hub&seed=12', { waitUntil: 'networkidle0', timeout: 60000 });
       await page.waitForFunction(() => window.__octo && !__octo.level().transitioning, { timeout: 90000 });
       await page.evaluate(() => { __octo.god(true); __octo.freeze(true); });
-      const lv = await page.evaluate(() => __octo.level());
+      // hub village: Marlo stands in his workshop (__octo.hubRooms().residents), else on the plaza spot (Q)
+      const lv = await page.evaluate(() => { const l = __octo.level(), h = __octo.hubRooms(), m = h && h.residents.find((r) => r.id === 'marlo'); return m ? { x: m.x, y: m.y } : { x: l.signX + 0.5, y: l.signY + 1 }; });
       let said = '';
-      for (let n = 0; n < 120 && !/next dive/.test(said); n++) said = await page.evaluate((x, y) => { __octo.teleport(x + 1.6, y - 0.6); __octo.stepDraw(2); return __octo.extras().hubTalk.text; }, lv.signX + 0.5, lv.signY + 1);
+      for (let n = 0; n < 120 && !/next dive/.test(said); n++) said = await page.evaluate((x, y) => { __octo.teleport(x + 1.6, y - 0.6); __octo.stepDraw(2); return __octo.extras().hubTalk.text; }, lv.x, lv.y);
       const st1 = await page.evaluate(() => __octo.extras().story);
       check('in the hub Marlo hands the gift over (his words) and it waits for the next dive', /next dive/.test(said) && st1.giftMarlo === 0 && st1.boonBombs === 2, JSON.stringify({ said, g: st1.giftMarlo, b: st1.boonBombs }));
       const b0 = await page.evaluate(() => __octo.state().octopus.bombs);
