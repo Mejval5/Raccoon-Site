@@ -227,8 +227,8 @@ export async function runSpellTests(assert) {
     ok('Shift dashes', 'ShiftLeft', (s) => s.dash.pressed);
     ok('J fires the ink jet in the facing direction', 'KeyJ', (s) => s.attack.pressed && s.src.attack === 'key');
     ok('K fires the ink jet too', 'KeyK', (s) => s.attack.held && s.src.attack === 'key');
-    ok('F casts the selected spell', 'KeyF', (s) => s.spell.pressed && s.src.spell === 'key');
-    ok('C casts too', 'KeyC', (s) => s.spell.pressed);
+    ok('F is the hand (controls 2026-10-08), not a spell', 'KeyF', (s) => s.hand.pressed && !s.use.pressed && !s.spell.pressed);
+    ok('C uses the selected hotbar slot (casts a selected spell)', 'KeyC', (s) => s.use.pressed && s.src.use === 'key');
     ok('B throws a bomb', 'KeyB', (s) => s.bomb.pressed && s.src.bomb === 'key' && !s.dash.pressed);
     ok('X throws a bomb', 'KeyX', (s) => s.bomb.pressed);
     ok('Q steps to the previous spell', 'KeyQ', (s) => s.cycle === -1);
@@ -248,7 +248,7 @@ export async function runSpellTests(assert) {
     assert('input: left button fires the ink jet at the cursor, holding repeats (held), releasing stops', s.attack.pressed && s.src.attack === 'mouse' && input.mouse.x === 600 && input.mouse.y === 200 && s2.attack.held && !s2.attack.pressed && !s3.attack.held);
     assert('input: holding the left button does not swim (pure mouse steering is gone)', s.move.x === 0 && s.move.y === 0 && s2.move.x === 0);
     mouse('mousedown', 2); s = input.snapshot(); window.dispatchEvent(new MouseEvent('mouseup', { button: 2 })); input.snapshot();
-    assert('input: right button casts the selected spell toward the cursor', s.spell.pressed && s.src.spell === 'mouse' && !s.dash.pressed);
+    assert('input: right button uses the selected hotbar slot toward the cursor', s.use.pressed && s.src.use === 'mouse' && !s.dash.pressed);
     mouse('mousedown', 1); s = input.snapshot(); window.dispatchEvent(new MouseEvent('mouseup', { button: 1 })); input.snapshot();
     assert('input: middle button throws a bomb at the cursor', s.bomb.pressed && s.src.bomb === 'mouse');
     const cm = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); canvas.dispatchEvent(cm);
@@ -269,12 +269,12 @@ export async function runSpellTests(assert) {
     assert('touch: the Jet button fires the ink jet (auto-aimed)', s.attack.pressed && s.src.attack === 'touch');
     s = press('octo-spell-btn');
     assert('touch: the Spell button casts', s.spell.pressed && s.src.spell === 'touch');
-    s = press('octo-bomb-btn');
-    assert('touch: the Bomb button throws a bomb', s.bomb.pressed && s.src.bomb === 'touch');
+    s = press('octo-use-btn');
+    assert('touch: the Use button uses the selected hotbar slot (controls 2026-10-08)', s.use.pressed && s.src.use === 'touch');
     s = press('octo-dash-btn');
     assert('touch: the Dash button dashes', s.dash.pressed);
     // (no play.css on the test page: check the inline placement; the real layout is checked at phone size in the CDP script)
-    const pos = ['octo-attack-btn', 'octo-spell-btn', 'octo-bomb-btn', 'octo-dash-btn'].map((id) => { const st = document.getElementById(id).style; return st.right + '|' + st.bottom; });
+    const pos = ['octo-attack-btn', 'octo-spell-btn', 'octo-use-btn', 'octo-dash-btn'].map((id) => { const st = document.getElementById(id).style; return st.right + '|' + st.bottom; });
     assert('touch: the four buttons get four different places in a 2 x 2 block at the bottom right', new Set(pos).size === 4 && pos.every((p) => /safe-area-inset-right/.test(p)));
     tui.setSpell(false);
     assert('touch: the Spell button dims when the jar is short of a cast', document.getElementById('octo-spell-btn').classList.contains('is-empty'));

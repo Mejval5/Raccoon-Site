@@ -10,7 +10,7 @@ import { artImg } from './v2-art.js';
 import { itemGlyph } from './v2-props-draw.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 import { KM_CALM, KM_DEAD, CLAW_TELL, shoulderX, shoulderY } from './shopkeeper.js';
-import { W_LOOSE } from './shop.js';
+import { W_LOOSE, W_HELD } from './shop.js';
 
 const TAU = Math.PI * 2;
 export const KEEPER_DRAW_W = 1.95; // tiles (the calm keeper behind the counter is 1.5)
@@ -175,7 +175,7 @@ export function drawLooseWares(ctx, camera, cw, ch, st, props, time) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   const d = props.data;
   for (let i = 0; i < st.ware.length; i++) {
-    if (st.ware[i] !== W_LOOSE || st.pid[i] < 0 || !d.alive[st.pid[i]]) continue;
+    if ((st.ware[i] !== W_LOOSE && st.ware[i] !== W_HELD) || st.pid[i] < 0 || !d.alive[st.pid[i]]) continue;
     const p = st.pid[i], x = sx(d.x[p]), y = sy(d.y[p]);
     if (x < -ppu * 2 || x > cw + ppu * 2 || y < -ppu * 2 || y > ch + ppu * 2) continue;
     ctx.save();

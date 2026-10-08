@@ -66,15 +66,17 @@ export async function runPropsTests(assert) {
     const placed = bombs.place(octo, 5.5, 8.5, { x: 1, y: 0 });
     assert('bomb: thrown with the octopus velocity plus an impulse along the aim', placed && Math.abs(props.data.vx[0] - 10) < 1e-4);
     octo.vx = 0; octo.x = 3; octo.y = 3; // out of the way
-    let maxX = 0, bounced = false;
+    let maxX = 0, bounced = false, clung = false;
     for (let n = 0; n < 120; n++) {
       props.step(DT, world, octo); bombs.update(DT, world, octo, noEnemies);
       const b = bombs.list()[0];
       if (!b || b.exploded) break;
       maxX = Math.max(maxX, b.x);
       if (props.data.vx[0] < -0.5 && maxX > 7.5) bounced = true;
+      if (props.data.state[0] === PS_HELD) clung = true;
     }
-    assert(`bomb: thrown at a wall it bounces back (reached x ${maxX.toFixed(2)} of a wall at 9, then moved away)`, bounced && maxX < 9);
+    // controls 2026-10-08: an aimed bomb is a sticky urchin-mine: it clings to the wall instead of bouncing back
+    assert(`bomb: thrown at a wall it clings to it, no bounce (reached x ${maxX.toFixed(2)} of a wall at 9)`, !bounced && clung && maxX > 8.4 && maxX < 9);
   }
 
   // ---- the fuse: 2.5 s, the bomb sinks meanwhile, then it explodes (and not before) ----
@@ -115,7 +117,7 @@ export async function runPropsTests(assert) {
     const x0 = props.data.x[k];
     for (let n = 0; n < 15; n++) props.step(DT, world, octo);
     assert(`bomb: a throw (9 u/s) still travels about 2 tiles in 0.3 s (${(props.data.x[k] - x0).toFixed(2)})`, props.data.x[k] - x0 > 1.7 && props.data.x[k] - x0 < 2.3);
-    assert('blast: the drawn blast radius is the lethal BOMB_RADIUS', BLAST_DRAW_RADIUS === BOMB_RADIUS && BOMB_RADIUS === 2.5);
+    assert('blast: the drawn blast radius is the lethal BOMB_RADIUS', BLAST_DRAW_RADIUS === BOMB_RADIUS && BOMB_RADIUS === 2); // controls 2026-10-08: 2.0
   }
 
   // ---- bombs get pushed by the octopus while rolling ----
@@ -191,14 +193,14 @@ export async function runPropsTests(assert) {
     assert(`props: an explosion pushes a nearby prop away (pot vx ${props.data.vx[pot].toFixed(1)})`, moved);
     // the octopus
     const w2 = room(30, 22, () => false), p2 = createProps(), b2 = createBombs(p2);
-    const o2 = createOctopus(13.5, 10); o2.bombs = 1; o2.invulnTimer = 5;
+    const o2 = createOctopus(12.6, 10); o2.bombs = 1; o2.invulnTimer = 5; // inside the blast reach (2 x BOMB_RADIUS 2.0)
     b2.place(o2, 10.5, 10, null, { pinned: true });
     for (let i = 0; i < 160 && !b2.events.length; i++) { p2.step(DT, w2, o2); b2.update(DT, w2, o2, noEnemies); }
     assert(`bomb: the blast also shoves the octopus (vx ${o2.vx.toFixed(1)})`, o2.vx > 2);
     // an enemy: knocked away and stunned, harmless while stunned
     const w3 = room(30, 22, () => false), p3 = createProps(), b3 = createBombs(p3), en = createEnemies();
     const o3 = createOctopus(25, 18); o3.bombs = 1;
-    const pir = en.spawnAt('piranha', 14.5, 10);
+    const pir = en.spawnAt('piranha', 13.0, 10); // past the kill radius 2.0, inside the reach 4.0
     b3.place(o3, 10.5, 10, null, { pinned: true });
     en.update(DT, 0, o3, w3, []); // (the piranha is parked until the blast: only the props and the bomb run)
     for (let i = 0; i < 160 && !b3.events.length; i++) { p3.step(DT, w3, o3); b3.update(DT, w3, o3, en); }

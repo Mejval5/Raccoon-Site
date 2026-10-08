@@ -117,7 +117,7 @@ export const BOMB_MAX = 5;
 // NIGHT-LOG.md): OVERNIGHT.md M3-2 itself calls out 1.5s as the row's own
 // number, "deviation from 4 s, noted".
 export const BOMB_FUSE = 1.5;
-export const BOMB_RADIUS = 2.5;
+export const BOMB_RADIUS = 2.0; // controls 2026-10-08: the lethal and rock-breaking radius, drawn at exactly this size
 
 export const DASH_KILL_SPEED = 8; // u/s: dash-through-piranha kill threshold
 export const ENEMY_MIN_DEPTH = 40; // "enemy-free first 40 units" (also gen.js)

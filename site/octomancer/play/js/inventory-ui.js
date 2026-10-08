@@ -54,10 +54,11 @@ export function createInventoryUI(root, handlers = {}) {
 
   function spellRows(state) {
     const sec = el('section', 'octo-inv-sec');
-    sec.appendChild(el('h3', 'octo-inv-h', 'Spells'));
+    sec.appendChild(el('h3', 'octo-inv-h', 'Hotbar'));
     const n = state.slots.length;
     state.slots.forEach((slot, i) => {
       const id = slot.ids[0];
+      if (id === 'bomb') { sec.appendChild(bombRow(state, i, n)); return; }
       const row = state.spellRow ? state.spellRow(id) : null;
       const li = el('div', 'octo-inv-row octo-inv-spell' + (i === state.sel ? ' is-selected' : ''));
       li.dataset.slot = String(i);
@@ -82,15 +83,35 @@ export function createInventoryUI(root, handlers = {}) {
     return sec;
   }
 
+  function moveButtons(li, i, n) {
+    const mv = el('div', 'octo-inv-moves');
+    const up = el('button', 'octo-inv-move', '◀'); up.type = 'button'; up.dataset.dir = 'left';
+    const dn = el('button', 'octo-inv-move', '▶'); dn.type = 'button'; dn.dataset.dir = 'right';
+    up.setAttribute('aria-label', 'Move left'); dn.setAttribute('aria-label', 'Move right');
+    up.disabled = i === 0; dn.disabled = i === n - 1;
+    up.addEventListener('click', (e) => { e.stopPropagation(); if (handlers.onMove) handlers.onMove(i, i - 1); });
+    dn.addEventListener('click', (e) => { e.stopPropagation(); if (handlers.onMove) handlers.onMove(i, i + 1); });
+    mv.append(up, dn);
+    li.appendChild(mv);
+  }
+
+  /** The bomb stack: a hotbar slot (controls 2026-10-08) when slot index i is given, else a row under Items. */
+  function bombRow(state, i = -1, n = 0) {
+    const bomb = el('div', 'octo-inv-row octo-inv-item octo-inv-bomb' + (i >= 0 && i === state.sel ? ' is-selected' : ''));
+    if (i >= 0) bomb.dataset.slot = String(i);
+    bomb.appendChild(iconCanvas(40, (ctx, px) => drawBombSlotIcon(ctx, px / 2, px / 2, px * 0.38)));
+    const bt = el('div', 'octo-inv-text');
+    const how = state.touch ? 'Use: drop one under you (hold the stick to throw a sticky one)' : 'right click or C: drop one under you, or throw a sticky one at the cursor; B / X drops one, the middle button throws one';
+    bt.append(el('div', 'octo-inv-name', (i >= 0 ? (i + 1) + '. ' : '') + 'Bombs ' + state.bombs + '/' + state.bombMax), el('div', 'octo-inv-blurb', how));
+    bomb.append(bt, el('span', 'octo-inv-tag octo-inv-tag-active', 'active'));
+    if (i >= 0) { moveButtons(bomb, i, n); bomb.addEventListener('click', () => { if (handlers.onSelect) handlers.onSelect(i); }); }
+    return bomb;
+  }
+
   function itemRows(state) {
     const sec = el('section', 'octo-inv-sec');
     sec.appendChild(el('h3', 'octo-inv-h', 'Items'));
-    const bomb = el('div', 'octo-inv-row octo-inv-item octo-inv-bomb');
-    bomb.appendChild(iconCanvas(40, (ctx, px) => drawBombSlotIcon(ctx, px / 2, px / 2, px * 0.38)));
-    const bt = el('div', 'octo-inv-text');
-    bt.append(el('div', 'octo-inv-name', 'Bombs ' + state.bombs + '/' + state.bombMax), el('div', 'octo-inv-blurb', state.touch ? 'throw one with the Bomb button' : 'throw one with B, X or the middle button'));
-    bomb.append(bt, el('span', 'octo-inv-tag octo-inv-tag-active', 'active'));
-    sec.appendChild(bomb);
+    if (!state.slots.some((sl) => sl.ids[0] === 'bomb')) sec.appendChild(bombRow(state));
     for (const [id, count] of stackItems(state.items)) {
       const def = ITEM_DEFS[id];
       if (!def) continue;

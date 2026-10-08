@@ -9,6 +9,12 @@
 //   state: PS_FREE  simulating
 //          PS_REST  settled, asleep (skipped until something wakes it: a blast, a tile change, a hit)
 //          PS_HELD  attached to a support tile (a clam on a wall, a chest on a ledge); lets go when the tile goes
+//          PS_CARRY moved by someone else every step (in the octopus's hand, hand.js; a sticky mine on a crab, bomb.js):
+//                   no physics, no blast push, a solid obstacle to free props
+//
+//   Bombs (controls 2026-10-08, V2-PLAN 17) have a mode (`d.mode`): BM_HEAVY, a dropped bomb that sinks like a rock with
+//   no bounce and no roll and sits where it lands; BM_STICKY, an aimed urchin-mine that flies on and clings to the first
+//   rock (PS_HELD on the tile it touched) or push block it meets (`d.stuck` = 1 once it clung: bomb.js starts its fuse).
 //
 // The live octopus is not a prop: bombs are pushed by it (pushByOctopus), nothing else is. The DEAD octopus is one
 // (PK_BODY, V2-PLAN 14): main.js adds it on death and copies it back to the octopus record every step (the ragdoll).
@@ -24,7 +30,12 @@ export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK
 export const PK_FIND = 8; // a shell, bomb or item released from the rock (embed.js)
 export const PK_BODY = 9; // the limp / dead octopus (ragdoll.js, V2-PLAN 14)
 export const PK_BLOCK = 10; // materials: a pushable block (box, see above)
-export const PS_FREE = 0, PS_REST = 1, PS_HELD = 2;
+export const PS_FREE = 0, PS_REST = 1, PS_HELD = 2, PS_CARRY = 3;
+export const BM_PLAIN = 0, BM_HEAVY = 1, BM_STICKY = 2;
+// a dropped heavy bomb: the rock's sink and drag, no bounce, stops dead on a floor
+export const HEAVY_GRAV = 16, HEAVY_DRAG = 1.45;
+// an aimed sticky mine in flight: a slow sink and little drag, so a throw carries to the wall it was aimed at
+export const STICKY_GRAV = 1.2, STICKY_DRAG = 0.7;
 export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 'rubble', 'find', 'body', 'block'];
 
 // per kind (index = PK_*): sink acceleration u/s^2, linear drag 1/s (terminal sink speed = grav / drag),
@@ -74,6 +85,8 @@ export function createProps(cap = DEFAULT_CAP) {
     sup: new Uint8Array(cap),       // resting on another prop (set by separate(), read next step so a stack can fall asleep)
     sx: new Int16Array(cap), sy: new Int16Array(cap), // support tile for PS_HELD
     ref: new Int32Array(cap),       // owner's own index (loot record, hazard, ...), -1 none
+    mode: new Uint8Array(cap),      // bombs: BM_PLAIN / BM_HEAVY / BM_STICKY
+    stuck: new Uint8Array(cap),     // a sticky bomb clung to something (set once, read by bomb.js)
   };
   const freeList = [];
   let lastVersion = -1;
@@ -103,6 +116,7 @@ export function createProps(cap = DEFAULT_CAP) {
     d.timer[i] = opts && opts.timer !== undefined ? opts.timer : 0;
     d.rest[i] = 0; d.grace[i] = opts && opts.grace ? opts.grace : 0; d.grounded[i] = 0; d.sup[i] = 0;
     d.sx[i] = 0; d.sy[i] = 0; d.ref[i] = opts && opts.ref !== undefined ? opts.ref : -1;
+    d.mode[i] = opts && opts.mode ? opts.mode : BM_PLAIN; d.stuck[i] = 0;
     d.live++;
     return i;
   }
@@ -117,6 +131,12 @@ export function createProps(cap = DEFAULT_CAP) {
   function hold(i, tx, ty) { d.state[i] = PS_HELD; d.sx[i] = tx; d.sy[i] = ty; d.vx[i] = d.vy[i] = 0; }
   function wake(i) { if (d.alive[i] && d.state[i] === PS_REST) { d.state[i] = PS_FREE; d.rest[i] = 0; } }
   function release(i) { if (d.alive[i] && d.state[i] !== PS_FREE) { d.state[i] = PS_FREE; d.rest[i] = 0; } }
+  /** Someone else moves prop i from now on (the hand, a mine on a creature): no physics until release(i). */
+  function carry(i) { if (d.alive[i]) { d.state[i] = PS_CARRY; d.vx[i] = d.vy[i] = 0; d.rest[i] = 0; } }
+  /** Put a carried prop at (x, y) with velocity (vx, vy) (what it leaves with when it is let go). */
+  function place(i, x, y, vx = 0, vy = 0) { d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy; }
+  /** A sticky bomb clings to the rock tile (tx, ty). */
+  function stick(i, tx, ty) { hold(i, tx, ty); d.stuck[i] = 1; }
 
   function wakeAll() { for (let i = 0; i < d.n; i++) wake(i); }
   function wakeNear(x, y, r) {
@@ -141,7 +161,7 @@ export function createProps(cap = DEFAULT_CAP) {
       let dx = d.x[i] - x, dy = d.y[i] - y;
       let dist = Math.hypot(dx, dy);
       if (dist > reach) continue;
-      if (d.state[i] === PS_HELD) continue; // still attached: only a lost support frees it (checkSupports)
+      if (d.state[i] === PS_HELD || d.state[i] === PS_CARRY) continue; // attached or carried: only a lost support / the carrier frees it
       if (dist < 1e-4) { dx = 0; dy = -1; dist = 1; } else { dx /= dist; dy /= dist; }
       const f = (1 - Math.min(1, dist / reach)) * power / Math.max(0.5, MASS[k] * 0.6 + 0.4);
       d.state[i] = PS_FREE; d.rest[i] = 0;
@@ -184,17 +204,37 @@ export function createProps(cap = DEFAULT_CAP) {
     if (contact.hit) {
       touched = true;
       // restitution grows with impact speed: a soft touch settles, a hard throw rebounds
-      const vn = contact.vn, e = REST[d.kind[i]] * Math.min(1, (-vn - BOUNCE_MIN) / BOUNCE_FULL);
+      const heavy = d.kind[i] === PK_BOMB && d.mode[i] !== BM_PLAIN; // dropped or sticky bombs never bounce
+      const vn = contact.vn, e = heavy ? 0 : REST[d.kind[i]] * Math.min(1, (-vn - BOUNCE_MIN) / BOUNCE_FULL);
       if (-vn > BOUNCE_MIN && e > 0) { B.vx += -e * vn * contact.nx; B.vy += -e * vn * contact.ny; }
       if (contact.ny < -0.3) d.grounded[i] = 1;
       // a bomb thrown up against a ceiling sticks to it (as in Spelunky); stepOne turns this into PS_HELD
       if (d.kind[i] === PK_BOMB && contact.ny > 0.6 && -vn > STICK_CEIL_SPEED) ceilHit = true;
       lastNx = contact.nx; lastNy = contact.ny;
+      if (d.kind[i] === PK_BOMB && d.mode[i] === BM_STICKY && !stickHit) { stickHit = true; stickNx = contact.nx; stickNy = contact.ny; }
     }
     d.x[i] = B.x; d.y[i] = B.y; d.vx[i] = B.vx; d.vy[i] = B.vy;
     return touched;
   }
-  let lastNx = 0, lastNy = 0, ceilHit = false;
+  let lastNx = 0, lastNy = 0, ceilHit = false, stickHit = false, stickNx = 0, stickNy = 0;
+
+  function solidTile(world, tx, ty) { return world.tileAt ? world.tileAt(tx, ty) !== 0 : world.isSolid(tx + 0.5, ty + 0.5); }
+  /** The solid tile a sticky bomb touched (nx, ny = the contact normal, pointing out of the rock), or null. */
+  function tileBehind(world, x, y, r, nx, ny) {
+    for (const k of [r + 0.15, r + 0.45, r + 0.8]) {
+      const tx = Math.floor(x - nx * k), ty = Math.floor(y - ny * k);
+      if (solidTile(world, tx, ty)) return [tx, ty];
+    }
+    const cx = Math.floor(x), cy = Math.floor(y); // a corner: the nearest solid tile around it
+    let best = null, bd = 1e9;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const tx = cx + dx, ty = cy + dy;
+      if (!solidTile(world, tx, ty)) continue;
+      const px = Math.max(tx, Math.min(tx + 1, x)), py = Math.max(ty, Math.min(ty + 1, y)), dd = (px - x) ** 2 + (py - y) ** 2;
+      if (dd < bd) { bd = dd; best = [tx, ty]; }
+    }
+    return best;
+  }
 
   // ---- push blocks (PK_BLOCK): axis-aligned squares moved by their own AABB-vs-tile-grid mover ----
   function tileSolid(world, tx, ty) { return world.tileAt ? world.tileAt(tx, ty) !== 0 : world.isSolid(tx + 0.5, ty + 0.5); }
@@ -304,8 +344,10 @@ export function createProps(cap = DEFAULT_CAP) {
   /** A circle prop against a block: the circle is pushed out, the heavy block does not move. */
   function circleVsBlock(c, b) {
     if (d.state[c] === PS_HELD || !circleVsBox(d.x[c], d.y[c], d.radius[c], b)) return;
+    if (d.state[c] === PS_CARRY) return;
     if (d.state[c] !== PS_FREE) { if (BN.pen < 0.02) return; d.state[c] = PS_FREE; d.rest[c] = 0; } // a sleeper only wakes if really overlapped
     d.x[c] += BN.nx * BN.pen; d.y[c] += BN.ny * BN.pen;
+    if (d.kind[c] === PK_BOMB && d.mode[c] === BM_STICKY) { d.vx[c] = d.vy[c] = 0; d.mode[c] = BM_HEAVY; d.stuck[c] = 1; return; } // a mine meets a push block: it clings (and rests on it)
     const vn = d.vx[c] * BN.nx + d.vy[c] * BN.ny;
     if (vn < 0) { const e = -vn > BOUNCE_MIN ? 0.25 : 0; d.vx[c] -= (1 + e) * vn * BN.nx; d.vy[c] -= (1 + e) * vn * BN.ny; }
     if (BN.ny < -0.3) d.sup[c] = 1; // sits on top of the block
@@ -351,12 +393,13 @@ export function createProps(cap = DEFAULT_CAP) {
   function stepOne(i, dt, world) {
     const k = d.kind[i];
     if (k === PK_BLOCK) { stepBlock(i, dt, world); return; }
-    d.vy[i] += GRAV[k] * dt;
-    const f = 1 / (1 + dt * (k === PK_BOMB && d.grace[i] <= 0 ? (d.grounded[i] ? BOMB_ROLL_DRAG : BOMB_SETTLE_DRAG) : DRAG[k]));
+    const bm = k === PK_BOMB ? d.mode[i] : BM_PLAIN;
+    d.vy[i] += (bm === BM_HEAVY ? HEAVY_GRAV : bm === BM_STICKY ? STICKY_GRAV : GRAV[k]) * dt;
+    const f = 1 / (1 + dt * (bm === BM_HEAVY ? HEAVY_DRAG : bm === BM_STICKY ? STICKY_DRAG : k === PK_BOMB && d.grace[i] <= 0 ? (d.grounded[i] ? BOMB_ROLL_DRAG : BOMB_SETTLE_DRAG) : DRAG[k]));
     d.vx[i] *= f; d.vy[i] *= f;
     clampSpeed(i);
     d.grounded[i] = 0;
-    ceilHit = false;
+    ceilHit = false; stickHit = false;
     const speed = Math.hypot(d.vx[i], d.vy[i]);
     const r = d.radius[i];
     let steps = 1;
@@ -366,7 +409,14 @@ export function createProps(cap = DEFAULT_CAP) {
     for (let s = 0; s < steps; s++) {
       d.x[i] += d.vx[i] * sub; d.y[i] += d.vy[i] * sub;
       if (collideWorld(i, world)) touched = true;
+      if (stickHit) break;
     }
+    if (stickHit) { // an urchin-mine clings to the rock it touched
+      const t = tileBehind(world, d.x[i], d.y[i], r, stickNx, stickNy);
+      if (t) { stick(i, t[0], t[1]); return; }
+      d.mode[i] = BM_HEAVY; d.stuck[i] = 1; // nothing to hold on to: it drops where it is
+    }
+    if (bm === BM_HEAVY && d.grounded[i]) { d.vx[i] = 0; if (d.vy[i] < 0) d.vy[i] = 0; } // a dropped bomb sits where it lands: no roll
     if (ceilHit) {
       const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i] - r - 0.2);
       if (world.tileAt ? world.tileAt(tx, ty) !== 0 : world.isSolid(tx + 0.5, ty + 0.5)) { hold(i, tx, ty); return; }
@@ -430,7 +480,7 @@ export function createProps(cap = DEFAULT_CAP) {
   function pushByOctopus(octo) {
     if (!octo || octo.dead) return;
     for (let i = 0; i < d.n; i++) {
-      if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.grace[i] > 0 || d.state[i] === PS_HELD) continue;
+      if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.grace[i] > 0 || d.state[i] === PS_HELD || d.state[i] === PS_CARRY) continue;
       let dx = d.x[i] - octo.x, dy = d.y[i] - octo.y;
       const rr = d.radius[i] + octo.radius * 0.9;
       if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
@@ -455,7 +505,7 @@ export function createProps(cap = DEFAULT_CAP) {
       if (!e.moving || e.dead || e.ghost || e.kind === 'beholder') continue;
       const er = e.radius + 0.05;
       for (let i = 0; i < d.n; i++) {
-        if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.state[i] === PS_HELD) continue;
+        if (!d.alive[i] || d.kind[i] !== PK_BOMB || d.state[i] === PS_HELD || d.state[i] === PS_CARRY || d.mode[i] === BM_STICKY) continue; // a mine in flight clings (bomb.js), it is not shoved
         let dx = d.x[i] - e.x, dy = d.y[i] - e.y;
         const rr = d.radius[i] + er;
         if (Math.abs(dx) >= rr || Math.abs(dy) >= rr) continue;
@@ -497,7 +547,7 @@ export function createProps(cap = DEFAULT_CAP) {
     data: d,
     /** fn(enemyRecord) kills an enemy by its regular path (crushed under a falling block). */
     setEnemyKiller(fn) { enemyKiller = fn; },
-    add, remove, hold, wake, release, wakeAll, wakeNear, blast, checkSupports,
+    add, remove, hold, wake, release, carry, place, stick, wakeAll, wakeNear, blast, checkSupports,
     count() { return d.live; },
     /** Indices of live props of one kind (tests, drawing). */
     ofKind(k, out = []) { out.length = 0; for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === k) out.push(i); return out; },
@@ -526,7 +576,7 @@ export function createProps(cap = DEFAULT_CAP) {
       if (enemies) { pushByEnemies(enemies); crushEnemies(enemies); }
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in
       for (let i = 0; i < d.n; i++) {
-        if (!d.alive[i] || d.state[i] === PS_HELD || (d.state[i] === PS_REST && d.kind[i] === PK_RUBBLE)) continue; // a sleeping chip costs nothing (a tile change wakes it first)
+        if (!d.alive[i] || d.state[i] === PS_HELD || d.state[i] === PS_CARRY || (d.state[i] === PS_REST && d.kind[i] === PK_RUBBLE)) continue; // a sleeping chip costs nothing (a tile change wakes it first)
         if (d.kind[i] === PK_BLOCK ? boxHitsTiles(world, d.x[i], d.y[i], d.radius[i]) : solidAt(world, d.x[i], d.y[i])) eject(i, world);
       }
     },

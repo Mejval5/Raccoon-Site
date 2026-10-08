@@ -1,6 +1,8 @@
 // The spell hotbar on screen: carved stone slots for the spells, the bomb slot (active-use item) and the fish juice jar.
 // update(state) is called every frame, so it only touches the DOM / redraws a canvas when its own key changed (as ui.js does).
 // state = { slots, sel, spellName(id), bombs, bombMax, juice, cap, perCast }.
+// Controls 2026-10-08: a slot holding 'bomb' (hotbar.js BOMB_SLOT) is drawn in the bar like a spell, with the stack's count; the
+// separate bomb slot after the bar only shows while the bar has no bomb slot.
 
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from './spell-icons.js';
 
@@ -56,23 +58,29 @@ export function createHotbarUI(root, handlers = {}) {
   function buildSlots(state, key) {
     slotsEl.textContent = '';
     slotEls = state.slots.map((slot, i) => {
-      const b = el('button', 'octo-hb-slot octo-hb-spell');
+      const id = slot.ids[0];
+      const isBomb = id === 'bomb';
+      const b = el('button', 'octo-hb-slot ' + (isBomb ? 'octo-hb-bomb octo-hb-item' : 'octo-hb-spell'));
       b.type = 'button';
       b.dataset.slot = String(i);
-      const id = slot.ids[0];
-      const name = state.spellName ? state.spellName(id) : id;
+      const name = isBomb ? 'Bombs' : state.spellName ? state.spellName(id) : id;
       b.title = name; b.setAttribute('aria-label', name + ' (key ' + (i + 1) + ')');
       const cv = makeCanvas(ICON_PX, ICON_PX);
       cv.c.className = 'octo-hb-icon';
-      if (cv.ctx) drawSpellIcon(cv.ctx, id, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.38);
+      if (cv.ctx) { if (isBomb) drawBombSlotIcon(cv.ctx, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.36); else drawSpellIcon(cv.ctx, id, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.38); }
       b.append(cv.c, el('span', 'octo-hb-key', String(i + 1)));
+      if (isBomb) { b.dataset.item = 'bomb'; b.appendChild(el('span', 'octo-hb-count', '')); }
       b.addEventListener('click', () => { if (handlers.onSelect) handlers.onSelect(i); });
       slotsEl.appendChild(b);
       return b;
     });
     slotKey = key;
     selShown = -2;
+    barBomb = slotEls.find((e) => e.dataset.item === 'bomb') || null;
+    bombSlot.style.display = barBomb ? 'none' : '';
+    bombKeyShown = null; bombTextShown = '';
   }
+  let barBomb = null; // the bomb slot in the bar, when there is one
 
   return {
     el: bar,
@@ -90,9 +98,10 @@ export function createHotbarUI(root, handlers = {}) {
       const bk = state.bombs + '/' + state.bombMax;
       if (bk !== bombKeyShown) {
         bombKeyShown = bk;
-        bombTextShown = setText(bombCount, bombTextShown, bk);
-        bombSlot.classList.toggle('is-empty', state.bombs <= 0);
-        bombSlot.title = 'Bombs ' + bk + ' (B / X)';
+        const host = barBomb || bombSlot, count = barBomb ? barBomb.querySelector('.octo-hb-count') : bombCount;
+        bombTextShown = setText(count, bombTextShown, bk);
+        host.classList.toggle('is-empty', state.bombs <= 0);
+        host.title = 'Bombs ' + bk + (barBomb ? ' (right click or C: drop under you, or throw at the cursor; B / X: drop)' : ' (B / X)');
       }
       const jk = state.juice + '|' + state.cap + '|' + state.perCast;
       if (jk !== jarKeyShown) {
@@ -113,6 +122,12 @@ export function createHotbarUI(root, handlers = {}) {
       jarEl.classList.remove('octo-jar-shake');
       void jarEl.offsetWidth;
       jarEl.classList.add('octo-jar-shake');
+    },
+    /** A slot's "nothing to use" feedback (the bomb stack is empty): the jar's shake on that slot. */
+    shakeSlot(id) {
+      const e = id === 'bomb' ? (barBomb || bombSlot) : slotEls.find((x) => x.title === id);
+      if (!e) return;
+      e.classList.remove('octo-jar-shake'); void e.offsetWidth; e.classList.add('octo-jar-shake');
     },
     setCompact(on) { bar.classList.toggle('is-compact', !!on); },
     setVisible(on) { bar.style.display = on ? '' : 'none'; },

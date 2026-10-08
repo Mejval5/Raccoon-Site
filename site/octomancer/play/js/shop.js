@@ -10,6 +10,13 @@
 // physics pickup (W_LOOSE, a props.js body) that sinks and rolls. Picking a loose ware up without paying for it is stealing
 // ('stolen' event; main.js calls shopAggro('theft')). While the keepers are hostile or this one is dead (st.free) every
 // ware is free for the taking.
+//
+// 2026-10-08 (controls, V2-PLAN 17; Daniel: "buying items should be done with F"): main.js calls shopStep / shopWares with
+// contact = false, so nothing is bought or taken by swimming onto it any more. The hand (F) does it: shopBuy on a ware on its
+// pedestal pays for it when the wallet allows; shopGrab takes a ware into the tentacles (W_HELD) when it cannot be paid for,
+// or a loose one; carrying an unpaid ware out of the stall or throwing it is theft (shopCarryOut / shopThrown). A ware on a
+// pedestal hit by the octopus's ink, a thrown thing or its blast is knocked loose (shopKnock) and the keeper notices: main.js
+// angers him through shop-aggro.js ('theft'), and picking the loose ware up is stealing.
 
 import { mulberry32, hashSeed2 } from './rng.js';
 import { BOMB_MAX, HEART_MAX } from './config.js';
@@ -19,7 +26,7 @@ import { PK_POT } from './props.js';
 
 export const BUY_R = 0.9;         // octopus centre to pedestal centre
 export const SHOP_SLOTS = 3;
-export const W_SHELF = 0, W_LOOSE = 1, W_GONE = 2; // where a ware is: on its pedestal, a loose physics body, sold or taken
+export const W_SHELF = 0, W_LOOSE = 1, W_GONE = 2, W_HELD = 3; // where a ware is: on its pedestal, a loose physics body, sold or taken, in the octopus's hand
 export const WARE_R = 0.3;        // a loose ware's body radius
 export const GRAB_R = 0.85;       // octopus centre to a loose ware: picked up
 export const KNOCK_R = 1.4;       // blast radii: a ware on its pedestal within this many is knocked off
@@ -121,6 +128,21 @@ export function shopBlast(st, x, y, r, props = null) {
   return true;
 }
 
+/**
+ * Something of the octopus's (an ink shot, a thrown thing) hit near (x, y) with reach r, moving (vx, vy): every ware still
+ * on its pedestal there is knocked loose and flies along. Returns how many (main.js: > 0 is theft, the keeper notices).
+ */
+export function shopKnock(st, props, x, y, r, vx = 0, vy = 0) {
+  if (!st || !props) return 0;
+  let n = 0;
+  for (let i = 0; i < SHOP_SLOTS; i++) {
+    if (st.ware[i] !== W_SHELF || st.sold[i]) continue;
+    if (Math.hypot(st.px[i * 2] - x, st.px[i * 2 + 1] - 0.15 - y) > r + WARE_R) continue;
+    if (looseWare(st, props, i, vx * 0.5, vy * 0.5 - 2)) { st.grab[i] = GRAB_GRACE; n++; }
+  }
+  return n;
+}
+
 /** Ware i leaves its pedestal as a physics body with velocity (vx, vy). */
 function looseWare(st, props, i, vx, vy) {
   const pid = props.add(PK_POT, st.px[i * 2], st.px[i * 2 + 1] - 0.15, vx, vy, { radius: WARE_R });
@@ -137,7 +159,7 @@ function looseWare(st, props, i, vx, vy) {
  *     pedestal), otherwise grabbed without paying ('stolen': main.js angers the keepers unless st.free).
  * Events are pushed onto `out` and returned.
  */
-export function shopWares(st, props, world, octo, inv = [], out = [], shells = 0, dt = 0.02) {
+export function shopWares(st, props, world, octo, inv = [], out = [], shells = 0, dt = 0.02, contact = true) {
   if (!st || !props) return out;
   const d = props.data;
   const dashing = octoDashing(octo);
@@ -152,12 +174,13 @@ export function shopWares(st, props, world, octo, inv = [], out = [], shells = 0
       if (looseWare(st, props, i, octo.vx * 0.55, octo.vy * 0.55 - 2)) {
         st.grab[i] = GRAB_GRACE;
         octo.vx *= 0.3; octo.vy *= 0.3; octo.dashT = 0; // the ware took the dash's momentum: the octopus stops at the stall, not in the keeper
-        out.push({ type: 'knocked', slot: i, x: st.px[i * 2], y: st.px[i * 2 + 1] });
+        out.push({ type: 'knocked', slot: i, x: st.px[i * 2], y: st.px[i * 2 + 1], by: 'dash' });
       }
     }
-    if (st.ware[i] !== W_LOOSE) continue;
+    if (st.ware[i] !== W_LOOSE && st.ware[i] !== W_HELD) continue;
     const pid = st.pid[i];
     if (pid < 0 || !d.alive[pid]) { st.ware[i] = W_GONE; st.pid[i] = -1; continue; }
+    if (!contact || st.ware[i] === W_HELD) continue; // controls 2026-10-08: the hand takes wares (shopGrab), not a touch
     if (octo.dead || st.grab[i] > 0 || Math.hypot(octo.x - d.x[pid], octo.y - d.y[pid]) > GRAB_R) continue;
     const item = st.items[st.stock[i]];
     if (!canUse(item, octo, inv)) continue; // nothing it could use: it stays where it lies
@@ -183,10 +206,11 @@ export function warePos(st, props, i) {
  * One fixed step. Swimming onto a pedestal buys its item when the wallet allows.
  * Returns null, or an event {type:'bought'|'poor'|'full', slot, item, price, shells (wallet after)}.
  */
-export function shopStep(st, octo, shells, dt, inv = []) {
+export function shopStep(st, octo, shells, dt, inv = [], contact = true) {
   if (!st) return null;
   if (st.msgCooldown > 0) st.msgCooldown = Math.max(0, st.msgCooldown - dt);
   if (st.flinch > 0) st.flinch = Math.max(0, st.flinch - dt);
+  if (!contact) return null; // controls 2026-10-08: buying is the hand's (shopBuy)
   for (let i = 0; i < SHOP_SLOTS; i++) {
     if (st.sold[i] || (st.ware && st.ware[i] !== W_SHELF)) continue;
     if (Math.hypot(octo.x - st.px[i * 2], octo.y - st.px[i * 2 + 1]) > BUY_R) continue;
@@ -217,3 +241,69 @@ export function shopStep(st, octo, shells, dt, inv = []) {
   return null;
 }
 
+
+// ---------------------------------------------------------------- the hand (controls 2026-10-08, V2-PLAN 17)
+
+/** The nearest ware the hand could take or buy within `reach` of (x, y): {slot, x, y, d, shelf} or null. */
+export function shopNearestWare(st, props, x, y, reach) {
+  if (!st) return null;
+  let best = null;
+  for (let i = 0; i < SHOP_SLOTS; i++) {
+    if (st.sold[i]) continue;
+    let wx, wy, shelf;
+    if (st.ware[i] === W_SHELF) { wx = st.px[i * 2]; wy = st.px[i * 2 + 1]; shelf = true; }
+    else if (st.ware[i] === W_LOOSE && props && st.pid[i] >= 0 && props.data.alive[st.pid[i]] && !(st.grab[i] > 0)) { wx = props.data.x[st.pid[i]]; wy = props.data.y[st.pid[i]]; shelf = false; }
+    else continue;
+    const dd = Math.hypot(wx - x, wy - y);
+    if (dd <= reach && (!best || dd < best.d)) best = { slot: i, x: wx, y: wy, d: dd, shelf };
+  }
+  return best;
+}
+
+/**
+ * F on ware `i`: pays for it when the keeper minds the stall and the wallet allows ('bought'), takes it for nothing when
+ * nobody minds the stall ('stolen', free), refuses when it would do nothing ('full'), and otherwise answers 'grab': the
+ * caller lifts it into the tentacles with shopGrab (unpaid: carrying it out or throwing it is theft).
+ */
+export function shopBuy(st, i, octo, shells, inv = []) {
+  const item = st.items[st.stock[i]];
+  if (!canUse(item, octo, inv)) return { type: 'full', slot: i, item, price: item.price, shells };
+  if (st.free) {
+    applyItem(item, octo, inv);
+    st.ware[i] = W_GONE; st.stolen++;
+    return { type: 'stolen', slot: i, item, price: 0, shells, free: true, x: octo.x, y: octo.y };
+  }
+  if (shells >= item.price) {
+    applyItem(item, octo, inv);
+    st.sold[i] = 1; st.ware[i] = W_GONE;
+    return { type: 'bought', slot: i, item, price: item.price, shells: shells - item.price };
+  }
+  return { type: 'grab', slot: i, item, price: item.price, shells };
+}
+
+/** Lift ware i into the hand: a pedestal ware becomes a physics body first. Returns its prop index, or -1. */
+export function shopGrab(st, props, i) {
+  if (st.ware[i] === W_SHELF && !looseWare(st, props, i, 0, 0)) return -1;
+  if (st.ware[i] !== W_LOOSE) return -1;
+  st.ware[i] = W_HELD;
+  return st.pid[i];
+}
+
+/** The hand let ware i go (dropped gently, or thrown: then `thrown` is true and it is theft unless the stall is free). */
+export function shopLetGo(st, i, thrown, octo) {
+  if (st.ware[i] !== W_HELD) return null;
+  st.ware[i] = W_LOOSE;
+  if (!thrown) return null;
+  st.stolen++;
+  return { type: 'stolen', slot: i, item: st.items[st.stock[i]], x: octo.x, y: octo.y, free: st.free, thrown: true };
+}
+
+/** The octopus carried unpaid ware i out of the stall: it is stolen (the item is the octopus's now). */
+export function shopCarryOut(st, props, i, octo, inv = []) {
+  if (st.ware[i] !== W_HELD) return null;
+  const item = st.items[st.stock[i]];
+  if (st.pid[i] >= 0) props.remove(st.pid[i]);
+  st.pid[i] = -1; st.ware[i] = W_GONE; st.stolen++;
+  if (canUse(item, octo, inv)) applyItem(item, octo, inv);
+  return { type: 'stolen', slot: i, item, x: octo.x, y: octo.y, free: st.free };
+}

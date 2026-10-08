@@ -82,6 +82,9 @@ body {
   background: rgba(255,255,255,0.32);
 }
 .octo-btn.is-empty { opacity: 0.45; }
+/* controls 2026-10-08: the Spell button turned into the hand (Grab / Talk / Throw): a kelp-green rim, never empty-dimmed */
+.octo-btn.octo-btn-hand { border-color: rgba(143,224,200,0.75); background: rgba(60,120,100,0.28); opacity: 1; }
+.octo-btn.octo-btn-hand.is-active { background: rgba(110,190,160,0.45); }
 
 
 /* --- HUD bar (hearts + score/depth/bombs), M4-1 --- */

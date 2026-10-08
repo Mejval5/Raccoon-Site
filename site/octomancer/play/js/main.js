@@ -31,7 +31,10 @@ import { MAT_ROCK, setTileDrawHook } from './materials.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
-import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
+import { createBombs, DROP_BELOW } from './bomb.js';
+import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, HAND_REACH } from './hand.js';
+import { registerHandKinds } from './hand-kinds.js';
+import { drawHandTell, drawHeldArm, drawKeeperNotice } from './hand-draw.js';
 import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
@@ -61,7 +64,7 @@ import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_
 import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
-import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
+import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat, shopKnock, W_SHELF, WARE_R } from './shop.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
@@ -81,10 +84,10 @@ import { setCorpseArt } from './corpses-draw.js';
 import { questFail } from './quests.js';
 import { setStoryExact } from './save.js';
 import { STAT_ANGERED } from './journal.js';
-import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
+import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY, START_SPELL } from './spells.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
-import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
+import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot, castableSpell, isItemId, BOMB_SLOT } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
 import { drawItemIcon } from './items-draw.js';
@@ -250,6 +253,9 @@ let juiceDrops = createJuiceDrops();
 let inkClouds = createInkClouds();
 let inkJet = createInkJet();
 if (V2) enemies.setInkClouds(inkClouds);
+// controls 2026-10-08 (V2-PLAN 17): the hand on F (hand.js; the built-in targets are hand-kinds.js, talking is below)
+let hand = createHand();
+let keeperNotice = 0; // s left of the shopkeeper's '!' (he saw a ware knocked off its pedestal)
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
 let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
 let autoDiveOn = false;
@@ -643,6 +649,7 @@ function step(dt) {
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) corpses.update(dt, world, hazards.data);
+  if (V2 && !entry && !octo.hidden) stepHandWorld(dt); // the held thing follows the tentacles; thrown things hit what they meet
   if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident, enemyAll);
@@ -676,6 +683,7 @@ function step(dt) {
     for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
     if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
     if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
+    if (inkJet.events.nSplat && shopSt) inkSplatWares(); // Daniel 2026-10-08: shooting a ware off its pedestal is theft
     inkClouds.update(dt);
     stepJuice(dt);
   }
@@ -686,7 +694,7 @@ function step(dt) {
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
-    if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props);
+    if (V2 && shopSt) { const before = shelfWares(); shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props); if (shelfWares() < before) wareKnocked(world.inShop && world.inShop(ev.x, ev.y) ? 'shop' : 'theft'); }
     if (V2 && run.state === S_BIOME) {
       if (keepers.n) bombKeepers(keepers, ev.x, ev.y, BOMB_RADIUS);
       if (world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
@@ -712,15 +720,7 @@ function step(dt) {
   // blasts shove the corpses (the ones this very blast made too, so they are thrown, not just dropped)
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
   particles.update(dt, solidForSight);
-  if (snap.bomb.pressed) {
-    const aim = V2 ? bombAim(snap) : null;
-    let bx = octo.x, by = octo.y;
-    if (aim) { // starts half a tile out along the throw, unless that is rock
-      const al = Math.hypot(aim.x, aim.y) || 1, ux = aim.x / al, uy = aim.y / al;
-      if (!world.isSolid(octo.x + ux * 0.5, octo.y + uy * 0.5)) { bx += ux * 0.5; by += uy * 0.5; }
-    }
-    if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); journal.bump('item-bomb', STAT_COLLECTED); tutorialActed(tutState); }
-  }
+  if (snap.bomb.pressed && !octo.dead && !entry && !octo.hidden) placeBomb(snap, snap.src ? snap.src.bomb : 'key'); // B / X, middle click: the quick bomb
 
   if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
   endOfStepEntry(); // r45: the entry's pose wins over anything that touched the body this step; the level changes here when it is over
@@ -747,21 +747,46 @@ function updateRagdoll() {
 }
 function syncBody(dt = 0) { ragdoll.sync(octo, props, dt); }
 
-/** v2: the way a bomb is thrown. Mouse: toward the cursor; touch / keyboard: along the stick or move keys (unit
- * vector); with no direction a short toss forward (the last swim direction) and a little down, never up. */
-function bombAim(snap) {
-  if (snap.src && snap.src.bomb === 'mouse' && input.mouse.seen) {
+/** Controls 2026-10-08 (V2-PLAN 17): a bomb used with no aim is DROPPED straight down (keyboard B / X / C; a click with the cursor
+ * on the octopus; the phone with the stick at rest); an aimed one is an urchin-mine thrown at the cursor (mouse) or along the
+ * stick (touch). Returns the unit aim, or null for a drop. */
+const DROP_CURSOR_R = 1.0; // tiles: a click this close to the octopus drops the bomb instead of throwing it
+function bombAim(snap, src) {
+  if (src === 'mouse' && input.mouse.seen) {
     const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
     const dx = w.x - octo.x, dy = w.y - octo.y, l = Math.hypot(dx, dy);
-    if (l > 0.4) return { x: dx / l, y: dy / l };
+    return l > DROP_CURSOR_R ? { x: dx / l, y: dy / l } : null;
   }
-  const m = snap.move, l = Math.hypot(m.x, m.y);
-  if (l > 0.25) return { x: m.x / l, y: m.y / l };
-  return { x: (octo.throwDir || 1) * IDLE_TOSS_X, y: IDLE_TOSS_Y };
+  if (src === 'touch' || src === 'test') {
+    const m = snap.move, l = Math.hypot(m.x, m.y);
+    if (l > 0.5) return { x: m.x / l, y: m.y / l };
+  }
+  return null;
+}
+/** Drop or throw a bomb (the quick bomb, or the bomb slot used from the hotbar). */
+function placeBomb(snap, src) {
+  if (!V2) { bombs.place(octo, octo.x, octo.y, null); return; }
+  const aim = bombAim(snap, src);
+  let bx = octo.x, by = octo.y;
+  if (aim) { // starts half a tile out along the throw, unless that is rock
+    if (!world.isSolid(octo.x + aim.x * 0.5, octo.y + aim.y * 0.5)) { bx += aim.x * 0.5; by += aim.y * 0.5; }
+  } else if (!world.isSolid(octo.x, octo.y + DROP_BELOW)) by += DROP_BELOW; // dropped from the tentacles, under the body
+  if (bombs.place(octo, bx, by, aim)) { discover('item-bomb'); journal.bump('item-bomb', STAT_COLLECTED); tutorialActed(tutState); }
+  else if (octo.bombs <= 0) hotbarUI.shakeSlot(BOMB_SLOT);
+}
+/** The way a thrown thing goes: at the cursor with a mouse, along the move keys / stick, else forward (null). */
+function throwAim(snap) {
+  if (snap.mode !== 'touch' && input.mode() !== 'touch' && input.mouse.seen) { // anyone who uses the mouse aims throws with it (F is a key)
+    const w = cursorWorld();
+    if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) return { x: w.x - octo.x, y: w.y - octo.y };
+  }
+  const m = snap.move;
+  if (Math.hypot(m.x, m.y) > 0.25) return { x: m.x, y: m.y };
+  return null;
 }
 // --- section 14: the ink jet, spells, the hotbar and fish juice ---
 /** The run's hotbar (a new dive or a death starts a fresh one with the starting spell). */
-function hotbar() { if (!run.hotbar) run.hotbar = createHotbar(); return run.hotbar; }
+function hotbar() { if (!run.hotbar) run.hotbar = createHotbar([START_SPELL, BOMB_SLOT]); return run.hotbar; } // controls 2026-10-08: bombs are a hotbar stack
 /** The cursor as a world point, or null when the mouse has not been seen. */
 function cursorWorld() {
   if (!input.mouse.seen) return null;
@@ -769,8 +794,8 @@ function cursorWorld() {
 }
 const SPELL_REACH = 3; // tiles: a spell aimed with the mouse lands at the cursor, at most this far out (and short of rock)
 /** Where a spell goes: toward the cursor (mouse), else on the octopus. */
-function spellTarget(snap) {
-  const w = snap.src && snap.src.spell === 'mouse' ? cursorWorld() : null;
+function spellTarget(src) {
+  const w = src === 'mouse' ? cursorWorld() : null;
   if (!w) return { x: octo.x, y: octo.y };
   const dx = w.x - octo.x, dy = w.y - octo.y, d = Math.hypot(dx, dy);
   if (d < 1e-3) return { x: octo.x, y: octo.y };
@@ -788,7 +813,7 @@ function stepCombat(snap, dt) {
   const hb = hotbar();
   if (snap.select >= 0) selectIndex(hb, snap.select);
   for (let k = snap.cycle | 0; k !== 0; k -= Math.sign(k)) selectNext(hb, Math.sign(k));
-  if (snap.attack.held || snap.attack.pressed) { // pressed too: a quick tap (key down and up between two steps) still fires
+  if (!hand.held && (snap.attack.held || snap.attack.pressed)) { // pressed too: a quick tap (key down and up between two steps) still fires; no ink while carrying
     let dir = lastAim;
     const src = snap.src ? snap.src.attack : 'key';
     if (src === 'mouse') { const w = cursorWorld(); if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) dir = { x: w.x - octo.x, y: w.y - octo.y }; }
@@ -796,16 +821,88 @@ function stepCombat(snap, dt) {
     if (src === 'touch' && dir.y === 0 && Math.abs(lastAim.y) > 0.5) dir = lastAim; // nothing to aim at: the facing direction, up or down too
     if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; }
   }
-  if (snap.spell.pressed) {
-    const id = selectedSpell(hb);
-    const at = spellTarget(snap);
-    const r = castSpell(run, id, { clouds: inkClouds, x: at.x, y: at.y, vx: octo.vx, vy: octo.vy });
-    if (r === CAST_OK) {
-      const row = spellById(id);
-      sfx.inkPuff();
-      runStats.spellsCast++;
-      if (row && row.journal) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); }
-    } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
+  // right click / C / the Use button: the selected slot (a spell casts, the bomb is dropped or thrown)
+  if (snap.use && snap.use.pressed) {
+    const id = selectedSpell(hb), src = snap.src ? snap.src.use : 'key';
+    runStats.uses++;
+    if (id === BOMB_SLOT) placeBomb(snap, src);
+    else if (id && !isItemId(id)) castSelected(id, src);
+  }
+  // the phone's Spell button: the selected spell, or the last spell picked while an item is selected
+  if (snap.spell.pressed) { const id = castableSpell(hb); if (id) castSelected(id, snap.src && snap.src.spell === 'mouse' ? 'mouse' : 'touch'); }
+  // F (the phone's morphed Spell button): grab, throw, drop, talk, buy
+  if (snap.hand) { stepHand(hand, octo, snap.hand, dt, throwAim(snap), handCtx); takeHandEvents(); }
+}
+function castSelected(id, src) {
+  const at = spellTarget(src);
+  const r = castSpell(run, id, { clouds: inkClouds, x: at.x, y: at.y, vx: octo.vx, vy: octo.vy });
+  if (r === CAST_OK) {
+    const row = spellById(id);
+    sfx.inkPuff();
+    runStats.spellsCast++;
+    if (row && row.journal) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); }
+  } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
+}
+
+// --- controls 2026-10-08 (V2-PLAN 17): the hand ---
+const handCtx = {
+  isSolid: (x, y) => world.isSolid(x, y),
+  thrownHit: (x, y, r, vx, vy, dmg, rec) => thrownHit(x, y, r, vx, vy, dmg, rec),
+};
+/** After the physics of the step: the held thing in the tentacles, thrown things in flight, the target for the tell. */
+function stepHandWorld(dt) {
+  if (keeperNotice > 0) keeperNotice = Math.max(0, keeperNotice - dt);
+  handAttach(hand, octo, handCtx);
+  stepFlying(hand, dt, handCtx);
+  takeHandEvents();
+  updateTarget(hand, octo, handCtx);
+}
+function takeHandEvents() {
+  for (const ev of hand.events) {
+    if (ev.type === 'grab') { particles.trailBubble(ev.x, ev.y); sfx.thud(); }
+    else if (ev.type === 'throw') sfx.dash();
+    else if (ev.type === 'drop') sfx.thud();
+    else if (ev.type === 'shield') { particles.deathPoof(ev.x, ev.y, '#d9c6a8'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12); }
+    else if (ev.type === 'hit') { particles.deathPoof(ev.x, ev.y, '#e8e0d0'); sfx.thud(); }
+  }
+  hand.events.length = 0;
+}
+/**
+ * THE damage entry for thrown things (hand.js): the first creature, person or shopkeeper the thing at (x, y) radius r overlaps
+ * takes `dmg` through the Ink Jet's own path (inkHurt: enemies.hurt, creatures.hit, npcs.hit; keepers a heavy hit) and is
+ * knocked along; a ware still on its pedestal is knocked off (theft). Unified creature rules: retarget this one call site.
+ */
+function thrownHit(x, y, r, vx, vy, dmg, rec) {
+  if (shopSt && shopKnock(shopSt, props, x, y, r, vx, vy)) { wareKnocked(); return true; }
+  const list = inkTargets();
+  for (let k = 0; k < list.length; k++) {
+    const e = list[k];
+    if (e.dead || e.ghost || e.ware || e.kind === 'beholder' || (rec && e === rec.enemy)) continue;
+    if (Math.hypot(e.x - x, e.y - y) > r + (e.radius || 0.4)) continue;
+    if (e.keeper) { hitKeeper(keepers, e.i, HIT_HEAVY, dmg * 0.5, octo.x, octo.y); handleKeeperEvents(); }
+    else if (e.hp !== undefined) inkHurt(e, dmg);
+    if (!e.keeper && !e.v16 && e.moving && !e.dead) { e.kvx = vx * 0.5; e.kvy = e.kind === 'crab' ? 0 : vy * 0.5; e.stun = Math.max(e.stun || 0, 0.6); e.path = null; e.tell = 0; }
+    runStats.thrownHits++;
+    return true;
+  }
+  return false;
+}
+/** How many wares still stand on their pedestals. */
+function shelfWares() { let n = 0; if (shopSt) for (let i = 0; i < shopSt.ware.length; i++) if (shopSt.ware[i] === W_SHELF && !shopSt.sold[i]) n++; return n; }
+/** The octopus knocked a ware off its pedestal (ink, a throw, a blast, a dash): the keeper notices, and it is theft. */
+function wareKnocked(reason = 'theft') {
+  if (!V2 || !run || run.state !== S_BIOME) return;
+  keeperNotice = 0.9;
+  runStats.knocked++;
+  shopAggro(reason);
+}
+/** An ink blob that splatted on a ware's stand-in knocks the ware off. */
+function inkSplatWares() {
+  const ev = inkJet.events;
+  for (let i = 0; i < ev.nSplat; i++) {
+    if (ev.splatOn[i] !== 1) continue;
+    const x = ev.splat[i * 2], y = ev.splat[i * 2 + 1];
+    if (shopKnock(shopSt, props, x, y, INKJET.radius + 0.15, ev.splatDir[i * 2] * 6, ev.splatDir[i * 2 + 1] * 6)) wareKnocked();
   }
 }
 /**
@@ -824,7 +921,7 @@ function stepJuice(dt) {
   if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
   discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
 }
-const runStats = { shots: 0, spellsCast: 0, empty: 0 }; // test hook counters (__octo.combat())
+const runStats = { shots: 0, spellsCast: 0, empty: 0, uses: 0, thrownHits: 0, knocked: 0 }; // test hook counters (__octo.combat())
 
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -940,8 +1037,10 @@ function render(alpha, frameMs) {
   });
   if (V2) {
     hotbarUI.update(hotbarState());
-    const row = spellById(selectedSpell(hotbar()));
+    const row = spellById(castableSpell(hotbar()));
     touchUI.setSpell(!!row && run.juice >= row.cost * JUICE.perCast);
+    touchUI.setHand(octo.dead ? '' : phoneHandMode(hand, octo)); // the Spell button turns into Grab / Use / Throw
+    touchUI.setUse(selectedSpell(hotbar()) === BOMB_SLOT ? 'bomb' : 'spell');
   }
   debug.tick();
 }
@@ -974,6 +1073,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
   octo = createOctopus(world.startX, world.startY);
+  hand = createHand(); keeperNotice = 0; // whatever was in the tentacles stays behind
   if (V2) { octo.feel = true; octo.sink = sinkNow; }
   if (V2) applyCarried(octo, run.items);
   timed('r:renderer', () => { renderer = createRenderer(ctx, world); });
@@ -1265,9 +1365,9 @@ function stepV2(snap) {
     if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     if (shopSt) shopSt.keeperCalm = shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n && keepers.mode[shopSt.keeperIdx] === KM_CALM;
-    const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
+    const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F (hand-kinds.js 'ware')
     if (ev) onShopEvent(ev);
-    if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP)) onShopEvent(we); }
+    if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP, false)) onShopEvent(we); }
     if (poolSts.length) {
       hazards.setPoolGain(poolSts.some((ps) => ps.state === PL_ACTIVE) ? 1 : POOL_IDLE_VENT); // r40: the vents only blow weakly until a wager runs
       const busy = poolSts.some((ps) => ps.state === PL_ACTIVE); // one wager at a time
@@ -1316,6 +1416,8 @@ function stepV2(snap) {
       tutorialStep(tutState, octo, wallIntact(lv), STEP);
       if (tutState.hint) { const bp = lv.prompts.find((p) => p.refillBomb); if (bp) best = bp; }
     }
+    // controls 2026-10-08: at the tutorial's bomb floor the bomb is picked on the hotbar once, so Use / right click / C drop one
+    if (best && best.refillBomb && !tutState.bombPicked) { tutState.bombPicked = true; const hb = hotbar(), bi = hb.slots.findIndex((sl) => sl.ids[0] === BOMB_SLOT); if (bi >= 0) selectIndex(hb, bi); }
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
   } else ui.setPrompt(null);
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
@@ -1406,6 +1508,11 @@ function v2Extra(c, camera, w2s, cw, ch) {
   drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t, JUICE.life);
   inkJet.draw(c, camera, cw, ch, t);
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
+  if (!octo.dead && !octo.hidden && !entry) { // controls 2026-10-08: the tentacle curl toward what F would take, the arm round what it holds
+    const o = octo; // the step's position, as the held thing's (props are drawn at their step position too)
+    if (hand.held) { const hp = hand.held.pos ? hand.held.pos() : null; if (hp) drawHeldArm(c, camera, cw, ch, o.x, o.y, hp.x, hp.y, hand.held.r || 0.3, t); }
+    else if (hand.target) drawHandTell(c, camera, cw, ch, o.x, o.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
+  }
 }
 /** Pushable blocks: each resident chunk's 'block' spawns become PK_BLOCK props once. */
 function addBlocks(resident) {
@@ -1435,6 +1542,7 @@ function v2People(c, camera, w2s, cw, ch) {
   }
   if (run.state === S_BIOME) drawCreaturesFront(c, camera, cw, ch, creatures.data, t, octo);
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
+  if (keeperNotice > 0 && shopSt && shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n) drawKeeperNotice(c, camera, cw, ch, keepers.x[shopSt.keeperIdx], keepers.y[shopSt.keeperIdx] - 1.3, keeperNotice / 0.9, t);
 }
 
 // --- V2-PLAN 16: ambush creatures (js/creatures.js) ---
@@ -1615,7 +1723,7 @@ function stepRest() {
       discover('place-rest');
     }
   }
-  const ev = shopStep(shopSt, octo, run.shells, STEP, run.items);
+  const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F
   if (ev) onShopEvent(ev);
 }
 
@@ -1722,11 +1830,60 @@ setShopHooks({
   angry: () => !!(run && run.shopAggro),
 });
 
+// controls 2026-10-08 (V2-PLAN 17): what F does besides grabbing. The things to grab and the shop are hand-kinds.js; talking
+// (F next to someone: the next line now, or a hub resident's turn at once) is here, where the hub and the encounters live.
+const handEnv = {
+  get props() { return props; }, get corpses() { return corpses; }, get enemies() { return enemies; },
+  get loot() { return V2 && run && run.state === S_BIOME ? loot : null; }, get bombs() { return bombs; },
+  get shopSt() { return shopSt; }, get world() { return world; }, get run() { return run; },
+  onShopEvent(ev) { onShopEvent(ev); },
+};
+if (V2) {
+  registerHandKinds(handEnv);
+  registerInteract('talk', {
+    priority: PRI_TALK,
+    find(o, reach) {
+      if (!run) return null;
+      if (run.state === S_HUB && world.level.signX !== undefined && world.level.signX >= 0) {
+        let best = null, bd = reach;
+        for (const r of activeResidents()) {
+          const pl = hubPlace(world.level, r.id, sim.time), y = pl.fly ? pl.y : pl.y - 0.8;
+          const d = Math.hypot(o.x - pl.x, o.y - y);
+          if (d <= bd) { bd = d; best = { x: pl.x, y, ref: r.id }; }
+        }
+        return best;
+      }
+      if (run.state === S_BIOME && quest && quest.talk && talking(quest.talk) && Math.hypot(o.x - quest.cx, o.y - quest.cy) <= reach) return { x: quest.cx, y: quest.cy, ref: '' };
+      return null;
+    },
+    use(t) {
+      const tk = t.ref ? hubTalk.talk : quest.talk;
+      if (t.ref && hubTalk.who !== t.ref) { // a hub resident who is not speaking: their turn now
+        if (talking(tk)) { tk.q.length = 0; tk.left = 0; tk.text = ''; hubTalk.who = ''; }
+        hubTalk.cool[t.ref] = 0;
+        return true;
+      }
+      if (!talking(tk)) return false;
+      tk.left = Math.min(tk.left, 1e-4); talkStep(tk, 1e-3); // the next line (or the end of it)
+      return true;
+    },
+  });
+}
+
 // the ink jet's target list: the enemies plus one reusable stand-in per live shopkeeper (inkjet.js reads x, y, radius, hp, dead)
 const keeperProxies = [];
+const wareProxies = [];
 function inkTargets() {
   const list = enemies.all();
   if (V2) inkV16Targets(list);
+  if (V2 && shopSt && run.state === S_BIOME) { // a ware on its pedestal stops a blob (it has no hp: inkSplatWares knocks it off)
+    for (let i = 0; i < shopSt.ware.length; i++) {
+      if (shopSt.ware[i] !== W_SHELF || shopSt.sold[i]) continue;
+      const p = wareProxies[i] || (wareProxies[i] = { ware: true, slot: 0, x: 0, y: 0, radius: WARE_R, hp: undefined, dead: false });
+      p.slot = i; p.x = shopSt.px[i * 2]; p.y = shopSt.px[i * 2 + 1] - 0.15;
+      list.push(p);
+    }
+  }
   if (!(run && run.state === S_BIOME) || !keepers.n) return list;
   for (let i = 0; i < keepers.n; i++) {
     if (keepers.mode[i] === KM_DEAD) continue;
@@ -1991,7 +2148,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
 
 function onShopEvent(ev) {
   if (ev.type === 'fell') { particles.bombDebris(ev.x, ev.y + 0.5); return; }
-  if (ev.type === 'knocked') { particles.bouncePuff(ev.x, ev.y, 0, -1); return; }
+  if (ev.type === 'knocked') { particles.bouncePuff(ev.x, ev.y, 0, -1); if (ev.by) wareKnocked(); return; } // a dash knocked it off: theft
   if (ev.type === 'stolen') {
     if (ev.item.journal) discover(ev.item.journal);
     sfx.chime();
@@ -2022,6 +2179,24 @@ if (V2) {
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
+  /** Controls 2026-10-08: the hand: what is held, the target in reach, counters, the swim weight and the phone button's mode. */
+  hand() {
+    const t = hand.target;
+    const hp = hand.held && hand.held.pos ? hand.held.pos() : null;
+    return { held: hand.heldKind || '', heldAt: hp ? { x: hp.x, y: hp.y } : null, target: t ? { kind: t.kind, x: t.x, y: t.y } : null, grabs: hand.grabs, throws: hand.throws, drops: hand.drops, uses: hand.uses,
+      carryMul: octo.carryMul, shield: !!octo.shieldHit, phone: phoneHandMode(hand, octo), flying: hand.flying.length, reach: HAND_REACH, keeperNotice };
+  },
+  /** Test hook: stun every moving enemy within r of (x, y) for s seconds (as a blast does, without the push). */
+  stunNear(x, y, r, s = 1) { return enemies.knockInRadius(x, y, r, 0, s); },
+  /** Test hook: the material id of tile (x, y) (0 = water). */
+  tileAt(x, y) { return world.tileAt(x | 0, y | 0); },
+  /** Test hook: a loot pot / clam on the floor at (x, y) ('pot' | 'clam'); returns its record index. */
+  addLoot(kind, x, y, shells = 2) { return loot.add({ lk: kind === 'clam' ? 1 : 2, x, y, dx: 0, dy: 0, n: shells }); },
+  /** Test hook: the bombs in play (position, mode 0 plain / 1 heavy / 2 sticky, prop state, armed, fuse, stuck to a creature). */
+  bombsLive() {
+    const d = props.data;
+    return bombs.list().filter((b) => !b.exploded && b.pid >= 0).map((b) => ({ x: b.x, y: b.y, vx: d.vx[b.pid], vy: d.vy[b.pid], mode: d.mode[b.pid], state: d.state[b.pid], armed: b.armed, fuse: b.fuse, stuck: !!d.stuck[b.pid], onCreature: !!b.stickE }));
+  },
   state() {
     return {
       time: sim.time,
