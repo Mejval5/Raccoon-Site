@@ -48,10 +48,17 @@ const SEEDS = [11, 23, 77];
         const t0 = Date.now();
         let spawned = false;
         while (Date.now() - t0 < 7500) {
-          // once the body has come to rest, a piranha just above it: it goes for the corpse
+          // once the body has come to rest, a piranha just above it (or beside it): it goes for the corpse
           // (above it: the body came down through that water, so the piranha has room to lunge, even in a narrow shaft)
           if (!spawned && Date.now() - t0 > 2400) {
-            spawned = await page.evaluate(() => { const b = __octo.body(); if (b.state !== 1 && performance.now() - window.__deathAt < 3200) return false; __octo.spawn('piranha', b.x, b.y - 1.7); return true; });
+            spawned = await page.evaluate(() => {
+              const b = __octo.body(); if (b.state !== 1 && performance.now() - window.__deathAt < 3200) return false;
+              // open water near the body with open water between (a fish-bone block or a ledge may sit right above it): above first
+              const open = (x, y) => __octo.tileAt(Math.floor(x), Math.floor(y)) === 0;
+              const spots = [[0, -1.7], [1.6, -1.2], [-1.6, -1.2], [1.8, 0], [-1.8, 0], [0, -2.6]];
+              const s = spots.find(([dx, dy]) => open(b.x + dx, b.y + dy) && open(b.x + dx / 2, b.y + dy / 2)) || spots[0];
+              __octo.spawn('piranha', b.x + s[0], b.y + s[1]); return true;
+            });
           }
           samples.push(await page.evaluate(() => { const b = __octo.body(); return b && { ...b, at: performance.now() - window.__deathAt, time: __octo.state().time }; }));
           await sleep(60);

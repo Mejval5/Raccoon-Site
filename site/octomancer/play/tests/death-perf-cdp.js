@@ -13,7 +13,8 @@
 // Per viewport: the frame time of a live octopus right after the page loads; the death screen's (within 1.5x of it); then five
 // death -> hub -> dive cycles, and the dive after them (within 1.2x of the fresh load). A Chrome trace of the death screen and of
 // the last dive must show no GPU readbacks at all. The game's own requestAnimationFrame calls stay one per frame and the live
-// canvases (after a garbage collection) do not grow from the first cycle to the last.
+// canvases (after a garbage collection) do not grow from the first cycle to the last. A frame time is the quietest of four windows
+// (other work on the machine stalls frames in bursts; the bug made every frame slow).
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
@@ -48,11 +49,18 @@ const CYCLES = 5;
       await sleep(1500);
       const cdp = await page.target().createCDPSession();
       // frame times over `ms` (median, p95) and the game's rAF calls per frame (the sampler's own calls taken out)
-      const sample = (ms) => page.evaluate((ms) => new Promise((res) => {
+      const window1 = (ms) => page.evaluate((ms) => new Promise((res) => {
         const t = []; let last = performance.now(); const end = last + ms; const r0 = window.__rafN;
         function f(now) { t.push(now - last); last = now; if (now < end) requestAnimationFrame(f); else { const n = t.length; t.sort((a, b) => a - b); res({ n, med: +t[n >> 1].toFixed(1), p95: +t[Math.floor(n * 0.95)].toFixed(1), rafPerFrame: +((window.__rafN - r0 - n) / n).toFixed(2) }); } }
         requestAnimationFrame(f);
       }), ms);
+      // the quietest of several windows: other work on the machine (parallel test runs) stalls frames in bursts, while the
+      // canvas this guards against (drawn on the CPU) is slow in every window
+      const sample = async (ms) => {
+        let best = null;
+        for (let i = 0; i < 4; i++) { const s = await window1(ms / 2); if (!best || s.med < best.med) best = { ...s, rafPerFrame: Math.max(s.rafPerFrame, best ? best.rafPerFrame : 0) }; }
+        return best;
+      };
       const readbacks = async (ms) => {
         await page.tracing.start({ categories: ['gpu', 'devtools.timeline', 'disabled-by-default-devtools.timeline'] });
         await sleep(ms);
