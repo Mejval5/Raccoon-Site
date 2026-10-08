@@ -19,6 +19,7 @@
 
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
 import { octoHit } from './damage.js';
+import { crumbleAt, CR_PROP, PROP_BREAK_SPEED } from './fragile.js';
 
 export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7;
 export const PK_FIND = 8; // a shell, bomb or item released from the rock (embed.js)
@@ -198,6 +199,8 @@ export function createProps(cap = DEFAULT_CAP) {
       const vn = contact.vn, e = REST[d.kind[i]] * Math.min(1, (-vn - BOUNCE_MIN) / BOUNCE_FULL);
       if (-vn > BOUNCE_MIN && e > 0) { B.vx += -e * vn * contact.nx; B.vy += -e * vn * contact.ny; }
       if (contact.ny < -0.3) d.grounded[i] = 1;
+      // fragile terrain: a prop slammed into fish bone breaks the tile it hit (a thrown pot or rock, a flung body)
+      if (-vn > PROP_BREAK_SPEED && world.crumbleTile) crumbleAt(world, B.x - contact.nx * (B.radius + 0.1), B.y - contact.ny * (B.radius + 0.1), CR_PROP);
       // a bomb thrown up against a ceiling sticks to it (as in Spelunky); stepOne turns this into PS_HELD
       if (d.kind[i] === PK_BOMB && contact.ny > 0.6 && -vn > STICK_CEIL_SPEED) ceilHit = true;
       lastNx = contact.nx; lastNy = contact.ny;

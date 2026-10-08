@@ -490,6 +490,17 @@ export function drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, part
       }
       continue;
     }
+    if (p.shard) { // fish-bone sliver (particles.boneShards): a short pale stroke with Milan's dark outline, fading in its last third
+      const len = p.size * camera.pxPerUnit, c = Math.cos(p.rot) * len * 0.5, sn = Math.sin(p.rot) * len * 0.5;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (p.life / p.maxLife) * 3);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#2a2a30'; ctx.lineWidth = Math.max(1.5, len * 0.42);
+      ctx.beginPath(); ctx.moveTo(s.x - c, s.y - sn); ctx.lineTo(s.x + c, s.y + sn); ctx.stroke();
+      ctx.strokeStyle = p.color; ctx.lineWidth = Math.max(0.8, len * 0.22); ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     // V2-PLAN 16: a sticky chunk (a splat's gore) keeps its size and only fades in its last second
     const alpha = p.sticky ? Math.min(1, p.life) : Math.max(0, p.life / p.maxLife);
     ctx.save();
