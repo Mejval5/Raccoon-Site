@@ -9,7 +9,7 @@ import { drawItemIcon } from './items-draw.js';
 import { FN } from './journal-art.js';
 import { wrapLines } from './speech.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
-import { drawSprite, spriteRect } from './sprites.js';
+import { drawSprite, spriteRect, drawBombSprite } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -53,6 +53,7 @@ export function drawRubble(ctx, camera, cw, ch, d) {
 }
 
 function bombGlyph(ctx, x, y, r, time) {
+  if (drawBombSprite(ctx, 'bomb', x, y, r)) return;
   ctx.fillStyle = '#26303a'; ctx.strokeStyle = '#0b1218'; ctx.lineWidth = Math.max(1.5, r * 0.18);
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -274,14 +275,29 @@ export function drawWallCue(ctx, camera, cw, ch, cue, time) {
   if (!n) return;
   // pulsing bomb marker on the wall's middle, with a ring that grows and fades
   const mx = sx(cx / n), my = sy(cy / n);
+  if (spriteRect('bombMark')) { // the painted carved glyph, breathing, with a few bubbles rising off it
+    const att = cue.attention, pulse = 0.5 + 0.5 * Math.sin(time * (2.4 + 2.4 * att));
+    ctx.save();
+    ctx.globalAlpha = 0.55 + (0.3 + 0.1 * att) * pulse;
+    const sc = 1 + 0.05 * Math.sin(time * 3);
+    drawSprite(ctx, 'bombMark', mx, my, 0, ppu * 1.3 * sc, 0.5, 0.5);
+    ctx.strokeStyle = 'rgba(210,238,255,0.8)'; ctx.lineWidth = Math.max(1, ppu * 0.025);
+    for (let k = 0; k < 4; k++) {
+      const ph = (time * (0.45 + 0.4 * att) + k / 4) % 1;
+      ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.85;
+      ctx.beginPath(); ctx.arc(mx + (k - 1.5) * ppu * 0.2 + Math.sin(ph * 7 + k * 2) * ppu * 0.05, my + ppu * 0.15 - ph * ppu * 0.85, ppu * (0.035 + 0.03 * ph), 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
   const p = (time * (0.9 + 0.8 * cue.attention)) % 1;
-  ctx.strokeStyle = `rgba(255,214,120,${(1 - p) * (0.75 + 0.25 * cue.attention)})`;
+  ctx.strokeStyle = `rgba(239,227,198,${(1 - p) * (0.75 + 0.25 * cue.attention)})`;
   ctx.lineWidth = Math.max(2, ppu * 0.1);
   ctx.beginPath(); ctx.arc(mx, my, ppu * (0.4 + 0.4 * p), 0, TAU); ctx.stroke(); // the ring stays inside the 2 tile thick barrier
   const s = 1 + 0.08 * Math.sin(time * 5);
   ctx.fillStyle = 'rgba(6,22,34,0.75)';
   ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.fill();
-  ctx.strokeStyle = '#ffd678'; ctx.lineWidth = Math.max(1.5, ppu * 0.07);
+  ctx.strokeStyle = 'rgba(239,227,198,0.95)'; ctx.lineWidth = Math.max(1.5, ppu * 0.07);
   ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.stroke();
   bombGlyph(ctx, mx - ppu * 0.04, my + ppu * 0.06, ppu * 0.3 * s, time);
 }

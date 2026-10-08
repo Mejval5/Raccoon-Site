@@ -1,6 +1,8 @@
 // Code-drawn icons for the hotbar and the inventory (house style: dark ink outline #10202c, flat fills, no shine).
 // Each draws inside a circle of radius r around (x, y), except the jar, which fills the box (x, y, w, h).
 
+import { drawSprite, spriteRect, spriteMeta, drawBombSprite } from './sprites.js';
+
 const TAU = Math.PI * 2;
 const INK = '#10202c';
 
@@ -17,7 +19,9 @@ export function drawSpellIcon(ctx, id, x, y, r) {
   ctx.translate(x, y);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   const lw = Math.max(1.2, r * 0.11);
-  if (id === 'ink-cloud') {
+  if (id === 'ink-cloud' && spriteRect('iconInkCloud')) drawSprite(ctx, 'iconInkCloud', 0, 0, 0, 2 * r, 0.5, 0.5);
+  else if (id !== 'ink-cloud' && spriteRect('stone')) drawSprite(ctx, 'stone', 0, 0, 0, 2 * r, 0.5, 0.5);
+  else if (id === 'ink-cloud') {
     const blobs = [[-0.5, 0.2, 0.36], [0.1, 0.32, 0.4], [0.5, 0.12, 0.32], [-0.25, -0.2, 0.4], [0.28, -0.22, 0.36], [0, -0.5, 0.26]];
     puffs(ctx, blobs.map(([a, b, c]) => [a * r, b * r, c * r]), '#2b2038', INK, lw);
     // lighter violet curls inside, drawn as thin arcs
@@ -40,8 +44,37 @@ export function drawSpellIcon(ctx, id, x, y, r) {
   ctx.restore();
 }
 
+/** The painted jar: the liquid is drawn first, clipped to the box inside the glass (iconJar meta), then the see-through glass over it. */
+function drawPaintedJar(ctx, x, y, w, h, frac, ticks, jr, jm) {
+  const dw = h * jr[2] / jr[3], x0 = x + (w - dw) / 2;
+  const bx = x0 + jm.u0 * dw, by = y + jm.v0 * h, bw = (jm.u1 - jm.u0) * dw, bh = (jm.v1 - jm.v0) * h;
+  const f = Math.max(0, Math.min(1, frac));
+  ctx.save();
+  if (f > 0) {
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.max(1, bw * 0.12)); ctx.clip();
+    const top = by + bh - bh * f;
+    ctx.fillStyle = '#4a6a3e'; ctx.fillRect(bx, top, bw, by + bh - top);
+    ctx.fillStyle = 'rgba(96,52,120,0.55)'; ctx.fillRect(bx, top, bw, by + bh - top);
+    ctx.fillStyle = 'rgba(30,22,40,0.35)'; ctx.fillRect(bx + bw * 0.55, top, bw * 0.45, by + bh - top);
+    ctx.fillStyle = '#7f9a5a'; ctx.fillRect(bx, top, bw, Math.max(1, h * 0.035));
+  }
+  ctx.restore();
+  drawSprite(ctx, 'iconJar', x0, y, dw, h, 0, 0);
+  if (ticks > 0) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(16,32,44,0.8)'; ctx.lineWidth = Math.max(1, dw * 0.05); ctx.lineCap = 'round';
+    for (let k = 1; k <= ticks; k++) {
+      const ty = by + bh - bh * (k / ticks);
+      ctx.beginPath(); ctx.moveTo(bx + 1, ty); ctx.lineTo(bx + 1 + bw * 0.22, ty); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 /** A small corked glass jar. `frac` 0..1 of liquid, `ticks` notches (one per cast) on the glass. */
 export function drawJarIcon(ctx, x, y, w, h, frac, ticks) {
+  const jr = spriteRect('iconJar'), jm = spriteMeta('iconJar');
+  if (jr && jm) { drawPaintedJar(ctx, x, y, w, h, frac, ticks, jr, jm); return; }
   ctx.save();
   ctx.translate(x, y);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -95,6 +128,7 @@ export function drawJarIcon(ctx, x, y, w, h, frac, ticks) {
 
 /** The bomb for the active-use slot: round and dark with a short fuse; the tip is a dull ember, not a bright spark. */
 export function drawBombSlotIcon(ctx, x, y, r) {
+  if (drawBombSprite(ctx, 'bomb', x, y + 0.15 * r, 0.68 * r)) return;
   ctx.save();
   ctx.translate(x, y);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';

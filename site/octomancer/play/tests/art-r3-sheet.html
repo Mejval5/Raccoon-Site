@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Art round 3 sheet</title>
+<style>body{margin:0;background:#10202c}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+// Test page (not shipped): the round 3 painted items at in-game scale (144 device px per tile) next to the octopus and a
+// piranha, for the before/after sheet. Draws through the game's own draw functions, so on an older checkout it shows the
+// code drawing. ?t=<seconds> sets the animation time. window.__sheetDone is set when it has drawn.
+import { createCreatures, CR_GCLAM, CR_TENTACLE, CL_SHUT, CL_OPEN, TN_DORMANT, TN_REACH, TN_GRAB } from '../js/creatures.js';
+import { drawCreaturesBack, drawCreaturesFront } from '../js/creatures-draw.js';
+import { drawJuiceDrops, drawInkClouds } from '../js/spells-draw.js';
+import { drawBombs } from '../js/enemy-draw.js';
+import { drawBombItem } from '../js/loot-draw.js';
+import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from '../js/spell-icons.js';
+import { drawWallCue } from '../js/v2-props-draw.js';
+import { ensureSprites, onSpritesReady } from '../js/sprites.js';
+
+const PPU = 144, W = 2200, H = 1950;
+const cv = document.getElementById('c'); cv.width = W; cv.height = H; cv.style.width = W / 2 + 'px';
+const ctx = cv.getContext('2d');
+const T = +(new URLSearchParams(location.search).get('t') || 1.3);
+const cam = { x: W / 2 / PPU, y: H / 2 / PPU, pxPerUnit: PPU };   // world (0,0) at the top left, in tiles
+const w2s = (c, cw, ch, x, y) => ({ x: cw / 2 + (x - c.x) * c.pxPerUnit, y: ch / 2 + (y - c.y) * c.pxPerUnit });
+const load = (n) => new Promise((r) => { const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = '../assets/' + n; });
+
+function label(text, x, y) { ctx.font = '600 22px sans-serif'; ctx.fillStyle = 'rgba(220,235,240,0.75)'; ctx.fillText(text, x * PPU, y * PPU); }
+
+async function main() {
+  ensureSprites();
+  await Promise.race([new Promise((r) => onSpritesReady(r)), new Promise((r) => setTimeout(r, 4000))]);
+  const [octo, pir, octoJson] = await Promise.all([load('octopus.webp'), load('enemy-piranha.webp'), fetch('../assets/octopus.json').then((r) => r.json())]);
+  await new Promise((r) => setTimeout(r, 800)); // creatures-draw's shell image
+  ctx.fillStyle = '#24485a'; ctx.fillRect(0, 0, W, H);
+  // a band of floor rock for the things that sit on a floor
+  ctx.fillStyle = '#3b3a46'; ctx.fillRect(0, 3.0 * PPU, W, 0.35 * PPU);
+
+  function drawOcto(x, y) { // the idle rest frame with its eyes, 1.917 tiles per 160 px cell
+    const cell = 13, k = octoJson.cellWorldSize * PPU / octoJson.cellSize;
+    ctx.drawImage(octo, cell * 160, 0, 160, 160, x * PPU - 80 * k, y * PPU - 80 * k, 160 * k, 160 * k);
+    const an = octoJson.eyeAnchors.idle[0], es = octoJson.eyeSprites.open;
+    const ew = octoJson.eyeRestSize.right.meshW * octoJson.meshUnitsToWorld * PPU;
+    for (const s of ['left', 'right']) { const e = es[s]; ctx.drawImage(octo, e.x, e.y, e.w, e.h, x * PPU + (an[s].x - 80) * k - ew / 2, y * PPU + (an[s].y - 80) * k - ew / 2, ew, ew); }
+  }
+  drawOcto(1.2, 2.2); label('octopus', 0.5, 0.5);
+  { const h = 1.15 * PPU, w = h * pir.naturalWidth / pir.naturalHeight; ctx.drawImage(pir, 3.2 * PPU - w / 2, 2.3 * PPU - h / 2, w, h); label('piranha', 2.6, 0.5); }
+
+  // giant clams: shut, half open, open with pearl
+  const d = createCreatures().data;
+  const addClam = (x, ang, pearl) => { const i = d.n++; d.kind[i] = CR_GCLAM; d.alive[i] = 1; d.x[i] = x; d.fy[i] = 3.0; d.y[i] = 2.6; d.ang[i] = ang; d.state[i] = ang > 0.9 ? CL_OPEN : CL_SHUT; d.pearl[i] = pearl; d.side[i] = -1; };
+  addClam(5.4, 0, 1); addClam(7.6, 0.5, 1); addClam(9.8, 1, 1);
+  label('giant clam: shut / half / open', 4.5, 0.5);
+  // tentacles: dormant, reaching, holding the octopus
+  const addTent = (x, y, st, tx, ty) => { const i = d.n++; d.kind[i] = CR_TENTACLE; d.alive[i] = 1; d.state[i] = st; d.x[i] = x; d.y[i] = y; d.mx[i] = x + 0.43; d.my[i] = y; d.mdx[i] = 1; d.mdy[i] = 0; d.side[i] = 1; d.tipx[i] = tx; d.tipy[i] = ty; d.t[i] = 1; d.squeeze[i] = 0.6; return i; };
+  addTent(1.2, 5.0, TN_DORMANT, 1.6, 5.0);
+  addTent(3.6, 5.2, TN_REACH, 6.2, 4.0);
+  addTent(8.0, 5.4, TN_REACH, 9.6, 6.6);
+  const gi = addTent(11.2, 5.2, TN_GRAB, 13.2, 4.8);
+  label('tentacle: dormant / reaching / curling / holding', 0.5, 3.9);
+  drawCreaturesBack(ctx, cam, W, H, d, T);
+  drawOcto(13.2, 4.8);
+  drawCreaturesFront(ctx, cam, W, H, d, T, { x: 13.2, y: 4.8, held: gi, dead: false, deathStyle: '' });
+
+  // juice droplets, an ink cloud, bombs
+  const N = 4, jd = { live: N, n: N, alive: new Uint8Array(N).fill(1), x: new Float32Array([0.8, 1.6, 2.4, 3.2]), y: new Float32Array(N).fill(8.0), age: new Float32Array([0.6, 1.0, 1.4, 1.8]), ph: new Float32Array([0, 1.7, 3.1, 4.4]) };
+  drawJuiceDrops(ctx, cam, W, H, jd, T, 3.5); label('juice', 0.5, 7.2);
+  const ic = { live: 1, n: 1, alive: new Uint8Array([1]), x: new Float32Array([6.2]), y: new Float32Array([8.2]), r: new Float32Array([2.1]), age: new Float32Array([1.2]), dur: new Float32Array([4]), seed: new Float32Array([1.3]) };
+  drawOcto(7.0, 8.4);
+  drawInkClouds(ctx, cam, W, H, ic, T, 0); drawInkClouds(ctx, cam, W, H, ic, T, 1); label('ink cloud (octopus inside)', 4.2, 6.2);
+  drawBombs(ctx, cam, w2s, W, H, [{ x: 10.0, y: 8.2, exploded: false, rot: 0.2, fuse: 1.4, fuse0: 1.5 }, { x: 11.4, y: 8.2, exploded: false, rot: -0.3, fuse: 0.2, fuse0: 1.5 }], T);
+  drawBombItem(ctx, 12.8 * PPU, 8.3 * PPU, PPU); label('bomb: fresh / burning / pocket', 9.4, 7.2);
+
+  // icons at hotbar size (48 css px = 96 device px) and the jar
+  label('hotbar icons, jar, tutorial marker', 0.5, 9.4);
+  ctx.fillStyle = 'rgba(30,40,46,0.9)'; ctx.fillRect(0.4 * PPU, 9.6 * PPU, 4.6 * PPU, 0.9 * PPU);
+  drawSpellIcon(ctx, 'ink-cloud', 0.8 * PPU, 10.05 * PPU, 96 * 0.38);
+  drawSpellIcon(ctx, 'unknown', 1.6 * PPU, 10.05 * PPU, 96 * 0.38);
+  drawBombSlotIcon(ctx, 2.4 * PPU, 10.05 * PPU, 96 * 0.36);
+  drawJarIcon(ctx, 3.0 * PPU, 9.75 * PPU, 44, 60, 0.67, 3);
+  drawJarIcon(ctx, 3.6 * PPU, 9.62 * PPU, 64, 88, 0.33, 3);
+  // bigger, for a close look
+  drawSpellIcon(ctx, 'ink-cloud', 1.0 * PPU, 11.6 * PPU, 0.85 * PPU);
+  drawBombSlotIcon(ctx, 2.9 * PPU, 11.6 * PPU, 0.85 * PPU);
+  drawJarIcon(ctx, 4.0 * PPU, 10.8 * PPU, 1.2 * PPU, 1.7 * PPU, 0.67, 3);
+  // the tutorial bomb wall: a 2 x 4 barrier of rock with water left and right
+  const walls = []; for (let y = 9; y < 13; y++) for (let x = 8; x < 10; x++) walls.push(x, y);
+  ctx.fillStyle = '#4a4553'; ctx.fillRect(7 * PPU, 9 * PPU, 4 * PPU, 4 * PPU);
+  ctx.fillStyle = '#24485a'; ctx.fillRect(7 * PPU, 9 * PPU, PPU, 4 * PPU); ctx.fillRect(10 * PPU, 9 * PPU, PPU, 4 * PPU);
+  drawWallCue(ctx, cam, W, H, { walls: Int16Array.from(walls), tileAt: (x, y) => (x >= 8 && x < 10 ? 1 : 0), attention: 0 }, T);
+  window.__sheetDone = true;
+}
+main().catch((e) => { document.body.append(String(e)); window.__sheetDone = 'error: ' + e; });
+</script></body></html>
