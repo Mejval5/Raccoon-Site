@@ -1,7 +1,8 @@
-// B1-1 run flow tests (run.js): the hub -> tutorial -> Shallows 1-1..1-3 -> end -> hub state machine.
+// B1-1 run flow tests (run.js): the hub -> Shallows 1-1..1-3 -> end -> hub state machine; the tutorial is its own place
+// (hub -> tutorial -> hub) that unseals the dive; quick restart (EV_RESTART) from a dive straight into a new one.
 import {
   createRun, runEvent, levelSpec, stageLabel, isSafeState,
-  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, BIOME_LEVELS, CAUSE_TEXT, CAUSE_NAME, DEATH_TITLE, deathTitle,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, S_REST, EV_ENTER_DIVE, EV_ENTER_TUTORIAL, EV_RESTART, EV_LEAVE, EV_ENTER_SHORTCUT, diveOpen, canQuickRestart, EV_EXIT, EV_DEATH, EV_CONTINUE, BIOME_LEVELS, CAUSE_TEXT, CAUSE_NAME, DEATH_TITLE, deathTitle,
 } from '../js/run.js';
 
 export function runRunTests(assert) {
@@ -9,12 +10,22 @@ export function runRunTests(assert) {
   const r = createRun(42, { tutorialDone: false });
   assert('run: starts in the hub with label "Hub"', r.state === S_HUB && stageLabel(r) === 'Hub' && levelSpec(r).kind === 'hub');
   assert('run: hub ignores exit / continue events', !runEvent(r, EV_EXIT) && !runEvent(r, EV_CONTINUE) && r.state === S_HUB);
-  assert('run: entering the dive from the hub goes to the tutorial the first time',
-    runEvent(r, EV_ENTER_DIVE) && r.state === S_TUTORIAL && stageLabel(r) === 'Tutorial' && levelSpec(r).kind === 'tutorial');
+  assert('run: the dive is sealed until the tutorial is done (the event is refused, nothing changes)',
+    !diveOpen(r) && !runEvent(r, EV_ENTER_DIVE) && r.state === S_HUB && r.dives === 0);
+  r.shortcut = true;
+  assert('run: the shortcut ring is sealed too before the tutorial', !runEvent(r, EV_ENTER_SHORTCUT) && r.state === S_HUB);
+  r.shortcut = false;
+  assert('run: the tutorial ring enters the tutorial', runEvent(r, EV_ENTER_TUTORIAL) && r.state === S_TUTORIAL && stageLabel(r) === 'Tutorial' && levelSpec(r).kind === 'tutorial');
   assert('run: hub and tutorial are safe states (no enemies, no Beholder timer)', isSafeState(r));
-  assert('run: tutorial ignores the dive event', !runEvent(r, EV_ENTER_DIVE) && r.state === S_TUTORIAL);
-  assert('run: tutorial exit starts Shallows 1-1 and marks the tutorial done',
-    runEvent(r, EV_EXIT) && r.state === S_BIOME && r.level === 1 && r.tutorialDone && stageLabel(r) === 'Shallows 1-1');
+  assert('run: tutorial ignores the dive event and the quick restart', !runEvent(r, EV_ENTER_DIVE) && !runEvent(r, EV_RESTART) && r.state === S_TUTORIAL && !canQuickRestart(r));
+  assert('run: leaving the tutorial from the pause menu goes to the hub, still sealed', runEvent(r, EV_LEAVE) && r.state === S_HUB && !r.tutorialDone && !r.diveUnlocked);
+  runEvent(r, EV_ENTER_TUTORIAL);
+  assert('run: tutorial exit returns to the hub, marks the tutorial done and asks for the unlock moment',
+    runEvent(r, EV_EXIT) && r.state === S_HUB && r.level === 0 && r.tutorialDone && r.diveUnlocked && diveOpen(r) && r.dives === 0);
+  r.diveUnlocked = false;
+  assert('run: the tutorial stays replayable; a second finish asks for no unlock moment',
+    runEvent(r, EV_ENTER_TUTORIAL) && r.state === S_TUTORIAL && runEvent(r, EV_EXIT) && r.state === S_HUB && !r.diveUnlocked);
+  assert('run: the open dive starts Shallows 1-1', runEvent(r, EV_ENTER_DIVE) && r.state === S_BIOME && r.level === 1 && stageLabel(r) === 'Shallows 1-1');
   assert('run: biome levels are generated with a per-dive seed', levelSpec(r).kind === 'generated' && levelSpec(r).levelIndex === 0 && !isSafeState(r));
   const seed1 = levelSpec(r).seed;
   runEvent(r, EV_EXIT);
@@ -52,6 +63,26 @@ export function runRunTests(assert) {
   assert('run: level seeds are deterministic per (run seed, dive)', levelSpec(a).seed === levelSpec(b).seed);
   runEvent(a, EV_DEATH); runEvent(a, EV_ENTER_DIVE);
   assert('run: the second dive of a run differs from the first', levelSpec(a).seed !== levelSpec(b).seed);
+
+  // quick restart: the same run state as death -> hub -> dive (seeds aside)
+  const mk = () => { const x = createRun(5, { tutorialDone: true, juiceStart: 3, rest: true }); runEvent(x, EV_ENTER_DIVE); runEvent(x, EV_EXIT);
+    x.shells = 40; x.items = ['lantern', 'siphon']; x.shopAggro = true; x.shopAggroWhy = 'theft'; x.juice = 9; x.hotbar = { slots: ['ink'] }; x.dive.kills = 4; x.dive.time = 33; return x; };
+  const viaHub = mk(), quick = mk();
+  runEvent(viaHub, EV_DEATH, 'crab'); runEvent(viaHub, EV_ENTER_DIVE);
+  assert('run: quick restart applies in a dive', canQuickRestart(quick) && runEvent(quick, EV_RESTART, 'crab'));
+  const strip = (x) => { const o = { ...x, dive: { ...x.dive } }; delete o.diveSeed; return JSON.stringify(o); };
+  assert('run: quick restart (death) equals death -> hub -> dive', strip(quick) === strip(viaHub), strip(quick) + ' vs ' + strip(viaHub));
+  assert('run: quick restart starts Shallows 1-1 with a fresh dive', quick.state === S_BIOME && quick.level === 1 && quick.shells === 0 && quick.items.length === 0 && !quick.shopAggro && quick.juice === 3 && quick.hotbar === null && quick.deaths === 1 && quick.last === null && quick.dive.kills === 0);
+  const alive = mk(), d0 = alive.deaths;
+  runEvent(alive, EV_RESTART);
+  assert('run: quick restart from the pause menu (alive) is not a death', alive.deaths === d0 && alive.state === S_BIOME && alive.level === 1 && alive.items.length === 0);
+  const seeded = mk(), s0 = seeded.diveSeed;
+  runEvent(seeded, EV_RESTART, 'crab', { sameSeed: true });
+  assert('run: a seeded quick restart replays the dive seed; an unseeded one gets a new seed', seeded.diveSeed === s0 && quick.diveSeed !== s0);
+  const rest = mk(); rest.state = S_REST;
+  assert('run: quick restart works from the rest grotto too', runEvent(rest, EV_RESTART, 'crab') && rest.state === S_BIOME && rest.level === 1);
+  const hubR = createRun(5, { tutorialDone: true });
+  assert('run: no quick restart in the hub or on the end screen', !runEvent(hubR, EV_RESTART) && (hubR.state = S_END, !runEvent(hubR, EV_RESTART)));
 
   // death screen titles: one per cause; only the Beholder and unknown keep 'The dark took you'
   const missing = Object.keys(CAUSE_TEXT).filter((k) => !DEATH_TITLE[k]);

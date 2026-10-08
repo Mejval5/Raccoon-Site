@@ -51,6 +51,7 @@ import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
   createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, deathTitle, BIOME_LEVELS, BIOME_NAME,
   S_HUB, S_TUTORIAL, S_BIOME, S_END, S_REST, REST_NAME, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL, EV_ENTER_SHORTCUT3, SHORTCUT3_LEVEL,
+  EV_ENTER_TUTORIAL, EV_RESTART, EV_LEAVE, diveOpen, canQuickRestart,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
 import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN, STAT_USED, STAT_CARRIED } from './journal.js';
@@ -388,6 +389,54 @@ function arriveInHub() {
 }
 if (V2 && run.state === S_HUB && !MOVETEST) arriveInHub();
 
+// --- Tutorial unlock (Spelunky style): the hub's dive is sealed by kelp until the tutorial has been finished once ---
+let sealBumpAt = -99;   // sim time the octopus last bumped into the kelp (it shivers; the thud and the puff at most every 0.8 s)
+let unlockAnim = null;  // the unlock moment after the first finished tutorial: {t, seal, said}; the camera visits the dive while the kelp lets go
+const UNLOCK_PAN_S = 0.9, UNLOCK_OPEN_AT = 1.0, UNLOCK_OPEN_S = 1.1, UNLOCK_BACK_AT = 2.5, UNLOCK_END_S = 3.3, UNLOCK_INPUT_S = 2.6;
+/** How shut the hub's dive is: 1 sealed, 0 open (in between while the unlock moment plays); 0 outside the hub. */
+function hubSeal() {
+  if (!V2 || run.state !== S_HUB || MOVETEST) return 0;
+  if (unlockAnim) return unlockAnim.seal;
+  return diveOpen(run) ? 0 : 1;
+}
+/** The octopus swam into the sealed dive: pushed back up out of the ring, the kelp shivers. */
+function sealedBump(lv) {
+  const cx = lv.exitX + 0.5, cy = lv.exitY + 0.5, dx = octo.x - cx;
+  octo.vy = Math.min(octo.vy, -3.2);
+  octo.vx += Math.sign(dx || 1) * 0.6;
+  if (sim.time - sealBumpAt > 0.8) { sfx.thud(); particles.bouncePuff(cx, cy - 0.2, 0, -1); }
+  sealBumpAt = sim.time;
+}
+const smooth01 = (x) => { const u = Math.max(0, Math.min(1, x)); return u * u * (3 - 2 * u); };
+function stepUnlock(dt) {
+  const u = unlockAnim;
+  u.t += dt;
+  u.seal = 1 - smooth01((u.t - UNLOCK_OPEN_AT) / UNLOCK_OPEN_S);
+  if (!u.said && u.t >= UNLOCK_OPEN_AT) {
+    u.said = true;
+    const lv = world.level, cx = lv.exitX + 0.5, cy = lv.exitY;
+    sfx.chime();
+    for (let i = 0; i < 5; i++) particles.pickupSparkle(cx - 1 + i * 0.5, cy + 0.3, i % 2 ? '#8fc46a' : '#c8f5e6');
+    particles.bouncePuff(cx, cy + 0.5, 0, -1);
+    ui.showTitle('The dive is open', '', 2200);
+    ui.showToast('Swim into the whirlpool to start a run', 3600);
+  }
+  if (u.t >= UNLOCK_END_S) unlockAnim = null;
+}
+/** The unlock moment starts: the octopus is put beside the dive (so the dive is on screen on any display) and waits. */
+function startUnlock() {
+  run.diveUnlocked = false;
+  unlockAnim = { t: 0, seal: 1, said: false };
+  const lv = world.level, x = lv.exitX + 2.7, y = lv.exitY - 0.6;
+  if (!world.isSolid(x, y)) { octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0; ragdoll.place(octo, props, x, y); }
+}
+/** The camera leans to the dive during the unlock moment and comes back to the octopus at the end. */
+function unlockCameraBias() {
+  const u = unlockAnim, lv = world.level;
+  const k = u.t < UNLOCK_BACK_AT ? smooth01(u.t / UNLOCK_PAN_S) : 1 - smooth01((u.t - UNLOCK_BACK_AT) / (UNLOCK_END_S - UNLOCK_BACK_AT));
+  return { x: lv.exitX + 0.5, y: lv.exitY - 0.5, k: k * 0.7 };
+}
+
 const sim = {
   time: 0,
   lastInput: { move: { x: 0, y: 0 }, dash: { pressed: false, held: false }, bomb: { pressed: false, held: false }, pause: { pressed: false, held: false } },
@@ -408,6 +457,8 @@ const ui = createUI(hudEl, {
     window.dispatchEvent(new CustomEvent('restart'));
   },
   onEndContinue() { v2Event(EV_CONTINUE); },
+  onQuickRestart() { quickRestart(); },
+  onLeaveTutorial() { leaveTutorial(); },
   onExit() {
     location.href = '/octomancer/';
   },
@@ -543,6 +594,7 @@ function applyPaused() {
   const wasPaused = loop.paused;
   const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen;
   const showOverlay = isPaused && !settingsOpen && !inventoryOpen; // the settings panel and the inventory are their own overlays
+  if (showOverlay && V2) ui.setPauseActions(canQuickRestart(run) && !octo.dead && !transitioning, run.state === S_TUTORIAL && !transitioning); // Restart run in a dive, Leave the tutorial in it
   if (isPaused === wasPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); return; }
   loop.setPaused(isPaused);
   if (isPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); window.dispatchEvent(new CustomEvent('pause')); }
@@ -567,6 +619,15 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'Escape' && V2 && journalScreen.isOpen()) { journalScreen.hide(); return; }
+  if (V2 && ui.isOfferShown()) { // the first launch's tutorial offer: Enter / Space = yes, Esc = no
+    if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') { e.preventDefault(); ui.answerOffer(true); }
+    else if (e.code === 'Escape') { e.preventDefault(); ui.answerOffer(false); }
+    return;
+  }
+  if (V2 && (e.code === 'KeyR' || e.code === 'KeyH') && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+    if (!typing && quickKey(e.code === 'KeyR')) { e.preventDefault(); return; }
+  }
   if (e.code !== 'Escape' || octo.dead) return;
   manualPaused = !manualPaused;
   applyPaused();
@@ -677,7 +738,7 @@ function step(dt) {
   // v2 states that freeze the simulation: the fade between levels, the journal, the end screen.
   if (V2) {
     if (ui.isEndShown()) { if (snap.dash.pressed) v2Event(EV_CONTINUE); return; }
-    if (transitioning || journalScreen.isOpen()) return;
+    if (transitioning || journalScreen.isOpen() || ui.isOfferShown()) return;
   }
 
   // Game-over overlay is up: Enter/Z/Shift (the dash keys) or a tap on
@@ -685,8 +746,8 @@ function step(dt) {
   // onTogglePause's own `octo.dead` guard).
   if (octo.dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
     if (snap.dash.pressed) {
+      if (V2) { if (canQuickRestart(run)) quickRestart(); else { ui.hideGameOver(); v2Event(EV_DEATH); } return; } // v2: Enter / Space / Shift = 'Restart run' (R too, keydown)
       ui.hideGameOver();
-      if (V2) { v2Event(EV_DEATH); return; }
       resetWorld(Math.floor(Math.random() * 1e9));
       window.dispatchEvent(new CustomEvent('restart'));
       return;
@@ -700,6 +761,7 @@ function step(dt) {
   octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) { run.dive.time += dt; levelClock += dt; } // the run summary's clock and the HUD's level clock
+  if (V2 && unlockAnim) { stepUnlock(dt); if (unlockAnim && unlockAnim.t < UNLOCK_INPUT_S) snap = NO_INPUT; } // the dive's unlock moment: the camera visits it, the octopus waits
   if (entry || octo.hidden) snap = NO_INPUT; // r45: the octopus is going into a whirlpool: no swimming, dashing, bombs or spells
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
@@ -862,6 +924,7 @@ function step(dt) {
     octo.gameoverEmitted = true;
     const rec = recordRun(liveScore);
     bestScore = rec.best;
+    if (V2) { const q = canQuickRestart(run); ui.setGameOverLabels('The dark took you', q ? 'Restart run' : 'Back to the hub', q ? 'Back to the hub' : undefined); } // the tutorial: back to the hub only
     ui.showGameOver(liveScore, bestScore, V2 ? deathDetail() : undefined);
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
@@ -1219,7 +1282,7 @@ function render(alpha, frameMs) {
     beholderWarn: V2 && isSafeState(run) ? null : enemies.beholderWarn(),
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     postOctoDraw: V2 ? v2People : null,
-    followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : null,
+    followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : V2 && unlockAnim ? unlockCameraBias() : null,
     deathFocus: V2 && octo.dead ? deathFocus(w, h) : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
@@ -1359,6 +1422,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   sim.time = 0;
   levelClock = 0;
   entry = null;
+  unlockAnim = null; sealBumpAt = -99;
   keepers = createKeepers(); shopBrokenSeen = 0; // the old level's keepers never step in the new world (setupLevelExtras places this level's)
   runKills = 0;
   liveScore = 0;
@@ -1428,15 +1492,19 @@ function ensureFade() {
 if (V2) ensureFade(); // r44: made at startup, long before the first dive
 
 /** Apply a run event; on a state change fade out, load the next level, fade in. */
-function v2Event(ev) {
+function v2Event(ev, cause) {
   if (!V2 || transitioning) return false;
   const prevState = run.state;
   const carry = { hearts: octo.hearts, bombs: octo.bombs };
-  if (!runEvent(run, ev)) return false;
-  if (!(prevState === S_BIOME && run.state === S_BIOME)) seenDive.clear();
+  if (!runEvent(run, ev, cause, { sameSeed: ev === EV_RESTART && seededRun() })) return false;
+  // Quick restart (EV_RESTART): the dive ends and a new one starts with no hub in between. Everything below that a death -> hub ->
+  // dive does happens here too, in the same order (tests/restart-cdp.js compares the two).
+  const quick = ev === EV_RESTART;
+  const sameDive = prevState === S_BIOME && run.state === S_BIOME && !quick;
+  if (!sameDive) seenDive.clear();
   if (prevState === S_BIOME && (run.levelsCleared >= 2 || run.state === S_END)) { setHelpDone(true); ui.retireControlsHelp(); } // two levels done: the controls line goes for good
-  if (prevState === S_BIOME && (run.state === S_HUB || run.state === S_END)) endOfDiveNpcs(); // the dive ended: whoever was killed has one dive less to stay away
-  if (!(prevState === S_BIOME && run.state === S_BIOME)) resetMoods(npcMoods); // a new dive or the hub: everybody is calm again
+  if (prevState === S_BIOME && (run.state === S_HUB || run.state === S_END || quick)) endOfDiveNpcs(); // the dive ended: whoever was killed has one dive less to stay away
+  if (!sameDive) resetMoods(npcMoods); // a new dive or the hub: everybody is calm again
   timed('save', () => { journal.flush(); if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true); });
   if (run.state === S_END) {
     // the dive is over: record it, unlock the hub shortcut (persisted), show the summary
@@ -1459,13 +1527,15 @@ function v2Event(ev) {
   setTimeout(() => { if (transitioning) makeWorldSteps((w) => { nextWorld = w; }); }, GENERATE_AT_MS);
   const proceed = () => {
     if (!nextWorld) { setTimeout(proceed, 10); return; } // the generation is still running in its own tasks
-    if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); people.newDive(); } // a new dive: the story as it stands now
-    timed('arrive', () => { if (run.state === S_HUB) arriveInHub(); });
+    const newDive = run.state === S_BIOME && (prevState !== S_BIOME || quick);
+    timed('arrive', () => { if (run.state === S_HUB || quick) arriveInHub(); }); // a quick restart passes through the hub unseen
+    if (newDive) { diveStory = { ...story }; diveDone.clear(); people.newDive(); } // a new dive: the story as it stands now
     timed('reset', () => resetWorld(0, nextWorld, true));
-    if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME && !quick) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    if (run.state === S_HUB && run.diveUnlocked) startUnlock(); // the first finished tutorial: the octopus comes out beside the dive and the kelp lets go
     timed('discover', () => discoverStatePlace());
-    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) { discover('item-lantern'); journal.bump('item-lantern', STAT_COLLECTED); } // Quill's lantern: no words
-    if (run.state === S_BIOME && prevState !== S_BIOME) applyBoons(); // gifts handed over in the hub (people of the last runs)
+    if (newDive && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) { discover('item-lantern'); journal.bump('item-lantern', STAT_COLLECTED); } // Quill's lantern: no words
+    if (newDive) applyBoons(); // gifts handed over in the hub (people of the last runs)
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
     holdDark = true;
@@ -1492,10 +1562,43 @@ function v2Event(ev) {
   return true;
 }
 
+/**
+ * Quick restart (Spelunky): from the death screen (R, Enter, Space / Shift, or 'Restart run') or the pause menu in a dive, a fresh
+ * dive at Shallows 1-1 starts at once, no hub. A death was already recorded when the death screen came up (deathDetail); from the
+ * pause menu the octopus is alive and the dropped dive is not a death and is not recorded.
+ */
+function quickRestart() {
+  if (!V2 || transitioning || entry || !canQuickRestart(run)) return false;
+  const died = !!octo.dead;
+  if (died && !octo.gameoverEmitted) return false; // the 1.5 s before the death screen: the death is not recorded yet
+  ui.hideGameOver();
+  manualPaused = false; applyPaused();
+  return v2Event(EV_RESTART, died ? (octo.cause || 'unknown') : '');
+}
+/** The pause menu's 'Leave the tutorial': back to the hub, the tutorial not finished. */
+function leaveTutorial() {
+  if (!V2 || transitioning || run.state !== S_TUTORIAL) return false;
+  manualPaused = false; applyPaused();
+  return v2Event(EV_LEAVE);
+}
+/** R / H pressed: R = Restart run (death screen or pause menu, in a dive), H = Back to the hub (death screen). True when handled. */
+function quickKey(isR) {
+  if (transitioning) return false;
+  const deathUp = octo.dead && octo.gameoverEmitted && ui.isGameOverShown();
+  const pauseUp = manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !journalScreen.isOpen();
+  if (isR) return (deathUp || pauseUp) && canQuickRestart(run) ? quickRestart() : false;
+  if (!deathUp) return false;
+  ui.hideGameOver();
+  return v2Event(EV_DEATH);
+}
+
+/** A seeded run (?seed= or a seed typed in the settings): the title card shows the dive seed and a quick restart replays it. */
+function seededRun() { return !!Number(params.get('seed')) || (run.nextSeed !== null && run.nextSeed !== undefined); }
+
 /** Level title card at each level start: "Shallows 1-2", plus the seed only when the run is seeded on purpose (?seed= or a seed typed in the settings). */
 function showLevelTitle() {
   if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
-  const t = levelTitle(run, !!Number(params.get('seed')) || (run.nextSeed !== null && run.nextSeed !== undefined));
+  const t = levelTitle(run, seededRun());
   if (t) ui.showTitle(t.text, t.sub, 1500); // the Swift Current target sits next to the clock on the HUD strip now
 }
 
@@ -1653,11 +1756,17 @@ function stepV2(snap) {
   if (run.state === S_REST) stepRest();
   if (run.state === S_BIOME || run.state === S_REST) stepPeople();
   if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
-  if (world.reachedExit(octo.x, octo.y)) {
+  const sealedHere = run.state === S_HUB && !MOVETEST && hubSeal() > 0;
+  if (sealedHere && world.reachedExit(octo.x, octo.y)) sealedBump(lv); // the kelp holds the dive shut: bounced back up, the plank and the prompt say why
+  else if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME) paySwiftShell();
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
     beginEntry(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT, lv.exitX, lv.exitY);
+    return;
+  }
+  if (run.state === S_HUB && !MOVETEST && !unlockAnim && lv.tutorialX >= 0 && lv.tutorialX !== undefined && Math.hypot(octo.x - (lv.tutorialX + 0.5), octo.y - (lv.tutorialY + 0.5)) < 1.2) {
+    beginEntry(EV_ENTER_TUTORIAL, lv.tutorialX, lv.tutorialY);
     return;
   }
   if (run.state === S_HUB && run.shortcut && lv.shortcutX >= 0 && Math.hypot(octo.x - (lv.shortcutX + 0.5), octo.y - (lv.shortcutY + 0.5)) < 1.2) {
@@ -1678,7 +1787,9 @@ function stepV2(snap) {
     let best = null, bd = 1e9;
     // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
     const welcomed = run.state === S_HUB && !MOVETEST && (getMeta().clears | 0) >= 1;
-    for (const p of welcomed ? [] : lv.prompts) {
+    const open = run.state !== S_HUB || MOVETEST || diveOpen(run);
+    for (const p of lv.prompts) {
+      if (p.when === 'sealed' ? open : p.when === 'open' ? (!open || welcomed) : welcomed) continue; // hub: sealed-dive prompts until the tutorial is done, the welcome after
       const d = Math.hypot(octo.x - p.x, octo.y - p.y);
       if (d < p.r && d < bd) { best = p; bd = d; }
     }
@@ -1694,6 +1805,7 @@ function stepV2(snap) {
     if (run.state === S_TUTORIAL && bombs.list().some((b) => !b.exploded && Math.hypot(b.x - octo.x, b.y - octo.y) < 4)) {
       best = { title: 'Swim away!', desktop: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.', touch: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.' };
     }
+    if (unlockAnim) best = null; // the unlock moment speaks for itself (the title card)
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
   } else ui.setPrompt(null);
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
@@ -1751,6 +1863,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
     shortcutLabel: BIOME_NAME + ' 1-' + SHORTCUT_LEVEL,
     shortcut3X: run.state === S_HUB && run.shortcut3 && lv.shortcut3X !== undefined ? lv.shortcut3X : -1, shortcut3Y: lv.shortcut3Y,
     shortcut3Label: BIOME_NAME + ' 1-' + SHORTCUT3_LEVEL,
+    tutorialX: run.state === S_HUB && !MOVETEST && lv.tutorialX !== undefined ? lv.tutorialX : -1, tutorialY: lv.tutorialY, tutorialLabel: 'Tutorial',
+    seal: run.state === S_HUB && !MOVETEST ? hubSeal() : 0, sealWobble: sealBumpAt, sealLabel: 'Finish the tutorial first',
   }, sim.time);
   const t = sim.time;
   if (run.state === S_TUTORIAL && lv.walls && lv.walls.length) {
@@ -2684,7 +2798,12 @@ function onShopEvent(ev) {
 }
 
 if (V2) {
-  ui.setGameOverLabels('The dark took you', 'Back to the hub');
+  ui.setGameOverLabels('The dark took you', 'Restart run', 'Back to the hub');
+  // the tutorial is offered at launch until it has been finished once (the dive stays sealed until then); ?at= and the test room skip it
+  if (run.state === S_HUB && !MOVETEST && !run.tutorialDone && !params.get('at') && params.get('offer') !== '0') {
+    ui.showOffer('New to the Shallows?', 'The dive is sealed with kelp until you finish the tutorial: a short cave that teaches swimming, dashing and bombs. You can replay it from its ring in the hub.',
+      'Play the tutorial', 'Look around the hub first', (yes) => { if (yes) v2Event(EV_ENTER_TUTORIAL); });
+  }
   setupLevelExtras();
   showLevelTitle(); // the first level's title card (after the extras: it carries the Swift Current target)
   discoverStatePlace();
@@ -3094,8 +3213,27 @@ window.__octo = {
   giveItem(id) { return run ? giveItem(run.items, octo, id) : false; },
   giveShells(n) { if (run) gainShells(run, n | 0); return run ? run.shells : 0; },
   runEvent(name) {
-    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT, shortcut3: EV_ENTER_SHORTCUT3 }[name];
+    const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT, shortcut3: EV_ENTER_SHORTCUT3, tutorial: EV_ENTER_TUTORIAL, leave: EV_LEAVE }[name];
+    if (name === 'restart') return quickRestart();
     return v2Event(ev);
+  },
+  /** Tutorial unlock / quick restart test hooks: the hub's seal (1 shut .. 0 open), the unlock moment, the offer and the buttons shown. */
+  hubSeal() { return { seal: hubSeal(), open: diveOpen(run), tutorialDone: run.tutorialDone, savedDone: getTutorialDone(), unlock: unlockAnim ? { t: unlockAnim.t, seal: unlockAnim.seal } : null, offer: ui.isOfferShown(), bumpAt: sealBumpAt, tutorialX: world.level.tutorialX, tutorialY: world.level.tutorialY }; },
+  answerOffer(yes) { ui.answerOffer(yes); return ui.isOfferShown(); },
+  uiButtons() { return ui.buttons(); },
+  /** Everything a new dive starts from (what a hub visit and the dive whirlpool reset), to compare a quick restart with death -> hub -> dive. */
+  runSnapshot() {
+    const hb = run.hotbar;
+    return {
+      state: run.state, level: run.level, levelsCleared: run.levelsCleared, shells: run.shells, items: run.items.slice(), shopAggro: run.shopAggro, shopAggroWhy: run.shopAggroWhy,
+      juice: run.juice, juiceStart: run.juiceStart, deaths: run.deaths, dive: { ...run.dive }, last: run.last, nextSeed: run.nextSeed,
+      hotbar: hb ? { slots: hb.slots.slice(), sel: hb.sel } : null,
+      octo: { hearts: octo.hearts, heartMax: octo.heartMax, bombs: octo.bombs, bombMax: octo.bombMax, dead: !!octo.dead, swimMul: octo.swimMul, lightR: octo.lightR, magnetR: octo.magnetR, spikeHelmet: !!octo.spikeHelmet, seeBuried: !!octo.seeBuried },
+      time: sim.time, beholder: enemies.beholderTiming ? { ...enemies.beholderTiming() } : null, beholderOut: !!enemies.beholder(),
+      moods: JSON.parse(JSON.stringify(npcMoods)), seenDive: seenDive.size, diveDone: diveDone.size, diveStory: { ...diveStory }, story: { ...story },
+      people: { owed: people.owed.length, grudge: Array.from(people.grudge), visitors: people.visitors.length },
+      paused: loop.paused, gameOver: ui.isGameOverShown(), transitioning: !!transitioning, stage: stageLabel(run),
+    };
   },
   /** Settings menu: open / close / read (tests, review). */
   settings() { return { open: settingsPanel.isOpen(), values: getSettings(), sink: octo.sink, nextSeed: run ? run.nextSeed : null, bus: audio.busGains(), reduced: prefersReducedMotion() }; },
