@@ -30,7 +30,11 @@ export async function runHubRoomsTests(assert) {
   assert('hub rooms: every room\'s journal place exists (category place, with a where hint), and the hidden hollow too',
     [...NPC_ROOMS.map((r) => r.journal), 'place-hollow'].every((id) => { const e = ENTRIES.find((x) => x.id === id); return e && e.cat === 'place' && e.where; }));
   assert('hub rooms: every furnishing sprite exists in an atlas', table.rooms.every((r) => r.furnish.every((f) => !f.sprite || ATLAS_HUB_RECTS[f.sprite] || ATLAS_RECTS[f.sprite] || ATLAS_R3_RECTS[f.sprite]))
-    && [table.wardrobe.sprite, table.target.sprite, table.keepsake.sprite].every((n) => ATLAS_HUB_RECTS[n]));
+    && [table.target.sprite, table.keepsake.sprite].every((n) => ATLAS_HUB_RECTS[n]));
+  assert('hub rooms: the skins mirror shell stands in the wardrobe alcove (A), its base on the floor', (() => {
+    const lv = parseAuthoredMap(hubJson);
+    return lv.mirror && Math.floor(lv.mirror.x) === lv.wardrobeX && lv.mirror.y === lv.wardrobeY + 1 && lv.tiles[lv.mirror.y * lv.w + lv.wardrobeX] !== 0;
+  })());
 
   // --- locked / unlocked by the quest flags ---
   const fresh = build({});

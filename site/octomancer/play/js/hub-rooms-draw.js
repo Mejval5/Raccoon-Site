@@ -140,8 +140,8 @@ export function drawHubRooms(ctx, camera, cw, ch, level, table, t, s) {
     }
   }
   const P = level.points || {};
-  // the wardrobe shell in its alcove (the skins owner hooks the picker there)
-  if (P.A && table.wardrobe && inView(camera, cw, ch, P.A[0] - 2, P.A[1] - 2, P.A[0] + 2, P.A[1] + 2)) {
+  // the wardrobe shell in its alcove (a hub-rooms.json `wardrobe` row; the skins owner's mirror shell, hub.json `mirror`, stands there now)
+  if (P.A && table.wardrobe && !level.mirror && inView(camera, cw, ch, P.A[0] - 2, P.A[1] - 2, P.A[0] + 2, P.A[1] + 2)) {
     drawSprite(ctx, table.wardrobe.sprite, SX(P.A[0] + 0.5), SY(P.A[1] + 1.02), 0, ppu * (table.wardrobe.h || 1.9), 0.5, 1);
   }
   // the practice target: it rocks back when an ink blob lands

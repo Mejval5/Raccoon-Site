@@ -77,6 +77,8 @@ export function parseAuthoredMap(json) {
     springX: hx >= 0 ? hx + 0.5 : -1, springY: hy >= 0 ? hy + 0.5 : -1, shop,
     walls: Int16Array.from(walls), // x,y pairs of the bomb wall tiles
     prompts: json.prompts || [], spawns: json.spawns || [],
+    // 2026-10-08 skins: the mirror shell (the looks picker), placed by data: {x, y} = the centre of its base on the floor (hub.json)
+    mirror: json.mirror && Number.isFinite(json.mirror.x) && Number.isFinite(json.mirror.y) ? { x: +json.mirror.x, y: +json.mirror.y } : null,
     nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0,
   };
 }

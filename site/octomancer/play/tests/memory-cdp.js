@@ -11,7 +11,8 @@ const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'o
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
 const BASE = process.argv[2] || 'http://127.0.0.1:59611/octomancer/play/index.html';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:[]}))}catch(e){}";
+// (skins 2026-10-08: the octopus wears Marlo's look, so its tinted sheet is part of every measurement below)
+const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:[],skins:['classic','marlo'],skin:'marlo'}))}catch(e){}";
 // every canvas the page makes, weakly: a collected one does not count
 const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document.createElement.bind(document);
  document.createElement = function (t, o) { const e = oc(t, o); if (String(t).toLowerCase() === 'canvas') refs.push(new WeakRef(e)); return e; }; })();`;
@@ -72,6 +73,7 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
     check('the live canvas count does not grow (the later transitions never exceed the earlier ones peak + 8: a level needs more or fewer cells)', maxOf(late, 'n') <= maxOf(early, 'n') + 8, `early peak ${maxOf(early, 'n')} -> late peak ${maxOf(late, 'n')}`);
     check('canvas bytes do not grow (the later peak within 25% of the earlier one) and stay under 30 MB', maxOf(late, 'bytes') <= maxOf(early, 'bytes') * 1.25 && peakBytes < 30 * 1048576, `early peak ${mb(maxOf(early, 'bytes'))} -> late peak ${mb(maxOf(late, 'bytes'))} MB`);
     check('canvases are baked at no more than 96 px per unit (DPR 3 is capped at 2)', await page.evaluate(() => { for (const r of window.__cv) { const c = r.deref(); if (c && c.width > 0 && c.width > 64 * 96 + 8) return false; } return true; }));
+    check('skins: the worn look keeps one tinted sheet through every transition (no second sheet, no growth)', series.every((x) => x.mem.skinSheets === 1 && x.mem.skinMB === base.mem.skinMB) && base.mem.skinMB < 5, JSON.stringify({ base: base.mem.skinMB, last: last.mem.skinMB }));
     check('the renderer reports a small canvas set (cells for the screen and a ring)', last.mem.rendererCanvases <= 30 && last.mem.rendererCanvasBytes < 20 * 1048576, JSON.stringify(last.mem));
 
     // --- audio: nothing synthesised survives a transition, only the music ---

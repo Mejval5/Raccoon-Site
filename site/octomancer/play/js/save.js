@@ -4,6 +4,7 @@
 // storage, etc. must never throw out of this module).
 
 import { defaultSettings, cleanSettings, cleanSetting } from './settings.js';
+import { isSkinId, DEFAULT_SKIN } from './skins.js';
 
 const KEY = 'octomancer.best.v1';
 
@@ -30,7 +31,7 @@ const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'reli
   'hubRooms', 'hubSecret', 'hubPractice'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
-  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
+  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory(), skins: null, skin: DEFAULT_SKIN };
 }
 
 /** @type {ReturnType<typeof freshMemory>} */
@@ -77,10 +78,13 @@ export function loadBest() {
         settings: cleanSettings(obj.settings),
         journalStats: cleanJournalStats(obj.journalStats),
         story: cleanStory(obj.story),
+        skins: cleanSkins(obj.skins),
+        skin: isSkinId(obj.skin) ? obj.skin : DEFAULT_SKIN,
       };
+      if (memory.skins && !memory.skins.includes(memory.skin)) memory.skin = DEFAULT_SKIN;
     }
   }
-  return { ...memory, journal: memory.journal.slice(), bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } } };
+  return { ...memory, skins: memory.skins ? memory.skins.slice() : null, journal: memory.journal.slice(), bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } } };
 }
 
 /** Records a finished run's score: bumps `runs`, raises `best` if beaten,
@@ -297,4 +301,33 @@ export function setStory(key, n) {
   memory.story[key] = Math.max(memory.story[key], Math.floor(num(n)));
   writeToStorage();
   return memory.story[key];
+}
+
+// --- octopus skins (2026-10-08, skins.js): the looks unlocked (null = a save from before skins: main.js unlocks what its story has
+// earned without the gift moment) and the one worn ---
+function cleanSkins(raw) {
+  if (!Array.isArray(raw)) return null;
+  const out = [DEFAULT_SKIN];
+  for (const id of raw) if (isSkinId(id) && !out.includes(id)) out.push(id);
+  return out;
+}
+/** The unlocked skin ids, or null when this save never recorded any (older save). */
+export function getSkins() { const s = loadBest().skins; return s ? s.slice() : null; }
+/** Add skin ids to the unlocked list (creates it); returns the list. */
+export function unlockSkins(ids) {
+  loadBest();
+  const list = memory.skins ? memory.skins.slice() : [DEFAULT_SKIN];
+  for (const id of ids || []) if (isSkinId(id) && !list.includes(id)) list.push(id);
+  memory.skins = list;
+  writeToStorage();
+  return list.slice();
+}
+/** The skin worn now. */
+export function getSkin() { return loadBest().skin; }
+/** Wear an unlocked skin; returns the skin worn (unchanged when `id` is unknown or locked). */
+export function setSkin(id) {
+  loadBest();
+  const list = memory.skins || [DEFAULT_SKIN];
+  if (isSkinId(id) && list.includes(id)) { memory.skin = id; writeToStorage(); }
+  return memory.skin;
 }

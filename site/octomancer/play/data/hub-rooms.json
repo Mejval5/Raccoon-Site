@@ -72,7 +72,6 @@
       { "sprite": "kelpNest", "dx": 10.0, "dy": 1, "h": 0.6, "when": "always" }
     ] }
  ],
- "wardrobe": { "sprite": "wardrobe", "h": 1.9 },
  "target": { "sprite": "practiceTarget", "h": 1.8, "hits": 3, "window": 10,
    "lines": { "start": "Practice round! Three hits before the sand runs out.", "win": ["Three! The crowd goes wild.", "Bravo, champ!", "Sharp shooting!"], "miss": "Time! Again, if you like." } },
  "keepsake": { "sprite": "tablet", "h": 0.9, "story": "hubSecret", "boon": { "bombs": 1 },

@@ -63,6 +63,7 @@ import { updateCamera, updateDeathCamera, worldToScreen, computePxPerUnit } from
 import { acquireCanvas, releaseCanvas, sharedCanvas } from './canvas-pool.js';
 import { visibleAt, visibleObj, cullFlags, cullFrame, cullEnd } from './cull.js';
 import { drawOctopus } from './octopus-draw.js';
+import { drawTrace, traceDraw } from './draw-trace.js';
 import { depthTint } from './decor.js';
 import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
@@ -1615,6 +1616,7 @@ export function createRenderer(ctx, world) {
     const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
     const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
     o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
+    if (drawTrace.on) traceDraw('octo', o);
     // Actions tuning: dash i-frames (octopus.js dashInvuln) read as a brief translucent smear: two faint after-images trailing
     // back along the velocity (dark ink silhouettes), fading with the i-frames, and the body itself a touch see-through. No blink.
     const phase = !o.dead && !e && o.dashInvuln > 0 ? Math.min(1, o.dashInvuln / DASH_IFRAMES) : 0;
@@ -1710,7 +1712,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null, skipEnemy = null, skipBomb = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1796,8 +1798,8 @@ export function createRenderer(ctx, world) {
       if (G(2)) drawBubbles(canvasW, canvasH, bubbles);
       if (G(2)) drawPickups(canvasW, canvasH, pickups, time);
       if (G(3) && preEnemyDraw) preEnemyDraw(ctx, camera, canvasW, canvasH);
-      if (G(3)) drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha);
-      if (G(3)) drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time);
+      if (G(3)) drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha, skipEnemy); // skip*: what the hand holds is drawn after the octopus (main.js v2People)
+      if (G(3)) drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time, skipBomb);
       if (G(4) && extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       if (G(4) && particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
       if (G(5)) drawOcto(octo, alpha, canvasW, canvasH, time);
