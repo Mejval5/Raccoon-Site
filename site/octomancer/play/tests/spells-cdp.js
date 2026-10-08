@@ -50,12 +50,12 @@ async function setStage(page) {
     await setStage(page);
     let j0 = await J(page);
     check('desktop: a dive starts with a full jar (3 casts)', j0.juice === j0.cap && j0.cap === 3 * j0.perCast);
-    await page.keyboard.press('KeyF'); await sleep(450); // spells: one 0.4 s cast lock between casts (SPELLS-PICK)
+    await page.keyboard.press('KeyC'); await sleep(450); // controls 2026-10-08: F is the hand, C uses the selected slot; one 0.4 s cast lock between casts (SPELLS-PICK)
     let j1 = await J(page);
-    check('keyboard F casts Ink Cloud (one cast paid, a cloud)', j1.juice === j0.juice - j0.perCast && j1.clouds === 1);
+    check('keyboard C casts Ink Cloud (one cast paid, a cloud)', j1.juice === j0.juice - j0.perCast && j1.clouds === 1);
     await page.keyboard.press('KeyC'); await sleep(450);
     let j2 = await J(page);
-    check('keyboard C casts too', j2.juice === j1.juice - j0.perCast && j2.clouds === 2);
+    check('keyboard C casts again', j2.juice === j1.juice - j0.perCast && j2.clouds === 2);
     const mid = { x: 900, y: 450 };
     await page.mouse.move(mid.x, mid.y);
     await page.mouse.click(mid.x, mid.y, { button: 'right' }); await sleep(450);
@@ -64,10 +64,10 @@ async function setStage(page) {
     const cl = j3.cloudList.sort((a, b) => a.age - b.age)[0];
     const oNow = await page.evaluate(() => __octo.state().octopus);
     check('the right-click cloud lands toward the cursor (right of the octopus, at most 3 tiles out)', cl.x > oNow.x + 0.5 && Math.hypot(cl.x - oNow.x, cl.y - oNow.y) <= 3.3, JSON.stringify([cl.x, cl.y, oNow.x, oNow.y]));
-    await page.keyboard.press('KeyF'); await sleep(450);
+    await page.keyboard.press('KeyC'); await sleep(450);
     const s0 = (await J(page)).empty;
     const shaken = await page.evaluate(() => !!document.querySelector('.octo-jar-shake'));
-    check('keyboard F with an empty jar fails: the jar shakes, nothing is cast', (await J(page)).juice === 0 && s0 === 1 && shaken);
+    check('keyboard C with an empty jar fails: the jar shakes, nothing is cast', (await J(page)).juice === 0 && s0 === 1 && shaken);
     const sh0 = (await J(page)).shots;
     await page.mouse.down({ button: 'left' }); await sleep(3300); await page.mouse.up({ button: 'left' }); await sleep(100);
     const sh1 = (await J(page)).shots;
@@ -104,7 +104,7 @@ async function setStage(page) {
     const iOpen = (await J(page)).inventory; await page.keyboard.press('Escape'); await sleep(150);
     check('I opens it too and Esc closes it', iOpen && !(await J(page)).inventory && !(await page.evaluate(() => __octo.state().paused)));
     const help = await page.evaluate(() => document.querySelector('.octo-controls-help').textContent);
-    check('the on-screen help lists the new controls and no mouse steering', /left-click/.test(help) && /right-click or F/.test(help) && !/hold mouse/.test(help), help);
+    check('the on-screen help lists the new controls and no mouse steering', /left-click/.test(help) && /right-click or C/.test(help) && /Hand: F/.test(help) && !/hold mouse/.test(help), help);
     check('desktop: no page errors', page.errs.length === 0, page.errs.join(' | '));
     await page.close();
 
@@ -193,7 +193,7 @@ async function setStage(page) {
     await ph.evaluate(() => __octo.god(true));
     const rect = (sel) => ph.evaluate((sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, shown: getComputedStyle(e).display !== 'none' }; }, sel);
     const btn = {};
-    for (const id of ['attack', 'spell', 'bomb', 'dash']) btn[id] = await rect('#octo-' + id + '-btn');
+    for (const id of ['attack', 'spell', 'use', 'dash']) btn[id] = await rect('#octo-' + id + '-btn');
     const bar = await rect('.octo-hotbar'), hud = await rect('.octo-hud-bar'), gear = await rect('.octo-gear-btn');
     const ov = (a, b) => a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
     const bl = Object.values(btn);
@@ -206,8 +206,9 @@ async function setStage(page) {
     await tap(btn.attack.cx, btn.attack.cy); await sleep(100);
     check('touch: the Jet button fires the ink jet', (await J(ph)).shots === pj0.shots + 1);
     const pb0 = await ph.evaluate(() => __octo.state().octopus.bombs);
-    await tap(btn.bomb.cx, btn.bomb.cy); await sleep(100);
-    check('touch: the Bomb button throws a bomb', (await ph.evaluate(() => __octo.state().octopus.bombs)) === pb0 - 1);
+    await ph.evaluate(() => { __octo.input({ select: 1 }); __octo.step(1); __octo.input(null); }); // the bomb stack picked on the hotbar
+    await tap(btn.use.cx, btn.use.cy); await sleep(100);
+    check('touch: the Use button with the bomb picked drops a bomb', (await ph.evaluate(() => __octo.state().octopus.bombs)) === pb0 - 1);
     await sleep(2600);
     const pv0 = await ph.evaluate(() => Math.hypot(__octo.state().octopus.vx, __octo.state().octopus.vy));
     await tap(btn.dash.cx, btn.dash.cy, 30);

@@ -33,7 +33,7 @@
    "y": 12.5,
    "r": 7,
    "title": "Swim",
-   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at; the ink takes a moment to refill.",
+   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at; the ink takes a moment to refill. F grabs, talks and buys.",
    "touch": "Touch and drag on the left of the screen to swim."
   },
   {
@@ -50,8 +50,8 @@
    "r": 6.5,
    "title": "Bomb the floor",
    "refillBomb": true,
-   "desktop": "This floor is in the way. Swim over it and drop or throw a bomb onto it: B or X throws it the way you swim, middle-click throws it at the cursor. Bombs sink, so aim down. Then swim away, the blast hurts you too.",
-   "touch": "This floor is in the way. Swim over it and tap Bomb to drop one (bombs sink, so point the stick down), then swim away: the blast hurts you too."
+   "desktop": "This floor is in the way. Swim over it and press B to drop a bomb: it sinks straight down and sits where it lands. Middle-click throws one at the cursor instead: it sticks to the first rock it hits. Then swim away, the blast hurts you too.",
+   "touch": "This floor is in the way. Hover over the floor and tap Bomb (your bombs are picked on the bar at the top): it drops straight down and sits where it lands. Then swim away: the blast hurts you too."
   },
   {
    "x": 54,

@@ -201,9 +201,11 @@ export async function runPathcheckTests(assert) {
     assert('bot tutorial: the bot survives the blast (swims clear before it goes off)', results.every((o) => o.hearts === 3));
   }
   {
-    // r41: the floor can be broken from the side approach too (thrown right from the room's entrance, thrown with a slight downward lean) and from straight above
+    // r41: the floor can be broken from the side approach too (thrown from the room's entrance) and from straight above
     const out = [];
-    for (const [name, sx, sy, aim] of [['thrown right from the entrance', 32.5, 11.5, { x: 1, y: 0 }], ['thrown right and down from the entrance', 32.5, 10.5, { x: 1, y: 0.6 }], ['dropped straight down', 38.0, 10.5, { x: 0, y: 1 }]]) {
+    // controls 2026-10-08: an aimed bomb is a sticky mine (it clings to the first rock: thrown flat it would stick to the far wall),
+    // a plain one is dropped straight down
+    for (const [name, sx, sy, aim] of [['thrown down and right from the entrance', 32.5, 11.5, { x: 1, y: 0.6 }], ['thrown right and down from higher up', 32.5, 10.5, { x: 1, y: 0.75 }], ['thrown straight down', 38.0, 10.5, { x: 0, y: 1 }], ['dropped from above', 37.5, 11.5, null]]) {
       const w = createLevelWorld(1, 0, { level: parseAuthoredMap(tutJson) });
       const sim = createBotSim(w, { tutorial: true, wallIntact: () => true });
       sim.octo.x = sim.octo.prevX = sx; sim.octo.y = sim.octo.prevY = sy;

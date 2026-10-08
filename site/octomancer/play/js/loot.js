@@ -19,7 +19,7 @@ import { octoHit } from './damage.js';
 import { hasLineOfSight } from './pathfind.js';
 import { DASH_KILL_SPEED, HEART_MAX, BOMB_RADIUS } from './config.js';
 import { ITEM_IDS, itemFromCode } from './items.js';
-import { PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PS_FREE, PS_HELD, PROP_RADIUS } from './props.js';
+import { PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PS_FREE, PS_HELD, PS_CARRY, PROP_RADIUS } from './props.js';
 
 const PROP_KIND = [0, PK_CLAM, PK_POT, PK_CHEST, 0, PK_RELIC]; // loot kind -> props.js kind (pockets are rock tiles)
 
@@ -281,6 +281,8 @@ export function createLoot(props = null) {
     /** Events since the last call (main.js reacts to them), cleared. */
     takeEvents() { return events.splice(0, events.length); },
 
+    /** Break clam / pot record i (thrown into something, or it took a hit for the octopus: how = 'throw' | 'shield'). */
+    smash(i, how = 'throw') { if (i >= 0 && i < d.n && d.state[i] === ST_INTACT && (d.kind[i] === LK_CLAM || d.kind[i] === LK_POT)) { if (props && d.pid[i] >= 0) { d.x[i] = props.data.x[d.pid[i]]; d.y[i] = props.data.y[d.pid[i]]; } breakObject(i, how); return true; } return false; },
     /** An Ink Jet blob hit prop `pid`: an intact clam or pot it belongs to breaks ('ink'). Returns true when one broke. */
     hitProp(pid, how = 'ink') {
       for (let i = 0; i < d.n; i++) {
@@ -324,7 +326,8 @@ export function createLoot(props = null) {
         if (octo.dead) continue;
         const near = Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y);
         if (k === LK_CLAM || k === LK_POT) {
-          if (st === ST_INTACT && near < (k === LK_CLAM ? CLAM_R : POT_R) + octo.radius * 0.85 && speed >= DASH_KILL_SPEED) breakObject(i, 'dash');
+          const carried = props && d.pid[i] >= 0 && props.data.state[d.pid[i]] === PS_CARRY; // in the octopus's hand (hand.js): a dash does not break it
+          if (st === ST_INTACT && !carried && near < (k === LK_CLAM ? CLAM_R : POT_R) + octo.radius * 0.85 && speed >= DASH_KILL_SPEED) breakObject(i, 'dash');
         } else if (k === LK_CHEST) {
           if (st === ST_INTACT && near < CHEST_R + octo.radius * 0.5) {
             d.state[i] = ST_DONE;

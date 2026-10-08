@@ -308,7 +308,8 @@ export async function runEnemyR35Tests(assert) {
     const props = createProps(); const bombs = createBombs(props); const o = createOctopus(20.5, 12.5);
     o.throwDir = -1; bombs.place(o, 20, 12.7, null);
     const id = bombs.list()[0].pid; const vx = props.data.vx[id], vy = props.data.vy[id];
-    assert(`review 2: a no-direction toss goes the last swim direction and down, never up (v ${vx.toFixed(1)}, ${vy.toFixed(1)})`, vx < -1 && vy > 0.5 && Math.abs(Math.abs(vx / vy) - IDLE_TOSS_X / IDLE_TOSS_Y) < 0.01);
+    // controls 2026-10-08: a bomb used with no aim is dropped straight down under the octopus (IDLE_TOSS_* are unused now)
+    assert(`review 2: a no-direction use drops the bomb straight down, never up or sideways (v ${vx.toFixed(1)}, ${vy.toFixed(1)})`, vx === 0 && vy > 0.5 && IDLE_TOSS_X > 0);
     let onHead = false, ends = null;
     for (let i = 0; i < 135; i++) {
       props.step(DT, world, o); bombs.update(DT, world, o, { killInRadius() { return 0; }, knockInRadius() { return 0; } });
@@ -325,7 +326,7 @@ export async function runEnemyR35Tests(assert) {
     // review 8: a bomb thrown up against a ceiling sticks to it; its blast frees a hanging rock beside it; a blast within reach frees a rock too
     const world = room(30, 30, (x, y) => y < 8 || y >= 26);
     const props = createProps(); const bombs = createBombs(props); const o = createOctopus(10.5, 20.5);
-    bombs.place(o, 15.5, 10.4, { x: 0, y: -1 }); // a throw reaches about 3 tiles up (drag and sink)
+    bombs.place(o, 16.0, 10.4, { x: 0, y: -1 }); // a throw reaches about 3 tiles up; within the 2.0 blast of the rock's ceiling tile
     const id = bombs.list()[0].pid; let stuckY = 0, held = false;
     for (let i = 0; i < 100; i++) { props.step(DT, world, null); if (props.data.state[id] === PS_HELD) { held = true; stuckY = props.data.y[id]; break; } }
     for (let i = 0; i < 40; i++) props.step(DT, world, null);
@@ -414,16 +415,16 @@ export async function runEnemyR35Tests(assert) {
     document.body.appendChild(canvas); document.body.appendChild(root);
     const input = createInput(null); const ui = createTouchUI(root, input, canvas);
     const ev = (type, x, y, id = 1, pointerType = 'touch', target = canvas) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType, clientX: x, clientY: y }));
-    const dash = root.querySelector('#octo-dash-btn'), bomb = root.querySelector('#octo-bomb-btn');
+    const dash = root.querySelector('#octo-dash-btn'), bomb = root.querySelector('#octo-use-btn'); // controls 2026-10-08: the Bomb button became Use (the selected hotbar slot)
     ev('pointerdown', 100, 400, 1, 'mouse');
     assert('touch: a mouse pointer on the canvas does not bring up the touch controls', dash.style.display === 'none');
     ev('pointerdown', 100, 400);
     const base = root.querySelector('.octo-stick-base');
-    assert('touch: a touch on the canvas shows the stick, the Dash and the Bomb button', base.style.display === 'block' && dash.style.display === 'flex' && bomb.style.display === 'flex');
+    assert('touch: a touch on the canvas shows the stick, the Dash and the Use button', base.style.display === 'block' && dash.style.display === 'flex' && bomb.style.display === 'flex');
     ev('pointermove', 100 + 80, 400);
     assert('touch: dragging the stick sets the move vector (full right)', input.touch.active && input.touch.x > 0.95 && Math.abs(input.touch.y) < 0.05);
     bomb.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 700 }));
-    assert('touch: the Bomb button press reaches the input (one-shot edge)', input.touch.bomb.pressed === true && input.touch.bomb.held === true);
+    assert('touch: the Use button press reaches the input (one-shot edge)', input.touch.use.pressed === true && input.touch.use.held === true);
     bomb.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 700 }));
     ev('pointerup', 180, 400);
     assert('touch: letting go of the stick centres it and hides it', !input.touch.active && input.touch.x === 0 && base.style.display === 'none');

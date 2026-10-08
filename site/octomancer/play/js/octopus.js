@@ -66,6 +66,8 @@ export function createOctopus(x, y) {
     heartMax: HEART_MAX,
     bombMax: BOMB_MAX,
     swimMul: 1,   // flippers: 1.2
+    carryMul: 1,  // hand.js: < 1 while something heavy is carried
+    shieldHit: null, // hand.js: fn(fromX, fromY, cause) -> true when a carried pot took the hit
     lightR: 0,    // tiles of clear sight in the dim Shallows (0 = no dimming), set by the level
     magnetR: 0,   // shell magnet: pulls shells this close (tiles)
     seeBuried: false, // sea-glass goggles: buried treasure and hidden pockets show through the rock (embed-draw.js)
@@ -103,6 +105,8 @@ export function createOctopus(x, y) {
 export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
   if (o.dead) return hitBody(o, fromX, fromY); // V2-PLAN 14: the dead body takes the hit (a knock and a flash)
   if (o.invulnTimer > 0 || o.dashInvuln > 0 || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
+  // controls 2026-10-08: a carried pot or clam takes the hit instead and breaks (hand.js sets o.shieldHit while it holds one)
+  if (o.shieldHit && o.shieldHit(fromX, fromY, cause)) { o.invulnTimer = Math.max(o.invulnTimer, HURT_INVULN * 0.5); return false; }
   const dmg = opts && opts.dmg !== undefined ? opts.dmg : 1;
   const knock = opts && opts.knock !== undefined ? opts.knock : HURT_KNOCKBACK;
   const stun = opts && opts.stun ? opts.stun : 0;
@@ -274,7 +278,7 @@ function rotate(o, joy, dt, canMove = true) {
 function move(o, joy, dt) {
   const angleRad = desiredPushAngleDeg(joy) * DEG2RAD;
   const pushDir = { x: Math.sin(angleRad), y: -Math.cos(angleRad) };
-  const mul = o.swimMul || 1;
+  const mul = (o.swimMul || 1) * (o.carryMul || 1); // controls 2026-10-08: a carried thing weighs the octopus down (hand.js sets carryMul)
   const moveForce = joy.mag * SWIM_PUSH_FORCE * mul * dt;
 
   const speed = len(o.vx, o.vy);

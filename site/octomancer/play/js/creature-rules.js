@@ -37,7 +37,8 @@ export const PH_NONE = 'none';         // not a body anything can shove (the Beh
  * octo: what it does to the octopus {hearts, knock, stun} or {kill: style}.
  */
 export const SOURCES = {
-  bomb:     { dmg: 30, crush: false, knock: 12, stun: 0.9,  blame: 'octo',  octo: { hearts: 1 } },
+  // Daniel 2026-10-08: a bomb kills the octopus outright inside its radius (Spelunky); i-frames do not save her (octoHit -> killOctopus)
+  bomb:     { dmg: 30, crush: false, knock: 12, stun: 0.9,  blame: 'octo',  octo: { kill: '' } },
   boulder:  { dmg: 20, crush: true,  knock: 6,  stun: 0.35, blame: 'cause', octo: { hearts: 1, kill: 'splat' } },
   spikes:   { dmg: 20, crush: true,  knock: 6,  stun: 0,    blame: 'cause', impact: true, octo: { kill: 'impale' } },
   block:    { dmg: 20, crush: true,  knock: 3,  stun: 0.35, blame: 'cause', octo: { hearts: 1 } },

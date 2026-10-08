@@ -28,7 +28,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     await sleep(800);
     const cdp = await page.target().createCDPSession();
     const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
-    const vis = () => page.evaluate(() => ['.octo-stick-base', '.octo-stick-nub', '#octo-dash-btn', '#octo-bomb-btn'].map((s) => getComputedStyle(document.querySelector(s)).display));
+    const vis = () => page.evaluate(() => ['.octo-stick-base', '.octo-stick-nub', '#octo-dash-btn', '#octo-use-btn'].map((s) => getComputedStyle(document.querySelector(s)).display));
     const st = () => page.evaluate(() => __octo.state().octopus);
 
     check('controls are hidden before the first touch', (await vis()).every((d) => d === 'none'));
@@ -44,7 +44,9 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     const b = await st();
     check('the octopus swims right along the stick', b.x - a.x > 0.5, `x ${a.x.toFixed(2)} -> ${b.x.toFixed(2)}`);
     // the Bomb button with a second finger while the stick is held right: the bomb flies right
-    const bb = await page.evaluate(() => { const r = document.querySelector('#octo-bomb-btn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    // controls 2026-10-08: the Bomb button is the Use button now; with the bomb picked on the hotbar it throws one (a sticky mine along the stick)
+    await page.evaluate(() => { __octo.input({ select: 1 }); __octo.step(1); __octo.input(null); });
+    const bb = await page.evaluate(() => { const r = document.querySelector('#octo-use-btn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     const bombsBefore = (await st()).bombs;
     const o0 = await st();
     await touch('touchStart', [{ x: 170, y: 500, id: 1 }, { x: bb.x, y: bb.y, id: 2 }]);
@@ -53,7 +55,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     console.log('  octopus', o0.x.toFixed(2), o0.y.toFixed(2), 'v', o0.vx.toFixed(2), o0.vy.toFixed(2), 'bomb', props.map((p) => [p.x, p.y, p.vx, p.vy].map((v) => v.toFixed(2)).join(',')).join(' '));
     await touch('touchEnd', []);
     const bombsAfter = (await st()).bombs;
-    check('the Bomb button throws a bomb', bombsAfter === bombsBefore - 1 && props.length === 1, `bombs ${bombsBefore} -> ${bombsAfter}`);
+    check('the Use button (bomb picked) throws a bomb', bombsAfter === bombsBefore - 1 && props.length === 1, `bombs ${bombsBefore} -> ${bombsAfter}`);
     if (props.length) check('the bomb flies along the stick (to the right)', props[0].vx > 3, `vx ${props[0].vx.toFixed(2)}`);
     await sleep(200);
     check('the controls stay up while touch is the input mode', (await vis()).slice(2).every((d) => d !== 'none'));

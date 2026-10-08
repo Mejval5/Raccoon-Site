@@ -58,12 +58,22 @@ const VW = +(process.argv[4] || 1280), VH = +(process.argv[5] || 800);
     const setup = await page.evaluate((fx, fy, FL) => {
       __octo.god(true); __octo.freeze(true);
       __octo.teleport(fx + 5.5, fy - 2.6); // over the middle of the stage, so the camera frames the whole chain (god mode: the blasts only shove her)
-      const on = (k, dx) => [fx + k + dx, FL[k] - 0.35];
-      const ids = [__octo.bombAt(...on(1, 0.5), 3.15, true), __octo.bombAt(...on(3, 0.3), 99, true), __octo.bombAt(...on(5, 0.1), 99, true), __octo.bombAt(...on(6, 0.9), 99, true)];
-      const clam = __octo.spawnCreature('gclam', fx + 10.2, FL[10] - 0.5, 0, -1); // 3.3 from the last bomb: its shove ring, not its blast
-      const pot = __octo.addLoot('pot', fx + 11.6, FL[11] - 0.5);
+      // controls 2026-10-08: the bombs hang in one row 1.8 apart (pinned), since the bomb's own reach is 2.0 now and a step in the
+      // floor would put two of them out of it; the row is at the highest floor of their columns, so all four are in water
+      const by = Math.min(FL[1], FL[3], FL[5], FL[6]) - 0.35;
+      const on = (k, dx) => [fx + k + dx, by];
+      const ids = [__octo.bombAt(...on(1, 0.5), 3.15), __octo.bombAt(...on(3, 0.3), 99), __octo.bombAt(...on(5, 0.1), 99), __octo.bombAt(...on(6, 0.9), 99)];
+      // the clam on the floor in the last bomb's shove ring (2.6 .. 3.8 from it: not its blast), the pot beside it
+      let ck = 10, cbest = 1e9;
+      for (let k = 7; k <= 10; k++) { const d = Math.hypot(fx + k + 0.2 - (fx + 6.9), FL[k] - 0.5 - by); if (d >= 2.6 && d <= 3.9 && Math.abs(d - 3.3) < cbest) { cbest = Math.abs(d - 3.3); ck = k; } }
+      const clam = __octo.spawnCreature('gclam', fx + ck + 0.2, FL[ck] - 0.5, 0, -1);
+      // the pot within the clam's snap reach (1.6) on whichever side the floor allows, out of the last bomb's blast
+      const cx = fx + ck + 0.2, cy = FL[ck] - 0.5;
+      let px = fx + ck + 1.6, py = FL[ck + 1] - 0.5;
+      for (const dx of [1.4, -1.4, 1.2, -1.2]) { const x = cx + dx, y = FL[Math.floor(x) - fx] - 0.5; if (Math.hypot(x - cx, y - cy) <= 1.55 && Math.hypot(x - (fx + 6.9), y - by) > 2.05) { px = x; py = y; break; } }
+      const pot = __octo.addLoot('pot', px, py);
       __octo.stepDraw(150); // the camera settles on her, the bombs settle on the floor (the first one has 0.15 s of fuse left: 3.15 s, 150 steps of 0.02)
-      return { ids, pot, clam, bombs: __octo.bombs(), chain0: __octo.chain().stats };
+      return { ids, pot, clam, ck, FL, by, bombs: __octo.bombs(), chain0: __octo.chain().stats };
     }, fx, fy, FL);
     check('stage: 4 lit bombs, a pot and a giant clam placed', setup.ids.every((i) => i > 0) && setup.pot >= 0 && setup.clam >= 0, JSON.stringify(setup));
     // run it frame by frame, recording when each bomb went off (and the step cost), saving a frame sequence

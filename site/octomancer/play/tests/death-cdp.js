@@ -39,7 +39,7 @@ const SEEDS = [11, 23, 77];
         await sleep(600);
         await page.evaluate(() => {
           const s = __octo.state().octopus;
-          __octo.placeBomb(s.x, s.y, 0, 0.01);
+          __octo.placeBomb(s.x, s.y); // controls 2026-10-08: no aim = dropped straight down by the body
           __octo.spawn('piranha', s.x + 2.2, s.y);
           window.__deathAt = performance.now();
           __octo.kill('piranha', true);

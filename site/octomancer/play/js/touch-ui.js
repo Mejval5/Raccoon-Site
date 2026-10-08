@@ -1,4 +1,4 @@
-// Floating touch joystick (left half of the screen) + Jet/Dash/Bomb/Spell buttons
+// Floating touch joystick (left half of the screen) + Jet/Dash/Use/Spell buttons
 // (bottom-right, inside safe areas). Pointer Events, touch-action:none.
 // Controls appear on first touch, hide on first keyboard input.
 // OVERNIGHT.md §2 "Input", M0-2.
@@ -21,14 +21,18 @@ export function createTouchUI(root, input, field = root) {
   base.className = 'octo-stick-base';
   const nub = document.createElement('div');
   nub.className = 'octo-stick-nub';
-  // The action buttons, bottom right in a 2 x 2 block (the stick owns the left half): Dash | Jet on the bottom row, Bomb | Spell
+  // The action buttons, bottom right in a 2 x 2 block (the stick owns the left half): Dash | Jet on the bottom row, Use | Spell
   // above. Jet (the ink jet) sits in the corner, under the thumb. `btn` is the input.touch button each one presses.
+  // Controls 2026-10-08 (V2-PLAN 17): Use uses the selected hotbar slot (a spell casts, the bomb drops, or is thrown along the
+  // held stick); Spell casts the selected / last spell and MORPHS into the hand (Grab / Talk / Throw, input.touch.hand) while
+  // something is in reach and the octopus is nearly still, or something is carried (setHand).
   const BUTTONS = [
     { id: 'octo-dash-btn', label: 'Dash', btn: 'dash', col: 1, row: 0 },
     { id: 'octo-attack-btn', label: 'Jet', btn: 'attack', col: 0, row: 0 },
-    { id: 'octo-bomb-btn', label: 'Bomb', btn: 'bomb', col: 1, row: 1 },
+    { id: 'octo-use-btn', label: 'Use', btn: 'use', col: 1, row: 1 },
     { id: 'octo-spell-btn', label: 'Spell', btn: 'spell', col: 0, row: 1 },
   ];
+  const HAND_LABEL = { grab: 'Grab', use: 'Talk', throw: 'Throw' };
   const btnEls = BUTTONS.map((b) => {
     const e = document.createElement('div');
     e.className = 'octo-btn' + (b.btn === 'spell' ? ' octo-btn-spell' : '');
@@ -71,6 +75,24 @@ export function createTouchUI(root, input, field = root) {
   function hide() {
     visible = false;
     for (const el of [base, nub, ...btnEls]) el.style.display = 'none';
+  }
+  let handMode = '', useMode = '';
+  const pressedBtn = new Map(); // pointerId -> the input.touch button it pressed (the Spell button may morph meanwhile)
+  /** '' (a Spell button), 'grab', 'use' or 'throw' (the hand). */
+  function setHand(mode) {
+    mode = mode || '';
+    if (mode === handMode) return;
+    handMode = mode;
+    spellBtn.textContent = mode ? HAND_LABEL[mode] : 'Spell';
+    spellBtn.classList.toggle('octo-btn-hand', !!mode);
+    spellBtn.dataset.hand = mode;
+  }
+  /** What the Use button does now: 'spell' | 'bomb' (its label). */
+  function setUse(mode) {
+    if (mode === useMode) return;
+    useMode = mode;
+    btnEls[2].textContent = mode === 'bomb' ? 'Bomb' : 'Use';
+    btnEls[2].dataset.use = mode;
   }
   let spellReady = null;
   /** Whether the jar holds a cast for the selected spell (the Spell button is dimmed when it does not). */
@@ -132,7 +154,11 @@ export function createTouchUI(root, input, field = root) {
     show();
     input.setMode('touch');
     const bi = btnEls.indexOf(e.target);
-    if (bi >= 0) { pressBtn(btnEls[bi], input.touch[BUTTONS[bi].btn]); capture(btnEls[bi], e.pointerId); return; }
+    if (bi >= 0) {
+      const name = bi === 3 && handMode ? 'hand' : BUTTONS[bi].btn;
+      pressedBtn.set(e.pointerId, name);
+      pressBtn(btnEls[bi], input.touch[name]); capture(btnEls[bi], e.pointerId); return;
+    }
     if (stickPointerId === null && stickStart(e.clientX, e.clientY)) {
       stickPointerId = e.pointerId;
       capture(e.target, e.pointerId);
@@ -144,7 +170,7 @@ export function createTouchUI(root, input, field = root) {
   function endPointer(e) {
     if (e.pointerId === stickPointerId) { stickEnd(); stickPointerId = null; }
     const bi = btnEls.indexOf(e.target);
-    if (bi >= 0) releaseBtn(btnEls[bi], input.touch[BUTTONS[bi].btn]);
+    if (bi >= 0) { const name = pressedBtn.get(e.pointerId) || BUTTONS[bi].btn; pressedBtn.delete(e.pointerId); releaseBtn(btnEls[bi], input.touch[name]); }
   }
   for (const el of field === root ? [root] : [root, field]) {
     el.addEventListener('pointerdown', onDown, { passive: false });
@@ -155,5 +181,5 @@ export function createTouchUI(root, input, field = root) {
 
   input.onModeChange((mode) => { if (mode === 'keyboard' || mode === 'mouse') hide(); });
 
-  return { show, hide, setSpell };
+  return { show, hide, setSpell, setHand, setUse, handMode: () => handMode };
 }
