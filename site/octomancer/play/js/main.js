@@ -95,12 +95,8 @@ import { STAT_ANGERED } from './journal.js';
 import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY, START_SPELL } from './spells.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
-<<<<<<< HEAD
-import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot, castableSpell, isItemId, BOMB_SLOT } from './hotbar.js';
-=======
 import { CR_DASH } from './fragile.js';
-import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
->>>>>>> master
+import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot, castableSpell, isItemId, BOMB_SLOT } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
 import { drawItemIcon } from './items-draw.js';
