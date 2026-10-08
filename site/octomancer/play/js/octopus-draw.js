@@ -419,10 +419,11 @@ function getCompositeCtx(w, h) {
     compositeCanvas = sharedCanvas(document.createElement('canvas'));
     compositeCtx = compositeCanvas.getContext('2d');
   }
-  if (compositeCanvas.width !== w || compositeCanvas.height !== h) {
-    compositeCanvas.width = w;
-    compositeCanvas.height = h;
+  if (compositeCanvas.width < w || compositeCanvas.height < h) {
+    compositeCanvas.width = Math.max(w, compositeCanvas.width);
+    compositeCanvas.height = Math.max(h, compositeCanvas.height);
   } else {
+    compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
     compositeCtx.clearRect(0, 0, w, h);
   }
   return compositeCtx;
@@ -449,11 +450,16 @@ export function drawOctopus(ctx, o, alpha = 1) {
     drawOctopusUnclipped(ctx, o);
     return;
   }
-  const w = ctx.canvas.width, h = ctx.canvas.height;
-  if (!w || !h) { drawOctopusUnclipped(ctx, o); return; } // e.g. headless/test canvases with no size
+  if (!ctx.canvas.width || !ctx.canvas.height) { drawOctopusUnclipped(ctx, o); return; } // e.g. headless/test canvases with no size
   if (splat) drawSplatInk(ctx, o); // the ink spilled under and beside the pancake, behind the body
+  // The buffer only needs to hold the octopus, not the screen: a full-screen buffer cleared, flashed and copied every frame
+  // (enemies keep hitting the dead body, so the flash runs most frames) dropped the death screen to ~8 fps.
+  const m = ctx.getTransform();
+  const scale = Math.hypot(m.a, m.b);
+  const w = Math.max(8, Math.ceil(scale * 3.2)), h = w; // the drawn octopus (squash, flat splat pose, eyes) fits in about 3 units
+  const ox = Math.round(m.e - w / 2), oy = Math.round(m.f - h / 2);
   const cctx = getCompositeCtx(w, h);
-  cctx.setTransform(ctx.getTransform());
+  cctx.setTransform(m.a, m.b, m.c, m.d, m.e - ox, m.f - oy);
   drawOctopusUnclipped(cctx, o);
   // (the flattened body's bruised ink tint is applied inside drawBaked, between the body and the crossed-out eyes)
   cctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -468,7 +474,7 @@ export function drawOctopus(ctx, o, alpha = 1) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = alpha;
-  ctx.drawImage(compositeCanvas, 0, 0);
+  ctx.drawImage(compositeCanvas, 0, 0, w, h, ox, oy, w, h);
   ctx.restore();
 }
 

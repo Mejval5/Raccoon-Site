@@ -51,7 +51,7 @@ export function deathTitle(cause) { return DEATH_TITLE[cause] || DEATH_TITLE.unk
 
 /** The per-dive stats the run summary reports (reset by every dive). */
 function newDive(level) {
-  return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, cause: '', over: false };
+  return { startLevel: level, reached: level, time: 0, shells: 0, kills: 0, quests: 0, swift: 0, cause: '', over: false }; // swift: Swift Current bonuses earned (swift.js)
 }
 
 /** @param {number} seed @param {{tutorialDone?:boolean, shortcut?:boolean, shortcut3?:boolean, juiceStart?:number, rest?:boolean}} [opts] */
@@ -100,7 +100,7 @@ export function endDive(run, cleared, cause) {
     level: cleared ? BIOME_LEVELS : run.level || d.reached,
     depth: cleared ? BIOME_LEVELS + 1 : Math.max(1, run.level || d.reached),
     levelsCleared: run.levelsCleared,
-    time: d.time, shells: d.shells, kills: d.kills, quests: d.quests,
+    time: d.time, shells: d.shells, kills: d.kills, quests: d.quests, swift: d.swift | 0,
     cause: cleared ? '' : d.cause,
     seed: run.diveSeed, // the dive's own seed: typing it in the settings menu replays the same levels
     shortcutNew: false,

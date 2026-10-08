@@ -20,11 +20,13 @@ import { resolveCircleVsSegments, resolveCircleVsGrid } from './physics.js';
 import { hasLineOfSight, findSmoothPath } from './pathfind.js';
 import { hashSeed2, mulberry32 } from './rng.js';
 import { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY, octoDashing } from './shop-aggro.js';
+import { resolveHit, rowOf } from './creature-rules.js';
+import { octoHit } from './damage.js';
 
 export { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY };
 export const KM_CALM = 0, KM_WAIT = 1, KM_ANGRY = 2, KM_DEAD = 3;
 export const MODE_NAMES = ['calm', 'wait', 'angry', 'dead'];
-export const KEEPER_HP = 40;
+export const KEEPER_HP = rowOf('keeper').hp; // creature-rules.js: 40, resists ink and dashes (the table's `resist`)
 export const KEEPER_R = 0.75;        // body radius for hits (the drawn crab is about 1.9 tiles wide)
 export const KEEPER_WALL_R = 0.6;    // body radius against rock (fits the two-tile passages the octopus swims)
 export const KEEPER_SPEED = 6.4;     // u/s pursuit: faster than the octopus swims (6); only a dash gains on him
@@ -39,12 +41,12 @@ export const CLAW_R = 0.42;          // claw tip hit radius
 export const SHOULDER_DX = 0.62, SHOULDER_DY = 0.18;
 export const KEEPER_HIT_DMG = 2;     // hearts per claw or body hit (HEART_MAX 3: two hits kill, one when hurt already)
 export const KEEPER_HIT_KNOCK = 10;  // u/s
-export const BOMB_DMG = 26;          // at the blast centre, falling off to 0 at twice the radius
+export const BOMB_DMG = 30;          // 2026-10-08: the table's bomb (creature-rules.js SOURCES.bomb.dmg) inside the radius; beyond it, to twice the radius, only a shove
 export const KNOCK_BASE = 9;         // u/s of knockback for a unit hit (scaled by KNOCK_SCALE)
-// per hit kind (index = HIT_*): damage multiplier, knockback multiplier, stun seconds
-export const HIT_SCALE = new Float32Array([0, 0.08, 0.5, 1, 1]);
-export const KNOCK_SCALE = new Float32Array([0, 0.03, 0.06, 1, 0.6]);
-export const HIT_STUN = new Float32Array([0, 0, 0, 0.55, 0.35]);
+// 2026-10-08: the old per-HIT_* scales are gone: every hit goes through creature-rules.js (the 'keeper' row: hp 40, mass 1.2,
+// resist ink 0.08 / dash 0.25, stunScale 0.6). HIT_* codes stay as the legacy names of four sources:
+export const HIT_SOURCE = ['', 'ink', 'dash', 'bomb', 'boulder'];
+const SOURCE_HIT = { ink: HIT_INK, dash: HIT_DASH, bomb: HIT_BOMB };
 export const GUARD_CHANCE = 0.75;    // a later level of an angry run has a keeper waiting by its exit this often
 const REPATH = 0.25;
 
@@ -56,6 +58,7 @@ export function createKeepers(cap = 4) {
     x: new Float32Array(cap), y: new Float32Array(cap), vx: new Float32Array(cap), vy: new Float32Array(cap),
     homeX: new Float32Array(cap), homeY: new Float32Array(cap),
     hp: new Float32Array(cap), face: new Int8Array(cap),
+    hzCool: new Float64Array(cap), blame: new Float64Array(cap), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
     stun: new Float32Array(cap), flash: new Float32Array(cap), shrug: new Float32Array(cap), roused: new Float32Array(cap),
     tell: new Float32Array(cap), tellSide: new Uint8Array(cap), cool: new Float32Array(cap), nextSide: new Uint8Array(cap),
     pathT: new Float32Array(cap), pathI: new Int16Array(cap), path: new Array(cap).fill(null),
@@ -73,7 +76,7 @@ export function addKeeper(k, x, y, mode = KM_CALM, isShop = 1) {
   const i = k.n++;
   k.mode[i] = mode; k.shop[i] = isShop ? 1 : 0;
   k.x[i] = k.homeX[i] = x; k.y[i] = k.homeY[i] = y; k.vx[i] = k.vy[i] = 0;
-  k.hp[i] = KEEPER_HP; k.face[i] = -1;
+  k.hp[i] = KEEPER_HP; k.face[i] = -1; k.hzCool[i] = 0; k.blame[i] = 0;
   k.stun[i] = k.flash[i] = k.shrug[i] = k.roused[i] = k.tell[i] = 0; k.cool[i] = 0.3; k.nextSide[i] = 0;
   k.pathT[i] = 0; k.pathI[i] = 0; k.path[i] = null;
   for (let s = 0; s < 2; s++) { k.cst[i * 2 + s] = 0; k.cx[i * 2 + s] = x; k.cy[i * 2 + s] = y; k.cd[i * 2 + s] = 0; }
@@ -98,27 +101,55 @@ function rouse(k, i) {
 }
 
 /**
- * Hit keeper i: `dmg` scaled by the kind's HIT_SCALE, a knockback away from (fromX, fromY) scaled by KNOCK_SCALE, a stun for
- * bombs and heavy hits. A calm or waiting keeper is roused. Returns the damage dealt.
+ * 2026-10-08, the one way a keeper takes a hit: creature-rules.js resolveHit('keeper', src) (dmg < 0: the source's own; the
+ * row's resist makes ink and dashes barely scratch him), a knock away from (fromX, fromY) scaled by knockScale, a stun for
+ * the heavy ones. SHOPKEEPER RULE (Spelunky): anything may hurt him, but only a hit the octopus is to blame for (byOcto) rouses
+ * him and angers the run; the others are marked quiet (main.js handleKeeperEvents skips shopAggro for them). A shove with no
+ * damage (the outer ring of a blast) is not a hurt at all. Returns the damage dealt.
  */
-export function hitKeeper(k, i, kind, dmg, fromX, fromY) {
+export function applyKeeperHit(k, i, src, fromX, fromY, dmg = -1, knockScale = 1, byOcto = true) {
   if (i < 0 || i >= k.n || k.mode[i] === KM_DEAD) return 0;
-  const dealt = Math.max(0, dmg) * (HIT_SCALE[kind] || 0);
-  k.hp[i] -= dealt;
+  const o = resolveHit('keeper', src, dmg);
+  if (o.ignore) return 0;
+  const dealt = o.dmg, kick = o.knock * Math.max(0, knockScale), stun = knockScale > 0 ? o.stun : 0;
   let dx = k.x[i] - fromX, dy = k.y[i] - fromY;
   const d = Math.hypot(dx, dy);
   if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
-  const kick = KNOCK_BASE * (KNOCK_SCALE[kind] || 0) * (kind === HIT_BOMB ? Math.min(1.2, dmg / BOMB_DMG + 0.3) : 1);
   k.vx[i] += dx * kick; k.vy[i] += dy * kick;
-  if (kind === HIT_BOMB || kind === HIT_HEAVY) { k.stun[i] = Math.max(k.stun[i], HIT_STUN[kind]); k.flash[i] = 0.3; k.tell[i] = 0; }
-  else k.shrug[i] = 0.35; // the hit glances off: a little shudder, nothing more
-  k.events.push({ type: 'hurt', i, kind, dmg: dealt, x: k.x[i], y: k.y[i] });
+  if (stun > 0 || dealt >= 5) { k.stun[i] = Math.max(k.stun[i], stun); k.flash[i] = 0.3; k.tell[i] = 0; }
+  else if (dealt > 0) k.shrug[i] = 0.35; // the hit glances off: a little shudder, nothing more
+  if (dealt <= 0) return 0;
+  k.hp[i] -= dealt;
+  const kind = SOURCE_HIT[src] || HIT_HEAVY;
+  k.events.push({ type: 'hurt', i, kind, src, dmg: dealt, x: k.x[i], y: k.y[i], quiet: !byOcto });
   if (k.hp[i] <= 0) {
     k.hp[i] = 0; k.mode[i] = KM_DEAD; k.tell[i] = 0;
     for (let s = 0; s < 2; s++) k.cst[i * 2 + s] = 0;
-    k.events.push({ type: 'killed', i, x: k.x[i], y: k.y[i], shop: k.shop[i] });
-  } else if (k.mode[i] !== KM_ANGRY) rouse(k, i);
+    k.events.push({ type: 'killed', i, x: k.x[i], y: k.y[i], shop: k.shop[i], src, quiet: !byOcto });
+  } else if (byOcto && k.mode[i] !== KM_ANGRY) rouse(k, i);
   return dealt;
+}
+
+/** Legacy name: hit keeper i with a HIT_* kind (ink, dash, bomb, heavy = a boulder) for `dmg` before his resistance; the octopus's doing. */
+export function hitKeeper(k, i, kind, dmg, fromX, fromY) {
+  return applyKeeperHit(k, i, HIT_SOURCE[kind] || 'boulder', fromX, fromY, dmg, 1, true);
+}
+
+/** The damage.js family adapter for a keepers record. */
+export function keeperFamily(k) {
+  return {
+    name: 'keeper',
+    count() { return k.n; },
+    view(i, V) {
+      if (k.mode[i] === KM_DEAD) return false;
+      V.kind = 'keeper'; V.x = k.x[i]; V.y = k.y[i]; V.r = KEEPER_R; V.vx = k.vx[i]; V.vy = k.vy[i]; V.stun = k.stun[i];
+      V.shut = false; V.cool = k.hzCool[i]; V.blame = k.blame[i];
+      return true;
+    },
+    apply(i, src, fx, fy, dmg, knockScale, byOcto) { return applyKeeperHit(k, i, src, fx, fy, dmg, knockScale, byOcto); },
+    push(i, ax, ay, mode) { if (mode === 'knock') { k.vx[i] += ax; k.vy[i] += ay; } else { k.x[i] += ax; k.y[i] += ay; } },
+    setTimers(i, cool, blame) { if (cool >= 0) k.hzCool[i] = cool; if (blame >= 0) k.blame[i] = blame; },
+  };
 }
 
 /** Every keeper whose body overlaps the circle (x, y, r) takes the hit. Returns the total damage dealt. */
@@ -132,14 +163,14 @@ export function hitKeepersAt(k, x, y, r, kind, dmg, fromX = x, fromY = y) {
   return total;
 }
 
-/** A bomb blast at (bx, by) with radius R: keepers within 2R take BOMB_DMG, falling off linearly. Returns the total dealt. */
+/** A bomb blast at (bx, by) with radius R, by the table's rule (damage.js blast): inside R the bomb, out to 2R a shove. Returns the total dealt. */
 export function bombKeepers(k, bx, by, R) {
   let total = 0;
   for (let i = 0; i < k.n; i++) {
     if (k.mode[i] === KM_DEAD) continue;
     const d = Math.max(0, Math.hypot(k.x[i] - bx, k.y[i] - by) - KEEPER_R * 0.5);
     if (d >= R * 2) continue;
-    total += hitKeeper(k, i, HIT_BOMB, BOMB_DMG * (1 - d / (R * 2)), bx, by);
+    total += applyKeeperHit(k, i, 'bomb', bx, by, d <= R ? -1 : 0, 1 - d / (R * 2), true);
   }
   return total;
 }
@@ -147,7 +178,7 @@ export function bombKeepers(k, bx, by, R) {
 /** The keeper hits the octopus: KEEPER_HIT_DMG hearts and a hard knock (works with or without hurtOctopus's opts). */
 export function keeperStrike(o, x, y) {
   const before = o.hearts;
-  if (!hurtOctopus(o, x, y, 'shopkeeper', { dmg: KEEPER_HIT_DMG, knock: KEEPER_HIT_KNOCK })) return false;
+  if (!octoHit(o, 'claw', x, y, 'shopkeeper')) return false; // creature-rules.js SOURCES.claw: KEEPER_HIT_DMG hearts, KEEPER_HIT_KNOCK
   const want = Math.max(0, before - KEEPER_HIT_DMG);
   if (!o.dead && o.hearts > want) { o.hearts = want; if (want <= 0) killOctopus(o, 'shopkeeper'); }
   return true;
