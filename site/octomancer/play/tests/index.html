@@ -286,6 +286,10 @@ await runTimePressureTests(assert);
 import { runChainTests } from './chain.test.js';
 await runChainTests(assert);
 
+// --- 2026-10-08: octopus skins (a look from each person, the mirror shell's picker, the tinted sheet built once) ---
+import { runSkinsTests } from './skins.test.js';
+await runSkinsTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

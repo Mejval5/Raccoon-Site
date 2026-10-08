@@ -4,6 +4,7 @@
 // array is pre-allocated once; `spawn()` reuses a dead slot instead of
 // pushing, and `update()` mutates in place.
 
+import { wornColors } from './skin-draw.js';
 import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
 import { offScreenFar } from './cull.js';
 
@@ -180,7 +181,7 @@ export function createParticles() {
       const n = Math.max(6, Math.min(10, chunks));
       for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.9, speed = 3 + Math.random() * 5;
-        const p = spawnOne(x + (calm ? (i - n / 2) * 0.15 : 0), y, calm ? 0 : Math.cos(a) * speed, calm ? 0 : Math.sin(a) * speed, 4 + Math.random() * 1.5, 0.055 + Math.random() * 0.045, i % 2 ? '#c05060' : '#904050');
+        const p = spawnOne(x + (calm ? (i - n / 2) * 0.15 : 0), y, calm ? 0 : Math.cos(a) * speed, calm ? 0 : Math.sin(a) * speed, 4 + Math.random() * 1.5, 0.055 + Math.random() * 0.045, i % 2 ? wornColors().body : wornColors().dark); // the worn look's colours (skins)
         if (p) { p.sticky = true; p.stuck = calm; }
       }
     },

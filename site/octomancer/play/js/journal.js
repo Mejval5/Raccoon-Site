@@ -11,7 +11,7 @@ export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
 export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_USED = 5, STAT_CARRIED = 6, STAT_COUNT = 7;
 
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells and Runes', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells and Runes', look: 'Looks', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
 /**
  * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
