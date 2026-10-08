@@ -27,6 +27,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html { color-scheme: dark; }
+/* No grey/blue box flashing over links and buttons on tap (phones); focus outlines stay for keyboards. */
+html { -webkit-tap-highlight-color: transparent; }
 
 body {
   margin: 0;
