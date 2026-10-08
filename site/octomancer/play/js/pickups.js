@@ -190,12 +190,13 @@ export function createPickups() {
       }
     },
     events,
-    /** v2: a shell dropped by a defeated creature, in the single level chunk (index 0). False before that chunk exists. */
+    /** v2: a shell dropped by a defeated creature, in the single level chunk (index 0). Returns the item; false before that chunk exists. */
     dropShell(x, y, vx = 0, vy = 0, sk = SK_COWRIE) {
       const items = byChunk.get(0);
       if (!items) return false;
-      items.push({ type: 'shell', x, y, sk, value: SHELL_VALUE[sk] || 1, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY });
-      return true;
+      const it = { type: 'shell', x, y, sk, value: SHELL_VALUE[sk] || 1, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY };
+      items.push(it);
+      return it; // truthy: the live item (Swift Current pays an uncollected moon shell at the exit)
     },
     /** Visible, uncollected pickups in world space, for render.js. */
     visible(resident) {

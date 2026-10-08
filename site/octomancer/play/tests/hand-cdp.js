@@ -104,7 +104,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     h = await H(page);
     check('desktop: holding F puts the clam down gently (no throw)', g0.held === 'pot' && h.held === '' && h.drops === g0.drops + 1 && h.throws === g0.throws);
     // a stunned creature
-    await page.evaluate(() => { const o = __octo.state().octopus; for (const dy of [-2, -3, 2, 3]) if (!__octo.tileAt(o.x, o.y + dy) && !__octo.tileAt(o.x + 1, o.y + dy)) { __octo.teleport(o.x, o.y + dy); break; } __octo.stepDraw(1); });
+    await page.evaluate(() => { const o = __octo.state().octopus; for (const dy of [-2, -3, 2, 3]) if (!__octo.tileAt(Math.floor(o.x), Math.floor(o.y + dy)) && !__octo.tileAt(Math.floor(o.x + 1), Math.floor(o.y + dy))) { __octo.teleport(o.x, o.y + dy); break; } __octo.stepDraw(1); });
     o = await octoAt(page);
     await page.evaluate((o) => { __octo.spawn('piranha', o.x + 0.8, o.y); __octo.stunNear(o.x + 0.8, o.y, 0.5, 1.2); }, o); // as a blast stuns what it does not kill
     const stunned = await page.evaluate(() => { for (let i = 0; i < 5; i++) { __octo.stepDraw(1); const h = __octo.hand(); if (h.target && h.target.kind === 'creature') return true; } return false; });
@@ -248,7 +248,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
       const res = await p.evaluate(() => { // sweep the hub's water for a spot beside a resident (from the right: the journal board on the left opens the book)
         const lv = __octo.level();
         for (let x = lv.w - 1.5; x > 1; x -= 0.7) for (let y = 1; y < lv.h - 1; y += 0.7) {
-          if (__octo.tileAt(x, y) || Math.hypot(x - lv.boardX - 0.5, y - lv.boardY - 0.5) < 3) continue;
+          if (__octo.tileAt(Math.floor(x), Math.floor(y)) || Math.hypot(x - lv.boardX - 0.5, y - lv.boardY - 0.5) < 3) continue;
           __octo.teleport(x, y); __octo.step(1);
           const h = __octo.hand(); if (h.target && h.target.kind === 'talk') { __octo.stepDraw(1); return true; }
         }

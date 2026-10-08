@@ -24,7 +24,7 @@
 //   exactly on tile tops, stacks on other blocks, and is a solid box to the octopus (pushBlocksByOctopus) and to circle props.
 
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
-import { hurtOctopus } from './octopus.js';
+import { octoHit } from './damage.js';
 
 export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7;
 export const PK_FIND = 8; // a shell, bomb or item released from the rock (embed.js)
@@ -359,7 +359,7 @@ export function createProps(cap = DEFAULT_CAP) {
     for (let i = 0; i < d.n; i++) {
       if (!d.alive[i] || d.kind[i] !== PK_BLOCK || !circleVsBox(octo.x, octo.y, octo.radius, i)) continue;
       const nx = BN.nx, ny = BN.ny, pen = BN.pen;
-      if (ny > 0.5 && d.timer[i] > BLOCK_CRUSH_SPEED) hurtOctopus(octo, d.x[i], d.y[i], 'block'); // a fast fall onto the octopus
+      if (ny > 0.5 && d.timer[i] > BLOCK_CRUSH_SPEED) octoHit(octo, 'block', d.x[i], d.y[i], 'block'); // a fast fall onto the octopus (creature-rules.js SOURCES.block)
       if (Math.abs(nx) > 0.7 && d.grounded[i]) {
         const dir = nx < 0 ? 1 : -1, into = octo.vx * dir;
         // only along a free floor: the next column over must be open, or the block stays put
@@ -375,18 +375,23 @@ export function createProps(cap = DEFAULT_CAP) {
     }
   }
 
-  /** A block landing fast on an enemy kills it (no kill event: the enemy is just flagged dead, as when its support goes). */
-  let enemyKiller = null; // main.js: enemies.kill, so a crushed enemy leaves a corpse like any other kill
-  function crushEnemies(list) {
+  /**
+   * 2026-10-08: a block landing fast on any creature body crushes it through the shared damage entry (damage.js, creature-rules.js
+   * 'block': a oneHitSplat kind is splatted with a corpse, the rest take its damage once per landing). The block itself is the
+   * world's: it only angers a keeper or an NPC when the octopus is to blame for the body being there (damage.js blame).
+   */
+  let dmg = null;
+  let crushI = 0;
+  const crushBody = (f, k, V) => {
+    const r = d.radius[crushI], bx = d.x[crushI], by = d.y[crushI];
+    if (dmg.cooling(V) || Math.abs(V.x - bx) >= r + V.r * 0.8 || V.y <= by || V.y - V.r >= by + r) return;
+    if (dmg.hitFound(f, k, 'block', bx, by - r) !== 0) dmg.cool(f, k);
+  };
+  function crushBodies() {
+    if (!dmg) return;
     for (let i = 0; i < d.n; i++) {
       if (!d.alive[i] || d.kind[i] !== PK_BLOCK || d.timer[i] <= BLOCK_CRUSH_SPEED) continue;
-      const r = d.radius[i], bx = d.x[i], by = d.y[i];
-      for (let k = 0; k < list.length; k++) {
-        const e = list[k];
-        if (e.dead || e.ghost || e.immune || e.kind === 'beholder') continue;
-        const er = e.radius || 0.4;
-        if (Math.abs(e.x - bx) < r + er * 0.8 && e.y > by && e.y - er < by + r) { if (enemyKiller) enemyKiller(e); else e.dead = true; }
-      }
+      crushI = i; dmg.each(crushBody);
     }
   }
 
@@ -545,8 +550,8 @@ export function createProps(cap = DEFAULT_CAP) {
 
   return {
     data: d,
-    /** fn(enemyRecord) kills an enemy by its regular path (crushed under a falling block). */
-    setEnemyKiller(fn) { enemyKiller = fn; },
+    /** The shared damage entry (damage.js) a falling block crushes creature bodies through; null: blocks crush nothing but the octopus. */
+    setDamage(dm) { dmg = dm || null; },
     add, remove, hold, wake, release, carry, place, stick, wakeAll, wakeNear, blast, checkSupports,
     count() { return d.live; },
     /** Indices of live props of one kind (tests, drawing). */
@@ -573,7 +578,8 @@ export function createProps(cap = DEFAULT_CAP) {
       if (blocksAwake) for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === PK_BLOCK && d.state[i] === PS_REST && !blockSupported(i, world)) wake(i);
       if (nAwake > 0) { separate(); separateRubble(); }
       if (octo) { pushByOctopus(octo); pushBlocksByOctopus(octo, world); }
-      if (enemies) { pushByEnemies(enemies); crushEnemies(enemies); }
+      if (enemies) pushByEnemies(enemies);
+      if (blocksAwake) crushBodies();
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i] || d.state[i] === PS_HELD || d.state[i] === PS_CARRY || (d.state[i] === PS_REST && d.kind[i] === PK_RUBBLE)) continue; // a sleeping chip costs nothing (a tile change wakes it first)

@@ -5,6 +5,7 @@
 import { ITEM_DEFS } from './items.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from './spell-icons.js';
+import { onSpritesReady } from './sprites.js';
 
 function el(tag, className, text) {
   const e = document.createElement(tag);
@@ -143,10 +144,15 @@ export function createInventoryUI(root, handlers = {}) {
     return sec;
   }
 
+  let lastState = null;
   function build(state) {
+    lastState = state;
     body.textContent = '';
     body.append(spellRows(state), itemRows(state), juiceRow(state));
   }
+
+  // the painted icons arrive with the atlas: redraw an open panel (a closed one is rebuilt on show)
+  onSpritesReady(() => { if (open && lastState) { const y = body.scrollTop; build(lastState); body.scrollTop = y; } });
 
   return {
     el: overlay,

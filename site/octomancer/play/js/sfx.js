@@ -55,7 +55,27 @@ export function createSfx(audio) {
     if (!ctx || !dest) return; // no input yet: silently skip, never throw
     try { fn(ctx, dest, audio); } catch (e) { /* never let a bad SFX crash the frame */ }
   }
+  /** A slow swell: a low sine (and its fifth) that rises in over `rise` s and fades over `fall` s (the Beholder's dread). */
+  function swell(ctx, dest, freq, gain, rise, fall) {
+    const t = ctx.currentTime;
+    for (const [f, gm] of [[freq, 1], [freq * 1.5, 0.45]]) {
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f * 0.94, t);
+      osc.frequency.linearRampToValueAtTime(f, t + rise);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain * gm, t + rise);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + rise + fall);
+      osc.connect(g).connect(dest);
+      audio.track(osc, 'tone', [g]);
+      osc.start(t);
+      osc.stop(t + rise + fall + 0.05);
+    }
+  }
   return {
+    /** Time pressure: the warning (a long, low swell) and the Beholder's entry (deeper, quicker). */
+    dreadSwell() { play((ctx, dest) => swell(ctx, dest, 55, 0.2, 2.4, 2.2)); },
+    beholderArrive() { play((ctx, dest) => { swell(ctx, dest, 41, 0.26, 0.6, 1.8); noiseBurst(audio, ctx, dest, { dur: 0.9, gain: 0.12, filterFreq: 300 }); }); },
     dash() { play((ctx, dest) => tone(audio, ctx, dest, { freq: 320, sweep: 720, dur: 0.14, type: 'sawtooth', gain: 0.18 })); },
     /** v2: a purchase or a finished quest, two rising notes. */
     chime() {

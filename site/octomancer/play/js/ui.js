@@ -144,7 +144,12 @@ export function createUI(root, handlers) {
   titleEl.style.display = 'none';
   const titleText = el('div', 'octo-title-text');
   const titleSub = el('div', 'octo-title-sub');
-  titleEl.append(titleText, titleSub);
+  // Swift Current (swift.js): a small current mark and the level's target time, just under the ribbon
+  const titleCurrent = el('div', 'octo-title-current');
+  titleCurrent.innerHTML = '<svg viewBox="0 0 24 14" width="18" height="11" aria-hidden="true"><path d="M1 4c3-3 5 3 8 0s5 3 8 0 4 1 6-1M1 10c3-3 5 3 8 0s5 3 8 0 4 1 6-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span></span>';
+  titleCurrent.title = 'Swift Current: reach the whirlpool by this time';
+  titleCurrent.style.display = 'none';
+  titleEl.append(titleText, titleSub, titleCurrent);
   let titleTimer = 0, titleTimer2 = 0;
   root.append(bar, pauseBtn, muteBtn, gearBtn, controlsHelp, promptEl, toastEl, titleEl);
 
@@ -285,10 +290,12 @@ export function createUI(root, handlers) {
       promptEl.style.display = '';
     },
     /** Level title card ("Shallows 1-2"), optional small line under it (e.g. the seed); fades away by itself. */
-    showTitle(text, sub = '', ms = 1500) {
+    showTitle(text, sub = '', ms = 1500, current = '') {
       clearTimeout(titleTimer); clearTimeout(titleTimer2);
       titleText.textContent = text; titleSub.textContent = sub;
       titleSub.style.display = sub ? '' : 'none';
+      titleCurrent.lastChild.textContent = current;
+      titleCurrent.style.display = current ? '' : 'none';
       titleEl.style.backgroundImage = `url(${artUrl('title-banner.webp')})`;
       titleEl.style.display = '';
       titleEl.style.opacity = '0';
@@ -299,7 +306,7 @@ export function createUI(root, handlers) {
     hideTitle() { clearTimeout(titleTimer); clearTimeout(titleTimer2); titleEl.style.display = 'none'; },
     titleShown() { return titleEl.style.display !== 'none'; },
     /** Text on the level title card: {text, sub}. */
-    titleContent() { return { text: titleText.textContent, sub: titleSub.textContent }; },
+    titleContent() { return { text: titleText.textContent, sub: titleSub.textContent, current: titleCurrent.style.display === 'none' ? '' : titleCurrent.lastChild.textContent }; },
     /** A toast replaces the one showing; with `queue` it waits for the current one to expire instead (journal announcements). */
     showToast(text, ms = 3200, queue = false, small = false) {
       if (queue && toastEl.style.display !== 'none') { if (toastQueue.length < 3) toastQueue.push({ text, ms, small }); return; }

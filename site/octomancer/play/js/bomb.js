@@ -16,7 +16,8 @@
 //                        octopus, and 4-8 rubble props where rock was blown away.
 
 import { BOMB_FUSE, BOMB_RADIUS } from './config.js';
-import { hurtOctopus, tryUseBomb } from './octopus.js';
+import { tryUseBomb } from './octopus.js';
+import { octoHit } from './damage.js';
 import { PK_BOMB, PK_RUBBLE, PROP_RADIUS, THROW_SPEED, BM_PLAIN, BM_HEAVY, BM_STICKY, PS_HELD, PS_CARRY } from './props.js';
 
 export const BOMB_FUSE_V2 = 1.6;
@@ -74,9 +75,14 @@ export function createBombs(props = null) {
         if (props && was !== 0 && world.tileAt(tx, ty) === 0) { broken[nb * 2] = tx; broken[nb * 2 + 1] = ty; nb++; }
       }
     }
-    enemies.killInRadius(b.x, b.y, r);
-    if (props && enemies.knockInRadius) enemies.knockInRadius(b.x, b.y, r * BLAST_REACH, ENEMY_BLAST_IMPULSE, ENEMY_STUN);
-    if (dist(octo.x, octo.y, b.x, b.y) <= r) hurtOctopus(octo, b.x, b.y, 'bomb'); // dead: a hit on the body (flash, knock)
+    // 2026-10-08: main.js hands over the shared damage entry (damage.js: anything with blast(x, y, r, isSolid)), so every creature
+    // body takes the bomb by the creature table; older callers (tests) pass an enemies-like {killInRadius, knockInRadius}
+    if (enemies.blast) enemies.blast(b.x, b.y, r, world.isSolid ? (x, y) => world.isSolid(x, y) : null);
+    else {
+      enemies.killInRadius(b.x, b.y, r);
+      if (props && enemies.knockInRadius) enemies.knockInRadius(b.x, b.y, r * BLAST_REACH, ENEMY_BLAST_IMPULSE, ENEMY_STUN);
+    }
+    if (dist(octo.x, octo.y, b.x, b.y) <= r) octoHit(octo, 'bomb', b.x, b.y, 'bomb'); // dead: a hit on the body (flash, knock)
     if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
       if (d < reach) {

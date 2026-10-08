@@ -9,7 +9,12 @@
 //   rescue  (Pip)     a cage on the floor: break it with a dash or a bomb, the critter follows your trail, bring it to the
 //                     exit (8 shells); it then lives in the hub.
 //   Quill   (hub)     moves in after your first dive; each relic carried out through an exit and handed over unlocks a
-//                     journal entry, three give the lantern. No level row: hubVisit() is his whole scene.
+//                     journal entry, three give the lantern. Out on a dig in the levels now and then (a meet row).
+//   meet    (Pip, Quill) someone standing (or swimming) in a side cave: swim up to them.
+// Owners round 3 (quests rework): nobody vanishes after you help them. A freed Marlo swims out and stays; a freed Pip follows you
+// (outcome role 'follow') or stays and swims about his open cage ('stay'). They face the octopus, glance about, jump at a blast
+// (idle.js) and thank you. Each row has seeded OUTCOMES (pickOutcome in visitors.js, chosen in planQuest): a reward now, nothing
+// now ('just vibing'), a meeting later in the dive (visitors.js owedFrom) or a gift in the hub for the next dive (table.gifts).
 // planQuest is a pure function of the final level + seed + story. Spots use the A* lattice (pathcheck.js): only places
 // the octopus can really swim to, never inside a set-piece room or the shop, and clear of the level's other spawns.
 // Data-oriented: rows are plain data, the runtime state is one flat record.
@@ -19,9 +24,11 @@ import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathche
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { createTalk, say, talkStep } from './speech.js';
 import { DASH_KILL_SPEED } from './config.js';
+import { createIdle, idleStep, idleReact } from './idle.js';
+import { pickOutcome, beatSeed } from './visitors.js';
 
-export const Q_RESCUE = 1, Q_VAULT = 2;
-const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT };
+export const Q_RESCUE = 1, Q_VAULT = 2, Q_MEET = 3;
+const KINDS = { rescue: Q_RESCUE, vault: Q_VAULT, meet: Q_MEET };
 export const ST_ACTIVE = 0, ST_DONE = 1, ST_FAILED = 2; // failed: the person was turned on (npcs.js); no reward, no stage up
 export const RELICS_NEEDED = 3;           // relics Quill wants (story.relics counts the ones carried out through an exit)
 export const DIVER_RUNS = 3;              // runs in which Marlo must be freed before he opens the hub shortcut to 1-3
@@ -31,8 +38,10 @@ export const CAGE_BLAST_R = 2.6;         // a bomb this close to the cage breaks
 const TRAIL = 64;            // octopus positions kept (one per fixed step)
 const CRITTER_LAG = 22;      // steps behind the octopus (about 0.45 s)
 export const FREE_R = 2.0;   // r40: Marlo is freed when his pocket is open (clear water between you) and the octopus is this close to him
-const FREE_SWIM = 3.6;       // seconds he swims up and out of the pocket before he has faded (the last 1.2 s are the fade)
-const SWIM_SPEED = 1.5, RISE_SPEED = 1.1;
+const SWIM_SPEED = 1.5, SINK_SPEED = 1.3;
+const SWIM_MAX = 4;          // s he swims towards the octopus before he settles where he is
+export const MEET_TOUCH_R = 1.7; // meet: octopus centre to the person's centre to talk
+const CHAT_R = 3.2, CHAT_S = 10; // after helping: an idle line when you swim up again after a quiet spell
 const MEET_R = 8.5;          // an NPC speaks up when the octopus is this close
 const ASK_AGAIN_R = 3.5, ASK_AGAIN_S = 12;
 const MIN_START_DIST = 9;
@@ -41,7 +50,14 @@ const STEP = 0.02;
 
 /** @param {{npcs:any[], quests:any[]}} json */
 export function parseQuests(json) {
-  const npcs = json.npcs.map((n) => ({ ...n, hub: n.hub || {}, thanks: n.thanks || {} }));
+  const gifts = []; // every `next` of an outcome: story giftX = its index + 1
+  const outs = (list, npc, where) => (list || []).map((o) => {
+    if (!o.id) throw new Error(where + ': an outcome without an id');
+    const out = { ...o, weight: o.weight === undefined ? 1 : +o.weight, lines: (o.lines || []).slice(), now: o.now || null, later: o.later || null, next: o.next || null, role: o.role || '', giftId: 0 };
+    if (out.next) { gifts.push({ npc, lines: (out.next.lines || []).slice(), boon: out.next.boon || {} }); out.giftId = gifts.length; }
+    return out;
+  });
+  const npcs = json.npcs.map((n) => ({ ...n, hub: n.hub || {}, thanks: n.thanks || {}, chat: n.chat || [], react: n.react || [], outcomes: outs(n.outcomes, n.id, 'npc ' + n.id) }));
   const npcById = new Map(npcs.map((n) => [n.id, n]));
   const rows = json.quests.map((q) => {
     if (!KINDS[q.kind]) throw new Error('quest ' + q.id + ': unknown kind ' + q.kind);
@@ -49,9 +65,10 @@ export function parseQuests(json) {
     return {
       ...q, kindId: KINDS[q.kind], weight: 1, reward: q.reward | 0, count: 1, need: q.need | 0, max: q.max === undefined ? q.need | 0 : q.max | 0,
       levels: (q.levels || [0, 1, 2]).slice(), chance: q.chance === undefined ? 0.35 : q.chance, lines: q.lines || {}, variant: q.variant || '',
+      stage: q.stage !== false, outcomes: outs(q.outcomes, q.npc, 'quest ' + q.id),
     };
   });
-  return { rows, byId: new Map(rows.map((r, i) => [r.id, i])), npcs, npcById };
+  return { rows, byId: new Map(rows.map((r, i) => [r.id, i])), npcs, npcById, gifts };
 }
 
 export async function fetchQuests(url = 'data/quests.json') {
@@ -183,10 +200,12 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
     const found = feasible(row);
     if (!found) continue;
     const npc = table.npcById.get(row.npc);
+    const outcome = pickOutcome(row.outcomes, beatSeed(runSeed, levelIndex, row.npc));
     return {
       qi: table.byId.get(row.id), kindId: row.kindId, id: row.id, npc: row.npc, name: npc.name, title: npc.title, reward: row.reward, count: 1,
       need: row.need, max: row.max, lines: row.lines, done: row.done || '', journal: row.journal || npc.journal || '', variant: row.variant,
       floorY: found[2], pos: Float32Array.of(found[0], found[1]),
+      outcome, role: (outcome && outcome.role) || 'follow', stage: row.stage !== false, chat: npc.chat || [], react: npc.react || [],
     };
   }
   return null;
@@ -195,10 +214,13 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
 /** Fresh runtime state for a plan (null plan gives null). */
 export function createQuestState(plan) {
   if (!plan) return null;
-  const floor = plan.kindId === Q_RESCUE;
   return {
     plan, status: ST_ACTIVE, progress: 0, goal: plan.count,
-    following: false,                       // rescue: the cage is broken, the critter trails the octopus
+    following: false,                       // rescue: the cage is broken, the critter trails the octopus (role 'follow')
+    staying: false,                         // rescue: the cage is broken, the critter stays and swims about it (role 'stay')
+    paid: false,                            // main.js paid the outcome (payQuest)
+    idle: createIdle(plan.pos[0] || 0),     // facing, glances, the jump at a blast (idle.js)
+    settled: false, swimT: 0, chatN: 0,     // vault: he swam out and stands (or hovers) where he stopped
     brokenBy: '',                           // rescue: 'dash' or 'bomb'
     cx: plan.pos[0], cy: plan.pos[1],        // rescue: the critter; vault: the diver (he swims out of the pocket once freed)
     wx: 0, wy: 0,                           // vault: where he swims to first (beside the octopus when it freed him)
@@ -223,10 +245,28 @@ function finish(st) { if (st.status !== ST_ACTIVE) return false; st.status = ST_
 export function questSpeaker(st) {
   const p = st.plan;
   if (p.kindId === Q_VAULT) return [st.cx + 0.1, st.cy - 1.0];
+  if (p.kindId === Q_MEET && p.npc !== 'pip') return [st.cx, p.floorY - 1.45];
   return [st.cx, st.cy - (p.variant === 'mama' ? 0.95 : 0.7)];
 }
 
 function speak(st, key) { const l = st.plan.lines[key]; if (l) say(st.talk, [l]); }
+/** The thank-you scene: help, thank, then what the chosen outcome says. */
+function thankScene(st) {
+  st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
+  speak(st, 'help'); speak(st, 'thank');
+  if (st.plan.outcome) say(st.talk, st.plan.outcome.lines);
+}
+/** Where the person's body centre is (what faces the octopus and reacts to blasts). */
+function bodyOf(st) { return st.plan.kindId === Q_VAULT ? [st.cx, st.cy - 0.33] : [st.cx, st.cy]; }
+/** A bomb went off at (x, y): the person (once out of the rock / the cage, or standing about) jumps and shouts. */
+export function questReact(st, x, y) {
+  if (!st || st.status === ST_FAILED) return false;
+  const p = st.plan;
+  if (p.kindId === Q_VAULT && !st.collected) return false;
+  if (p.kindId === Q_RESCUE && !st.following && !st.staying) return false;
+  const [bx, by] = bodyOf(st);
+  return idleReact(st.idle, st.talk, p.react, x, y, bx, by);
+}
 
 /**
  * One fixed step after the octopus moved: speech (meet and ask as you come near), the touch that frees / collects /
@@ -248,72 +288,96 @@ function clearBetween(world, x0, y0, x1, y1) {
   return true;
 }
 
-/** r40: the freed diver swims to the octopus, then straight up (round an obstacle when blocked) and fades with the last second of `leave`. */
+/** The freed diver swims up beside the octopus, then sinks to the floor under him (weighted boots) and stays there. */
 function swimOut(st, world, dt) {
+  const free = (x, y) => !world.isSolid(x, y - 0.8) && !world.isSolid(x, y) && !world.isSolid(x, y + 0.2);
+  st.swimT += dt;
   const dx = st.wx - st.cx, dy = st.wy - st.cy, d = Math.hypot(dx, dy);
-  let nx = st.cx, ny = st.cy;
-  if (d > 0.15) { nx += dx / d * SWIM_SPEED * dt; ny += dy / d * SWIM_SPEED * dt; }
-  else ny -= RISE_SPEED * dt;
-  const free = (x, y) => !world.isSolid(x, y - 0.8) && !world.isSolid(x, y);
-  if (free(nx, ny)) { st.cx = nx; st.cy = ny; } // blocked: slide along one axis
-  else if (free(nx, st.cy)) st.cx = nx;
-  else if (free(st.cx, ny)) st.cy = ny;
+  if (d > 0.15 && st.swimT < SWIM_MAX) {
+    const nx = st.cx + dx / d * SWIM_SPEED * dt, ny = st.cy + dy / d * SWIM_SPEED * dt;
+    if (free(nx, ny)) { st.cx = nx; st.cy = ny; return; } // blocked: slide along one axis
+    if (free(nx, st.cy)) { st.cx = nx; return; }
+    if (free(st.cx, ny)) { st.cy = ny; return; }
+  }
+  // then sink until the feet (cy + 0.22) touch rock; after a long drop (or none possible) he simply hovers where he is
+  const ny = st.cy + SINK_SPEED * dt;
+  if (st.swimT < SWIM_MAX + 6 && !world.isSolid(st.cx, ny + 0.24) && free(st.cx, ny)) st.cy = ny;
+  else st.settled = true;
+}
+
+/** Pip after the cage broke when he chose to stay: lazy loops round his open cage. */
+function wander(st, world, dt) {
+  const hx = st.plan.pos[0], hy = st.plan.pos[1] - 0.35, t = st.clock;
+  let tx = hx + Math.cos(t * 0.8) * 1.1, ty = hy - 0.4 + Math.sin(t * 1.6) * 0.35;
+  if (world.isSolid(tx, ty)) { tx = hx; ty = hy - 0.4; }
+  const k = Math.min(1, dt * 2.5), nx = st.cx + (tx - st.cx) * k, ny = st.cy + (ty - st.cy) * k;
+  if (!world.isSolid(nx, ny)) { st.cx = nx; st.cy = ny; }
+}
+
+/** The critter trails the octopus by CRITTER_LAG steps (role 'follow'). */
+function follow(st, octo, world) {
+  const lag = Math.min(CRITTER_LAG, st.filled);
+  const i = (st.head - lag + TRAIL * 2) % TRAIL;
+  let tx = st.trail[i * 2], ty = st.trail[i * 2 + 1];
+  // keep beside the octopus, not inside it, and never on its centre: if the wanted point is solid, pick the
+  // free spot around the octopus (8 directions, 0.95-1.1 tiles) closest to the trail point
+  const dx = tx - octo.x, dy = ty - octo.y, dd = Math.hypot(dx, dy);
+  if (dd < 0.95) { const ux = dd > 1e-3 ? dx / dd : -0.7, uy = dd > 1e-3 ? dy / dd : 0.7; tx = octo.x + ux * 0.95; ty = octo.y + uy * 0.95; }
+  if (world.isSolid(tx, ty)) {
+    const want = { x: tx, y: ty };
+    let best = null, bd = Infinity;
+    for (const r of [0.95, 1.1]) {
+      for (let a = 0; a < 8; a++) {
+        const px = octo.x + Math.cos(a * Math.PI / 4) * r, py = octo.y + Math.sin(a * Math.PI / 4) * r;
+        if (world.isSolid(px, py)) continue;
+        const ddd = Math.hypot(px - want.x, py - want.y);
+        if (ddd < bd) { bd = ddd; best = [px, py]; }
+      }
+    }
+    if (best) { tx = best[0]; ty = best[1]; } else { tx = st.cx; ty = st.cy; }
+  }
+  const nx2 = st.cx + (tx - st.cx) * 0.3, ny2 = st.cy + (ty - st.cy) * 0.3;
+  if (!world.isSolid(nx2, ny2)) { st.cx = nx2; st.cy = ny2; }
 }
 
 function questStep(st, octo, world, dt) {
-  if (st.status !== ST_ACTIVE) {
-    if (st.leave > 0) { st.leave -= dt; if (st.plan.kindId === Q_VAULT && st.collected) swimOut(st, world, dt); }
-    return false;
-  }
   const k = st.plan.kindId;
-  const [nx, ny] = [st.cx, st.cy];
-  const d = Math.hypot(octo.x - nx, octo.y - ny);
-  if (!st.helped) {
-    if (!st.met && d < MEET_R) { st.met = true; st.lastAsk = st.clock; speak(st, 'meet'); speak(st, 'ask'); }
-    else if (st.met && d < ASK_AGAIN_R && !st.talk.text && !st.talk.q.length && st.clock - st.lastAsk > ASK_AGAIN_S) { st.lastAsk = st.clock; speak(st, 'ask'); }
-  }
-  let done = false;
   if (k === Q_RESCUE) {
     st.trail[st.head * 2] = octo.x; st.trail[st.head * 2 + 1] = octo.y;
     st.head = (st.head + 1) % TRAIL;
     if (st.filled < TRAIL) st.filled++;
-    if (!st.following) {
-      // the cage is shut: only a dash into it breaks it (a bomb: questBlast). Swimming against it does nothing.
-      if (d < CAGE_BREAK_R && Math.hypot(octo.vx || 0, octo.vy || 0) >= DASH_KILL_SPEED) breakCage(st, 'dash');
-    } else {
-      const lag = Math.min(CRITTER_LAG, st.filled);
-      const i = (st.head - lag + TRAIL * 2) % TRAIL;
-      let tx = st.trail[i * 2], ty = st.trail[i * 2 + 1];
-      // keep beside the octopus, not inside it, and never on its centre: if the wanted point is solid, pick the
-      // free spot around the octopus (8 directions, 0.95-1.1 tiles) closest to the trail point
-      const dx = tx - octo.x, dy = ty - octo.y, dd = Math.hypot(dx, dy);
-      if (dd < 0.95) { const ux = dd > 1e-3 ? dx / dd : -0.7, uy = dd > 1e-3 ? dy / dd : 0.7; tx = octo.x + ux * 0.95; ty = octo.y + uy * 0.95; }
-      if (world.isSolid(tx, ty)) {
-        const want = { x: tx, y: ty };
-        let best = null, bd = Infinity;
-        for (const r of [0.95, 1.1]) {
-          for (let a = 0; a < 8; a++) {
-            const px = octo.x + Math.cos(a * Math.PI / 4) * r, py = octo.y + Math.sin(a * Math.PI / 4) * r;
-            if (world.isSolid(px, py)) continue;
-            const ddd = Math.hypot(px - want.x, py - want.y);
-            if (ddd < bd) { bd = ddd; best = [px, py]; }
-          }
-        }
-        if (best) { tx = best[0]; ty = best[1]; } else { tx = st.cx; ty = st.cy; }
-      }
-      const nx2 = st.cx + (tx - st.cx) * 0.3, ny2 = st.cy + (ty - st.cy) * 0.3;
-      if (!world.isSolid(nx2, ny2)) { st.cx = nx2; st.cy = ny2; }
-    }
-  } else if (k === Q_VAULT && !st.collected) {
+  }
+  if (st.status === ST_FAILED) return false; // npcs.js has taken the person over (angry or dead)
+  const [bx, by] = bodyOf(st);
+  idleStep(st.idle, bx, by, octo, dt);
+  const d = Math.hypot(octo.x - st.cx, octo.y - st.cy);
+  if (!st.helped) {
+    if (!st.met && d < MEET_R) { st.met = true; st.lastAsk = st.clock; speak(st, 'meet'); speak(st, 'ask'); }
+    else if (st.met && d < ASK_AGAIN_R && !st.talk.text && !st.talk.q.length && st.clock - st.lastAsk > ASK_AGAIN_S) { st.lastAsk = st.clock; speak(st, 'ask'); }
+  } else if (st.talk.text || st.talk.q.length) st.lastAsk = st.clock; // the quiet spell starts when the scene is over
+  else if (d < CHAT_R && !octo.dead && st.clock - st.lastAsk > CHAT_S && st.plan.chat && st.plan.chat.length) {
+    st.lastAsk = st.clock; say(st.talk, [st.plan.chat[st.chatN++ % st.plan.chat.length]]);
+  }
+  let done = false;
+  if (k === Q_RESCUE) {
+    if (st.following) follow(st, octo, world);
+    else if (st.staying) wander(st, world, dt);
+    // the cage is shut: only a dash into it breaks it (a bomb: questBlast). Swimming against it does nothing.
+    else if (st.status === ST_ACTIVE && d < CAGE_BREAK_R && Math.hypot(octo.vx || 0, octo.vy || 0) >= DASH_KILL_SPEED) done = breakCage(st, 'dash');
+  } else if (k === Q_VAULT) {
+    if (st.collected) { if (!st.settled) swimOut(st, world, dt); }
     // r40: freed only when the pocket is open (clear water from the octopus to him) and the octopus is within about 2 tiles
-    if (d < FREE_R && clearBetween(world, octo.x, octo.y, st.cx, st.cy)) {
-      st.collected = true; st.helped = true; st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
-      speak(st, 'help'); speak(st, 'thank');
-      st.leave = FREE_SWIM;
-      // he first swims up beside the octopus (above it, so he is not on top of it), then out through the opening
-      st.wx = octo.x; st.wy = world.isSolid(octo.x, octo.y - 1.1) ? octo.y : octo.y - 1.1;
+    else if (st.status === ST_ACTIVE && d < FREE_R && clearBetween(world, octo.x, octo.y, st.cx, st.cy)) {
+      st.collected = true; st.helped = true; st.lastAsk = st.clock;
+      thankScene(st);
+      // he first swims up beside the octopus (above it and a little aside, so he is not on top of it), then settles
+      st.wx = octo.x + (st.cx < octo.x ? -0.6 : 0.6); st.wy = world.isSolid(octo.x, octo.y - 1.1) ? octo.y : octo.y - 1.1;
       done = finish(st);
     }
+  } else if (k === Q_MEET && st.status === ST_ACTIVE && d < MEET_TOUCH_R && !octo.dead) {
+    st.helped = true; st.met = true; st.lastAsk = st.clock;
+    thankScene(st);
+    done = finish(st);
   }
   return done;
 }
@@ -325,15 +389,18 @@ export function questOnExit(st) {
   return false;
 }
 
+/** The cage broke: help, thank and the outcome's words. Role 'follow': the critter trails you to the exit (paid there);
+ *  'stay': it stays and swims about the open cage, and the encounter is done at once. Returns true when that finished it. */
 function breakCage(st, how) {
-  st.following = true; st.helped = true; st.brokenBy = how;
-  st.talk.q.length = 0; st.talk.left = 0; st.talk.text = '';
-  speak(st, 'help'); speak(st, 'thank');
+  st.helped = true; st.brokenBy = how; st.lastAsk = st.clock;
+  if (st.plan.role === 'stay') st.staying = true; else st.following = true;
+  thankScene(st);
+  return st.staying ? finish(st) : false;
 }
 
 /** A bomb went off at (x, y) with radius r: a shut cage within CAGE_BLAST_R of it breaks. Returns true when it did. */
 export function questBlast(st, x, y, r = 0) {
-  if (!st || st.status !== ST_ACTIVE || st.plan.kindId !== Q_RESCUE || st.following) return false;
+  if (!st || st.status !== ST_ACTIVE || st.plan.kindId !== Q_RESCUE || st.following || st.staying) return false;
   if (Math.hypot(st.cx - x, st.cy - y) > Math.max(CAGE_BLAST_R, r)) return false;
   breakCage(st, 'bomb');
   talkStep(st.talk, 0); // the first line shows at once
@@ -387,6 +454,16 @@ export function hubVisit(table, story, id, visit = 0) {
   const key = 'said' + capName(id);
   const pending = (story[key] | 0) < stage;
   if (pending && npc.thanks[stage]) out.lines.push(fill(npc.thanks[stage]));
+  // a gift promised in a level (an outcome's `next`): handed over now, applied when the next dive starts (save.js boonX)
+  const gk = 'gift' + capName(id), gift = table.gifts && table.gifts[(story[gk] | 0) - 1];
+  if (gift) {
+    for (const l of gift.lines) out.lines.push(fill(l));
+    out.set.push([gk, 0]);
+    for (const b of ['bombs', 'shells', 'juice']) if (gift.boon[b] > 0) out.set.push(['boon' + capName(b), (story['boon' + capName(b)] | 0) + (gift.boon[b] | 0)]);
+    out.gift = gift;
+    if (pending) out.set.push([key, stage]);
+    return out;
+  }
   const pool = npc.hub[stage] || [];
   if (pool.length) {
     // the first visit tells the whole stage; later visits one line at a time, rotating
