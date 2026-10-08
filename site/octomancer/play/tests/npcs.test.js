@@ -166,7 +166,12 @@ export async function runNpcTests(assert) {
 
   // ---- dash ----
   {
+    const t0 = setup(fakeWorld(), { ox: 20, oy: 15 }); // Actions tuning: a bare dash hurts nobody
+    t0.sys.place(NPC_QUILL, 20.2, 15.65);
+    t0.octo.dashedThisStep = true; t0.octo.vx = DASH_KILL_SPEED + 6; t0.octo.vy = 0; t0.sys.place(NPC_QUILL, 20.2, 15.65, 0, 0); t0.sys.step(t0.octo, STEP);
+    assert('a dash without the Urchin Cap neither hurts nor angers', t0.sys.list()[0].hp === 4 && !t0.sys.list()[0].hostile);
     const t = setup(fakeWorld(), { ox: 20, oy: 15 });
+    t.octo.spikeHelmet = true;
     const fast = () => { t.octo.vx = DASH_KILL_SPEED + 6; t.octo.vy = 0; };
     t.sys.place(NPC_QUILL, 20.2, 15.65);
     t.octo.dashedThisStep = true; fast(); t.sys.place(NPC_QUILL, 20.2, 15.65, 0, 0); t.sys.step(t.octo, STEP);
@@ -175,12 +180,12 @@ export async function runNpcTests(assert) {
     t.octo.dashedThisStep = false; fast(); t.sys.step(t.octo, STEP); t.sys.step(t.octo, STEP);
     assert('at most once per dash', t.sys.list()[0].hp === 2);
     const t2 = setup(fakeWorld(), { ox: 20, oy: 15 });
-    t2.octo.dashedThisStep = true; t2.octo.vx = 15;
+    t2.octo.dashedThisStep = true; t2.octo.vx = 15; t2.octo.spikeHelmet = true;
     t2.sys.place(NPC_PIP, 20.2, 15, 0, FL_FOLLOWING); t2.sys.step(t2.octo, STEP);
     t2.sys.place(NPC_PIP, 20.2, 15, 0, FL_CAGED); t2.sys.step(t2.octo, STEP);
     assert('Pip cannot be dash-hit while he follows you or while caged', t2.sys.list()[0].hp === 2 && !t2.sys.list()[0].hostile);
     const t3 = setup(fakeWorld(), { hub: true, ox: 20, oy: 15 });
-    t3.octo.dashedThisStep = true; t3.octo.vx = 15;
+    t3.octo.dashedThisStep = true; t3.octo.vx = 15; t3.octo.spikeHelmet = true;
     t3.sys.place(NPC_MARLO, 20.2, 15.55, 0, FL_TALKING); t3.sys.step(t3.octo, STEP);
     assert('a hub resident who is talking cannot be dash-hit', t3.sys.list()[0].hp === 6);
     t3.sys.hit(20, 15, 1, 1, 'ink');
@@ -193,7 +198,7 @@ export async function runNpcTests(assert) {
     t.sys.setKeeper(20, 15);
     t.sys.blast(19, 15, 2.5);
     t.sys.hit(20, 15, 0.5, 1, 'ink');
-    t.octo.x = 20; t.octo.y = 15; t.octo.vx = DASH_KILL_SPEED + 4; t.octo.dashedThisStep = true; t.sys.step(t.octo, STEP);
+    t.octo.x = 20; t.octo.y = 15; t.octo.vx = DASH_KILL_SPEED + 4; t.octo.dashedThisStep = true; t.octo.spikeHelmet = true; t.sys.step(t.octo, STEP);
     assert('a blast, an ink hit and a dash at the keeper each call shopAggro (nothing else)', t.calls.join() === 'bomb,ink,dash' && t.sys.list().length === 0);
     const t2 = setup(fakeWorld(24, 26), { ox: 40, oy: 5 });
     t2.sys.setKeeper(28, 15); t2.sys.blast(20, 15, 3);

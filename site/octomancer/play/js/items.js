@@ -1,7 +1,7 @@
 // Carried items (round 32, behind ?v2=1): small passive upgrades kept in `run.items` (a flat array of item ids)
 // from level to level of a dive and lost on death. The octopus is rebuilt for every level, so the effects are
 // DERIVED from the array: applyCarried(octo, items) sets the octopus fields the rest of the game reads
-// (heartMax, bombMax, swimMul, lightR, magnetR, seeBuried). Nothing else keeps item state.
+// (heartMax, bombMax, swimMul, lightR, magnetR, seeBuried, siphonR, spikeHelmet). Nothing else keeps item state.
 //
 //   flippers         +20% swim speed
 //   lantern          a larger light radius (the Shallows are dim, see render.js drawLight)
@@ -10,12 +10,13 @@
 //   heartcontainer   +1 max heart and heals 1 (stacks)
 //   goggles          Sea-glass Goggles: see buried treasure and hidden pockets through the rock (embed.js, embed-draw.js)
 //   siphon           the Siphon Shell (section 14): drink the fish juice that beaten creatures leak (within 2 tiles)
+//   urchincap        the Urchin Cap (spike helmet): a dash / ram at speed hurts what it hits (strikes.js octoRams)
 //
 // Found in chests and hidden pockets (loot.js) and sold in the shop (data/shop-items.json, effect "carry").
 
 import { HEART_MAX, BOMB_MAX } from './config.js';
 
-export const ITEM_IDS = ['flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer', 'goggles', 'siphon'];
+export const ITEM_IDS = ['flippers', 'lantern', 'magnet', 'bombbag', 'heartcontainer', 'goggles', 'siphon', 'urchincap'];
 export const ITEM_DEFS = {
   flippers: { name: 'Flippers', blurb: '+20% swim speed', max: 1 },
   lantern: { name: 'Lantern', blurb: 'a larger light radius', max: 1 },
@@ -24,6 +25,7 @@ export const ITEM_DEFS = {
   heartcontainer: { name: 'Heart container', blurb: '+1 max heart', max: 2 },
   goggles: { name: 'Sea-glass goggles', blurb: 'you see what is buried in the rock', max: 1 },
   siphon: { name: 'Siphon Shell', blurb: 'drink the fish juice beaten creatures leak', max: 1 },
+  urchincap: { name: 'Urchin Cap', blurb: 'your dash spikes what it hits', max: 1 },
 };
 
 export const FLIPPER_MUL = 1.2;
@@ -51,6 +53,7 @@ export function applyCarried(octo, items) {
   octo.lightR = hasItem(items, 'lantern') ? LIGHT_LANTERN : LIGHT_BASE;
   octo.seeBuried = hasItem(items, 'goggles');
   octo.siphonR = hasItem(items, 'siphon') ? SIPHON_R : 0;
+  octo.spikeHelmet = hasItem(items, 'urchincap');
   if (octo.hearts > octo.heartMax) octo.hearts = octo.heartMax;
   if (octo.bombs > octo.bombMax) octo.bombs = octo.bombMax;
 }

@@ -249,6 +249,8 @@ let particles = createParticles();
 let juiceDrops = createJuiceDrops();
 let inkClouds = createInkClouds();
 let inkJet = createInkJet();
+const inkPhys = { props: null, corpses: null }; // what an ink blob shoves (inkjet.js hitPhys); refreshed each step
+
 if (V2) enemies.setInkClouds(inkClouds);
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
 let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
@@ -374,7 +376,7 @@ function inventoryState() {
 }
 function hotbarState() {
   const hb = hotbar();
-  return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast };
+  return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast, jetCharge: inkJet.charge() };
 }
 const inventoryUI = createInventoryUI(hudEl, {
   onClose() { closeInventory(); },
@@ -494,7 +496,7 @@ function beginEntry(ev, tx, ty) {
     x: octo.x, y: octo.y, px: octo.x, py: octo.y, rot: octo.angle, prot: octo.angle, sc: 1, psc: 1, wall: performance.now(),
   };
   octo.entry = entry; octo.sealed = true;
-  octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0;
+  octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0; octo.dashInvuln = 0;
   octo.dashedThisStep = octo.bouncedThisStep = octo.landedThisStep = false;
   hitStop = 0;
   portalEnter(portalKey(tx, ty), sim.time, ENTRY_S);
@@ -672,7 +674,8 @@ function step(dt) {
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
-    inkJet.update(dt, world, inkTargets(), inkHurt); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
+    inkPhys.props = props; inkPhys.corpses = corpses;
+    inkJet.update(dt, world, inkTargets(), inkHurt, inkPhys); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
     for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
     if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
     if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them

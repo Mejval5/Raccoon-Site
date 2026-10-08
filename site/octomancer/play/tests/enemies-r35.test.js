@@ -233,7 +233,7 @@ export async function runEnemyR35Tests(assert) {
 
   // ================================================================ hit-stop, stun, determinism
   {
-    const o = createOctopus(5, 5); o.vx = 9; const en = createEnemies(); const p = en.spawnAt('piranha', 5.1, 5);
+    const o = createOctopus(5, 5); o.vx = 9; o.spikeHelmet = true; const en = createEnemies(); const p = en.spawnAt('piranha', 5.1, 5);
     en.update(DT, 0, o, OPEN, []);
     const ev = en.events.find((e) => e.type === 'hitStop');
     assert('dash hit: the enemy dies, a 60 ms hit-stop is requested and its white ghost stays on screen', p.dead && ev && Math.abs(ev.dur - HIT_STOP) < 1e-9 && en.all().some((e) => e.ghost && e.kind === 'piranha' && e.hitFlash > 1));

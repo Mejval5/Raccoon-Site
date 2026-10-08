@@ -67,7 +67,7 @@ import { depthTint } from './decor.js';
 import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
-import { prefersReducedMotion } from './config.js';
+import { prefersReducedMotion, DASH_IFRAMES } from './config.js';
 import { SHELL_SIZE } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, artBitmap, ROCK_TILE_UNITS } from './v2-art.js';
@@ -1547,6 +1547,21 @@ export function createRenderer(ctx, world) {
     const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
     const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
     o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
+    // Actions tuning: dash i-frames (octopus.js dashInvuln) read as a brief translucent smear: two faint after-images trailing
+    // back along the velocity, fading with the i-frames, and the body itself a little see-through. No blink.
+    const phase = !o.dead && !e && o.dashInvuln > 0 ? Math.min(1, o.dashInvuln / DASH_IFRAMES) : 0;
+    if (phase > 0) {
+      const sp = Math.hypot(o.vx, o.vy) || 1, back = 0.22 * Math.min(sp, 20) * camera.pxPerUnit / 20 * 1.6;
+      for (let g = 2; g >= 1; g--) {
+        ctx.save();
+        ctx.translate(s.x - (o.vx / sp) * back * g, s.y - (o.vy / sp) * back * g);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.scale(camera.pxPerUnit * k, camera.pxPerUnit * k);
+        o.__t = time; o.__speed = sp;
+        drawOctopus(ctx, o, (g === 1 ? 0.3 : 0.15) * phase);
+        ctx.restore();
+      }
+    }
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate((rot * Math.PI) / 180);
@@ -1568,7 +1583,7 @@ export function createRenderer(ctx, world) {
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
     const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
-    drawOctopus(ctx, o, octoAlpha);
+    drawOctopus(ctx, o, phase > 0 ? Math.min(octoAlpha, 1 - 0.3 * phase) : octoAlpha);
     ctx.restore();
   }
 

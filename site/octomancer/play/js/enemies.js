@@ -15,6 +15,7 @@
 // (`CrabFlatten`/`CrabFlatten2`), spike horns (`NPC6`), manta (`NPC10` +
 // `NPC10Ball`). OVERNIGHT.md §4 M6.
 
+import { octoRams, octoPhasing } from './strikes.js';
 import {
   URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_CHASE_SPEED,
   PIRANHA_CHASE_RANGE, CANNON_RADIUS, CANNON_RANGE,
@@ -916,8 +917,10 @@ export function createEnemies() {
         // the dead body (V2-PLAN 14) is still a target: contact hits it (octopus.js hitBody), but a flung corpse never kills
         // (a corpse wedged in a gap narrower than the enemy is still in reach of its nose: +0.25)
         if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
-          if (e.dashKillable && !octo.dead && octoSpeed >= DASH_KILL_SPEED) {
+          if (e.dashKillable && octoRams(octo)) { // the Urchin Cap (strikes.js): a ram at speed kills it
             killEnemy(e, 'dash', octo.vx * 0.4, octo.vy * 0.4);
+          } else if (octoPhasing(octo)) {
+            // dash i-frames: the contact does nothing to either side (no hurt, no bite recoil, no manta slam)
           } else {
             if (e.kind === 'manta' && e.st === MA_DIVE) stunOctopus(octo, e.x, e.y, 'manta', STUN_S); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
             else hurtOctopus(octo, e.x, e.y, e.kind);

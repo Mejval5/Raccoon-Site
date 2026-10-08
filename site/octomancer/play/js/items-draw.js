@@ -8,7 +8,7 @@ const TAU = Math.PI * 2;
 // Sprites for the items that have one (generated, Milan style: img/v2/, octomancer-web/ASSETS.md). They load the first
 // time they are drawn; until then the code-drawn fallback below stands in. itemArtVersion() goes up when one arrives,
 // so a cached icon (the HUD's small canvases) can redraw.
-const SPRITES = { goggles: 'item-goggles.webp' };
+const SPRITES = { goggles: 'item-goggles.webp', urchincap: 'item-urchincap.webp' };
 const sprites = {};
 let artVersion = 0;
 export function itemArtVersion() { return artVersion; }
@@ -58,6 +58,18 @@ export function drawItemIcon(ctx, id, x, y, r) {
       ctx.beginPath(); ctx.arc(s * r * 0.47, r * 0.12, r * 0.3, 0, TAU); ctx.fill();
     }
     ctx.fillStyle = '#4e4c18'; ctx.beginPath(); ctx.arc(0, r * 0.14, r * 0.12, 0, TAU); ctx.fill();
+  } else if (id === 'urchincap') {
+    // fallback until the sprite has loaded: a dark urchin-shell dome with spines, rust spots and a kelp band at the rim
+    ctx.lineCap = 'round'; ctx.strokeStyle = '#1a2024'; ctx.lineWidth = Math.max(1.2, r * 0.12);
+    ctx.beginPath();
+    for (let k = 0; k < 9; k++) { const a = Math.PI * (1.08 + k * 0.105); ctx.moveTo(Math.cos(a) * r * 0.55, r * 0.15 + Math.sin(a) * r * 0.55); ctx.lineTo(Math.cos(a) * r * 1.0, r * 0.15 + Math.sin(a) * r * 1.0); }
+    ctx.stroke();
+    outline(ctx, r, '#2c3a40', '#11171a');
+    ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.66, Math.PI, TAU); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#c0622f';
+    for (const [px, py, pr] of [[-0.3, -0.05, 0.11], [0.12, -0.18, 0.13], [0.36, 0.08, 0.09], [-0.08, 0.12, 0.08]]) { ctx.beginPath(); ctx.arc(px * r, py * r, pr * r, 0, TAU); ctx.fill(); }
+    outline(ctx, r, '#7d7a2c', '#2b2a10');
+    ctx.beginPath(); ctx.roundRect(-r * 0.74, r * 0.2, r * 1.48, r * 0.26, r * 0.12); ctx.fill(); ctx.stroke();
   } else if (id === 'siphon') {
     // the Siphon Shell: a hollow spiral shell (a whelk), its long siphon canal pointing down-left, the octopus drinks through it
     outline(ctx, r, '#d9c7a4', '#3a2a18');

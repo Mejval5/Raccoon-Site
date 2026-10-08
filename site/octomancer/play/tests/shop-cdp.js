@@ -167,7 +167,7 @@ const VPS = {
         const k = __octo.keepers().list[0];
         for (let n = 0; n < 5; n++) { __octo.teleport(k.x - 3, k.y - 0.2); __octo.stepDraw(1); }
         __octo.input({ move: { x: 0.3, y: 0 }, attack: true });
-        for (let n = 0; n < 45; n++) { __octo.teleport(k.x - 3, k.y - 0.2); __octo.stepDraw(1); }
+        for (let n = 0; n < 100; n++) { __octo.teleport(k.x - 3, k.y - 0.2); __octo.stepDraw(1); } // two blobs (one per 1.5 s)
         __octo.input(null);
         const k2 = __octo.keepers().list[0];
         return { hp0: k.hp, hp: k2.hp, mode: k2.mode, a: __octo.extras().shopAggro };
