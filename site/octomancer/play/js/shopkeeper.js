@@ -21,7 +21,7 @@ import { hasLineOfSight, findSmoothPath } from './pathfind.js';
 import { hashSeed2, mulberry32 } from './rng.js';
 import { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY, octoDashing } from './shop-aggro.js';
 import { resolveHit, rowOf } from './creature-rules.js';
-import { octoHit } from './damage.js';
+import { octoHit, keeperId } from './damage.js';
 
 export { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY };
 export const KM_CALM = 0, KM_WAIT = 1, KM_ANGRY = 2, KM_DEAD = 3;
@@ -144,6 +144,7 @@ export function keeperFamily(k) {
       if (k.mode[i] === KM_DEAD) return false;
       V.kind = 'keeper'; V.x = k.x[i]; V.y = k.y[i]; V.r = KEEPER_R; V.vx = k.vx[i]; V.vy = k.vy[i]; V.stun = k.stun[i];
       V.shut = false; V.cool = k.hzCool[i]; V.blame = k.blame[i];
+      V.id = keeperId(i); V.wound = k.hp[i] < KEEPER_HP ? 1 : 0;
       return true;
     },
     apply(i, src, fx, fy, dmg, knockScale, byOcto) { return applyKeeperHit(k, i, src, fx, fy, dmg, knockScale, byOcto); },
@@ -228,7 +229,7 @@ const DIR = { x: 0, y: 0 };
  * One fixed step of every keeper and claw. Hits on the octopus go through keeperStrike (cause 'shopkeeper');
  * a dash into a keeper glances off him (HIT_DASH) and bounces the octopus back.
  */
-export function stepKeepers(k, dt, octo, world) {
+export function stepKeepers(k, dt, octo, world, inf = null) { // inf: infight.js (v2): his claws hit anything in the way
   const isSolid = (x, y) => world.isSolid(x, y);
   for (let i = 0; i < k.n; i++) {
     const m = k.mode[i];
@@ -311,6 +312,10 @@ export function stepKeepers(k, dt, octo, world) {
       if (!octo.dead && Math.hypot(octo.x - k.cx[c], octo.y - k.cy[c]) < CLAW_R + (octo.radius || 0.45)) {
         if (keeperStrike(octo, k.cx[c], k.cy[c] - k.cvy[c] * 0.02)) k.events.push({ type: 'octoHit', i, how: 'claw', x: octo.x, y: octo.y });
         k.cst[c] = 2;
+      } else if (inf && inf.strike('claw', 'claw', k.cx[c], k.cy[c], CLAW_R, keeperId(i)) >= 0) {
+        // INFIGHT.claw: anything in the way takes the claw (a fish, Marlo, another keeper); it is reeled back in
+        k.cst[c] = 2;
+        k.events.push({ type: 'clawHit', i, x: k.cx[c], y: k.cy[c] });
       } else if (k.cd[c] >= CLAW_RANGE || isSolid(k.cx[c], k.cy[c])) k.cst[c] = 2;
     } else {
       const dx = sx - k.cx[c], dy = sy - k.cy[c], d = Math.hypot(dx, dy);
