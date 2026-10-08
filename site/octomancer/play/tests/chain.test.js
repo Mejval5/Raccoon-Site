@@ -203,6 +203,17 @@ export async function runChainTests(assert0) {
     assert('snap -> clam: a clam a chain made snap startles the clam beside it, a link later', !!s0 && !!s1 && s1.t - s0.t >= 0.1 && s1.t - s0.t <= 0.35, JSON.stringify(sc.log.snaps));
   }
 
+  // ---- a thrown prop (infighting's 'thrown' hit) smacking a clam makes it snap; a bomb right there stays lit ----
+  {
+    const sc = scene(room(16, 8));
+    sc.cr.add({ type: 'creature', ck: CR_GCLAM, x: 6.5, y: 6.5, dx: 0, dy: -1, side: 1, tilt: 0 });
+    const id = sc.bomb(7.2, 6.4, 99);
+    sc.chain.emit('thrown', 6.5, 6.3, null, false); // where infight.js reports the hit
+    sc.run(0.4);
+    assert('thrown -> clam: a thrown thing smacking a giant clam makes it snap, once', sc.log.snaps.filter((x) => x.i === 0).length === 1);
+    assert('thrown: it never sets off a bomb (a thrown bomb would set itself off)', !sc.log.exploded.some((e) => e.id === id) && triggerReach('thrown', 'bomb') === 0);
+  }
+
   // ---- a chained eel shock jumps to the next eel; its own periodic shock does not; any shock sets off a bomb ----
   {
     const sc = scene(room(24, 12));
