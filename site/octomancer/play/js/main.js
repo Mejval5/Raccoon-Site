@@ -1109,6 +1109,7 @@ function checkPerfStepDown() {
 }
 
 let deathTintA = 0; // fade-in of the death tint (0..1)
+const deathTintLook = { x: 0, y: 0, hole: 0, outer: 0, alpha: 0 }; // what the last frame drew (CSS px), for __octo.deathTint()
 function render(alpha, frameMs) {
   checkPerfStepDown();
   const w = canvas.width, h = canvas.height;
@@ -1151,8 +1152,10 @@ function render(alpha, frameMs) {
       g.addColorStop(1, `rgba(4, 12, 18, ${(0.3 * deathTintA).toFixed(3)})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
+      deathTintLook.x = p.x / dpr; deathTintLook.y = p.y / dpr; deathTintLook.hole = hole / dpr; deathTintLook.outer = hole * 2.6 / dpr; deathTintLook.alpha = 0.3 * deathTintA;
     } else deathTintA = 0;
   } else deathTintA = 0;
+  if (!deathTintA) deathTintLook.alpha = 0;
   if (entry && !holdDark) { // r45: the black hole closes on the whirlpool, on the entry's clock (interpolated like the octopus)
     const c = worldToScreen(renderer.camera, w, h, entry.cx, entry.cy);
     if (!entry.far) entry.far = farCorner(w, h, c.x, c.y);
@@ -2626,6 +2629,10 @@ window.__octo = {
       panel: ui.gameOverPanelRect(), shown: ui.isGameOverShown(), viewW: window.innerWidth, viewH: window.innerHeight,
     };
   },
+  /** The death tint drawn on the game canvas last frame (CSS px): the clear hole's centre and radius, where it reaches full
+   * strength (outer) and its strongest alpha; alpha 0 when no tint is drawn. Read instead of the canvas pixels: a getImageData
+   * on the game canvas could switch it to software rendering. */
+  deathTint() { return { ...deathTintLook }; },
   restart() {
     resetWorld(Math.floor(Math.random() * 1e9));
     manualPaused = false;
