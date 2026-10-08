@@ -8,7 +8,8 @@
 import { ITEM_DEFS, FLIPPER_MUL, MAGNET_R, LIGHT_BASE, LIGHT_LANTERN, BOMBBAG_BOMBS, SIPHON_R, itemCount } from './items.js';
 import { spellById, modById, resolveSlot, JUICE, SLOT } from './spells.js';
 import { INKJET } from './inkjet.js';
-import { BOMB_FUSE, BOMB_RADIUS, BOMB_START } from './config.js';
+import { BOMB_RADIUS, BOMB_START } from './config.js';
+import { BOMB_FUSE_V2, STICKY_ARM_S } from './bomb.js';
 import { SOURCES } from './creature-rules.js';
 
 export const K_SLOT = 'slot', K_JET = 'jet', K_BOMB = 'bomb', K_ITEM = 'item', K_JAR = 'jar';
@@ -61,10 +62,11 @@ export function carriedJournalIds(state) {
 
 const f1 = (v) => String(Math.round(v * 10) / 10);
 const casts = (n) => n + (n === 1 ? ' cast' : ' casts');
+// controls 2026-10-08 (V2-PLAN 17): F is the hand; right click / C use the selected hotbar slot; 1-9, Q / E, the wheel pick it
 const KEYS = (touch) => ({
-  slot: touch ? 'Tap its slot on the bar, then the Spell button' : 'Right click or C casts it; 1-9, Q / E or the wheel picks the slot',
+  slot: touch ? 'Tap its slot on the bar, then Use (Spell casts your last spell)' : 'Right click or C casts it; pick the slot with 1-9, Q / E or the wheel',
   jet: touch ? 'The Jet button (hold to keep firing)' : 'Left click or J / K (hold to fire on each refill)',
-  bomb: touch ? 'The Bomb button' : 'B or X drops one; the middle button throws one',
+  bomb: touch ? 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick' : 'Right click or C on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. B / X drop one, the middle button throws one',
   item: 'Nothing to press: it works while you carry it',
   jar: touch ? 'Spells drink from it when you cast' : 'Spells drink from it when you cast',
 });
@@ -123,7 +125,7 @@ export function jetNumbers() {
   return [['Fire rate', '1 shot / ' + f1(INKJET.cooldown) + ' s'], ['Range', f1(INKJET.range) + ' tiles'], ['Damage', String(SOURCES.ink ? SOURCES.ink.dmg : INKJET.damage)]];
 }
 export function bombNumbers(state) {
-  const rows = [['Fuse', f1(BOMB_FUSE) + ' s'], ['Blast', f1(BOMB_RADIUS) + ' tiles']];
+  const rows = [['Fuse', f1(BOMB_FUSE_V2) + ' s from the drop'], ['Mine', 'clings, then ' + f1(BOMB_FUSE_V2) + ' s (flies at most ' + f1(STICKY_ARM_S) + ' s)'], ['Blast', f1(BOMB_RADIUS) + ' tiles, deadly to you too']];
   if (state) rows.unshift(['Carried', (state.bombs | 0) + ' of ' + (state.bombMax | 0)]);
   else rows.push(['Start with', String(BOMB_START)]);
   return rows;
@@ -152,7 +154,7 @@ export function describe(card, state) {
       out.use = k.slot;
     } else if (card.id === 'bomb') {
       out.name = 'Bombs'; out.blurb = 'they break rock and hurt anything near, you too';
-      out.numbers = bombNumbers(state); out.use = touch ? 'Pick its slot, then the Use button' : 'Pick its slot (1-9, Q / E, the wheel), then right click or C; B / X still drops one';
+      out.numbers = bombNumbers(state); out.use = k.bomb;
     } else {
       out.name = (ITEM_DEFS[card.id] && ITEM_DEFS[card.id].name) || card.id; out.use = k.slot;
     }
