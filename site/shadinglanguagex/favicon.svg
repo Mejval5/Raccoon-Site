@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- ShadingLanguageX: a shaded sphere on the playground's dark panel -->
+  <defs>
+    <radialGradient id="ball" cx="38%" cy="32%" r="72%">
+      <stop offset="0" stop-color="#fff3c4"/>
+      <stop offset=".28" stop-color="#e3b341"/>
+      <stop offset=".62" stop-color="#c2552f"/>
+      <stop offset="1" stop-color="#3a1630"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="72%" cy="80%" r="45%">
+      <stop offset="0" stop-color="#5fb4ff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#5fb4ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#161b26"/>
+  <ellipse cx="32" cy="55" rx="17" ry="3.5" fill="#000" opacity=".45"/>
+  <circle cx="32" cy="31" r="21" fill="url(#ball)"/>
+  <circle cx="32" cy="31" r="21" fill="url(#rim)"/>
+  <ellipse cx="24.5" cy="22" rx="6" ry="4" fill="#fff" opacity=".85" transform="rotate(-30 24.5 22)"/>
+</svg>
