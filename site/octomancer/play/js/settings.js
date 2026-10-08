@@ -22,9 +22,9 @@ const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
 /** Controls help per input method, shown in the panel (the on-screen hint at the bottom left uses the keyboard / mouse lines). */
 export const CONTROLS_HELP = [
-  { id: 'keyboard', title: 'Keyboard', lines: ['Swim: WASD or the arrow keys', 'Dash: Space or Shift', 'Ink jet: J or K (the way you face)', 'Cast the selected spell: F', 'Throw a bomb: B or X (the way you swim)', 'Pick a spell: Q / E or 1-9', 'Inventory: Tab or I', 'Pause: Esc'] },
-  { id: 'mouse', title: 'Mouse', lines: ['Ink jet: left button, at the cursor (hold to keep squirting)', 'Cast the selected spell: right button, toward the cursor', 'Throw a bomb: middle button, at the cursor', 'Pick a spell: the wheel'] },
-  { id: 'touch', title: 'Touch', lines: ['Swim: drag on the left half of the screen', 'Jet, Spell, Bomb and Dash: the buttons at the bottom right (Jet aims at the nearest creature)', 'Pick a spell: tap it on the bar at the top', 'Pause and settings: the buttons at the top right'] },
+  { id: 'keyboard', title: 'Keyboard', lines: ['Swim: WASD or the arrow keys', 'Dash: Space or Shift', 'Hand: F grabs what is in reach, talks, buys; F again throws it, hold F to put it down', 'Ink jet: J or K (the way you face)', 'Use the selected hotbar slot: C (cast the spell, drop a bomb)', 'Drop a bomb: B or X', 'Hotbar: Q / E or 1-9', 'Inventory: Tab or I', 'Pause: Esc'] },
+  { id: 'mouse', title: 'Mouse', lines: ['Ink jet: left button, at the cursor (hold to keep squirting)', 'Use the selected hotbar slot: right button (a spell toward the cursor; a bomb thrown at the cursor sticks where it lands, on the octopus it drops)', 'Quick bomb: middle button, at the cursor', 'Throw what you hold: F, toward the cursor', 'Hotbar: the wheel'] },
+  { id: 'touch', title: 'Touch', lines: ['Swim: drag on the left half of the screen', 'Jet, Dash, Use and Spell: the buttons at the bottom right (Jet aims at the nearest creature; Use uses the selected hotbar slot)', 'Hand: when you hover still next to something, Spell turns into Grab or Talk; while you carry, it reads Throw', 'Bombs: Use drops one under you, or throws a sticky one the way the stick points', 'Hotbar: tap a slot on the bar at the top', 'Pause and settings: the buttons at the top right'] },
 ];
 
 export function settingDef(key) { return BY_KEY.get(key) || null; }

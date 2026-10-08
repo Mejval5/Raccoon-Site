@@ -13,7 +13,7 @@ import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics
 import * as hazardsMod from './hazards.js';
 
 export const CAP = 24;
-export const CS_FREE = 0, CS_REST = 1;
+export const CS_FREE = 0, CS_REST = 1, CS_CARRY = 2; // CS_CARRY: in the octopus's hand (hand.js moves it; no physics, no fading)
 export const GRAV = 3;        // u/s^2 sink acceleration (terminal sink speed = GRAV / DRAG, about 1.9 u/s)
 export const DRAG = 1.6;      // 1/s
 export const RESTITUTION = 0.35;
@@ -88,7 +88,7 @@ export function createCorpses(cap = CAP) {
 
   function oldest() {
     let best = -1;
-    for (let i = 0; i < d.n; i++) if (d.alive[i] && (best < 0 || d.seq[i] < d.seq[best])) best = i;
+    for (let i = 0; i < d.n; i++) if (d.alive[i] && d.state[i] !== CS_CARRY && (best < 0 || d.seq[i] < d.seq[best])) best = i;
     return best;
   }
   function remove(i) {
@@ -134,7 +134,7 @@ export function createCorpses(cap = CAP) {
   function blast(x, y, R, power = BLAST_POWER) {
     const reach = R * 2;
     for (let i = 0; i < d.n; i++) {
-      if (!d.alive[i]) continue;
+      if (!d.alive[i] || d.state[i] === CS_CARRY) continue;
       let dx = d.x[i] - x, dy = d.y[i] - y;
       let dist = Math.hypot(dx, dy);
       if (dist > reach) continue;
@@ -230,6 +230,12 @@ export function createCorpses(cap = CAP) {
   return {
     data: d,
     add, remove, blast, wake, nudge, alphaOf,
+    /** The hand takes corpse i (it stops simulating until let go). */
+    carry(i) { if (d.alive[i]) { d.state[i] = CS_CARRY; d.vx[i] = d.vy[i] = 0; d.restT[i] = 0; d.still[i] = 0; } },
+    /** Put a carried corpse at (x, y) with velocity (vx, vy) and turn rot. */
+    place(i, x, y, vx = 0, vy = 0, rot = null) { d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy; if (rot !== null) d.rot[i] = rot; },
+    /** Let a carried corpse go with velocity (vx, vy) (a throw spins it). */
+    release(i, vx = 0, vy = 0) { if (!d.alive[i]) return; d.state[i] = CS_FREE; d.vx[i] = vx; d.vy[i] = vy; d.spin[i] = vx * 0.9; d.still[i] = 0; d.restT[i] = 0; clampSpeed(i); },
     count() { return d.live; },
     clear() { for (let i = 0; i < d.n; i++) d.alive[i] = 0; d.n = 0; d.live = 0; lastVersion = -1; },
     /** One fixed step. `world` is the level world (wallSegmentsNear / isSolid / tileVersion), `hazardsData` is hazards.data. */
@@ -241,6 +247,7 @@ export function createCorpses(cap = CAP) {
       }
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
+        if (d.state[i] === CS_CARRY) { d.age[i] = Math.min(d.age[i], MAX_AGE * 0.5); continue; } // carried: the hand moves it
         d.age[i] += dt;
         if (d.state[i] === CS_FREE) {
           stepOne(i, dt, world, hazardsData);

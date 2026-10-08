@@ -59,7 +59,7 @@ export async function runJournalTests(assert) {
     }
     assert('journal art: every sprite referenced by journal.json exists (files load, item icons and code drawings are defined)' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0 && checked.size >= 15);
   }
-  assert('journal data: every row has id, category, name, a short text (two lines) and counters from the known set', ENTRIES.every((e) => e.id && e.cat && e.name && e.text.length > 20 && e.text.length <= 80 && (e.counters.length >= 1 || e.id.startsWith('loot-relic-')) && e.counters.every(([k, l]) => ['seen', 'killed', 'killedBy', 'collected', 'angered'].includes(k) && l)));
+  assert('journal data: every row has id, category, name, a short text (two lines) and counters from the known set', ENTRIES.every((e) => e.id && e.cat && e.name && e.text.length > 20 && e.text.length <= 80 && (e.counters.length >= 1 || e.id.startsWith('loot-relic-')) && e.counters.every(([k, l]) => ['seen', 'killed', 'killedBy', 'collected', 'angered', 'used', 'carried'].includes(k) && l)));
   assert('journal data: seeded with every place (hub, training cave, Shallows, stall, wreck, garden, gauntlet), enemy, trap, item, prop and the four people',
     ['place-hub', 'place-tutorial', 'place-shallows', 'place-shop', 'place-wreck', 'place-garden', 'place-gauntlet', 'place-pool', 'creature-fish', 'hazard-anemone', 'item-heartcontainer', 'loot-relic', 'prop-rune', 'prop-fossil', 'prop-weed', 'prop-boulder', 'person-diver', 'person-critter', 'person-keeper', 'person-collector'].every((i) => ids.includes(i)));
   assert('journal: the old quest entries are gone, five people took their place (Marlo, Pip, the keeper, Quill, the pool host)', !ENTRIES.some((e) => e.id.startsWith('quest-')) && ENTRIES.filter((e) => e.cat === 'person').length === 5);
@@ -86,7 +86,7 @@ export async function runJournalTests(assert) {
     // r39: a collectable shows only the counter that means something (no per-dive Seen next to a per-event Collected); the keeper has Bought, not Helped
     const labelsOf = (id) => counterRows(jl.list().find((e) => e.id === id)).map((r) => r[0]).join();
     assert('journal counters: shells, plankton and loot show Collected / Opened only (no Seen), the bomb Thrown / Killed by, the keeper Met / Bought / Angered / Killed you',
-      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by' && labelsOf('person-keeper') === 'Met,Bought,Angered,Killed you' && labelsOf('person-collector') === 'Met,Relics given,Angered,Killed');
+      labelsOf('item-shell') === 'Collected' && labelsOf('item-plankton') === 'Collected' && labelsOf('loot-pot') === 'Opened' && labelsOf('item-bomb') === 'Thrown,Killed by,Runs carried' && labelsOf('person-keeper') === 'Met,Bought,Angered,Killed you' && labelsOf('person-collector') === 'Met,Relics given,Angered,Killed');
     assert('journal counters: nothing labelled Seen anywhere (it counts dives, so it says so)', !ENTRIES.some((e) => e.counters.some(([k, l]) => l === 'Seen')) && ENTRIES.filter((e) => e.counters.some(([k]) => k === 'seen') && ['item', 'loot'].includes(e.cat)).length === 0);
     // completion math: percentages per tab and overall are floor(100 * found / total); 100% only when everything is found
     const c0 = completion(jl);
@@ -105,8 +105,8 @@ export async function runJournalTests(assert) {
     jj.bump('creature-crab', STAT_KILLED); jj.bump('creature-crab', STAT_KILLED, 2); jj.bump('creature-crab', STAT_SEEN); jj.bump('creature-crab', STAT_KILLED_BY); jj.bump('bogus', STAT_SEEN); jj.bump('creature-crab', 9);
     assert('journal stats: bump adds, nothing is written until flush', jj.stat('creature-crab', STAT_KILLED) === 3 && jj.stat('creature-crab', STAT_SEEN) === 1 && ss === 0);
     jj.flush(); jj.flush();
-    assert('journal stats: flush writes only the entries with counters, once', ss === 1 && JSON.stringify(savedStats['creature-crab']) === '[1,3,1,0,0]' && savedStats['item-shell'][3] === 5 && !('creature-urchin' in savedStats));
-    assert('journal stats: list() carries the counters', jj.list('creature').find((e) => e.id === 'creature-crab').stats.join() === '1,3,1,0,0');
+    assert('journal stats: flush writes only the entries with counters, once', ss === 1 && JSON.stringify(savedStats['creature-crab']) === '[1,3,1,0,0,0,0]' && savedStats['item-shell'][3] === 5 && !('creature-urchin' in savedStats));
+    assert('journal stats: list() carries the counters', jj.list('creature').find((e) => e.id === 'creature-crab').stats.join() === '1,3,1,0,0,0,0');
     assert('journal stats: tabList and tabProgress follow the tab', jj.tabList('traps').length === 5 && jj.tabProgress('items').found === 1 && jj.tabProgress('items').total === jj.tabList('items').length);
   }
 
@@ -129,7 +129,7 @@ export async function runJournalTests(assert) {
       const j4 = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
       j4.bump('creature-crab', STAT_SEEN, 12); j4.bump('creature-crab', STAT_KILLED, 4); j4.bump('creature-crab', STAT_KILLED_BY); j4.flush();
       _resetForTests();
-      assert('journal save: counters persist across a reload as flat arrays', JSON.stringify(getJournalStats()['creature-crab']) === '[12,4,1,0,0]');
+      assert('journal save: counters persist across a reload as flat arrays', JSON.stringify(getJournalStats()['creature-crab']) === '[12,4,1,0,0,0,0]');
       const j5 = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
       assert('journal save: a journal built on save.js restores Seen 12 / Killed 4 / Killed by 1 and the entry is unlocked', j5.stat('creature-crab', STAT_SEEN) === 12 && j5.stat('creature-crab', STAT_KILLED) === 4 && j5.stat('creature-crab', STAT_KILLED_BY) === 1 && j5.has('creature-crab'));
       j5.bump('creature-crab', STAT_SEEN); j5.flush(); _resetForTests();

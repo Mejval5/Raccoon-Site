@@ -3,18 +3,27 @@
 //
 // Two modes:
 //   createBombs()        legacy / endless: a bomb stays where it was placed and goes off after BOMB_FUSE.
-//   createBombs(props)   v2: every bomb is a rigid body in the props system (props.js). It is thrown with the
-//                        octopus's velocity plus an impulse along `aim`, sinks, bounces, rolls (the octopus can push
-//                        it) and goes off after BOMB_FUSE_V2. The explosion keeps the old damage and rock breaking,
-//                        and adds a radial impulse on props, enemies (knockback + a brief stun) and the octopus,
-//                        and 4-8 rubble props where rock was blown away.
+//   createBombs(props)   v2: every bomb is a rigid body in the props system (props.js). Controls 2026-10-08 (V2-PLAN 17,
+//                        CONTROLS-IDEAS 3.1 + 3.2), one item with two behaviours by how it is used:
+//                          - no aim (B / X, C or right click with the cursor on the octopus, the Use button with no
+//                            stick): DROPPED, a heavy bomb straight down under the octopus that sinks like a rock, never
+//                            bounces or rolls and sits where it lands; the fuse (BOMB_FUSE_V2) runs from the drop.
+//                          - aimed (right / middle click at the cursor, the stick held, a bomb thrown from the hand):
+//                            an URCHIN-MINE that flies on and clings to the first rock, push block or creature it meets;
+//                            the fuse starts when it clings (or after STICKY_ARM_S of flight, whatever comes first).
+//                        The explosion breaks rock (tile centres within BOMB_RADIUS, the radius that is drawn), kills
+//                        enemies there, and adds a radial impulse on props, enemies (knockback + a brief stun) and the
+//                        octopus, and 4-8 rubble props where rock was blown away.
 
 import { BOMB_FUSE, BOMB_RADIUS } from './config.js';
-import { tryUseBomb } from './octopus.js';
+import { tryUseBomb, hurtOctopus } from './octopus.js';
 import { octoHit } from './damage.js';
-import { PK_BOMB, PK_RUBBLE, PROP_RADIUS, THROW_SPEED } from './props.js';
+import { PK_BOMB, PK_RUBBLE, PROP_RADIUS, THROW_SPEED, BM_PLAIN, BM_HEAVY, BM_STICKY, PS_HELD, PS_CARRY } from './props.js';
 
-export const BOMB_FUSE_V2 = 2.5;
+export const BOMB_FUSE_V2 = 1.6;
+export const STICKY_ARM_S = 2.0;       // a mine that met nothing in this long arms anyway (it goes off where it drifted)
+export const DROP_SPEED = 1.5;         // u/s straight down: a dropped bomb leaves the tentacles already sinking
+export const DROP_BELOW = 0.35;        // tiles under the octopus's centre it starts (if that is water)
 export const BLAST_REACH = 2;          // knockback reaches this many blast radii
 export const OCTO_BLAST_IMPULSE = 7;   // u/s at the centre of the blast, falling off linearly
 export const ENEMY_BLAST_IMPULSE = 12;
@@ -74,7 +83,10 @@ export function createBombs(props = null) {
       enemies.killInRadius(b.x, b.y, r);
       if (props && enemies.knockInRadius) enemies.knockInRadius(b.x, b.y, r * BLAST_REACH, ENEMY_BLAST_IMPULSE, ENEMY_STUN);
     }
-    if (dist(octo.x, octo.y, b.x, b.y) <= r) octoHit(octo, 'bomb', b.x, b.y, 'bomb'); // dead: a hit on the body (flash, knock)
+    // Daniel 2026-10-08: inside the radius the blast kills her outright (SOURCES.bomb.octo = kill; i-frames do not help); the tutorial
+    // sets octo.bombNoKill, so its bomb floor only costs a heart. A dead body takes a hit (flash, knock).
+    // (octo.noKill: the god-mode test hook; a dead body: hurtOctopus hits it away from the blast)
+    if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill || octo.noKill || octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
     if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
       if (d < reach && !(octo.anchorT > 0)) { // Anchor (spells): a blast still hurts, but does not throw the octopus
@@ -96,23 +108,25 @@ export function createBombs(props = null) {
     list() { return bombs; },
 
     /**
-     * Place a bomb if the octopus has one in stock. v2: it starts at (x, y) with the octopus's velocity plus
-     * THROW_SPEED along `aim` ({x, y}, unit length; a short vector throws proportionally less), or a short toss
-     * forward (octo.throwDir, the last swim direction) and a little down when `aim` is null. `opts.pinned` keeps a bomb in place (tests), `opts.fuse` sets its fuse, `opts.free` costs no bomb.
+     * Place a bomb if the octopus has one in stock. v2: `aim` null = DROPPED (heavy, straight down from (x, y), no
+     * sideways speed); `aim` {x, y} = an URCHIN-MINE thrown from (x, y) with the octopus's velocity plus THROW_SPEED along
+     * aim (unit length; a shorter vector throws proportionally less). `opts.pinned` keeps a bomb in place (tests),
+     * `opts.free` places one without using a bomb from the stock (tests), `opts.fuse` sets its fuse (chain reactions).
      */
     place(octo, x, y, aim = null, opts = null) {
-      if (!(opts && opts.free) && !tryUseBomb(octo)) return false; // opts.free: a test / scripted bomb that costs nothing
+      if (!(opts && opts.free) && !tryUseBomb(octo)) return false;
       const f0 = opts && opts.fuse > 0 ? opts.fuse : fuse0;
-      const b = { x, y, fuse: f0, fuse0: f0, exploded: false, age: 0, pid: -1, rot: 0, id: nextId++, chain: -1, depth: 0, lit: 0 };
+      const b = { x, y, fuse: f0, fuse0: f0, exploded: false, age: 0, pid: -1, rot: 0, id: nextId++, chain: -1, depth: 0, lit: 0,
+        armed: true, flight: 0, stickE: null, ox: 0, oy: 0, sticky: false };
       if (props) {
-        let ax = 0, ay = 0;
-        if (aim && (aim.x || aim.y)) { ax = aim.x; ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } } // a short vector throws proportionally less
-        else {
-          const f = octo.throwDir || 1;
-          ax = f * IDLE_TOSS_X; ay = IDLE_TOSS_Y;
+        if (aim && (aim.x || aim.y)) {
+          let ax = aim.x, ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } // a short vector throws proportionally less
+          const ovx = octo.vx || 0, ovy = octo.vy || 0;
+          b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: f0, grace: 0.35, mode: BM_STICKY });
+          b.armed = false; b.sticky = true;
+        } else {
+          b.pid = props.add(PK_BOMB, x, y, 0, DROP_SPEED, { timer: f0, grace: 0.35, mode: BM_HEAVY });
         }
-        const ovx = octo.vx || 0, ovy = octo.vy || 0;
-        b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: f0, grace: 0.35 });
         if (b.pid < 0) { if (!(opts && opts.free)) octo.bombs++; return false; }
         if (opts && opts.pinned) props.hold(b.pid, -1, -1);
       }
@@ -120,6 +134,15 @@ export function createBombs(props = null) {
       return true;
     },
 
+    /** The bomb record riding on prop `pid`, or null (the hand picks bombs up by their prop). */
+    byProp(pid) { for (const b of bombs) if (b.pid === pid && !b.exploded) return b; return null; },
+    /** The hand threw bomb `b`: it is a sticky mine now (a running fuse keeps running). */
+    makeSticky(b) {
+      if (!props || !b || b.pid < 0) return;
+      props.data.mode[b.pid] = BM_STICKY; props.data.stuck[b.pid] = 0; b.sticky = true; b.stickE = null; b.flight = 0;
+    },
+    /** The hand let bomb `b` go gently: a heavy bomb again. */
+    makeHeavy(b) { if (props && b && b.pid >= 0) { props.data.mode[b.pid] = BM_HEAVY; b.stickE = null; } },
     /**
      * Chain reactions (chain.js): bomb `id` is set off by a link; its fuse is cut and it goes off on this step's update.
      * ctx {chain, depth} is carried to the 'exploded' event so the blast joins the same chain. False when it is gone.
@@ -149,11 +172,26 @@ export function createBombs(props = null) {
       events.length = 0;
       if (props) {
         const d = props.data;
+        const list = enemies && enemies.all ? enemies.all() : null;
         for (const b of bombs) {
           if (b.exploded || b.pid < 0) continue;
-          b.x = d.x[b.pid]; b.y = d.y[b.pid]; b.rot = b.x / PROP_RADIUS[PK_BOMB]; // rolls
-          d.timer[b.pid] -= dt;
-          b.fuse = d.timer[b.pid];
+          const p = b.pid;
+          // a mine in flight clings to the first creature it touches (and rides on it until it dies)
+          if (b.sticky && !b.stickE && d.mode[p] === BM_STICKY && d.state[p] !== PS_HELD && d.state[p] !== PS_CARRY && !d.stuck[p] && list) {
+            for (let k = 0; k < list.length; k++) {
+              const e = list[k];
+              if (e.dead || e.ghost || e.kind === 'beholder') continue;
+              if (Math.hypot(e.x - d.x[p], e.y - d.y[p]) < (e.radius || 0.4) + d.radius[p]) { b.stickE = e; b.ox = d.x[p] - e.x; b.oy = d.y[p] - e.y; props.carry(p); d.stuck[p] = 1; break; }
+            }
+          }
+          if (b.stickE) {
+            if (b.stickE.dead) { b.stickE = null; d.mode[p] = BM_HEAVY; props.release(p); }
+            else props.place(p, b.stickE.x + b.ox, b.stickE.y + b.oy, b.stickE.vx || 0, b.stickE.vy || 0);
+          }
+          b.x = d.x[p]; b.y = d.y[p]; b.rot = d.mode[p] === BM_PLAIN ? b.x / PROP_RADIUS[PK_BOMB] : b.rot; // a plain bomb rolls; a heavy one or a mine does not
+          if (!b.armed) { b.flight += dt; if (d.stuck[p] || b.flight >= STICKY_ARM_S) b.armed = true; }
+          if (b.armed) d.timer[p] -= dt;
+          b.fuse = d.timer[p];
         }
       }
       for (const b of bombs) {

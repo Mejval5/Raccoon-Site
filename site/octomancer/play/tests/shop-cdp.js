@@ -69,19 +69,24 @@ const VPS = {
         if (e.ware[W] === 1) knocked = true;
       }
       const afterKnock = await page.evaluate(() => ({ shop: __octo.extras().shop, shells: __octo.extras().shells, aggro: __octo.extras().shopAggro }));
-      check(`${vp}: a dash knocks the middle ware off its pedestal, nothing is paid, nobody is angry yet`, knocked && afterKnock.shop.sold[W] === 0 && afterKnock.aggro.on === false);
-      // swim to the loose ware with the real input
+      // controls 2026-10-08 (Daniel): knocking a ware off by the octopus's own doing is theft: the keeper notices at once
+      check(`${vp}: a dash knocks the middle ware off its pedestal, nothing is paid, the keeper notices ('!') and is angry`, knocked && afterKnock.shop.sold[W] === 0 && afterKnock.aggro.on === true && afterKnock.aggro.why === 'theft');
+      // swim to the loose ware with the real input and take it with the hand (F) (unhurt: the angry keeper's attack is timed below)
+      await page.evaluate(() => __octo.god(true));
       let stolen = false;
       for (let f = 0; f < 60 && !stolen; f++) {
-        stolen = await page.evaluate((W) => {
+        stolen = await page.evaluate((W, f) => {
           const e = __octo.extras(), pid = e.shop.pid[W], o = __octo.state().octopus;
           const p = __octo.props().find((q) => q.i === pid);
-          if (p) { const dx = p.x - o.x, dy = p.y - o.y, l = Math.hypot(dx, dy) || 1; __octo.input({ move: { x: dx / l, y: dy / l }, dash: false, bomb: false, pause: false }); }
+          const h = __octo.hand();
+          const grab = !!(h.target && h.target.kind === 'ware') && f % 2 === 0;
+          if (p) { const dx = p.x - o.x, dy = p.y - o.y, l = Math.hypot(dx, dy) || 1; __octo.input({ move: { x: dx / l, y: dy / l }, dash: false, bomb: false, pause: false, hand: grab }); }
           __octo.stepDraw(2);
-          return __octo.extras().shopAggro.on;
-        }, W);
+          return __octo.extras().shop.stolen === 1;
+        }, W, f);
         if (f % 3 === 0 || stolen) await shot('theft');
       }
+      await page.evaluate(() => { __octo.input({ move: { x: 0, y: 0 }, dash: false, bomb: false, pause: false, hand: false }); __octo.god(false); });
       const ag = await page.evaluate(() => ({ a: __octo.extras().shopAggro, k: __octo.keepers().list[0], shop: __octo.extras().shop, shells: __octo.extras().shells }));
       check(`${vp}: picking the loose ware up without paying is theft: the keepers are angry`, stolen && ag.a.why === 'theft' && ag.shop.stolen === 1 && ag.k.mode === 'angry' && ag.shells === 0, JSON.stringify(ag.a));
       // ---- the keeper's attack: frame by frame until the octopus is hit twice (it makes off with the loot, up and away) ----
@@ -172,7 +177,7 @@ const VPS = {
         const k2 = __octo.keepers().list[0];
         return { hp0: k.hp, hp: k2.hp, mode: k2.mode, a: __octo.extras().shopAggro };
       });
-      check(`ink jet blobs hit the keeper for almost nothing (${(jet.hp0 - jet.hp).toFixed(2)} hp) and anger him`, jet.hp0 - jet.hp > 0.2 && jet.hp0 - jet.hp < 1.5 && jet.a.on && jet.a.why === 'hurt' && jet.mode === 'angry', JSON.stringify(jet));
+      check(`ink jet blobs hit the keeper for almost nothing (${(jet.hp0 - jet.hp).toFixed(2)} hp) and anger him`, jet.hp0 - jet.hp > 0.2 && jet.hp0 - jet.hp < 1.5 && jet.a.on && (jet.a.why === 'hurt' || jet.a.why === 'theft') && jet.mode === 'angry', JSON.stringify(jet));
       await pj.close();
       const p2 = await open('desktop', BASE + `?at=1&seed=${seed}`);
       await p2.evaluate(() => { __octo.god(true); __octo.freeze(true); });

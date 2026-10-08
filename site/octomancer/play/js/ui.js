@@ -136,7 +136,7 @@ export function createUI(root, handlers) {
     const v2 = state.stage !== undefined;
     if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
       helpV2 = true;
-      controlsHelp.textContent = 'Swim: WASD/arrows | Dash: Space/Shift | Ink jet: left-click or J/K | Spell: right-click or F | Bomb: middle-click or B/X | Spells: wheel, Q/E, 1-9 | Inventory: Tab/I';
+      controlsHelp.textContent = 'Swim: WASD/arrows | Dash: Space/Shift | Hand: F (grab, talk, buy; F throws, hold F drops) | Ink jet: left-click or J/K | Use slot: right-click or C | Bomb: middle-click or B/X | Hotbar: wheel, Q/E, 1-9 | Inventory: Tab/I';
     }
   }
 

@@ -245,7 +245,10 @@ function cleanJournalStats(raw) {
   for (const id of Object.keys(raw).slice(0, 1000)) {
     const a = raw[id];
     if (!Array.isArray(a)) continue;
-    out[String(id)] = [0, 1, 2, 3, 4].map((k) => Math.floor(num(a[k])));
+    // up to 7 counters (journal.js STAT_*: seen, killed, killedBy, collected, angered, used, carried); an older 5-long array keeps its
+    // length, so journal.js can tell it apart (it moves the old spell-cast / bomb-throw counts from "collected" to "used")
+    const n = Math.max(5, Math.min(7, a.length));
+    out[String(id)] = Array.from({ length: n }, (_, k) => Math.floor(num(a[k])));
   }
   return out;
 }

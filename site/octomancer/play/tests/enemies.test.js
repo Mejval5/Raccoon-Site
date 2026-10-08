@@ -100,7 +100,7 @@ export function runEnemyTests(assert, approx) {
     for (const v of world.tiles.values()) if (v === 0) cleared++;
     assert('bomb: clears at least one soft-rock tile within its radius', cleared > 0);
     assert('bomb: leaves rock outside radius 2.5 untouched', world.tiles.get('3,3') === 2);
-    assert('bomb: hurts the octopus if it is still inside the blast', o.hearts === 2);
+    assert('bomb: kills the octopus if it is still inside the blast (Daniel 2026-10-08: insta-kill)', o.dead && o.hearts === 0);
   }
 
   // --- Bomb: kills enemies within radius (Beholder excluded, tested separately) ---

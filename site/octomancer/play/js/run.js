@@ -42,7 +42,7 @@ export const CAUSE_NAME = {
 /** The death screen's title per cause (Spelunky style). 'The dark took you' stays for the Beholder and for unknown causes. */
 export const DEATH_TITLE = {
   piranha: 'Shredded by a piranha', crab: 'Pinched', urchin: 'Spined', horns: 'Gored', manta: 'Rammed by a manta',
-  shot: 'Shot', bomb: 'Blown up by your own bomb', beholder: 'The dark took you', spikes: 'Impaled', rock: 'Crushed',
+  shot: 'Shot', bomb: 'Blown up', beholder: 'The dark took you', spikes: 'Impaled', rock: 'Crushed',
   eel: 'Shocked', anemone: 'Stung', clam: 'Clammed', tentacle: 'Swallowed', jet: 'Swept away', chest: 'A trapped chest',
   shopkeeper: "Shopkeeper's justice", unknown: 'The dark took you',
   harpoon: 'Harpooned', pip: 'Bitten', quill: 'Bitten', host: 'Bitten', block: 'Crushed',
