@@ -58,10 +58,10 @@ export async function runPathcheckTests(assert) {
   const tutJson = await (await fetch('../data/tutorial.json')).json();
   const hub = parseAuthoredMap(hubJson), tut = parseAuthoredMap(tutJson);
   assert('A* authored: the hub exit is reachable from the start', authoredSolvable(hub, false));
-  assert('A* authored: the hub sign (Q) and journal board are reachable too', (() => {
+  assert('A* authored: the hub resident anchor (Q) and the perch of Quill (L) are reachable too', (() => {
     const grid = createPathGrid(hub.w, hub.h, (x, y) => hub.tiles[y * hub.w + x] !== 0);
     const r = reachableNodes(grid, hub.startX + 0.5, hub.startY + 0.5);
-    return hub.signX >= 0 && reachedNear(grid, r, hub.signX + 0.5, hub.signY + 0.5, 0.75) && reachedNear(grid, r, hub.boardX + 0.5, hub.boardY + 0.5, 0.75);
+    return hub.signX >= 0 && reachedNear(grid, r, hub.signX + 0.5, hub.signY + 0.5, 0.75) && reachedNear(grid, r, hub.quillX + 0.5, hub.quillY + 0.5, 0.75);
   })());
   assert('A* authored: the tutorial exit is NOT reachable while the bomb wall stands', !authoredSolvable(tut, false));
   assert('A* authored: the tutorial is solvable once the wall counts as passable, and the tutorial guarantees bombs for it',
