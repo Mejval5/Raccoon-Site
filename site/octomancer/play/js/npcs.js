@@ -16,6 +16,7 @@
 import { hurtOctopus, heavyHitOctopus } from './octopus.js';
 import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
 import { shopAggro } from './shop-aggro.js';
+import { crumbleAt, CR_HARPOON } from './fragile.js';
 import { createTalk, say, talkStep } from './speech.js';
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
@@ -293,7 +294,7 @@ export function createNpcs(world, opts = {}) {
       let ended = false;
       for (let k = 1; k <= n && !ended; k++) {
         const px = hp.x[h] + (nx - hp.x[h]) * k / n, py = hp.y[h] + (ny - hp.y[h]) * k / n;
-        if (world.isSolid(px + c * 0.15, py + s * 0.15)) { events.push({ type: 'harpoonHit', x: px, y: py, rock: true }); ended = true; break; }
+        if (world.isSolid(px + c * 0.15, py + s * 0.15) && !crumbleAt(world, px + c * 0.15, py + s * 0.15, CR_HARPOON)) { events.push({ type: 'harpoonHit', x: px, y: py, rock: true }); ended = true; break; }
         if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && heavyHitOctopus(octo, px - c, py - s, 'harpoon')) {
           events.push({ type: 'harpoonHit', x: px, y: py, rock: false }); ended = true;
         }

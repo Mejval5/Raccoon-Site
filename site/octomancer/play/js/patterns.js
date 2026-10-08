@@ -29,7 +29,11 @@ export async function fetchPatterns(url = 'data/patterns.json') {
  * @param {{patterns:any[]}} json
  */
 export function compilePatterns(json) {
-  const defs = json.patterns;
+  // 2026-10-08 fragile terrain: kind 'terrain' rows (fish-bone plugs, level.js placeMaterials) are their own small table
+  // (t.terrain), never part of the spawn pass
+  const all = json.patterns;
+  const defs = all.filter((d) => d.kind !== 'terrain');
+  const terrainDefs = all.filter((d) => d.kind === 'terrain');
   const n = defs.length;
   const maxV = n * 4;
   const t = {
@@ -77,6 +81,8 @@ export function compilePatterns(json) {
     }
   }
   t.nv = nv;
+  t.terrain = terrainDefs.length ? compilePatterns({ patterns: terrainDefs.map((d) => ({ ...d, kind: 'terrain-row' })) }) : null;
+  t.terrainDefs = terrainDefs;
   return t;
 }
 
