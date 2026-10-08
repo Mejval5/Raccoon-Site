@@ -13,6 +13,13 @@ export function formatTime(sec) {
   return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
 }
 
+/** 5.43 -> "00:05.4", 88.7 -> "01:28.7" (Spelunky's clock). Tenths are floored, so the shown value never runs ahead. */
+export function formatClock(sec) {
+  const d = Math.max(0, Math.floor((sec || 0) * 10 + 1e-6));
+  const m = Math.floor(d / 600), s = Math.floor(d / 10) % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + (d % 10);
+}
+
 /** A run's depth as text: "Shallows 1-3", or "Cleared" for a finished biome. */
 export function depthLabel(depth) {
   return depth > BIOME_LEVELS ? 'Cleared' : BIOME_NAME + ' 1-' + Math.max(1, depth);
@@ -23,11 +30,13 @@ export function summaryHeadline(s) {
   return s.cleared ? `All ${BIOME_LEVELS} levels cleared` : `Taken by ${causeText(s.cause)} in ${depthLabel(s.depth)}`;
 }
 
-/** Label / value rows of a run summary ({cleared, level, time, shells, kills, quests, cause, seed}). */
+/** Label / value rows of a run summary ({cleared, level, time, shells, kills, quests, cause, seed}). With `levelTime` (the HUD's
+ *  level clock when the run ended) the time row reads like the HUD strip: 'level / run' in Spelunky's 00:05.4 format. */
 export function summaryRows(s, seeded = false) {
+  const lt = s.levelTime !== undefined && s.levelTime !== null;
   const rows = [
     ['Levels reached', `${s.level} of ${BIOME_LEVELS}`],
-    ['Time', formatTime(s.time)],
+    lt ? ['Time (level / run)', formatClock(s.levelTime) + ' / ' + formatClock(s.time)] : ['Time', formatTime(s.time)],
     ['Shells', String(s.shells)],
     ['Kills', String(s.kills)],
     ['People helped', String(s.quests)],
