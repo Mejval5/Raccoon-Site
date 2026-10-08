@@ -91,6 +91,11 @@ runDecorTests(assert, approx);
 import { runCornerTests } from './corner.test.js';
 runCornerTests(assert, approx);
 
+// --- 2026-10-08: the movement test room (data/movement-test.json, ?movetest=1): sweep, rest-and-leave and the tour at
+// 30/60/120 Hz, no dash. Must stay green after ANY change to swimming, collision, the wall outline or block pushing ---
+import { runMovementTests } from './movement.test.js';
+await runMovementTests(assert);
+
 // --- Round-8 task 1/3: wall-outline trace closure + collision-matches-rim
 // tests (outline.js / world.js / physics.js) ---
 import { runOutlineTests } from './outline.test.js';

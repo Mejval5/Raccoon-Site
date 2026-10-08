@@ -131,6 +131,20 @@ if (V2) {
   else if (at === 'end') run.state = S_END;
   else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); run.juice = run.juiceStart; }
 }
+// ?movetest=1: the hand-made movement test room (data/movement-test.json; tests/movement.test.js and movement-cdp.js swim
+// the same room). A safe state (no enemies, no hazards), built like the hub from an authored map, never by the generator.
+const MOVETEST = V2 && params.get('movetest') === '1';
+let movetestJson = null;
+if (MOVETEST) {
+  movetestJson = await (await fetch(new URL('../data/movement-test.json', import.meta.url))).json();
+  run.state = S_HUB;
+}
+/** The movement test room as a level: its exit (sealed in rock in the map) is moved off the map, so nothing leads out. */
+function movetestLevel() {
+  const lv = parseAuthoredMap(movetestJson);
+  lv.exitX = lv.exitY = -100;
+  return lv;
+}
 /**
  * r43: the same world as makeWorld, built in three tasks (generate the level, place its spawns, assemble the world) with a
  * timeout between them, so a transition never does all of it in one go. `done(world)` gets the result. Hub and tutorial are
@@ -182,6 +196,7 @@ function makeWorldSteps(done) {
 function makeWorld(runSeed) {
   if (!V2) return createWorld(runSeed);
   const spec = levelSpec(run);
+  if (MOVETEST) return createLevelWorld(spec.seed, 0, { level: movetestLevel() });
   if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.hub) });
   if (spec.kind === 'tutorial') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.tutorial) });
   if (spec.kind === 'rest') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.rest) });
@@ -291,7 +306,7 @@ function arriveInHub() {
   if (key) { setStory(key, 1); story = getStory(); }
   run.shortcut3 = story.marlo >= DIVER_RUNS && !npcGone('marlo'); // killing Marlo closes his ring for a run
 }
-if (V2 && run.state === S_HUB) arriveInHub();
+if (V2 && run.state === S_HUB && !MOVETEST) arriveInHub();
 
 const sim = {
   time: 0,
@@ -421,7 +436,7 @@ function discover(id) {
 }
 window.addEventListener('pagehide', () => journal.flush());
 function discoverStatePlace() {
-  discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : run.state === S_REST ? 'place-rest' : null);
+  if (!MOVETEST) discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : run.state === S_REST ? 'place-rest' : null);
 }
 
 // Manual (Esc/button) and automatic (hidden tab/blur) pause are tracked
@@ -959,7 +974,7 @@ function deathFocus(w, h) {
   return { x0: x0 * dpr, y0: y0 * dpr, x1: x1 * dpr, y1: y1 * dpr, strict: ui.isGameOverShown() };
 }
 
-let hudStage = V2 ? stageLabel(run) : undefined;
+let hudStage = V2 ? (MOVETEST ? 'Test room' : stageLabel(run)) : undefined;
 const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
@@ -969,7 +984,7 @@ if (V2) showLevelTitle(); // the first level's title card
 function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
   timed('r:dispose', () => { sfx.stopAll(); renderer.dispose(); });
-  if (V2) hudStage = stageLabel(run);
+  if (V2) hudStage = MOVETEST ? 'Test room' : stageLabel(run);
   resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
@@ -1305,7 +1320,7 @@ function stepV2(snap) {
   if (lv.prompts && lv.prompts.length) {
     let best = null, bd = 1e9;
     // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
-    const welcomed = run.state === S_HUB && (getMeta().clears | 0) >= 1;
+    const welcomed = run.state === S_HUB && !MOVETEST && (getMeta().clears | 0) >= 1;
     for (const p of welcomed ? [] : lv.prompts) {
       const d = Math.hypot(octo.x - p.x, octo.y - p.y);
       if (d < p.r && d < bd) { best = p; bd = d; }
