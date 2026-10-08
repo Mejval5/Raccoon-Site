@@ -3,8 +3,8 @@
 // entries on the left page and the selected entry on the right page (big picture, name, a short description and the
 // counters). A locked entry is a clear silhouette with '???' (and, for items, spells and runes, a one-line hint where it is
 // found) until it has been met. Pages turn with the arrows, the arrow keys or a swipe, with a short flip. Phone portrait shows
-// one page at a time (the grid, then the entry). Plain HTML over the canvas; Tab / I open it on the Carried page, the hub board,
-// the pause menu and the settings panel open it too. The book has a fixed size, so the tabs never move: the pages scroll inside.
+// one page at a time (the grid, then the entry). Plain HTML over the canvas; Tab / I open it on the Carried page; the pause
+// menu and the settings panel open it too (on a phone: pause, then Journal). The book has a fixed size, so the tabs never move: the pages scroll inside.
 //
 // 2026-10-08, the Carried page (first bookmark): everything the octopus carries now (hotbar slots, Ink Jet, bombs, the juice
 // jar, passive items) as a grid; the highlighted one (hover, arrow keys, a tap) shows its picture, numbers and key on the right

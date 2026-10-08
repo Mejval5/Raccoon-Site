@@ -483,11 +483,11 @@ const ui = createUI(hudEl, {
 });
 if (getHelpDone()) ui.retireControlsHelp(); // finished two levels in an earlier visit: the controls line stays away (Settings lists the controls)
 
-// v2 journal (B1-4): entries persisted through save.js; the list screen opens from the hub board.
+// v2 journal (B1-4): entries persisted through save.js; the book opens from Tab / I, the pause menu and Settings (the hub board is gone, 2026-10-08).
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
 const seenDive = new Set(); // entry ids already counted as seen in this dive / hub visit
 const journalScreen = createJournalScreen(hudEl, journal, {
-  onClose() { boardCooldown = true; if (inventoryOpen) { inventoryOpen = false; applyPaused(); } syncModal(); },
+  onClose() { if (inventoryOpen) { inventoryOpen = false; applyPaused(); } syncModal(); },
   onOpen() { ui.setPrompt(null); noteCarried(); journal.flush(); syncModal(); },
   getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; },
   getStory() { return getStory(); },
@@ -528,7 +528,7 @@ const hotbarUI = createHotbarUI(hudEl, { onSelect(i) { if (V2) selectIndex(hotba
 if (!V2) hotbarUI.setVisible(false);
 hotbarUI.setCompact(isCoarsePointer());
 // 2026-10-08: Tab / I open the journal on its Carried page (journal-ui.js) and pause the game; Tab, I, Esc or Close shut it.
-// `inventoryOpen` = the book was opened that way (it pauses; the hub board's book only freezes the step).
+// `inventoryOpen` = the book was opened that way (it pauses; the pause menu's book is opened while already paused).
 let inventoryOpen = false;
 /** What the octopus carries, for the Carried page (carried.js). */
 function carriedState() {
@@ -610,7 +610,6 @@ function noteCarried() {
     if (journal.discover(id)) announceJournal();
   }
 }
-let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 // Journal toasts are rare and small: only a genuinely new entry (journal.discover is true once per entry) and never a prop
 // (plants, weeds, boulders, carvings: discovered quietly). Discoveries within JOURNAL_BATCH_MS become one toast.
 const JOURNAL_BATCH_MS = 1800, JOURNAL_TOAST_MS = 2000;
@@ -1467,7 +1466,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   else if (V2) { timed('r:extras', () => setupLevelExtras()); timed('r:title', () => showLevelTitle()); }
 }
 
-// --- v2 run flow (js/run.js): fade, level loading, hub board, prompts, journal discoveries ---
+// --- v2 run flow (js/run.js): fade, level loading, prompts, journal discoveries ---
 let transitioning = false;
 let holdFrame = 0;
 let lastDark = null; // {start, end} (performance.now) of the last transition's dark part: the event until the screen starts to fade in
@@ -1754,7 +1753,7 @@ function endOfDiveNpcs() {
   story = getStory();
 }
 
-/** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
+/** v2 per-step logic after the octopus moved: exit, hub residents, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
   stepSkinGifts();
@@ -1791,11 +1790,6 @@ function stepV2(snap) {
   // interact kind below (portalAt / enterPortal). Swimming into one only shows the tell and the key hint.
   if (entry) return;
   if (run.state === S_HUB) hubStep(lv);
-  if (lv.boardX >= 0) {
-    const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
-    if (d > 2.2) boardCooldown = false;
-    else if (d < 1.2 && !boardCooldown) { octo.vx = octo.vy = 0; journalScreen.show('places'); ui.setPrompt(null); return; }
-  }
   if (lv.prompts && lv.prompts.length) {
     let best = null, bd = 1e9;
     // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
@@ -1874,7 +1868,6 @@ function v2Extra(c, camera, w2s, cw, ch) {
   const lv = world.level;
   drawV2Marks(c, camera, cw, ch, {
     exitX: lv.exitX, exitY: lv.exitY, tileAt: world.tileAt, octoX: octo.x, octoY: octo.y,
-    boardX: lv.boardX === undefined ? -1 : lv.boardX, boardY: lv.boardY === undefined ? -1 : lv.boardY,
     label: run.state === S_HUB ? 'Dive' : '',
     shortcutX: run.state === S_HUB && run.shortcut && lv.shortcutX !== undefined ? lv.shortcutX : -1, shortcutY: lv.shortcutY,
     shortcutLabel: BIOME_NAME + ' 1-' + SHORTCUT_LEVEL,
@@ -2833,14 +2826,14 @@ function drawPeopleExtras(c, camera, cw, ch, t) {
   }
 }
 
-// --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the ledge by the board; each speaks when you come near ---
+// --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the left ledge ('L'); each speaks when you come near ---
 const HUB_TALK_R = 3.4;
 const HUB_TALK_CUT = 1.6; // r40: swimming this far beyond HUB_TALK_R cuts a resident's speech
 /** Where a resident is: x, y of the feet (or the centre for the swimmers) and the head height for the bubble. */
 function hubPlace(lv, id, t, which = 0) {
   switch (id) {
     case 'marlo': return { x: lv.signX + 0.5, y: lv.signY + 1, head: 1.35, fly: false };
-    case 'quill': return { x: lv.boardX + 2.3, y: lv.boardY, head: 1.3, fly: false };
+    case 'quill': return { x: lv.quillX + 0.3, y: lv.quillY + 1, head: 1.3, fly: false };
     case 'host': return { x: lv.signX + 4.5, y: lv.signY + 1, head: 1.3, fly: false }; // r3: on the little ledge right of Marlo, after your first won wager
     default: return { x: lv.signX - 1.4 - which * 2.2 + Math.sin(t * 0.7 + which) * 0.8, y: lv.signY - 0.7 + Math.sin(t * 1.3 + which * 2) * 0.22, head: which ? 0.95 : 0.7, fly: true };
   }
@@ -3137,7 +3130,7 @@ window.__octo = {
     const l = world.level;
     return {
       levelIndex: levelSpec(run).levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
-      w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), boardX: world.level.boardX === undefined ? -1 : world.level.boardX, boardY: world.level.boardY === undefined ? -1 : world.level.boardY, signX: world.level.signX === undefined ? -1 : world.level.signX, signY: world.level.signY === undefined ? -1 : world.level.signY,
+      w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), quillX: world.level.quillX === undefined ? -1 : world.level.quillX, quillY: world.level.quillY === undefined ? -1 : world.level.quillY, signX: world.level.signX === undefined ? -1 : world.level.signX, signY: world.level.signY === undefined ? -1 : world.level.signY,
       prompts: world.level.prompts || [], walls: world.level.walls ? Array.from(world.level.walls) : [], transitioning,
       tiles: Array.from(l.tiles), setPieces: l.setPieces ? Array.from(l.setPieces.subarray(0, (l.nSetPieces || 0) * 4)) : [], fallback: l.fallback, bankFallback: l.bankFallback || 0,
       bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), journalOpen: journalScreen.isOpen(), endShown: ui.isEndShown(),

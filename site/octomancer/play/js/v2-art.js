@@ -12,7 +12,6 @@ const FILES = {
   counter: 'shop-counter.webp',     // left cap | stretchable middle | right cap
   crackVault: 'crack-vault.webp',
   crackWall: 'crack-wall.webp',
-  board: 'hub-board.webp',
   questSign: 'hub-questsign.webp',
   banner: 'title-banner.webp',
   matBedrock: 'mat-bedrock.webp',   // materials: indestructible basalt (generated, Milan style)
@@ -66,7 +65,7 @@ let started = false;
 export function artUrl(file) { return new URL(`../img/v2/${file}`, import.meta.url).href; }
 
 let warmCtx = null;
-/** r44: decode an image off the main thread, then draw it once into a 1 x 1 canvas so its first real draw (the hub's whirlpool and board, a
+/** r44: decode an image off the main thread, then draw it once into a 1 x 1 canvas so its first real draw (the hub's whirlpool, a
  *  level's art) is not the first time the browser decodes and uploads it: that was a 50-100 ms frame during a transition. */
 function warmImage(img) {
   const touch = () => {

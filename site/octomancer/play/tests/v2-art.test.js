@@ -18,7 +18,7 @@ function pixels(img) {
 
 export async function runV2ArtTests(assert) {
   const keys = Object.keys(V2_ART_FILES);
-  assert('v2 art: 19 images are registered (12 generated + the whirlpool sheet; materials: 5 generated textures incl. the fish bone and the spell coral + the push block by Milan), all under img/v2 as webp', keys.length === 19 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
+  assert('v2 art: 18 images are registered (11 generated, the hub board removed 2026-10-08, + the whirlpool sheet; materials: 5 generated textures incl. the fish bone and the spell coral + the push block by Milan), all under img/v2 as webp', keys.length === 18 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
   ensureV2Art();
   const rockEl = art.rock;
   ensureV2Art();
@@ -31,7 +31,7 @@ export async function runV2ArtTests(assert) {
   assert('v2 art: the backdrop and material images become ImageBitmaps (decoded off the main thread; an <img> can be decoded again inside a frame)', typeof createImageBitmap !== 'function' || bmKeys.every((k) => artImg(k) instanceof ImageBitmap && artImg(k).width === art[k].naturalWidth));
 
   // alpha sprites have transparent corners and opaque centre pixels; the opaque layers have none
-  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'crackVault', 'crackWall', 'board', 'questSign', 'banner', 'whirlpool'];
+  const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'crackVault', 'crackWall', 'questSign', 'banner', 'whirlpool'];
   const clearShare = (k) => { const d = pixels(art[k]).data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 8) c++; return c / (d.length / 4); };
   assert('v2 art: keyed sprites keep real transparency (between 5 and 98 percent of pixels clear, no opaque key box)', alphaKeys.every((k) => { const c = clearShare(k); return c > 0.05 && c < 0.98; }));
   let magenta = 0;
@@ -72,10 +72,10 @@ export async function runV2ArtTests(assert) {
     drawCritter(ctx, cam, 640, 480, 12.5, 10.5, false, 1);
     drawWallCue(ctx, cam, 640, 480, { walls: Int16Array.from([10, 8, 11, 8, 10, 9, 11, 9]), tileAt: () => 1, attention: 0 }, 1);
     drawPocketCracks(ctx, cam, 640, 480, Int16Array.from([10, 8, 4]), 1, () => 1);
-    drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, boardX: 8, boardY: 9, label: 'Dive', tileAt }, 1);
-    drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, boardX: -1, boardY: -1, label: '', tileAt }, 1);
+    drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, label: 'Dive', tileAt }, 1);
+    drawV2Marks(ctx, cam, 640, 480, { exitX: 10, exitY: 10, label: '', tileAt }, 1);
   } catch (e) { threw = e; }
-  assert('v2 art: shop, diver, caged critter, wall crack, pocket crack, ring and board draw without throwing' + (threw ? ' (' + threw + ')' : ''), threw === null);
+  assert('v2 art: shop, diver, caged critter, wall crack, pocket crack and ring draw without throwing' + (threw ? ' (' + threw + ')' : ''), threw === null);
   {
     // r40: Marlo is one size everywhere: sealed, freed or in the hub, from his feet to the top of his helmet, about a tile (1.0-1.1)
     const bounds = (sealed, freed) => {

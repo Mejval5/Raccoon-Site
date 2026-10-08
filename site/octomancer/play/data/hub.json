@@ -14,8 +14,8 @@
   "##.............................###",
   "##.............................###",
   "##.............................###",
-  "###...................S.......####",
-  "###....J##..............Q###..####",
+  "###......L............S.......####",
+  "###.....##..............Q###..####",
   "####...####.............##########",
   "###########.........U...##########",
   "###############....###############",
@@ -52,8 +52,8 @@
    "y": 12,
    "r": 10,
    "title": "Welcome to the Shallows",
-   "desktop": "Swim to the whirlpool in the floor and press F to dive. Swim into the board on the left to read your journal.",
-   "touch": "Swim to the whirlpool in the floor and tap Enter to dive. Swim into the board on the left to read your journal.",
+   "desktop": "Swim to the whirlpool in the floor and press F to dive. Press Tab or I (or open the pause menu) to read your journal.",
+   "touch": "Swim to the whirlpool in the floor and tap Enter to dive. Tap pause, then Journal, to read your journal.",
    "when": "open"
   }
  ],

@@ -1,5 +1,5 @@
-// v2 world markers drawn in code (no new art this round): the glowing exit / dive ring and
-// the hub's journal board. Called from render.js through its `extraDraw` hook, in device
+// v2 world markers drawn in code: the dive whirlpool and the hub's rings (the hub's journal board is gone, 2026-10-08).
+// Called from render.js through its `extraDraw` hook, in device
 // pixels, after enemies and bombs and before the octopus.
 
 import { artImg } from './v2-art.js';
@@ -40,7 +40,7 @@ export function drawV2Labels() { for (const f of pendingLabels) f(); pendingLabe
  * @param {{x:number,y:number,pxPerUnit:number}} camera
  * @param {number} cw canvas width (px)
  * @param {number} ch canvas height (px)
- * @param {{exitX:number, exitY:number, boardX:number, boardY:number, label:string}} m tile coords; boardX < 0 means none
+ * @param {{exitX:number, exitY:number, label:string}} m tile coords
  * @param {number} time seconds
  */
 export function drawV2Marks(ctx, camera, cw, ch, m, time) {
@@ -137,46 +137,6 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
   if (m.tutorialX >= 0 && m.tutorialX !== undefined) ring(m.tutorialX, m.tutorialY, m.tutorialLabel || 'Tutorial', 'teal', true);
   if (m.shortcutX >= 0) ring(m.shortcutX, m.shortcutY, m.shortcutLabel || '', 'violet', true);
   if (m.shortcut3X >= 0) ring(m.shortcut3X, m.shortcut3Y, m.shortcut3Label || '', 'amber', true);
-
-  // --- journal board: a wooden plank hung on the rock face, outlined like the sprites ---
-  if (m.boardX >= 0) {
-    const bx = sx(m.boardX + 0.5), by0 = sy(m.boardY + 1);  // by0 = ledge floor line; the board stands on it, inside the 1-tile ledge
-    let by = by0 - ppu * 0.6;
-    const w = ppu * 1.7, h = ppu * 1.2;
-    const boardImg = artImg('board');
-    if (boardImg && bx > -w && bx < cw + w && by > -h && by < ch + h) {
-      // generated notice board (Milan style); the word goes on a small plaque under it
-      const dw = ppu * 1.0, dh = dw * (boardImg.naturalHeight / boardImg.naturalWidth);
-      by = by0 - dh / 2;
-      ctx.drawImage(boardImg, bx - dw / 2, by - dh / 2, dw, dh);
-      ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.3))}px Quicksand, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineWidth = Math.max(2, ppu * 0.1); ctx.lineJoin = 'round'; ctx.strokeStyle = '#3a2410';
-      ctx.strokeText('Journal', bx, by - dh / 2 - ppu * 0.2);
-      ctx.fillStyle = '#f6e7b8'; ctx.fillText('Journal', bx, by - dh / 2 - ppu * 0.2);
-    } else if (bx > -w && bx < cw + w && by > -h && by < ch + h) {
-      const lw = Math.max(2, ppu * 0.09);
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#3a2410'; ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(bx - w * 0.3, by - h / 2); ctx.lineTo(bx, by - h / 2 - ppu * 0.3); ctx.lineTo(bx + w * 0.3, by - h / 2); ctx.stroke();
-      const rr = ppu * 0.14;
-      const rect = (x, y, ww, hh) => { ctx.beginPath(); ctx.roundRect(x, y, ww, hh, rr); };
-      rect(bx - w / 2, by - h / 2, w, h);
-      ctx.fillStyle = '#9a6a3a'; ctx.fill();
-      ctx.strokeStyle = '#3a2410'; ctx.stroke();
-      rect(bx - w * 0.4, by - h * 0.36, w * 0.8, h * 0.72);
-      ctx.fillStyle = '#f0e0b0'; ctx.fill();
-      ctx.lineWidth = Math.max(1, lw * 0.6); ctx.stroke();
-      ctx.fillStyle = 'rgba(58,36,16,0.28)';
-      ctx.fillRect(bx - w / 2 + lw, by + h / 2 - ppu * 0.12, w - lw * 2, ppu * 0.1);
-      ctx.fillStyle = '#3a2410';
-      ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.32))}px Quicksand, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('Journal', bx, by - h * 0.06);
-      ctx.fillStyle = 'rgba(58,36,16,0.5)';
-      ctx.fillRect(bx - w * 0.28, by + h * 0.16, w * 0.56, Math.max(1, ppu * 0.04));
-    }
-  }
 }
 
 /**

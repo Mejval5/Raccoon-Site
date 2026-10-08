@@ -260,10 +260,13 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     {
       const p = await open(browser, 'desktop', '?seed=5');
       await p.evaluate(() => { __octo.setStory('marlo', 1); __octo.setStory('quill', 1); });
-      const res = await p.evaluate(() => { // sweep the hub's water for a spot beside a resident (from the right: the journal board on the left opens the book)
+      // 2026-10-08: the hub journal board is gone: swimming where it stood (left of Quill's ledge) opens nothing
+      const nook = await p.evaluate(() => { const lv = __octo.level(); __octo.teleport(lv.quillX - 1.5, lv.quillY + 1.5); __octo.step(30); return { open: __octo.level().journalOpen, quill: lv.quillX }; });
+      check('hub: no journal board: swimming where it stood opens nothing', nook.quill >= 0 && nook.open === false, JSON.stringify(nook));
+      const res = await p.evaluate(() => { // sweep the hub's water for a spot beside a resident (from the right)
         const lv = __octo.level();
         for (let x = lv.w - 1.5; x > 1; x -= 0.7) for (let y = 1; y < lv.h - 1; y += 0.7) {
-          if (__octo.tileAt(Math.floor(x), Math.floor(y)) || Math.hypot(x - lv.boardX - 0.5, y - lv.boardY - 0.5) < 3) continue;
+          if (__octo.tileAt(Math.floor(x), Math.floor(y))) continue;
           __octo.teleport(x, y); __octo.step(1);
           const h = __octo.hand(); if (h.target && h.target.kind === 'talk') { __octo.stepDraw(1); return true; }
         }

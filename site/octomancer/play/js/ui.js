@@ -166,7 +166,7 @@ export function createUI(root, handlers) {
     el('div', 'octo-overlay-title', 'Paused'),
     el('div', 'octo-overlay-hint', 'Esc, the pause button, or tap here to resume'),
   );
-  // round 38: the journal opens from the pause menu too (not only from the hub board)
+  // round 38: the journal opens from the pause menu (the touch way in; the hub board is gone since 2026-10-08)
   const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Journal');
   journalBtn.type = 'button';
   journalBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJournal && handlers.onOpenJournal(); });
