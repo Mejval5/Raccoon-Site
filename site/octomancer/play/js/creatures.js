@@ -14,6 +14,7 @@ import { hasLineOfSight } from './pathfind.js';
 import { PEARL_VALUE } from './shells.js';
 import { inCameraView } from './cull.js';
 import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
+import { creatureId } from './damage.js';
 
 export const CR_NONE = 0, CR_GCLAM = 1, CR_TENTACLE = 2;
 export const CREATURE_NAMES = ['', 'gclam', 'tentacle'];
@@ -114,9 +115,16 @@ export function createCreatures() {
     squeeze: new Float32Array(CAP),                              // 0..1 how tight it holds (draw)
     rs: new Uint32Array(CAP).fill(1),
     hzCool: new Float64Array(CAP), blame: new Float64Array(CAP), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
+    chain: new Int32Array(CAP).fill(-1), cdepth: new Uint8Array(CAP), // chain.js: the chain a clam's snap belongs to (-1: its own)
+    rouse: new Uint8Array(CAP),                                  // a tentacle a chain woke: it uncoils even with the octopus away
+    tg: new Uint8Array(CAP), tgid: new Int32Array(CAP),         // tentacle: 1 = it hunts body tgid (INFIGHT.grab) instead of the octopus
   };
-  const events = []; // {type:'pearl'|'pearlDrop'|'killed'|'snap'|'grab'|'release'|'eaten'|'wake'|'strike'|'bonk'|'tremble', ...}
+  const events = []; // {type:'pearl'|'pearlDrop'|'killed'|'snap'|'grab'|'grabCreature'|'release'|'eaten'|'wake'|'strike'|'bonk'|'tremble', ...}
   const loaded = new Set();
+  let inf = null; // infight.js (v2): the INFIGHT rules (snap, grab); null = they only ever attack the octopus
+  let curWorld = null;
+  const solidAt = (tx, ty) => curWorld.isSolid(tx, ty);
+  const losSolid = (x0, y0, x1, y1) => hasLineOfSight(solidAt, x0, y0, x1, y1);
 
   function add(rec) {
     if (d.n >= CAP) return -1;
@@ -125,7 +133,8 @@ export function createCreatures() {
     d.kind[i] = code; d.state[i] = 0; d.alive[i] = 1;
     d.dx[i] = rec.dx || 0; d.dy[i] = rec.dy || 0; d.side[i] = rec.side || 1;
     d.rs[i] = hash2(rec.x, rec.y);
-    d.cd[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0; d.fed[i] = 0; d.ang[i] = 0;
+    d.cd[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0; d.fed[i] = 0; d.ang[i] = 0; d.tg[i] = 0; d.tgid[i] = 0;
+    d.chain[i] = -1; d.cdepth[i] = 0; d.rouse[i] = 0;
     if (code === CR_GCLAM) {
       d.fy[i] = rec.y + 0.5;
       d.x[i] = rec.x; d.y[i] = d.fy[i] - 0.4;
@@ -142,9 +151,9 @@ export function createCreatures() {
     return i;
   }
 
-  function die(i, vx, vy) {
+  function die(i, vx, vy, reason = '') {
     d.alive[i] = 0;
-    events.push({ type: 'killed', kind: CREATURE_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx, vy, face: d.side[i] });
+    events.push({ type: 'killed', kind: CREATURE_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx, vy, face: d.side[i], reason });
     if (d.kind[i] === CR_GCLAM && d.pearl[i]) { d.pearl[i] = 0; events.push({ type: 'pearlDrop', x: d.x[i], y: d.fy[i] - 0.38 }); }
   }
 
@@ -174,7 +183,7 @@ export function createCreatures() {
       let dx = d.x[i] - fx, dy = d.y[i] - fy;
       const l = Math.hypot(dx, dy);
       if (l < 1e-4) { dx = 0; dy = 0; } else { dx /= l; dy /= l; }
-      die(i, dx * (src === 'bomb' ? 3 : 0), dy * (src === 'bomb' ? 3 : 0) - 1);
+      die(i, dx * (src === 'bomb' ? 3 : 0), dy * (src === 'bomb' ? 3 : 0) - 1, src);
     }
     return o.dmg;
   }
@@ -193,6 +202,12 @@ export function createCreatures() {
     return Math.abs(octo.x - d.x[i]) < CLAM_MOUTH_HALF_W && octo.y > d.fy[i] - CLAM_MOUTH_H && octo.y < d.fy[i] - 0.1;
   }
 
+  /** A clam's snap (chain.js: it carries the chain that made it snap, then the clam forgets it). */
+  function snapEvent(i, kill, far, caught = 0) {
+    events.push({ type: 'snap', x: d.x[i], y: d.fy[i], kill, far, caught, i, chain: d.chain[i], depth: d.cdepth[i] });
+    d.chain[i] = -1; d.cdepth[i] = 0;
+  }
+
   function updateClam(i, dt, octo, world) {
     const st = d.state[i], cx = d.x[i], fy = d.fy[i];
     const near = !octo.dead && Math.hypot(octo.x - cx, octo.y - fy) < CLAM_WAKE_R;
@@ -205,15 +220,18 @@ export function createCreatures() {
         d.t[i] += dt;
         const u = Math.min(1, d.t[i] / CLAM_OPENING_T);
         d.ang[i] = u * u * (3 - 2 * u);
-        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; events.push({ type: 'snap', x: cx, y: fy, kill: false, far: true }); break; }
+        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; snapEvent(i, false, true); break; }
         if (d.t[i] >= CLAM_OPENING_T) { d.state[i] = CL_OPEN; d.t[i] = 0; d.ang[i] = 1; }
         break;
       }
-      case CL_OPEN:
+      case CL_OPEN: {
         d.t[i] += dt; d.ang[i] = 1;
-        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; events.push({ type: 'snap', x: cx, y: fy, kill: false, far: true }); break; }
-        if (d.t[i] >= CLAM_OPEN_T) { d.state[i] = CL_TREMBLE; d.t[i] = 0; events.push({ type: 'tremble', x: cx, y: fy }); }
+        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; snapEvent(i, false, true); break; }
+        // INFIGHT.snap: a creature that swims into the open mouth sets the snap off now (the tremble still telegraphs it)
+        const fishIn = inf !== null && inf.box('snap', '', cx - CLAM_MOUTH_HALF_W, fy - CLAM_MOUTH_H, cx + CLAM_MOUTH_HALF_W, fy - 0.1, creatureId(i)) > 0;
+        if (d.t[i] >= CLAM_OPEN_T || fishIn) { d.state[i] = CL_TREMBLE; d.t[i] = 0; events.push({ type: 'tremble', x: cx, y: fy, by: fishIn ? 'creature' : '' }); }
         break;
+      }
       case CL_TREMBLE:
         d.t[i] += dt; d.ang[i] = 1 - 0.06 * Math.min(1, d.t[i] / CLAM_TREMBLE_T);
         if (d.t[i] >= CLAM_TREMBLE_T) {
@@ -226,7 +244,9 @@ export function createCreatures() {
             kill = killOctopus(octo, 'clam', 'clam', px, py, 90 * s);
             if (kill) d.fed[i] = 1;
           }
-          events.push({ type: 'snap', x: cx, y: fy, kill, far: false });
+          // INFIGHT.snap: the lid crushes whatever else is in the mouth too
+          const caught = inf !== null ? inf.box('snap', 'snap', cx - CLAM_MOUTH_HALF_W, fy - CLAM_MOUTH_H, cx + CLAM_MOUTH_HALF_W, fy - 0.1, creatureId(i)) : 0;
+          snapEvent(i, kill, false, caught);
         }
         break;
       default: { // CL_SNAP: the lid slams shut
@@ -304,31 +324,53 @@ export function createCreatures() {
     const solidT = (tx, ty) => world.isSolid(tx, ty);
     if (st === TN_FED) { d.tipx[i] = mx; d.tipy[i] = my; return; }
     if (st === TN_GRAB) { grab(i, dt, octo, world); return; }
-    const aware = !octo.dead && dist < TENT_LOSE_R && hasLineOfSight(solidT, mx, my, octo.x, octo.y);
+    let aware = !octo.dead && dist < TENT_LOSE_R && hasLineOfSight(solidT, mx, my, octo.x, octo.y);
+    // INFIGHT.grab: the octopus first; while she is not in reach a tentacle hunts any free creature it can reach (d.tg = 1)
+    if (d.tg[i] && aware && dist < TENT_WAKE_R && (st === TN_WAKE || st === TN_REACH)) d.tg[i] = 0; // she came close: back to her
+    let ax = octo.x, ay = octo.y, adist = dist;
+    if (d.tg[i]) {
+      if (st === TN_DORMANT || st === TN_RETRACT || st === TN_STUN || !inf || !inf.locate(d.tgid[i])) d.tg[i] = 0;
+      else {
+        ax = inf.target.x; ay = inf.target.y; adist = Math.hypot(ax - mx, ay - my);
+        aware = adist < TENT_LOSE_R && hasLineOfSight(solidT, mx, my, ax, ay);
+      }
+      if (!d.tg[i] && (st === TN_WAKE || st === TN_REACH || st === TN_STRIKE)) { startRetract(i, 0.6); return; } // the prey is gone
+    }
+    const prey = d.tg[i] === 1;
     switch (st) {
       case TN_DORMANT:
         d.tipx[i] = mx; d.tipy[i] = my;
         if (!octo.dead && d.cd[i] <= 0 && dist < TENT_WAKE_R && aware && inCameraView(mx, my)) { /* item 6: it never wakes from off-screen */ d.state[i] = TN_WAKE; d.t[i] = 0; events.push({ type: 'wake', x: mx, y: my }); }
+        else if (inf && d.cd[i] <= 0 && inCameraView(mx, my) && inf.hunt('grab', mx, my, TENT_WAKE_R, creatureId(i), losSolid)) {
+          d.tg[i] = 1; d.tgid[i] = inf.target.id; d.state[i] = TN_WAKE; d.t[i] = 0; events.push({ type: 'wake', x: mx, y: my, prey: inf.target.name });
+        }
         break;
       case TN_WAKE: {
         d.t[i] += dt;
+        if (!aware && d.rouse[i]) { // a chain woke it (chain.js): it uncoils blindly along its mouth, then curls back
+          const k = ease(d.t[i] / TENT_WAKE_T) * 1.7;
+          d.tipx[i] = mx + d.mdx[i] * k; d.tipy[i] = my + d.mdy[i] * k;
+          if (d.t[i] >= TENT_WAKE_T) { d.rouse[i] = 0; startRetract(i, 0.6); }
+          break;
+        }
         if (!aware) { startRetract(i, 0.6); break; }
-        // the limb uncoils out of the shell towards the octopus
-        const k = ease(d.t[i] / TENT_WAKE_T) * Math.min(1.5, dist) / (dist || 1);
-        d.tipx[i] = mx + (octo.x - mx) * k; d.tipy[i] = my + (octo.y - my) * k;
+        if (d.t[i] >= TENT_WAKE_T) d.rouse[i] = 0;
+        // the limb uncoils out of the shell towards its target
+        const k = ease(d.t[i] / TENT_WAKE_T) * Math.min(1.5, adist) / (adist || 1);
+        d.tipx[i] = mx + (ax - mx) * k; d.tipy[i] = my + (ay - my) * k;
         if (d.t[i] >= TENT_WAKE_T) { d.state[i] = TN_REACH; d.t[i] = 0; }
         break;
       }
       case TN_REACH: {
         d.t[i] += dt;
-        if (!aware || octo.dead) { startRetract(i, 0.6); break; }
-        followTip(i, dt, octo, world);
+        if (!aware || (!prey && octo.dead)) { startRetract(i, 0.6); break; }
+        followTip(i, dt, ax, ay, world);
         if (d.t[i] >= TENT_REACH_T) {
-          if (dist > TENT_REACH + 0.9) { startRetract(i, 0.6); break; } // out of reach: no strike
+          if (adist > TENT_REACH + 0.9) { startRetract(i, 0.6); break; } // out of reach: no strike
           d.state[i] = TN_STRIKE; d.t[i] = 0;
           d.sx[i] = d.tipx[i]; d.sy[i] = d.tipy[i];
-          // the strike goes where the octopus is now, no further than the limb reaches
-          let tx = octo.x, ty = octo.y;
+          // the strike goes where its target is now, no further than the limb reaches
+          let tx = ax, ty = ay;
           const l = Math.hypot(tx - mx, ty - my);
           if (l > TENT_REACH + 0.3) { tx = mx + (tx - mx) / l * (TENT_REACH + 0.3); ty = my + (ty - my) / l * (TENT_REACH + 0.3); }
           d.tx[i] = tx; d.ty[i] = ty;
@@ -340,13 +382,19 @@ export function createCreatures() {
         d.t[i] += dt;
         const u = 1 - Math.pow(1 - Math.min(1, d.t[i] / TENT_STRIKE_T), 3); // fast out, then settling
         d.tipx[i] = d.sx[i] + (d.tx[i] - d.sx[i]) * u; d.tipy[i] = d.sy[i] + (d.ty[i] - d.sy[i]) * u;
-        if (!octo.dead && d.cd[i] <= 0 && Math.hypot(octo.x - d.tipx[i], octo.y - d.tipy[i]) < TENT_TIP_R + octo.radius * 0.8) {
+        // INFIGHT.grab: a strike at another creature crushes whatever free body the tip meets, then the limb pulls back in
+        if (prey && d.cd[i] <= 0 && inf.strike('grab', 'grab', d.tipx[i], d.tipy[i], TENT_TIP_R + 0.15, creatureId(i)) >= 0) {
+          events.push({ type: 'grabCreature', x: d.tipx[i], y: d.tipy[i], kind: inf.events.length ? inf.events[inf.events.length - 1].kind : '' });
+          d.tg[i] = 0; startRetract(i, TENT_REGRAB_CD);
+          break;
+        }
+        if (!prey && !octo.dead && d.cd[i] <= 0 && Math.hypot(octo.x - d.tipx[i], octo.y - d.tipy[i]) < TENT_TIP_R + octo.radius * 0.8) {
           d.state[i] = TN_GRAB; d.t[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0;
           octo.held = 1; octo.struggles = 0; octo.stunT = 0; octo.spin = 0; octo.vx = octo.vy = 0;
           events.push({ type: 'grab', x: octo.x, y: octo.y });
           break;
         }
-        if (d.t[i] >= TENT_STRIKE_T) startRetract(i, TENT_MISS_CD); // a miss
+        if (d.t[i] >= TENT_STRIKE_T) { d.tg[i] = 0; startRetract(i, TENT_MISS_CD); } // a miss
         break;
       }
       case TN_STUN: {
@@ -366,10 +414,10 @@ export function createCreatures() {
     }
   }
 
-  /** The reaching tip drifts slowly towards the octopus, within the limb's reach and never into rock. */
-  function followTip(i, dt, octo, world) {
+  /** The reaching tip drifts slowly towards its target (the octopus, or INFIGHT.grab prey), within the limb's reach and never into rock. */
+  function followTip(i, dt, ax, ay, world) {
     const mx = d.mx[i], my = d.my[i];
-    let ux = octo.x - d.tipx[i], uy = octo.y - d.tipy[i];
+    let ux = ax - d.tipx[i], uy = ay - d.tipy[i];
     const l = Math.hypot(ux, uy);
     if (l < 1e-3) return;
     const step = Math.min(l, TENT_REACH_SPEED * dt);
@@ -418,10 +466,13 @@ export function createCreatures() {
     events,
     /** Add one record directly (tests, debug). Returns its index, or -1 when full. */
     add,
+    /** v2: the enemy-infighting runtime (infight.js): a clam's snap and a tentacle's grab reach other creatures. null: none. */
+    setInfight(x) { inf = x; },
     count() { return d.n; },
     /** One fixed step (after the octopus moved). Picks up the creature records of every resident chunk once. */
     update(dt, octo, world, resident) {
       events.length = 0;
+      curWorld = world;
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -448,6 +499,36 @@ export function createCreatures() {
       }
       return n;
     },
+    /**
+     * Chain reactions (chain.js): set creature i off. A giant clam snaps: an open one trembles out its last instant and slams
+     * (the octopus in its mouth is still caught), a shut one clacks. A dormant tentacle wakes and uncoils (and strikes if the
+     * octopus is there). ctx {chain, depth} rides on the snap event. False when it cannot go off now.
+     */
+    trigger(i, ctx = null) {
+      if (i < 0 || i >= d.n || !d.alive[i]) return false;
+      if (d.kind[i] === CR_GCLAM) {
+        const st = d.state[i];
+        if (st === CL_SNAP) return false;
+        d.chain[i] = ctx && ctx.chain >= 0 ? ctx.chain : -1; d.cdepth[i] = ctx ? ctx.depth | 0 : 0;
+        if (st === CL_SHUT) { d.state[i] = CL_SNAP; d.t[i] = 0; d.ang[i] = 0.35; snapEvent(i, false, false); } // a startled clack
+        else { d.state[i] = CL_TREMBLE; d.t[i] = CLAM_TREMBLE_T; } // snaps on its next step, with the mouth check
+        return true;
+      }
+      if (d.state[i] !== TN_DORMANT || d.fed[i]) return false;
+      d.state[i] = TN_WAKE; d.t[i] = 0; d.rouse[i] = 1;
+      events.push({ type: 'wake', x: d.mx[i], y: d.my[i] });
+      return true;
+    },
+    /** The chain.js target adapters: 'clam' (giant clams not already snapping) and 'tentacle' (dormant ones). */
+    chainTargets() {
+      const api = this;
+      return [
+        { name: 'clam', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === CR_GCLAM && d.state[i] !== CL_SNAP && Math.hypot(d.x[i] - x, d.y[i] - y) <= r) cb(i, d.x[i], d.y[i]); } },
+        { name: 'tentacle', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === CR_TENTACLE && d.state[i] === TN_DORMANT && !d.fed[i] && Math.hypot(d.mx[i] - x, d.my[i] - y) <= r) cb(i, d.mx[i], d.my[i]); } },
+      ];
+    },
     /** A blast at (x, y) radius R lets a tentacle's held octopus go when it reaches either of them. True when it let go. */
     releaseNear,
     /** 2026-10-08: the one way a creature takes a hit (creature-rules.js); see applyHit. */
@@ -461,6 +542,7 @@ export function createCreatures() {
           if (!d.alive[i]) return false;
           V.kind = CREATURE_NAMES[d.kind[i]]; V.x = d.x[i]; V.y = d.y[i]; V.r = bodyR(i); V.vx = 0; V.vy = 0; V.stun = 0;
           V.shut = shut(i); V.cool = d.hzCool[i]; V.blame = d.blame[i];
+          V.id = creatureId(i); V.wound = d.hp[i] < (d.kind[i] === CR_GCLAM ? CLAM_HP : TENT_HP) ? 1 : 0;
           return true;
         },
         apply(i, src, fx, fy, dmg) { return applyHit(i, src, fx, fy, dmg, getOcto ? getOcto() : null); },

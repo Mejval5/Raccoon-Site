@@ -17,17 +17,17 @@ import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
 import { isBaked } from './octopus-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
-import { createHazards, hazardJournalId } from './hazards.js';
+import { createHazards, hazardJournalId, makeHazardRecord } from './hazards.js';
 import { drawHazards, drawImpaleOverlay, drawSplatRock } from './hazards-draw.js';
 import { createCreatures, creatureJournalId, CREATURE_CODE, CR_GCLAM, CL_OPENING, CL_OPEN, CL_TREMBLE, TN_DORMANT, TN_RETRACT, TN_FED } from './creatures.js';
 import { drawCreaturesBack, drawCreaturesFront } from './creatures-draw.js';
 import { drawBlocks } from './blocks-draw.js';
-import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES } from './loot.js';
+import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES, LOOT_CODE as LOOT_CODE_ } from './loot.js';
 import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
 import { drawLoot } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
-import { MAT_ROCK, MAT_BONE, setTileDrawHook } from './materials.js';
+import { MAT_ROCK, MAT_BONE, MAT_BOULDER_BREAKS, setTileDrawHook } from './materials.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
@@ -72,7 +72,11 @@ import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat, shopKnock, W_SHELF, WARE_R } from './shop.js';
 import { createDamage, proxyFamily } from './damage.js';
-import { CREATURES, SOURCES, resolveHit } from './creature-rules.js';
+import { createChain } from './chain.js';
+import { drawChain } from './chain-draw.js';
+import { TRIGGERS, TRIGGER_TARGET_NAMES as TRIGGER_NAMES_, INFIGHT_KILL } from './creature-rules.js';
+import { createInfight } from './infight.js';
+import { CREATURES, SOURCES, resolveHit, HAZARD_COOL } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
@@ -272,7 +276,47 @@ damage.register(proxyFamily('enemy', () => enemies.family));
 damage.register(proxyFamily('creature', () => creatures.dmgFam || (creatures.dmgFam = creatures.family(() => octo))));
 damage.register(proxyFamily('npc', () => (npcs ? npcs.family : null)));
 damage.register(proxyFamily('keeper', () => (V2 && run && run.state === S_BIOME ? keepers.dmgFam || (keepers.dmgFam = keeperFamily(keepers)) : null)));
+// 2026-10-08, enemy infighting (infight.js, creature-rules.js INFIGHT): the few deliberate creature-vs-creature rules and the
+// lure hook, on the same damage entry; the getters follow the current level's corpses and props
+const infight = createInfight(damage, { corpses: () => corpses, props: () => props });
 if (V2) wireDamage();
+// chain reactions (chain.js, creature-rules.js TRIGGERS): one queue of delayed links; its target adapters forward to this level's
+// systems (like the damage families), so they are registered once
+const chain = createChain();
+const chainProxy = (name, get) => ({ name, each(x, y, r, cb) { const a = get(); if (a) a.each(x, y, r, cb); }, fire(i, c) { const a = get(); return a ? a.fire(i, c) : false; } });
+const hzTargets = () => hazards.chainA || (hazards.chainA = hazards.chainTargets());
+const crTargets = () => creatures.chainA || (creatures.chainA = creatures.chainTargets());
+const ltTargets = () => loot.chainA || (loot.chainA = loot.chainTargets());
+chain.register(chainProxy('bomb', () => bombs.chainA || (bombs.chainA = bombs.chainTarget())));
+chain.register(chainProxy('rock', () => hzTargets()[0]));
+chain.register(chainProxy('eel', () => hzTargets()[1]));
+chain.register(chainProxy('jet', () => hzTargets()[2]));
+chain.register(chainProxy('clam', () => crTargets()[0]));
+chain.register(chainProxy('tentacle', () => crTargets()[1]));
+chain.register(chainProxy('pot', () => ltTargets()[0]));
+chain.register(chainProxy('trap', () => ltTargets()[1]));
+chain.register({ // fragile tiles (bone, timber; materials.js MAT_BOULDER_BREAKS): index = ty * width + tx
+  name: 'tile',
+  each(x, y, r, cb) {
+    if (!world.smashTile || !world.tileAt) return;
+    const W = world.width, x0 = Math.floor(x - r), x1 = Math.floor(x + r), y0 = Math.floor(y - r), y1 = Math.floor(y + r);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      if (tx < 0 || ty < 0 || tx >= W || Math.hypot(tx + 0.5 - x, ty + 0.5 - y) > r || !MAT_BOULDER_BREAKS[world.tileAt(tx, ty)]) continue;
+      cb(ty * W + tx, tx + 0.5, ty + 0.5);
+    }
+  },
+  fire(i) { const W = world.width, tx = i % W, ty = (i - tx) / W; return !!world.smashTile(tx, ty); },
+});
+/** What a fired link looks and sounds like on top of its target's own reaction (chain-draw.js draws the motes and rings). */
+function handleChainEvents() {
+  for (const ev of chain.events) {
+    sfx.chainTick(ev.depth);
+    if (ev.target === 'tile') particles.bombDebris(ev.x, ev.y);
+    else if (ev.target === 'jet') for (let k = 0; k < 5; k++) particles.trailBubble(ev.x + (k - 2) * 0.25, ev.y - k * 0.3);
+    else if (ev.target === 'rock') particles.bombDebris(ev.x, ev.y - 0.5);
+  }
+  if (chain.events.length) { handleCreatureEvents(); handleLootEvents(); }
+}
 // materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
 if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
 let embedBaked = null; // the embedded set whose tiles were last marked for a re-bake
@@ -681,14 +725,17 @@ function step(dt) {
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
-  if (V2) damage.tick(dt);
+  if (V2) { damage.tick(dt); infight.tick(dt); }
+  if (V2 && !isSafeState(run)) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
   if (V2 && !entry && !octo.hidden) stepHandWorld(dt); // the held thing follows the tentacles; thrown things hit what they meet
-  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
+  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world, infight);
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
+      else if (ev.type === 'rockImpact') chain.emit('boulder', ev.x, ev.y, ev.chain >= 0 ? ev : null, ev.byOcto); // chain.js: what it hit goes off
+      else if (ev.type === 'shock') chain.emit('shock', ev.x, ev.y, ev.chain >= 0 ? ev : null, false, { target: 'eel', i: ev.i });
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
       else if (ev.type === 'impaled') { particles.deathPoof(ev.x, ev.y, '#150d1c'); particles.shakeFx(5, 0.22); sfx.impale(); } // V2-PLAN 16: skewered, an ink puff and a small shake
       else if (ev.type === 'shocked') { particles.shockSparks(ev.x, ev.y); sfx.zap(); } // eel: yellow sparks
@@ -709,6 +756,7 @@ function step(dt) {
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
     audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
+  if (V2 && !isSafeState(run)) { chain.step(dt); handleChainEvents(); } // chain.js: links due now go off (a bomb set off here explodes just below)
   bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
@@ -733,7 +781,8 @@ function step(dt) {
     if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
     if (V2 && npcs) npcs.drain(onNpcEvent);
     if (V2 && !isSafeState(run)) {
-      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2);
+      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents();
+      chain.emit('bomb', ev.x, ev.y, ev.chain >= 0 ? ev : null, true); // chain.js: the bombs, boulders, clams, eels, pots ... it sets off (replaces hazards.blast)
       for (let i = 0; i < creatures.data.n; i++) creatures.releaseNear(i, ev.x, ev.y, BOMB_RADIUS, octo); // a tentacle lets a held octopus go
       handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS);
     }
@@ -743,19 +792,23 @@ function step(dt) {
   for (const ev of enemies.events) {
     if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
+    if (ev.type === 'shotHit') { particles.deathPoof(ev.x, ev.y, '#f4efe4'); continue; } // a cannon shot hit another creature (INFIGHT.projectile)
     if (ev.type !== 'enemyKilled') continue;
-    particles.deathPoof(ev.x, ev.y); runKills++;
+    // enemy infighting: a kill by another creature's attack (a frenzy bite, a shot, a claw, a snap, a grab) is not hers: no score, no journal kill
+    const hers = !INFIGHT_KILL[ev.reason];
+    particles.deathPoof(ev.x, ev.y); if (hers) runKills++;
     if (V2) addCorpseFromEvent(ev); // V2-PLAN 16: a kill leaves a body, never an item
     if (V2 && !isSafeState(run)) {
-      run.dive.kills++;
+      if (hers) run.dive.kills++;
       bodyJuice(ev.x, ev.y, ev.kind, dropCount(seed, runKills)); // V2-PLAN 16: no item drops from enemies; the body leaks juice
-      journal.bump(creatureId(ev.kind), STAT_KILLED);
+      if (hers) journal.bump(creatureId(ev.kind), STAT_KILLED);
     }
   }
   if (V2 && run.state === S_BIOME) {
     if ((world.shopTilesBroken | 0) !== shopBrokenSeen) { shopBrokenSeen = world.shopTilesBroken | 0; shopAggro('shop'); } // his stall was damaged
     handleKeeperEvents();
   }
+  if (V2) drainInfight();
   // blasts shove the corpses (the ones this very blast made too, so they are thrown, not just dropped)
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
   if (V2) handleCrumbles(dt);
@@ -938,15 +991,17 @@ const TH = { f: null, i: -1 };
 function thrownHit(x, y, r, vx, vy, dmg, rec) {
   if (shopSt && shopKnock(shopSt, props, x, y, r, vx, vy)) { wareKnocked(); return true; }
   TH.f = null; TH.i = -1;
+  const now = damage.now();
   damage.each((f, i, V) => {
-    if (TH.f) return;
+    if (TH.f || V.cool > now) return; // cooling from a hit (infight.stepThrown may have hit it with this same flying pot)
     const d = Math.hypot(V.x - x, V.y - y);
     if (d >= r + V.r || (rec && rec.enemy && d < 1e-3)) return;
     TH.f = f; TH.i = i;
   });
   if (!TH.f) return false;
   const sp = Math.hypot(vx, vy) || 1;
-  damage.hitFound(TH.f, TH.i, 'thrown', x - vx / sp, y - vy / sp, -1, 1, true);
+  damage.hitFound(TH.f, TH.i, 'thrown', x - vx / sp, y - vy / sp, -1, 1, true); // her throw: her doing
+  TH.f.setTimers(TH.i, now + HAZARD_COOL, -1);
   handleCreatureEvents(); if (npcs) npcs.drain(onNpcEvent); handleKeeperEvents();
   runStats.thrownHits++;
   return true;
@@ -1164,6 +1219,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     creatures = createCreatures();
     loot = createLoot(V2 ? props : null);
     if (V2) wireDamage();
+    chain.reset(); // its links point at the old level's things
     embedded = createEmbedded(V2 ? props : null);
     if (AUTO) autofire = createAutofire();
     bombs = createBombs(V2 ? props : null);
@@ -1364,6 +1420,7 @@ function makeNpcs() {
   const lines = {};
   for (const n of questTable.npcs) lines[n.id] = { hurt: n.hurt || [], angry: n.angry || [] };
   const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, lines });
+  sys.setInfight(infight); // enemy infighting: harpoons hit any creature; lures
   return sys;
 }
 /** The hub residents that are here and calm: not killed (gone for a run) and not turned on you. */
@@ -1417,7 +1474,7 @@ function onNpcEvent(ev) {
     case 'killed': {
       addCorpseFromEvent(ev); // a body, no item drops
       particles.deathPoof(ev.x, ev.y, '#f4efe4');
-      journal.bump(PERSON_ENTRY[ev.who], STAT_KILLED);
+      if (!INFIGHT_KILL[ev.src]) journal.bump(PERSON_ENTRY[ev.who], STAT_KILLED); // killed by another creature (infighting): not hers
       addStory('killed' + capName(ev.name));
       setStoryExact('gone' + capName(ev.name), ev.hub ? 1 : 2); // away until the end of the next dive
       story = getStory();
@@ -1616,6 +1673,7 @@ function v2PreWall(c, camera, cw, ch) {
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
+  if (run.state === S_BIOME) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
@@ -1645,11 +1703,14 @@ function handleCreatureEvents() {
         for (let k = 0; k < 3; k++) particles.trailBubble(ev.x + (k - 1) * 0.15, ev.y - k * 0.1);
         break;
       case 'pearlDrop': pickups.dropShell(ev.x, ev.y, 0, -1.2, SK_PEARL); break;
-      case 'killed':
-        particles.deathPoof(ev.x, ev.y, '#cfe8ff'); runKills++;
-        if (!isSafeState(run)) { run.dive.kills++; journal.bump('creature-' + ev.kind, STAT_KILLED); }
+      case 'killed': {
+        const hers = !INFIGHT_KILL[ev.reason]; // enemy infighting: a kill by another creature is not hers
+        particles.deathPoof(ev.x, ev.y, '#cfe8ff'); if (hers) runKills++;
+        if (hers && !isSafeState(run)) { run.dive.kills++; journal.bump('creature-' + ev.kind, STAT_KILLED); }
         break;
-      case 'snap': if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
+      }
+      case 'grabCreature': particles.deathPoof(ev.x, ev.y, '#b0304a'); particles.shakeFx(2, 0.15); break; // INFIGHT.grab
+      case 'snap': chain.emit('snap', ev.x, ev.y - 0.4, ev.chain >= 0 ? ev : null, false, { target: 'clam', i: ev.i }); if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
       case 'grab':
         particles.shakeFx(3, 0.2);
         if (!grabCueShown) { grabCueShown = true; ui.showToast('Dash to break free!', 1800); }
@@ -1753,7 +1814,7 @@ function handleLootEvents() {
         ui.showToast('Relic taken, +' + ev.shells + ' shells. The ceiling is coming down!', 4200);
         break;
       case 'chaseEnd': ui.showToast('The rumbling stops'); break;
-      case 'rockLanded': particles.bombDebris(ev.x, ev.y); break;
+      case 'rockLanded': particles.bombDebris(ev.x, ev.y); chain.emit('boulder', ev.x, ev.y - 0.45, null, true); break; // a chase rock (her relic) sets off what it lands on
       case 'hurt': particles.deathPoof(ev.x, ev.y, '#d9cdb8'); break;
       default: break;
     }
@@ -1925,8 +1986,21 @@ function setupKeepers(spec) {
  * 2026-10-08, unified creature rules: one shared damage entry (damage.js) for every creature body. Its families forward to this
  * level's systems (proxyFamily), so they are registered once; the hazards, props, loot traps and bombs reach the bodies through it.
  */
+/** What the creatures did to each other this step (infight.js): a red puff per frenzy bite, a puff where a thrown thing hit. */
+let infightLog = 0;
+function drainInfight() {
+  const evs = infight.events;
+  for (let n = 0; n < evs.length; n++) {
+    const ev = evs[n];
+    if (ev.type === 'frenzyBite') { particles.deathPoof(ev.x, ev.y, '#a3263a'); if (ev.gone) particles.deathPoof(ev.x, ev.y - 0.2, '#d8485a'); }
+    else if (ev.src === 'thrown') { particles.bouncePuff(ev.x, ev.y, 0, -1); chain.emit('thrown', ev.x, ev.y, null, false); } // chain.js: the clam it smacked snaps (TRIGGERS.thrown)
+    infightLog++;
+  }
+  evs.length = 0;
+}
 function wireDamage() {
   hazards.setDamage(damage); props.setDamage(damage); loot.setDamage(damage);
+  enemies.setInfight(infight); creatures.setInfight(infight); infight.clearLure(); // a new level: the old level's lures are gone
 }
 function shopAggro(reason) {
   if (!V2 || !run || run.state !== S_BIOME) return false;
@@ -2077,10 +2151,11 @@ function handleKeeperEvents() {
         particles.deathPoof(ev.x, ev.y, '#e8622a'); particles.bombDebris(ev.x, ev.y);
         dropShells(10, ev.x, ev.y);
         if (shopSt && ev.shop) shopSt.free = true;
-        run.dive.kills++;
+        if (!INFIGHT_KILL[ev.src]) run.dive.kills++;
         if (!ev.quiet) shopAggro('kill');
         break;
       case 'clawLaunch': sfx.dash(); break;
+      case 'clawHit': particles.bouncePuff(ev.x, ev.y, 0, -1); break; // INFIGHT.claw: it hit something in the way
       case 'octoHit': particles.shakeFx(SHAKE_HURT_PX * 1.6); break;
       default: break;
     }
@@ -2516,7 +2591,7 @@ window.__octo = {
   },
   /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
   enemies() {
-    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead, tg: e.tg || 0, frenzy: e.frenzy || 0 }));
   },
   shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
@@ -2617,6 +2692,30 @@ window.__octo = {
     return creatures.add({ type: 'creature', ck: CREATURE_CODE[kind], x, y, dx, dy, side: 1, tilt: 0 });
   },
   creatureHit(x, y, r, dmg, src) { return creatures.hit(x, y, r, dmg, src, octo); },
+  /** Chain reactions (chain.js): its stats, the pending links and the TRIGGERS table. */
+  chain() {
+    const q = chain.queue, links = [];
+    for (let k = 0; k < q.n; k++) links.push({ target: TRIGGER_NAMES_[q.tgt[k]], i: q.idx[k], due: q.due[k] - chain.now(), depth: q.depth[k], chain: q.chain[k], sx: q.sx[k], sy: q.sy[k], tx: q.tx[k], ty: q.ty[k] });
+    return { stats: { ...chain.stats }, now: chain.now(), links, triggers: TRIGGERS };
+  },
+  chainInfo(id) { return chain.chainInfo(id); },
+  /** Test hook: `src` (a TRIGGERS source) goes off at (x, y) as a new chain; returns its id. */
+  chainEmit(src, x, y, byOcto = true) { return chain.emit(src, x, y, null, byOcto); },
+  /** Test hook: a lit bomb at (x, y) with `fuse` s, pinned in place unless `loose`, costing nothing. Returns its id (or -1). */
+  bombAt(x, y, fuse = 2.5, loose = false) {
+    if (!bombs.place(octo, x, y, null, { pinned: !loose, fuse, free: true })) return -1;
+    const b = bombs.list()[bombs.list().length - 1];
+    if (b.pid >= 0) { props.data.vx[b.pid] = 0; props.data.vy[b.pid] = 0; } // set down, not tossed
+    return b.id;
+  },
+  bombs() { return bombs.list().map((b) => ({ id: b.id, x: b.x, y: b.y, fuse: b.fuse, exploded: b.exploded, chain: b.chain, depth: b.depth })); },
+  /** Test hook: put a hazard down by name ('rock', 'eel', 'jet', ...) at the anchor cell (x, y), facing (dx, dy), from this level's tiles. */
+  addHazard(name, x, y, dx = 0, dy = 0) {
+    const lv = world.level; const rec = makeHazardRecord(name, x, y, dx, dy, lv.tiles, world.width, world.height);
+    return rec ? hazards.add(rec) : -1;
+  },
+  /** Test hook: put loot down ('pot' | 'clam' | 'chest'), held on the cell under it; trap: 0 none, 1 spikes, 2 swarm (a chest). */
+  addLoot(name, x, y, trap = 0) { return loot.add({ lk: LOOT_CODE_[name], x, y, dx: 0, dy: -1, n: 2, aux: trap, item: 0 }); },
   /** v2: the loot of this level (kind name, position, state) for tests and review. */
   loot() {
     const d = loot.data, out = [];
@@ -2702,7 +2801,13 @@ window.__octo = {
     return r;
   },
   /** Test / debug hook: every live body the shared damage entry sees (family, index, kind, position). */
-  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r })); return out; },
+  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r, id: V.id, wound: V.wound, stun: V.stun })); return out; },
+  /** Enemy infighting (infight.js): the target override hook a future Lure spell uses. setLure returns the slot (-1: full). */
+  setLure(x, y, r, ttl) { return infight.setLure(x, y, r, ttl); },
+  clearLure(slot = -1) { infight.clearLure(slot); },
+  lures() { return infight.lures(); },
+  /** Enemy infighting: creature-vs-creature hits so far and the events drained (frenzy bites, thrown hits ...). */
+  infight() { return { hits: infight.hits(), drained: infightLog }; },
   /** Test hook: stop / restart the real-time loop without the pause overlay (frame-by-frame captures with stepDraw). */
   freeze(on) { loop.setPaused(!!on); return loop.paused; },
   /** Test hook: n fixed steps, then draw one frame (works while frozen). */

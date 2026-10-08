@@ -58,6 +58,7 @@ export function createBombs(props = null) {
   const events = []; // {type:'exploded', x, y}
   const broken = []; // scratch: x,y of each tile a blast removed
   const fuse0 = props ? BOMB_FUSE_V2 : BOMB_FUSE;
+  let nextId = 1; // chain reactions: a stable id per bomb (the list is filtered every step, so an index would move)
 
   function explode(b, world, octo, enemies) {
     b.exploded = true;
@@ -95,10 +96,10 @@ export function createBombs(props = null) {
       props.blast(b.x, b.y, r);
       spawnRubble(props, broken, nb, b.x, b.y);
     }
-    events.push({ type: 'exploded', x: b.x, y: b.y, tiles: nb });
+    events.push({ type: 'exploded', x: b.x, y: b.y, tiles: nb, id: b.id, chain: b.chain, depth: b.depth }); // chain.js: the blast joins the chain that set it off
   }
 
-  return {
+  const api = {
     events,
     props,
     list() { return bombs; },
@@ -107,19 +108,21 @@ export function createBombs(props = null) {
      * Place a bomb if the octopus has one in stock. v2: `aim` null = DROPPED (heavy, straight down from (x, y), no
      * sideways speed); `aim` {x, y} = an URCHIN-MINE thrown from (x, y) with the octopus's velocity plus THROW_SPEED along
      * aim (unit length; a shorter vector throws proportionally less). `opts.pinned` keeps a bomb in place (tests),
-     * `opts.free` places one without using a bomb from the stock (tests).
+     * `opts.free` places one without using a bomb from the stock (tests), `opts.fuse` sets its fuse (chain reactions).
      */
     place(octo, x, y, aim = null, opts = null) {
       if (!(opts && opts.free) && !tryUseBomb(octo)) return false;
-      const b = { x, y, fuse: fuse0, fuse0, exploded: false, age: 0, pid: -1, rot: 0, armed: true, flight: 0, stickE: null, ox: 0, oy: 0, sticky: false };
+      const f0 = opts && opts.fuse > 0 ? opts.fuse : fuse0;
+      const b = { x, y, fuse: f0, fuse0: f0, exploded: false, age: 0, pid: -1, rot: 0, id: nextId++, chain: -1, depth: 0, lit: 0,
+        armed: true, flight: 0, stickE: null, ox: 0, oy: 0, sticky: false };
       if (props) {
         if (aim && (aim.x || aim.y)) {
           let ax = aim.x, ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } // a short vector throws proportionally less
           const ovx = octo.vx || 0, ovy = octo.vy || 0;
-          b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: fuse0, grace: 0.35, mode: BM_STICKY });
+          b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: f0, grace: 0.35, mode: BM_STICKY });
           b.armed = false; b.sticky = true;
         } else {
-          b.pid = props.add(PK_BOMB, x, y, 0, DROP_SPEED, { timer: fuse0, grace: 0.35, mode: BM_HEAVY });
+          b.pid = props.add(PK_BOMB, x, y, 0, DROP_SPEED, { timer: f0, grace: 0.35, mode: BM_HEAVY });
         }
         if (b.pid < 0) { if (!(opts && opts.free)) octo.bombs++; return false; }
         if (opts && opts.pinned) props.hold(b.pid, -1, -1);
@@ -137,6 +140,28 @@ export function createBombs(props = null) {
     },
     /** The hand let bomb `b` go gently: a heavy bomb again. */
     makeHeavy(b) { if (props && b && b.pid >= 0) { props.data.mode[b.pid] = BM_HEAVY; b.stickE = null; } },
+    /**
+     * Chain reactions (chain.js): bomb `id` is set off by a link; its fuse is cut and it goes off on this step's update.
+     * ctx {chain, depth} is carried to the 'exploded' event so the blast joins the same chain. False when it is gone.
+     */
+    trigger(id, ctx = null) {
+      for (const b of bombs) {
+        if (b.id !== id || b.exploded) continue;
+        b.fuse = 0; b.lit = 1;
+        if (props && b.pid >= 0) props.data.timer[b.pid] = 0;
+        b.chain = ctx && ctx.chain >= 0 ? ctx.chain : -1; b.depth = ctx ? ctx.depth | 0 : 0;
+        return true;
+      }
+      return false;
+    },
+    /** The chain.js target adapter of the live bombs ('bomb'). */
+    chainTarget() {
+      return {
+        name: 'bomb',
+        each(x, y, r, cb) { for (const b of bombs) if (!b.exploded && Math.hypot(b.x - x, b.y - y) <= r) cb(b.id, b.x, b.y); },
+        fire: (id, ctx) => api.trigger(id, ctx),
+      };
+    },
 
     /** One fixed step: tick fuses, explode, break rock, hurt octo, kill enemies via `enemies.killInRadius`.
      * In v2 mode the props system itself is stepped by the caller (main.js) before this. */
@@ -178,4 +203,5 @@ export function createBombs(props = null) {
       bombs = bombs.filter((b) => !(b.exploded && b.age > 0.4));
     },
   };
+  return api;
 }
