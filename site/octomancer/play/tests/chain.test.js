@@ -211,7 +211,9 @@ export async function runChainTests(assert0) {
     sc.chain.emit('thrown', 6.5, 6.3, null, false); // where infight.js reports the hit
     sc.run(0.4);
     assert('thrown -> clam: a thrown thing smacking a giant clam makes it snap, once', sc.log.snaps.filter((x) => x.i === 0).length === 1);
-    assert('thrown: it never sets off a bomb (a thrown bomb would set itself off)', !sc.log.exploded.some((e) => e.id === id) && triggerReach('thrown', 'bomb') === 0);
+    // the bomb beside the clam does go off, but a link later, from the SNAP (depth 2), never straight from the thrown hit
+    assert('thrown: it never sets off a bomb itself (a thrown bomb would set itself off); the snap it caused may',
+      triggerReach('thrown', 'bomb') === 0 && !sc.log.links.some((l) => l.target === 'bomb' && l.depth === 1) && sc.log.exploded.some((e) => e.id === id && e.depth === 2));
   }
 
   // ---- a chained eel shock jumps to the next eel; its own periodic shock does not; any shock sets off a bomb ----
