@@ -97,10 +97,10 @@ const SEEDS = [11, 23, 77];
           tn ? `(max alpha ${tn.alpha.toFixed(2)}, hole ${Math.round(tn.hole)} px at ${Math.round(tn.x)},${Math.round(tn.y)}, body r ${bd ? Math.round(bd.r) : '-'} at ${bd ? Math.round(bd.x) + ',' + Math.round(bd.y) : '-'})` : '');
         if (kind === 'side') check(`${tag} a side panel on the right (${Math.round(look.w)} px wide)`, look.w <= look.vw * 0.36 && look.right > look.vw - 30);
         else check(`${tag} a bottom sheet (${Math.round(look.h)} px tall of ${look.vh})`, look.w >= look.vw - 2 && look.h <= look.vh * 0.52 && Math.abs(look.top + look.h - look.vh) < 2);
-        check(`${tag} both buttons are on screen without scrolling`, look.btn.length === 2 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
+        check(`${tag} the three buttons (Restart run, Back to the hub, Exit) are on screen without scrolling`, look.btn.length === 3 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
         if (seed === SEEDS[0]) {
           await page.screenshot({ path: path.join(process.env.TEMP || '.', `death-cdp-${vn}.png`) });
-          await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay button')][0].click());
+          await page.evaluate(() => document.querySelector('.octo-gameover-overlay .octo-go-hub').click());
           await sleep(300);
           await page.waitForFunction(() => !__octo.level().transitioning && !__octo.state().octopus.dead, { timeout: 15000 }).catch(() => {});
           const after = await page.evaluate(() => ({ dead: __octo.state().octopus.dead, shown: !!__octo.body(), stage: __octo.level().stage, overlay: getComputedStyle(document.querySelector('.octo-gameover-overlay')).display }));

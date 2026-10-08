@@ -91,6 +91,7 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       }
       ctx.restore();
     }
+    if (tx === m.exitX && ty === m.exitY && m.seal > 0) drawKelpSeal(ctx, ex, floorPx, wpx, ppu, m.seal, time - (m.sealWobble || -99), time, tx);
     if (!label || !(ex > 0 && ex < cw && cy > 0 && cy < ch)) return;
     const hr = hintRect(ctx.canvas, performance.now());
     const topY = cy - hIdle / 2;  // the rim of the whirlpool
@@ -130,7 +131,10 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
     });
   }
 
-  ring(m.exitX, m.exitY, m.label, 'green', false);
+  // the hub's dive is sealed by kelp until the tutorial has been finished (m.seal 1 -> 0 while it opens): a plank says why
+  const sealed = m.seal > 0.97;
+  ring(m.exitX, m.exitY, sealed ? (m.sealLabel || '') : m.label, 'green', sealed);
+  if (m.tutorialX >= 0 && m.tutorialX !== undefined) ring(m.tutorialX, m.tutorialY, m.tutorialLabel || 'Tutorial', 'teal', true);
   if (m.shortcutX >= 0) ring(m.shortcutX, m.shortcutY, m.shortcutLabel || '', 'violet', true);
   if (m.shortcut3X >= 0) ring(m.shortcut3X, m.shortcut3Y, m.shortcut3Label || '', 'amber', true);
 
@@ -173,4 +177,53 @@ export function drawV2Marks(ctx, camera, cw, ch, m, time) {
       ctx.fillRect(bx - w * 0.28, by + h * 0.16, w * 0.56, Math.max(1, ppu * 0.04));
     }
   }
+}
+
+/**
+ * The kelp that seals the hub's dive until the tutorial is done: thick strands rooted along the floor, leaning across each
+ * other into a woven net over the whirlpool. `seal` 1 = shut; towards 0 the strands fall apart to the sides and fade (the
+ * unlock moment). `since` = seconds since the octopus last bumped into it (a shiver), `time` the clock for the sway.
+ */
+function drawKelpSeal(ctx, ex, floorPx, wpx, ppu, seal, since, time, salt) {
+  const n = 10, span = wpx * 1.05, open = 1 - seal;
+  const shiver = since >= 0 && since < 0.7 ? Math.sin(since * 38) * (0.7 - since) * 0.2 : 0;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, seal * 1.6);
+  ctx.lineJoin = 'round';
+  const ow = Math.max(1.5, ppu * 0.035);
+  const P = 9, xs = new Float32Array(P * 2), ys = new Float32Array(P * 2);
+  /** One tapered kelp blade along a quadratic curve from its root (bx, by): filled, outlined dark like the sprites. */
+  function blade(bx, by, cx, cy, tx, ty, w, fill) {
+    for (let k = 0; k < P; k++) {
+      const t = k / (P - 1), it = 1 - t;
+      const x = it * it * bx + 2 * it * t * cx + t * t * tx, y = it * it * by + 2 * it * t * cy + t * t * ty;
+      const dx = 2 * it * (cx - bx) + 2 * t * (tx - cx), dy = 2 * it * (cy - by) + 2 * t * (ty - cy), dl = Math.hypot(dx, dy) || 1;
+      const half = w * (1 - t * 0.85) * (0.75 + 0.25 * Math.sin(t * 9 + salt)) / 2; // tapers to a point, a little wavy
+      xs[k] = x - dy / dl * half; ys[k] = y + dx / dl * half;
+      xs[P * 2 - 1 - k] = x + dy / dl * half; ys[P * 2 - 1 - k] = y - dx / dl * half;
+    }
+    ctx.beginPath(); ctx.moveTo(xs[0], ys[0]);
+    for (let k = 1; k < P * 2; k++) ctx.lineTo(xs[k], ys[k]);
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = '#163319'; ctx.lineWidth = ow; ctx.stroke();
+  }
+  for (let j = 0; j < n; j++) {
+    const i = j % 2 ? n - 1 - (j >> 1) : j >> 1; // outer blades first, the middle ones on top
+    const u = i / (n - 1) - 0.5;                 // -0.5 .. 0.5 across the ring
+    const side = u < 0 ? -1 : 1;
+    // shut: the blades lean across each other (every other one the other way) into a woven lattice over the whirlpool;
+    // opening: each falls back to its own side and fades
+    const lean = (i % 2 ? 0.5 : -0.5) - u * 0.5;
+    const a = lean * seal + open * 1.4 * side + Math.sin(time * 1.3 + i * 1.7 + salt) * 0.05 + shiver * (i % 2 ? 1 : -1);
+    const len = ppu * (1.25 + 0.25 * ((i * 5 + salt) % 3) / 2) * (1 - open * 0.3);
+    const bx = ex + u * span, by = floorPx + ppu * 0.08;
+    const tx = bx + Math.sin(a) * len, ty = by - Math.cos(a) * len;
+    const cx = bx + Math.sin(a * 0.5) * len * 0.5 + Math.sin(time * 1.1 + i) * ppu * 0.04, cy = by - len * 0.6;
+    blade(bx, by, cx, cy, tx, ty, ppu * (0.3 - 0.05 * (i % 2)), i % 2 ? '#4d8a3e' : '#6c9e43');
+    // a leaf off each blade, half way up
+    const lx = (bx + 2 * cx + tx) / 4, ly = (by + 2 * cy + ty) / 4, d = i % 2 ? 1 : -1, la = a + d * 1.0, ll = ppu * 0.45;
+    blade(lx, ly, lx + Math.sin(la) * ll * 0.5, ly - Math.cos(la) * ll * 0.3, lx + Math.sin(la) * ll, ly - Math.cos(la) * ll * 0.75, ppu * 0.2, '#7fae4c');
+  }
+  ctx.restore();
 }

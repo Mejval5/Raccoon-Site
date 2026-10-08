@@ -303,6 +303,13 @@ body {
   color: #eafffa;
 }
 .octo-btn-wide.octo-btn-ghost:active { background: rgba(255,255,255,0.12); }
+/* a button's keyboard shortcut ('Restart run [R]'); never on touch screens */
+.octo-key { display: inline-block; margin-left: 8px; padding: 0 6px; min-width: 10px; border: 1.5px solid currentColor; border-radius: 6px; font: 700 11px/17px 'Quicksand', sans-serif; opacity: .7; vertical-align: 1px; }
+.octo-key:empty { display: none; }
+@media (pointer: coarse) { .octo-key { display: none !important; } }
+/* the first launch's tutorial offer */
+.octo-offer-overlay .octo-overlay-panel { max-width: min(420px, calc(100vw - 32px)); }
+.octo-offer-text { font-size: 14px; line-height: 1.45; opacity: .9; text-align: center; }
 .octo-credit {
   font-size: 11px;
   opacity: .6;
@@ -749,6 +756,9 @@ body {
   .octo-death-ui .octo-summary-best { font-size: 12px; }
   .octo-death-ui .octo-go-actions { width: min(100%, 460px); flex-direction: row; gap: 8px; bottom: 0; margin-top: auto; margin-bottom: 0; padding: 8px 0 calc(10px + var(--safe-b)); }
   .octo-death-ui .octo-go-actions .octo-btn-wide { flex: 1; padding: 10px 12px; }
+  .octo-death-ui .octo-go-actions .octo-go-restart { flex: 1.25; }
+  .octo-death-ui .octo-go-actions .octo-go-hub { flex: 1.25; white-space: nowrap; padding: 10px 8px; }
+  .octo-death-ui .octo-go-actions .octo-btn-ghost:last-child { flex: 0.6; padding: 10px 6px; }
 }
 /* landscape phone: a low sheet in columns (summary | best runs | buttons) */
 @media (orientation: landscape) and (max-height: 520px) {
