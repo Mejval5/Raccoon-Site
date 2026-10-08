@@ -20,7 +20,11 @@ import { hurtOctopus, killOctopus } from './octopus.js';
 export const BLAST_REACH = 2; // a bomb shoves out to this many radii (bomb.js BLAST_REACH); damage only inside one radius
 
 /** The shared body view an adapter fills (kind name, centre, radius, velocity, knocked-out seconds, shell shut, timers). */
-export function makeView() { return { kind: '', x: 0, y: 0, r: 0, vx: 0, vy: 0, stun: 0, shut: false, cool: 0, blame: 0 }; }
+// id: a body's stable id (enemies: e.id > 0; creatures, NPCs and keepers: the negative ids below), so an attacker can skip
+// itself and a hunter can follow its prey from step to step; wound: 1 while its hp is below full (bleeding, infight.js frenzy).
+export function makeView() { return { kind: '', x: 0, y: 0, r: 0, vx: 0, vy: 0, stun: 0, shut: false, cool: 0, blame: 0, id: 0, wound: 0 }; }
+/** Stable body ids of the families that are not enemies (enemy records carry their own positive id). */
+export const creatureId = (i) => -1 - i, npcId = (i) => -100 - i, keeperId = (i) => -200 - i;
 
 export function createDamage() {
   const fams = [];
@@ -77,6 +81,45 @@ export function createDamage() {
         for (let i = 0; i < n; i++) if (f.view(i, V)) fn(f, i, V);
       }
     },
+    /**
+     * The nearest live body (edge distance) within `range` of (x, y), not the body `skipId`, that passes test(V) (optional).
+     * Fills api.picked {f, i, id, kind, x, y, r, d} and returns true when one was found; api.hitPicked(...) then hits it in the
+     * same step (infight.js: projectiles, claws, a frenzy's prey, a tentacle's).
+     */
+    pick(x, y, range, skipId = 0, test = null) {
+      const P = api.picked;
+      P.f = null; P.i = -1; P.d = Infinity;
+      for (let k = 0; k < fams.length; k++) {
+        const f = fams[k];
+        if (f.begin) f.begin();
+        const cnt = f.count();
+        for (let i = 0; i < cnt; i++) {
+          if (!f.view(i, V) || (skipId !== 0 && V.id === skipId)) continue;
+          const dd = Math.hypot(V.x - x, V.y - y) - V.r;
+          if (dd > range || dd >= P.d) continue;
+          if (test && !test(V)) continue;
+          P.f = f; P.i = i; P.d = dd; P.id = V.id; P.kind = V.kind; P.x = V.x; P.y = V.y; P.r = V.r;
+        }
+      }
+      return P.f !== null;
+    },
+    picked: { f: null, i: -1, id: 0, kind: '', x: 0, y: 0, r: 0, d: 0 },
+    /** Hit the body pick() found (see hit for the arguments). */
+    hitPicked(src, fx, fy, dmg = -1, knockScale = 1, byOcto = undefined) {
+      const P = api.picked;
+      return P.f ? hitBody(P.f, P.i, src, fx, fy, dmg, knockScale, byOcto) : 0;
+    },
+    /** Where body `id` is now: fills V (and returns true) when it is still alive. */
+    locate(id) {
+      for (let k = 0; k < fams.length; k++) {
+        const f = fams[k];
+        if (f.begin) f.begin();
+        const cnt = f.count();
+        for (let i = 0; i < cnt; i++) if (f.view(i, V) && V.id === id) return true;
+      }
+      return false;
+    },
+
     /** Same as hit() for a body found by each() (no begin()). */
     hitFound(f, i, src, fx, fy, dmg = -1, knockScale = 1, byOcto = undefined) { return hitBody(f, i, src, fx, fy, dmg, knockScale, byOcto); },
 

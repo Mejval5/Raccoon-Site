@@ -7,6 +7,7 @@
 // SPLAT_LIFE seconds (SPLAT_CAP at once, oldest recycled); a hit enemy gets an `inkStain` timer (STAIN_LIFE) that
 // enemy-draw.js paints as dark blotches over its sprite.
 import { hasLineOfSight } from './pathfind.js';
+import { crumbleAt, CR_INK } from './fragile.js';
 import { cullView, cullFlags, visibleAt } from './cull.js';
 
 export const INKJET = Object.freeze({
@@ -117,6 +118,7 @@ export function createInkJet() {
         const px = data.x[i], py = data.y[i];
         const x = px + data.vx[i] * sdt, y = py + data.vy[i] * sdt;
         if (world.isSolid(x, y)) { // splat at the last free spot, so it sits on the wall face
+          crumbleAt(world, x, y, CR_INK); // a fish-bone block crumbles under the blob (fragile.js); the blob is spent either way
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
           splat(px, py, data.vx[i] / sp, data.vy[i] / sp, false); data.alive[i] = 0; done = true; break;
         }

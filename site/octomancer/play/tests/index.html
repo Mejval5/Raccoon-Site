@@ -215,6 +215,13 @@ import { runMaterialsTests } from './materials.test.js';
   const res = await fetch('../data/biome1-rooms.json');
   await runMaterialsTests(assert, createRoomBank(await res.json()));
 }
+// --- 2026-10-08: fragile fish-bone blocks (dash, projectiles, props, bombs, boulders; placement) ---
+import { runFragileTests } from './fragile.test.js';
+{
+  const { createRoomBank } = await import('../js/rooms.js');
+  const bank = createRoomBank(await (await fetch('../data/biome1-rooms.json')).json());
+  await runFragileTests(assert, bank);
+}
 
 // --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
 import { runShopTests } from './shop.test.js';
@@ -253,6 +260,10 @@ await runNpcTests(assert);
 // --- 2026-10-08: unified creature rules (one creature table, one damage entry) ---
 import { runCreatureRulesTests } from './creature-rules.test.js';
 await runCreatureRulesTests(assert);
+
+// --- 2026-10-08: enemy infighting, Spelunky style (projectiles hit anything, no touch-vs-touch, the few INFIGHT rules, lures) ---
+import { runInfightTests } from './infight.test.js';
+await runInfightTests(assert);
 
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';

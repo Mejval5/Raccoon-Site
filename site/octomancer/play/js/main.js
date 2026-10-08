@@ -27,7 +27,7 @@ import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from 
 import { drawLoot } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
-import { MAT_ROCK, setTileDrawHook } from './materials.js';
+import { MAT_ROCK, MAT_BONE, setTileDrawHook } from './materials.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
@@ -69,6 +69,8 @@ import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
 import { createDamage, proxyFamily } from './damage.js';
+import { createInfight } from './infight.js';
+import { INFIGHT_KILL } from './creature-rules.js';
 import { CREATURES, SOURCES, resolveHit } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
@@ -92,6 +94,7 @@ import { STAT_ANGERED } from './journal.js';
 import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { CR_DASH } from './fragile.js';
 import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
@@ -268,6 +271,9 @@ damage.register(proxyFamily('enemy', () => enemies.family));
 damage.register(proxyFamily('creature', () => creatures.dmgFam || (creatures.dmgFam = creatures.family(() => octo))));
 damage.register(proxyFamily('npc', () => (npcs ? npcs.family : null)));
 damage.register(proxyFamily('keeper', () => (V2 && run && run.state === S_BIOME ? keepers.dmgFam || (keepers.dmgFam = keeperFamily(keepers)) : null)));
+// 2026-10-08, enemy infighting (infight.js, creature-rules.js INFIGHT): the few deliberate creature-vs-creature rules and the
+// lure hook, on the same damage entry; the getters follow the current level's corpses and props
+const infight = createInfight(damage, { corpses: () => corpses, props: () => props });
 if (V2) wireDamage();
 // materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
 if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
@@ -674,9 +680,10 @@ function step(dt) {
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
-  if (V2) damage.tick(dt);
+  if (V2) { damage.tick(dt); infight.tick(dt); }
+  if (V2 && !isSafeState(run)) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
-  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
+  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world, infight);
   if (V2 && !isSafeState(run)) {
     hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
@@ -734,21 +741,26 @@ function step(dt) {
   for (const ev of enemies.events) {
     if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
+    if (ev.type === 'shotHit') { particles.deathPoof(ev.x, ev.y, '#f4efe4'); continue; } // a cannon shot hit another creature (INFIGHT.projectile)
     if (ev.type !== 'enemyKilled') continue;
-    particles.deathPoof(ev.x, ev.y); runKills++;
+    // enemy infighting: a kill by another creature's attack (a frenzy bite, a shot, a claw, a snap, a grab) is not hers: no score, no journal kill
+    const hers = !INFIGHT_KILL[ev.reason];
+    particles.deathPoof(ev.x, ev.y); if (hers) runKills++;
     if (V2) addCorpseFromEvent(ev); // V2-PLAN 16: a kill leaves a body, never an item
     if (V2 && !isSafeState(run)) {
-      run.dive.kills++;
+      if (hers) run.dive.kills++;
       bodyJuice(ev.x, ev.y, ev.kind, dropCount(seed, runKills)); // V2-PLAN 16: no item drops from enemies; the body leaks juice
-      journal.bump(creatureId(ev.kind), STAT_KILLED);
+      if (hers) journal.bump(creatureId(ev.kind), STAT_KILLED);
     }
   }
   if (V2 && run.state === S_BIOME) {
     if ((world.shopTilesBroken | 0) !== shopBrokenSeen) { shopBrokenSeen = world.shopTilesBroken | 0; shopAggro('shop'); } // his stall was damaged
     handleKeeperEvents();
   }
+  if (V2) drainInfight();
   // blasts shove the corpses (the ones this very blast made too, so they are thrown, not just dropped)
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
+  if (V2) handleCrumbles(dt);
   particles.update(dt, solidForSight);
   if (snap.bomb.pressed) {
     const aim = V2 ? bombAim(snap) : null;
@@ -774,6 +786,28 @@ function step(dt) {
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
   }
 }
+// --- fragile terrain (fragile.js): fish-bone tiles broken this step by a dash, a projectile, a flung prop, a bomb or a
+// boulder: bone shards that bounce and fade, a puff of silt that hangs, one crunch per step; a dash through gets a hair
+// of freeze and a small shake. A buried find in the tile drops out by itself (embed.js sees the tile gone).
+let crunchCool = 0;
+function handleCrumbles(dt) {
+  if (!world.takeCrumbles) return;
+  crunchCool = Math.max(0, crunchCool - dt);
+  const c = world.takeCrumbles();
+  if (!c.length) return;
+  let dash = false;
+  const sp = Math.hypot(octo.vx, octo.vy) || 1;
+  for (let k = 0; k < c.length; k += 3) {
+    const x = c[k] + 0.5, y = c[k + 1] + 0.5, isDash = c[k + 2] === CR_DASH;
+    if (isDash) dash = true;
+    particles.boneShards(x, y, isDash ? octo.vx / sp : 0, isDash ? octo.vy / sp : 0);
+  }
+  if (world.fresh) world.fresh.haze(c[0] + 0.5, c[1] + 0.5, 1); // one light haze per step, not per tile
+  if (crunchCool <= 0) { sfx.crunch(dash); crunchCool = 0.06; }
+  if (dash) { particles.shakeFx(2, 0.12); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, 0.035); }
+  if (!isSafeState(run)) { discover('prop-fishbone'); for (let k = 0; k < c.length; k += 3) journal.bump('prop-fishbone', STAT_KILLED); }
+}
+
 // --- V2-PLAN 14: the ragdoll (js/ragdoll.js): a limp or dead octopus is a physics body the world keeps throwing about
 const NOBODY = { x: -1e6, y: -1e6, vx: 0, vy: 0, radius: 0, magnetR: 0, dead: true }; // what pickups see once the octopus is dead
 let prevBodyHits = 0;
@@ -1241,6 +1275,7 @@ function makeNpcs() {
   const lines = {};
   for (const n of questTable.npcs) lines[n.id] = { hurt: n.hurt || [], angry: n.angry || [] };
   const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, lines });
+  sys.setInfight(infight); // enemy infighting: harpoons hit any creature; lures
   return sys;
 }
 /** The hub residents that are here and calm: not killed (gone for a run) and not turned on you. */
@@ -1294,7 +1329,7 @@ function onNpcEvent(ev) {
     case 'killed': {
       addCorpseFromEvent(ev); // a body, no item drops
       particles.deathPoof(ev.x, ev.y, '#f4efe4');
-      journal.bump(PERSON_ENTRY[ev.who], STAT_KILLED);
+      if (!INFIGHT_KILL[ev.src]) journal.bump(PERSON_ENTRY[ev.who], STAT_KILLED); // killed by another creature (infighting): not hers
       addStory('killed' + capName(ev.name));
       setStoryExact('gone' + capName(ev.name), ev.hub ? 1 : 2); // away until the end of the next dive
       story = getStory();
@@ -1514,10 +1549,13 @@ function handleCreatureEvents() {
         for (let k = 0; k < 3; k++) particles.trailBubble(ev.x + (k - 1) * 0.15, ev.y - k * 0.1);
         break;
       case 'pearlDrop': pickups.dropShell(ev.x, ev.y, 0, -1.2, SK_PEARL); break;
-      case 'killed':
-        particles.deathPoof(ev.x, ev.y, '#cfe8ff'); runKills++;
-        if (!isSafeState(run)) { run.dive.kills++; journal.bump('creature-' + ev.kind, STAT_KILLED); }
+      case 'killed': {
+        const hers = !INFIGHT_KILL[ev.reason]; // enemy infighting: a kill by another creature is not hers
+        particles.deathPoof(ev.x, ev.y, '#cfe8ff'); if (hers) runKills++;
+        if (hers && !isSafeState(run)) { run.dive.kills++; journal.bump('creature-' + ev.kind, STAT_KILLED); }
         break;
+      }
+      case 'grabCreature': particles.deathPoof(ev.x, ev.y, '#b0304a'); particles.shakeFx(2, 0.15); break; // INFIGHT.grab
       case 'snap': if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
       case 'grab':
         particles.shakeFx(3, 0.2);
@@ -1794,8 +1832,21 @@ function setupKeepers(spec) {
  * 2026-10-08, unified creature rules: one shared damage entry (damage.js) for every creature body. Its families forward to this
  * level's systems (proxyFamily), so they are registered once; the hazards, props, loot traps and bombs reach the bodies through it.
  */
+/** What the creatures did to each other this step (infight.js): a red puff per frenzy bite, a puff where a thrown thing hit. */
+let infightLog = 0;
+function drainInfight() {
+  const evs = infight.events;
+  for (let n = 0; n < evs.length; n++) {
+    const ev = evs[n];
+    if (ev.type === 'frenzyBite') { particles.deathPoof(ev.x, ev.y, '#a3263a'); if (ev.gone) particles.deathPoof(ev.x, ev.y - 0.2, '#d8485a'); }
+    else if (ev.src === 'thrown') particles.bouncePuff(ev.x, ev.y, 0, -1);
+    infightLog++;
+  }
+  evs.length = 0;
+}
 function wireDamage() {
   hazards.setDamage(damage); props.setDamage(damage); loot.setDamage(damage);
+  enemies.setInfight(infight); creatures.setInfight(infight); infight.clearLure(); // a new level: the old level's lures are gone
 }
 function shopAggro(reason) {
   if (!V2 || !run || run.state !== S_BIOME) return false;
@@ -1897,10 +1948,11 @@ function handleKeeperEvents() {
         particles.deathPoof(ev.x, ev.y, '#e8622a'); particles.bombDebris(ev.x, ev.y);
         dropShells(10, ev.x, ev.y);
         if (shopSt && ev.shop) shopSt.free = true;
-        run.dive.kills++;
+        if (!INFIGHT_KILL[ev.src]) run.dive.kills++;
         if (!ev.quiet) shopAggro('kill');
         break;
       case 'clawLaunch': sfx.dash(); break;
+      case 'clawHit': particles.bouncePuff(ev.x, ev.y, 0, -1); break; // INFIGHT.claw: it hit something in the way
       case 'octoHit': particles.shakeFx(SHAKE_HURT_PX * 1.6); break;
       default: break;
     }
@@ -2073,6 +2125,10 @@ function discoverScenery() {
     if (s.type !== 'decor') continue;
     const dx = s.x - octo.x, dy = s.y - octo.y;
     if (dx * dx + dy * dy < 42) discover(DECOR_JOURNAL[s.dk]);
+  }
+  if (world.tileAt) { // fish bone (fragile.js): met when within 4 tiles
+    const ox = Math.floor(octo.x), oy = Math.floor(octo.y);
+    for (let ty = oy - 4; ty <= oy + 4; ty++) for (let tx = ox - 4; tx <= ox + 4; tx++) if (world.tileAt(tx, ty) === MAT_BONE) { discover('prop-fishbone'); ty = oy + 5; break; }
   }
   for (const c of decor.visibleCritters(world.residentChunks())) {
     const dx = c.x - octo.x, dy = c.y - octo.y;
@@ -2316,7 +2372,7 @@ window.__octo = {
   },
   /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
   enemies() {
-    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead }));
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead, tg: e.tg || 0, frenzy: e.frenzy || 0 }));
   },
   shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
@@ -2506,7 +2562,13 @@ window.__octo = {
     return r;
   },
   /** Test / debug hook: every live body the shared damage entry sees (family, index, kind, position). */
-  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r })); return out; },
+  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r, id: V.id, wound: V.wound, stun: V.stun })); return out; },
+  /** Enemy infighting (infight.js): the target override hook a future Lure spell uses. setLure returns the slot (-1: full). */
+  setLure(x, y, r, ttl) { return infight.setLure(x, y, r, ttl); },
+  clearLure(slot = -1) { infight.clearLure(slot); },
+  lures() { return infight.lures(); },
+  /** Enemy infighting: creature-vs-creature hits so far and the events drained (frenzy bites, thrown hits ...). */
+  infight() { return { hits: infight.hits(), drained: infightLog }; },
   /** Test hook: stop / restart the real-time loop without the pause overlay (frame-by-frame captures with stepDraw). */
   freeze(on) { loop.setPaused(!!on); return loop.paused; },
   /** Test hook: n fixed steps, then draw one frame (works while frozen). */

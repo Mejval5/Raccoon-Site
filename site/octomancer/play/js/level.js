@@ -16,6 +16,7 @@ import {
 } from './rooms.js';
 import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY } from './materials.js';
+import { getPatternTable, compilePatterns, matchPatterns, selectSpawns } from './patterns.js';
 
 export const ROOMS_X = 3, ROOMS_Y = 4, BORDER = 2;
 export const LEVEL_W = ROOMS_X * ROOM_W + 2 * BORDER; // 34
@@ -444,7 +445,26 @@ export function finalPathOk(tiles, sx, sy, ex, ey, shop, blockers) {
 // ---------------------------------------------------------------- materials
 
 export const BEDROCK_OUTCROPS = [1, 3]; // min, max outcrops of bedrock growing in from the border
-export const BONE_CLUSTERS = [3, 6];    // min, max bone-block clusters on rock faces
+export const SHORTCUT_MIN = 8;          // swim tiles a fish-bone plug must save to count as a shortcut (pattern spawn 'shortcut')
+/** Built-in copy of data/patterns.json's kind 'terrain' rows (fish-bone plugs), used when no pattern table is loaded
+ *  (tests that call generateLevel bare); patterns.test.js keeps the two equal. */
+export const BONE_TERRAIN = [
+  { id: 'bone-shortcut-wall1', kind: 'terrain', spawn: 'shortcut', anchor: [2, 2], flips: '', dir: [1, 0], sep: 6, chance: [0.85, 0.85, 0.85], cap: [1, 2, 2], rows: ['?????', '?????', '?.#.?', '?.#.?', '?????'] },
+  { id: 'bone-shortcut-wall2', kind: 'terrain', spawn: 'shortcut', anchor: [1, 2], flips: '', dir: [1, 0], sep: 6, chance: [0.85, 0.85, 0.85], cap: [1, 2, 2], rows: ['?????', '?????', '.##.?', '.##.?', '?????'] },
+  { id: 'bone-shortcut-floor1', kind: 'terrain', spawn: 'shortcut', anchor: [1, 2], flips: '', dir: [0, 1], sep: 6, chance: [0.85, 0.85, 0.85], cap: [1, 2, 2], rows: ['?????', '?..??', '?##??', '?..??', '?????'] },
+  { id: 'bone-shortcut-floor2', kind: 'terrain', spawn: 'shortcut', anchor: [1, 1], flips: '', dir: [0, 1], sep: 6, chance: [0.85, 0.85, 0.85], cap: [1, 2, 2], rows: ['?..??', '?##??', '?##??', '?..??', '?????'] },
+  { id: 'bone-wall', kind: 'terrain', spawn: 'plug', anchor: [2, 2], flips: '', dir: [1, 0], sep: 7, chance: [0.75, 0.8, 0.85], cap: [2, 2, 3], rows: ['?????', '?????', '?.#.?', '?.#.?', '?????'] },
+  { id: 'bone-wall2', kind: 'terrain', spawn: 'plug', anchor: [1, 2], flips: '', dir: [1, 0], sep: 7, chance: [0.5, 0.55, 0.6], cap: [1, 1, 2], rows: ['?????', '?????', '.##.?', '.##.?', '?????'] },
+  { id: 'bone-ledge2', kind: 'terrain', spawn: 'plug', anchor: [1, 1], flips: '', dir: [0, 1], sep: 7, chance: [0.5, 0.55, 0.6], cap: [1, 1, 2], rows: ['?..??', '?##??', '?##??', '?..??', '?????'] },
+  { id: 'bone-ledge', kind: 'terrain', spawn: 'plug', anchor: [1, 2], flips: '', dir: [0, 1], sep: 7, chance: [0.75, 0.8, 0.85], cap: [2, 2, 3], rows: ['?????', '?..??', '?##??', '?..??', '?????'] },
+];
+let builtinTerrain = null;
+function terrainTable() {
+  const t = getPatternTable();
+  if (t && t.terrain) return t.terrain;
+  if (!builtinTerrain) builtinTerrain = compilePatterns({ patterns: BONE_TERRAIN.map((d) => ({ ...d, kind: 'terrain-row' })) });
+  return builtinTerrain;
+}
 export const BEDROCK_POCKETS = [0, 2];  // min, max small bedrock blobs on rock faces inside the level
 export const TIMBER_FLOORS = 3;         // at most this many flat rock floors get a timber deck
 export const TIMBER_FLOOR_CHANCE = 0.22;
@@ -456,12 +476,15 @@ export const TIMBER_RUN_CHANCE = 0.7;   // a 1-tile-thick rock ledge becomes a t
  *   - shop frame: every rock tile of the shop room touching its water becomes masonry (floor, walls) or timber (ceiling);
  *   - timber: 1-tile-thick horizontal rock ledges (water above and below, 2+ long) become wooden platforms, and a few
  *     flat floors (3+ long) get a timber deck on their top row;
- *   - bone: a few clusters of 2-4 bone blocks on rock faces;
+ *   - fish bone (2026-10-08, fragile.js): plugs in thin rock walls and ledges between two reachable stretches of water,
+ *     picked by the pattern table's kind 'terrain' rows (shortcuts first: the two sides SHORTCUT_MIN+ swim tiles apart),
+ *     so a dash, a shot or a bomb opens a way that was never needed (solid stays solid for every path check);
  *   - bedrock: a few outcrops grown in from the border and a few small pockets on rock faces (never near the start,
  *     exit, shop, pockets or set pieces).
- * `keep` is a list of x0, y0, x1, y1 rects (inclusive) no bedrock or bone may enter.
+ * `keep` is a list of x0, y0, x1, y1 rects (inclusive) no bedrock or bone may enter. (sx, sy): the start (water), for the
+ * swim distances that tell a shortcut. Returns the fish-bone plugs as a flat [x, y, ...] list of their anchor tiles.
  */
-export function placeMaterials(tiles, mrng, shop, keep) {
+export function placeMaterials(tiles, mrng, shop, keep, sx = -1, sy = -1, levelIndex = 0) {
   const W = LEVEL_W, H = LEVEL_H;
   const T = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? MAT_BEDROCK : tiles[y * W + x]);
   const kept = (x, y) => {
@@ -486,6 +509,8 @@ export function placeMaterials(tiles, mrng, shop, keep) {
       }
     }
   }
+  // fish-bone plugs first (thin walls and ledges between reachable water), so the timber pass does not take every thin ledge
+  const plugs = placeBonePlugs(tiles, mrng, kept, sx, sy, levelIndex);
   // timber ledges
   for (let y = BORDER; y < H - BORDER; y++) {
     let x = BORDER;
@@ -515,15 +540,10 @@ export function placeMaterials(tiles, mrng, shop, keep) {
       x = e + 1;
     }
   }
-  // bone clusters on rock faces
+  // rock faces (bedrock pockets below)
   const face = [];
   for (let y = BORDER + 1; y < H - BORDER - 1; y++) for (let x = BORDER + 1; x < W - BORDER - 1; x++) {
     if (T(x, y) === MAT_ROCK && touchesWater(x, y) && !kept(x, y)) face.push(x, y);
-  }
-  const nBone = BONE_CLUSTERS[0] + Math.floor(mrng() * (BONE_CLUSTERS[1] - BONE_CLUSTERS[0] + 1));
-  for (let c = 0; c < nBone && face.length; c++) {
-    const k = Math.floor(mrng() * (face.length / 2)) * 2;
-    growBlob(tiles, face[k], face[k + 1], MAT_BONE, 2 + Math.floor(mrng() * 3), mrng, (x, y) => T(x, y) === MAT_ROCK && !kept(x, y) && x >= BORDER && y >= BORDER && x < W - BORDER && y < H - BORDER);
   }
   // bedrock outcrops from the border
   const seeds = [];
@@ -544,6 +564,67 @@ export function placeMaterials(tiles, mrng, shop, keep) {
     if (!inner(face[k], face[k + 1])) continue;
     growBlob(tiles, face[k], face[k + 1], MAT_BEDROCK, 2 + Math.floor(mrng() * 3), mrng, (x, y) => T(x, y) === MAT_ROCK && !kept(x, y) && inner(x, y));
   }
+  return plugs;
+}
+
+/** Swim distance (4-connected water steps) from (sx, sy) to every tile; -1 where it cannot be reached. */
+function swimDistances(tiles, sx, sy) {
+  const W = LEVEL_W, H = LEVEL_H, dist = new Int16Array(W * H).fill(-1);
+  if (sx < 0 || sy < 0 || sx >= W || sy >= H || tiles[sy * W + sx] !== 0) return dist;
+  const q = new Int32Array(W * H);
+  let head = 0, tail = 0;
+  q[tail++] = sy * W + sx; dist[sy * W + sx] = 0;
+  while (head < tail) {
+    const i = q[head++], x = i % W, d = dist[i] + 1;
+    if (x + 1 < W && dist[i + 1] < 0 && tiles[i + 1] === 0) { dist[i + 1] = d; q[tail++] = i + 1; }
+    if (x > 0 && dist[i - 1] < 0 && tiles[i - 1] === 0) { dist[i - 1] = d; q[tail++] = i - 1; }
+    if (i + W < W * H && dist[i + W] < 0 && tiles[i + W] === 0) { dist[i + W] = d; q[tail++] = i + W; }
+    if (i - W >= 0 && dist[i - W] < 0 && tiles[i - W] === 0) { dist[i - W] = d; q[tail++] = i - W; }
+  }
+  return dist;
+}
+
+/**
+ * Fish-bone plugs (fragile.js) from the terrain kernels: a wall or ledge of main rock, 1-2 tiles thick along the
+ * kernel's dir and 2 across (anchor and the next tile down / right), with reachable water on both sides becomes MAT_BONE. 'shortcut' rows only where the two
+ * sides are SHORTCUT_MIN+ swim tiles apart, placed first; then 'plug' rows. Returns [x, y, ...] of the anchors.
+ */
+function placeBonePlugs(tiles, mrng, kept, sx, sy, levelIndex) {
+  const W = LEVEL_W, H = LEVEL_H, table = terrainTable();
+  const out = [];
+  if (!table || sx < 0) return out;
+  const dist = swimDistances(tiles, sx, sy);
+  const hit = matchPatterns(table, tiles, W, H);
+  const inner = (x, y) => x >= BORDER && y >= BORDER && x < W - BORDER && y < H - BORDER;
+  const occupied = [];
+  for (const want of ['shortcut', 'plug']) {
+    const build = (p, x, y, dx, dy) => {
+      if (table.spawn[p] !== want) return null;
+      const ax = Math.floor(x), ay = Math.floor(y);
+      if (!inner(ax - dx, ay - dy) || !inner(ax + dx * 2, ay + dy * 2)) return null;
+      let thick = 0;
+      while (thick < 2 && tiles[(ay + dy * thick) * W + ax + dx * thick] !== 0) thick++;
+      const ox = ax + dx * thick, oy = ay + dy * thick; // side B, across the wall
+      const da = dist[(ay - dy) * W + ax - dx], db = dist[oy * W + ox];
+      if (da < 0 || db < 0) return null; // both sides must be water the octopus can reach
+      if (want === 'shortcut' && Math.abs(da - db) < SHORTCUT_MIN) return null;
+      // a window in a wall, never a free-standing stub: the wall goes on past both ends of the plug
+      for (let k = 0; k < thick; k++) {
+        if (tiles[(ay + dy * k - dx) * W + ax + dx * k - dy] === 0 || tiles[(ay + dy * k + dx * 2) * W + ax + dx * k + dy * 2] === 0) return null;
+      }
+      const cells = [];
+      for (let k = 0; k < thick; k++) for (let j = 0; j <= 1; j++) {
+        const tx = ax + dx * k + dy * j, ty = ay + dy * k + dx * j;
+        if (!inner(tx, ty) || kept(tx, ty) || tiles[ty * W + tx] !== MAT_ROCK) return null;
+        cells.push(ty * W + tx);
+      }
+      for (const i of cells) tiles[i] = MAT_BONE;
+      out.push(ax, ay);
+      return { x, y };
+    };
+    for (const r of selectSpawns(table, hit, levelIndex, mrng, build, occupied)) occupied.push(r.x, r.y, 6);
+  }
+  return out;
 }
 
 const _blob = new Int32Array(64);
@@ -756,13 +837,14 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   }
   if (ey !== ey0 || ex !== ex0) for (let i = 0; i < nMarks; i++) if (marks[i * 3 + 2] === MK_EXIT && marks[i * 3] === ex0 && marks[i * 3 + 1] === ey0) { marks[i * 3] = ex; marks[i * 3 + 1] = ey; }
 
-  // materials (solid to solid only): shop frame, timber ledges, bone clusters, bedrock outcrops
+  // materials (solid to solid only): shop frame, timber ledges, fish-bone plugs, bedrock outcrops
+  let bonePlugs = [];
   {
     const keep = [sx - 6, sy - 6, sx + 6, sy + 6, ex - 5, ey - 5, ex + 5, ey + 5];
     if (shop) keep.push(shop.x0 - 3, shop.y0 - 3, shop.x1 + 2, shop.y1 + 2);
     for (let i = 0; i < nPockets; i++) keep.push(pockets[i * 3] - 5, pockets[i * 3 + 1] - 5, pockets[i * 3] + 6, pockets[i * 3 + 1] + 6);
     for (let i = 0; i < nSetPieces; i++) keep.push(setPieces[i * 4] - 1, setPieces[i * 4 + 1] - 1, setPieces[i * 4] + ROOM_W, setPieces[i * 4 + 1] + ROOM_H);
-    placeMaterials(tiles, mulberry32(hashSeed2(base, 0x3a7e)), shop, keep);
+    bonePlugs = placeMaterials(tiles, mulberry32(hashSeed2(base, 0x3a7e)), shop, keep, sx, sy, levelIndex);
   }
 
   // pushable blocks the rooms ask for ('O' in the ASCII): x, y per block (level-spawns.js places them after its A* check)
@@ -778,6 +860,6 @@ export function generateLevel(runSeed, levelIndex, bank = defaultBank) {
   return {
     w: LEVEL_W, h: LEVEL_H, tiles, roomBlocks, roomVar, roomRole, marks, nMarks, anchors, nAnchors,
     startX: sx, startY: sy, exitX: ex, exitY: ey, attempts, fallback, bankFallback: 0, nSpawns: 0,
-    shop, pockets, nPockets, setPieces, nSetPieces,
+    shop, pockets, nPockets, setPieces, nSetPieces, bonePlugs: Int16Array.from(bonePlugs),
   };
 }
