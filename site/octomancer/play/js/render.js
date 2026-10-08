@@ -91,6 +91,29 @@ const MAT_RIM2_W = new Float32Array([0, 0, 0.035, 0.03, 0.03, 0.03]);
 const MAT_ART_KEYS = new Set(['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB']);
 export const MATERIAL_STYLE = { MAT_FILL, MAT_RIM, MAT_RIM_W };
 
+// The bedrock beyond the level's sides (drawOuterRock, every frame the camera shows past the level, e.g. under the death
+// camera): one tile canvas with the fill, the texture and the tint already composited, and one pattern made from it, both
+// built once. A pattern made from the ImageBitmap and filled on the game canvas each frame made Chrome read the canvas back
+// and redraw it on the CPU per fill (RasterImplementation::ReadbackImagePixels), and after about 100 of those it switched the
+// game canvas to software rendering for the rest of the page's life: the death screen fell to ~8 fps and stayed slow in the
+// hub and every later level until a reload.
+let bedrockTile = null;
+function bedrockTileFor(img) {
+  if (!img) return null;
+  if (bedrockTile && bedrockTile.img === img) return bedrockTile;
+  const size = img.width || img.naturalWidth;
+  if (!size) return null;
+  const c = sharedCanvas(document.createElement('canvas'));
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  g.fillStyle = MAT_FILL[MAT_BEDROCK]; g.fillRect(0, 0, size, size);
+  g.drawImage(img, 0, 0, size, size);
+  g.fillStyle = MAT_TINT[MAT_BEDROCK]; g.fillRect(0, 0, size, size);
+  if (bedrockTile) bedrockTile.canvas.width = 0;
+  bedrockTile = { img, size, canvas: c, pattern: g.createPattern(c, 'repeat') };
+  return bedrockTile;
+}
+
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
 // Round-3 fix (Daniel's screenshot review: "on desktop retina the rim is
@@ -1511,17 +1534,12 @@ export function createRenderer(ctx, world) {
     if (world.v2) {
       // materials: beyond the level is the same indestructible bedrock as its border
       if (left <= 0 && right >= canvasW) { ctx.restore(); return; }
-      const img = artImg('matBedrock');
+      const tile = bedrockTileFor(artImg('matBedrock'));
       const o = worldToScreen(camera, canvasW, canvasH, 0, 0), k = camera.pxPerUnit;
-      const fills = [MAT_FILL[MAT_BEDROCK]];
-      const pat = img ? ctx.createPattern(img, 'repeat') : null;
-      if (pat && pat.setTransform) { const kk = (4 * k) / (img.naturalWidth || img.width); pat.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); fills.push(pat); }
-      fills.push(MAT_TINT[MAT_BEDROCK]);
-      for (const f of fills) {
-        ctx.fillStyle = f;
-        if (left > 0) ctx.fillRect(0, 0, left, canvasH);
-        if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
-      }
+      if (tile && tile.pattern.setTransform) { const kk = (4 * k) / tile.size; tile.pattern.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); ctx.fillStyle = tile.pattern; }
+      else ctx.fillStyle = MAT_FILL[MAT_BEDROCK];
+      if (left > 0) ctx.fillRect(0, 0, left, canvasH);
+      if (right < canvasW) ctx.fillRect(right, 0, canvasW - right, canvasH);
       ctx.restore();
       return;
     }

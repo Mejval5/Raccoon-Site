@@ -7,7 +7,7 @@
 // screen appears after about 1.5 s (not before 1.3 s, by 2.1 s); once it shows, the panel rect never overlaps the body's
 // screen circle and the body stays in the free part of the screen (the camera tracks it); the body is never inside rock; the
 // world keeps simulating behind the panel (sim time runs, the body sinks and bounces, and on most seeds a piranha above it bites it); the tint is light (a
-// clear hole around the body); the panel is a side panel on desktop and a bottom sheet on phones. Then "Back to the hub".
+// clear hole around the body; drawn on the game canvas, read through __octo.deathTint()); the panel is a side panel on desktop and a bottom sheet on phones. Then "Back to the hub".
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
@@ -79,13 +79,15 @@ const SEEDS = [11, 23, 77];
         if (last.hits >= 1) bitten++;
         const look = await page.evaluate(() => {
           const ov = document.querySelector('.octo-gameover-overlay');
-          const cs = getComputedStyle(ov);
-          const alphas = (cs.backgroundImage.match(/rgba\([^)]*\)/g) || []).map((c) => parseFloat(c.split(',')[3]));
+          const tint = __octo.deathTint(), body = __octo.body(); // the tint is drawn on the game canvas (main.js render), not in CSS
           const pr = ov.querySelector('.octo-overlay-panel').getBoundingClientRect();
           const btn = [...ov.querySelectorAll('button')].map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent, top: r.top, bottom: r.bottom }; });
-          return { grad: /radial-gradient/.test(cs.backgroundImage), maxAlpha: Math.max(0, ...alphas), w: pr.width, h: pr.height, top: pr.top, right: pr.right, btn, vh: innerHeight, vw: innerWidth };
+          return { tint, body: body && { x: body.screenX, y: body.screenY, r: body.rCss }, w: pr.width, h: pr.height, top: pr.top, right: pr.right, btn, vh: innerHeight, vw: innerWidth };
         });
-        check(`${tag} the tint is light with a clear hole around the body`, look.grad && look.maxAlpha <= 0.35, `(max alpha ${look.maxAlpha})`);
+        const tn = look.tint, bd = look.body;
+        const holeOk = tn && bd && Math.hypot(tn.x - bd.x, tn.y - bd.y) <= bd.r * 0.75 + 4 && tn.hole >= bd.r * 1.2 && tn.outer > tn.hole;
+        check(`${tag} the tint is light with a clear hole around the body`, tn && tn.alpha > 0.05 && tn.alpha <= 0.35 && holeOk,
+          tn ? `(max alpha ${tn.alpha.toFixed(2)}, hole ${Math.round(tn.hole)} px at ${Math.round(tn.x)},${Math.round(tn.y)}, body r ${bd ? Math.round(bd.r) : '-'} at ${bd ? Math.round(bd.x) + ',' + Math.round(bd.y) : '-'})` : '');
         if (kind === 'side') check(`${tag} a side panel on the right (${Math.round(look.w)} px wide)`, look.w <= look.vw * 0.36 && look.right > look.vw - 30);
         else check(`${tag} a bottom sheet (${Math.round(look.h)} px tall of ${look.vh})`, look.w >= look.vw - 2 && look.h <= look.vh * 0.52 && Math.abs(look.top + look.h - look.vh) < 2);
         check(`${tag} both buttons are on screen without scrolling`, look.btn.length === 2 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
