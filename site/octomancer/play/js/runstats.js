@@ -51,6 +51,7 @@ export function statsRows(meta) {
     ['Total shells', String(meta.shells)],
     ['Total kills', String(meta.kills)],
   ];
+  if (meta.swift > 0) rows.push(['Swift Currents', String(meta.swift)]); // the Swift Current bonus (swift.js), once earned
   const deaths = Object.keys(meta.deaths).sort((a, b) => meta.deaths[b] - meta.deaths[a] || (a < b ? -1 : 1));
   return { rows, deaths: deaths.map((k) => [causeName(k), String(meta.deaths[k])]) };
 }

@@ -125,3 +125,20 @@ Sized for DPR 2 at the game's desktop scale (144 device px per tile).
 | `eel`, `spines`, `vent`, `anemone` | electric eel, urchin-spine strip (spike wall), rock chimney (current jet), anemone cluster | `art-src/r46/gen05-hazards.webp` | generated, Milan style |
 
 `img/journal/place-shop.webp`, `place-wreck.webp`, `place-pool.webp` were re-shot from the game in round 46 (no shop word, no chest, no die).
+
+## Round 3 art atlas (`play/img/v2/sprites-r3.webp` + `play/js/sprite-atlas-r3.js`, 2026-10-08)
+
+The last code-drawn leftovers, painted. One packed 1024 x 585 atlas (about 130 KB), decoded once into an ImageBitmap by
+`js/sprites.js` like the first atlas, built by `octomancer-web/tools/export_r3_art.py`. Generated rows: openai-image-gen skill
+(`image.py edit`, gpt-image-2, quality medium, `-i` a contact sheet of Milan's sprites: octopus, piranha, Clamissaint card, urchin,
+crab, shell-blue, the giant clam, the bomb bag, the rune stone); on flat magenta (keyed and despilled) or flat green (the
+translucent ink, alpha and colour unmixed from the key). 4 images generated, no drafts; sources kept in `octomancer-web/art-src/r3/`.
+Sized for DPR 2 at 144 device px per tile. The code drawing stays as the fallback until the atlas has loaded.
+
+| atlas sprite | what | source | owner |
+|---|---|---|---|
+| `tentLimb` | the tentacle limb as a straight strip (base left, tip right), bent along the limb's curve in slices by `creatures-draw.js` | Milan's `Assets/Sprites/Animations/Clamissaint/Clamissaint0025` limb, unbent along its centre line by the tool | Milan Švancara |
+| `gclamCup`, `gclamLid`, `gclamCavity`, `gclamPearl` | the Giant Clam enemy in parts (lower valve, upper valve that turns about the hinge in code, the teal mantle and cavity, the pearl) | `art-src/r3/gen01-gclam.webp` | generated, Milan style |
+| `bomb`, `bombHot`, `bombMark` | the bomb as a volcanic nodule with a kelp fuse, the same about to burst (dull glowing cracks, cross-faded in code), the tutorial bomb marker (a pale carved glyph) | `art-src/r3/gen02-bomb.webp` | generated, Milan style |
+| `juiceDrop0`-`3`, `iconInkCloud`, `iconJar` | four fish-juice droplets, the Ink Cloud spell icon, the juice jar (see-through glass; the liquid is drawn in code behind it) | `art-src/r3/gen03-icons.webp` | generated, Milan style |
+| `inkPuff0`-`3` | four translucent ink billows for the Ink Cloud (turned and swelled in code) | `art-src/r3/gen04-ink.webp` | generated, Milan style |

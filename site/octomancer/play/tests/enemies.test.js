@@ -115,17 +115,17 @@ export function runEnemyTests(assert, approx) {
     assert('bomb: kills an enemy caught in the blast radius', u.dead === true);
   }
 
-  // --- Beholder: spawns at 120s, touch kills regardless of invulnerability ---
+  // --- Beholder: enters at 2:30 on 1-1 (beholder.js), touch kills regardless of invulnerability ---
   {
     const o = createOctopus(5, 5);
     const enemies = createEnemies();
-    enemies.update(0.02, 119, o, OPEN_GRID, []);
-    assert('Beholder: does not exist before 120s', enemies.beholder() === null);
-    enemies.update(0.02, 120, o, OPEN_GRID, []);
-    assert('Beholder: appears at 120s', enemies.beholder() !== null);
+    enemies.update(0.02, 149.9, o, OPEN_GRID, []);
+    assert('Beholder: does not exist before 2:30', enemies.beholder() === null);
+    enemies.update(0.02, 150, o, OPEN_GRID, []);
+    assert('Beholder: appears at 2:30', enemies.beholder() !== null);
     const b = enemies.beholder();
     b.x = o.x; b.y = o.y; // force contact
-    enemies.update(0.02, 120.02, o, OPEN_GRID, []);
+    enemies.update(0.02, 150.02, o, OPEN_GRID, []);
     assert('Beholder: touch kills the octopus on contact', o.dead === true);
   }
 
@@ -134,7 +134,7 @@ export function runEnemyTests(assert, approx) {
     const world = makeBombWorld();
     const o = createOctopus(20, 20);
     const enemies = createEnemies();
-    enemies.update(0.02, 120, o, OPEN_GRID, []); // spawn it
+    enemies.update(0.02, 150, o, OPEN_GRID, []); // spawn it
     const b = enemies.beholder();
     b.x = 0; b.y = 0;
     const bombs = createBombs();

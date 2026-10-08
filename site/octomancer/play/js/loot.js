@@ -14,7 +14,8 @@
 //                (each one shows a dust warning at the ceiling, then drops).
 // Nothing here blocks the octopus, so none of it can make a level unsolvable.
 
-import { hurtOctopus, addBomb } from './octopus.js';
+import { addBomb } from './octopus.js';
+import { octoHit } from './damage.js';
 import { hasLineOfSight } from './pathfind.js';
 import { DASH_KILL_SPEED, HEART_MAX, BOMB_RADIUS } from './config.js';
 import { ITEM_IDS, itemFromCode } from './items.js';
@@ -235,8 +236,9 @@ export function createLoot(props = null) {
         const pd = props.data;
         d.rx[i] = pd.x[pid]; d.ry[i] = pd.y[pid]; d.rt[i] -= dt;
         if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85 && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
-          if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+          if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
         }
+        if (dmg && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) dmg.circle('boulder', d.rx[i], d.ry[i], ROCK_RADIUS, true, 1.5); // her trap: every creature it lands on too
         if ((pd.grounded[pid] && Math.hypot(pd.vx[pid], pd.vy[pid]) < 1.5) || pd.state[pid] !== PS_FREE || d.rt[i] <= 0) {
           events.push({ type: 'rockLanded', x: d.rx[i], y: d.ry[i] + ROCK_RADIUS });
           props.remove(pid); d.rpid[i] = -1; d.rstate[i] = 3;
@@ -245,8 +247,9 @@ export function createLoot(props = null) {
         d.rv[i] = Math.min(ROCK_MAXV, d.rv[i] + ROCK_GRAV * dt);
         d.ry[i] += d.rv[i] * dt;
         if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
-          if (hurtOctopus(octo, d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+          if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
         }
+        if (dmg) dmg.circle('boulder', d.rx[i], d.ry[i], ROCK_RADIUS, true, 1.5);
         if (world.tileAt(Math.floor(d.rx[i]), Math.floor(d.ry[i] + ROCK_RADIUS)) !== 0) {
           events.push({ type: 'rockLanded', x: d.rx[i], y: d.ry[i] + ROCK_RADIUS });
           d.rstate[i] = 3;
@@ -262,7 +265,10 @@ export function createLoot(props = null) {
     d.nr = w;
   }
 
+  let dmg = null; // 2026-10-08: the shared damage entry (damage.js): a trap's rock and spike burst hit every creature body too
   return {
+    /** main.js: the shared damage entry (damage.js); null: the traps only reach the octopus. */
+    setDamage(dm) { dmg = dm || null; },
     data: d,
     events,
     add,
@@ -341,8 +347,9 @@ export function createLoot(props = null) {
             d.state[i] = ST_BURST; d.t[i] = SPIKE_BURST_TIME;
             events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i] });
             if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
-              if (hurtOctopus(octo, d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
+              if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
             }
+            if (dmg) dmg.circle('trap', d.x[i], d.y[i], SPIKE_RADIUS - 0.5, true); // the burst reaches every creature close by too (she opened it)
           }
         } else if (d.state[i] === ST_BURST) {
           d.t[i] -= dt;

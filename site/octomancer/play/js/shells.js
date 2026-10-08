@@ -4,14 +4,16 @@
 //   conch    5  spiral conch, uncommon
 //   nautilus 15 big chambered shell, rare
 //   pearl    30 only inside a giant clam (creatures.js), never placed loose
+//   moon     50 the top shell: only the Swift Current bonus brings one (swift.js), never placed loose
 // (Owner: damage model. The drawing lives in shells-draw / render.js; the art is natural, no glossy gem look.)
 
-export const SK_COWRIE = 1, SK_CONCH = 2, SK_NAUTILUS = 3, SK_PEARL = 4;
-export const SHELL_NAMES = ['', 'cowrie', 'conch', 'nautilus', 'pearl'];
-export const SHELL_VALUE = [0, 1, 5, 15, 30];
+export const SK_COWRIE = 1, SK_CONCH = 2, SK_NAUTILUS = 3, SK_PEARL = 4, SK_MOON = 5;
+export const SHELL_NAMES = ['', 'cowrie', 'conch', 'nautilus', 'pearl', 'moon'];
+export const SHELL_VALUE = [0, 1, 5, 15, 30, 50];
 export const PEARL_VALUE = SHELL_VALUE[SK_PEARL];
+export const MOON_VALUE = SHELL_VALUE[SK_MOON];
 /** Drawn size per kind in tiles (grows with value). */
-export const SHELL_SIZE = [0, 0.45, 0.6, 0.8, 0.4];
+export const SHELL_SIZE = [0, 0.45, 0.6, 0.8, 0.4, 0.75];
 
 const PIECES = [SK_NAUTILUS, SK_CONCH, SK_COWRIE]; // largest first
 

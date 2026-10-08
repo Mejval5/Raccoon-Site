@@ -4,6 +4,7 @@
 // The Ink Jet slot (Actions tuning): the ink sac refills from the bottom while the jet cools down (inkjet.js charge()).
 
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from './spell-icons.js';
+import { onSpritesReady } from './sprites.js';
 
 function el(tag, className, text) {
   const e = document.createElement(tag);
@@ -50,7 +51,8 @@ export function createHotbarUI(root, handlers = {}) {
   const bombSlot = el('div', 'octo-hb-slot octo-hb-bomb');
   const bombCv = makeCanvas(ICON_PX, ICON_PX);
   bombCv.c.className = 'octo-hb-icon';
-  if (bombCv.ctx) drawBombSlotIcon(bombCv.ctx, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.36);
+  const drawBomb = () => { if (bombCv.ctx) { bombCv.ctx.clearRect(0, 0, ICON_PX, ICON_PX); drawBombSlotIcon(bombCv.ctx, ICON_PX / 2, ICON_PX / 2, ICON_PX * 0.36); } };
+  drawBomb();
   const bombCount = el('span', 'octo-hb-count', '');
   const bombKey = el('span', 'octo-hb-key octo-hb-key-bomb', 'B');
   bombSlot.append(bombCv.c, bombCount, bombKey);
@@ -76,6 +78,8 @@ export function createHotbarUI(root, handlers = {}) {
   let bombKeyShown = null, jarKeyShown = null;
   let slotEls = [];
   let bombTextShown = '', castsShown = '';
+  // the painted icons arrive with the atlas: redraw the bomb, rebuild the spell slots and the jar on the next update
+  onSpritesReady(() => { drawBomb(); slotKey = null; jarKeyShown = null; });
 
   function setText(node, prev, text) { if (prev !== text) node.textContent = text; return text; }
 

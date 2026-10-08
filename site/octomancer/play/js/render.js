@@ -66,10 +66,10 @@ import { drawOctopus } from './octopus-draw.js';
 import { depthTint } from './decor.js';
 import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
-import { drawCritters } from './decor-draw.js';
-import { isAmbientDead } from './ambient.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
+import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
+import { isAmbientDead } from './ambient.js';
 import { prefersReducedMotion, DASH_IFRAMES } from './config.js';
-import { SHELL_SIZE } from './shells.js';
+import { SHELL_SIZE, SK_MOON } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, artBitmap, ROCK_TILE_UNITS } from './v2-art.js';
 import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_DRAW_ORDER, getTileDrawHook } from './materials.js';
@@ -164,7 +164,7 @@ function getSharedArt() {
     // Round-14 "fill the cave" pass: a third foliage variant for cluster-mates only (reuses decor.js's bush2 art)
     clusterBush: loadImage(ASSET('decor-bush2.webp')),
     foliage: loadImage(ASSET('foliage.webp')), // r46: every original foliage sprite on one sheet (data/foliage.json)
-    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')), kinds: [null, loadImage(ASSET('shell-cowrie.webp')), loadImage(ASSET('shell-conch.webp')), loadImage(ASSET('shell-nautilus.webp')), loadImage(ASSET('shell-pearl.webp'))] }, // kinds: by value (shells.js)
+    shellImgs: { blue: loadImage(ASSET('shell-blue.webp')), green: loadImage(ASSET('shell-green.webp')), red: loadImage(ASSET('shell-red.webp')), kinds: [null, loadImage(ASSET('shell-cowrie.webp')), loadImage(ASSET('shell-conch.webp')), loadImage(ASSET('shell-nautilus.webp')), loadImage(ASSET('shell-pearl.webp')), loadImage(ASSET('shell-moon.webp'))] }, // kinds: by value (shells.js)
     noise,
     deepTint: null,
   };
@@ -1158,6 +1158,47 @@ export function createRenderer(ctx, world) {
     ctx.restore();
   }
 
+  // Time pressure (beholder.js): the warning before the Beholder enters. The water closes in from the screen edges
+  // (darker as the warning runs out, and it stays while the Beholder is here), and a small, faint Beholder eye opens on
+  // the edge it will come from. `warn` = enemies.beholderWarn(): {state 0 calm | 1 warning | 2 here, p 0..1, dx, dy}.
+  const distantEye = loadImage(ASSET('enemy-beholder-0.webp'));
+  function drawBeholderWarn(canvasW, canvasH, warn, time, reduced) {
+    if (!warn || !warn.state) return;
+    const p = warn.state === 2 ? 1 : warn.p;
+    const breathe = reduced ? 1 : 0.9 + 0.1 * Math.sin(time * 1.6);
+    const dark = (0.25 + 0.55 * p) * breathe;
+    const cx = canvasW / 2, cy = canvasH / 2;
+    const g = ctx.createRadialGradient(cx, cy, Math.min(canvasW, canvasH) * (0.38 - 0.18 * p), cx, cy, Math.max(canvasW, canvasH) * 0.62);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(2,0,6,${dark.toFixed(3)})`);
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    if (warn.state === 1 && distantEye.complete && distantEye.naturalWidth && (warn.dx || warn.dy)) {
+      // the distant eye: on the screen edge toward its entry point, inset a little, growing and opening with the warning
+      const ppu = camera.pxPerUnit;
+      const inset = ppu * 1.4;
+      const kx = (cx - inset) / (Math.abs(warn.dx) || 1e-6), ky = (cy - inset) / (Math.abs(warn.dy) || 1e-6);
+      const k = Math.min(kx, ky);
+      const ex = cx + warn.dx * k, ey = cy + warn.dy * k;
+      const size = ppu * (0.7 + 0.5 * p);
+      const open = Math.min(1, 0.15 + p * 1.1); // the lid lifts over the first ~3/4 of the warning
+      const a = (0.14 + 0.36 * p) * (reduced ? 1 : 0.85 + 0.15 * Math.sin(time * 2.3)); // faint: a glimpse in the murk, not the creature itself
+      const halo = ctx.createRadialGradient(ex, ey, 0, ex, ey, size * 1.3);
+      halo.addColorStop(0, `rgba(0,0,0,${(0.55 * a).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(ex, ey, size * 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = a;
+      ctx.translate(ex, ey);
+      ctx.scale(1, open); // a squinting slit that opens
+      ctx.filter = 'blur(' + Math.max(1, ppu * 0.04).toFixed(1) + 'px)'; // far off, through the murk
+      ctx.drawImage(distantEye, -size / 2, -size / 2, size, size);
+      ctx.filter = 'none';
+    }
+    ctx.restore();
+  }
+
   // Round 35: the approach cue. While the Beholder is off screen, a red pulsing arrow sits on the screen edge in its
   // direction (bigger and faster as it closes in); once it is on screen the dread glow above takes over.
   function drawBeholderCue(canvasW, canvasH, beholder, dreadLevel, time, reduced) {
@@ -1517,6 +1558,12 @@ export function createRenderer(ctx, world) {
         const img = kindImg || shellImgs.blue;
         const size = camera.pxPerUnit * (kindImg ? SHELL_SIZE[it.sk] : 0.7);
         ctx.save();
+        if (it.sk === SK_MOON) { // the moon shell: a soft, cool moonlight halo behind it (bioluminescent, no sparkle)
+          const gr = size * (1.05 + 0.1 * Math.sin(time * 2));
+          const halo = ctx.createRadialGradient(s.x, s.y, size * 0.2, s.x, s.y, gr);
+          halo.addColorStop(0, 'rgba(200,225,255,0.38)'); halo.addColorStop(1, 'rgba(200,225,255,0)');
+          ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(s.x, s.y, gr, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.globalAlpha = 0.85 + 0.15 * Math.sin(time * 5);
         if (img.complete && img.naturalWidth) ctx.drawImage(img, s.x - size / 2, s.y - size / 2, size, size);
         ctx.restore();
@@ -1644,7 +1691,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1743,6 +1790,7 @@ export function createRenderer(ctx, world) {
       drawDepthTint(canvasW, canvasH, depth);
       drawVignette(canvasW, canvasH);
       const beholder = enemies.find((e) => e.kind === 'beholder' && !e.dead);
+      drawBeholderWarn(canvasW, canvasH, beholderWarn, time, reduced);
       drawBeholderDread(canvasW, canvasH, beholder, dreadLevel, time, reduced);
       drawBeholderCue(canvasW, canvasH, beholder, dreadLevel, time, reduced);
     },

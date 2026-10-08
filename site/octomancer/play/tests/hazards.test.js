@@ -10,6 +10,8 @@ import { createEnemies, CN_CHARGE, CN_RELOAD } from '../js/enemies.js';
 import { createProps, PK_BOMB, PS_FREE } from '../js/props.js';
 import { createCreatures, CR_TENTACLE, TN_DORMANT } from '../js/creatures.js';
 import { setGameView, resetGameView } from '../js/cull.js';
+import { createDamage } from '../js/damage.js';
+import { createKeepers, addKeeper, keeperFamily, KM_CALM } from '../js/shopkeeper.js';
 import { applyDrag } from '../js/physics.js';
 import { OCTO_LINEAR_DRAG } from '../js/config.js';
 import { ENTRIES, CATEGORIES, CAT_HAZARD } from '../js/journal.js';
@@ -297,11 +299,15 @@ async function runHazardEnemyTests(assert) {
       fresh();
       const tag = useProps ? 'prop boulder' : 'scripted boulder';
       const props = useProps ? createProps() : null;
-      const hz = createHazards(props), en = createEnemies();
+      const hz = createHazards(props), en = createEnemies(), dm = createDamage();
       const bodyCalls = [];
-      hz.setVictims({ kill: (e, r) => en.kill(e, r), bodies: (x, y, r, caused, mask) => { bodyCalls.push(caused); return mask | 1; } });
+      // 2026-10-08: the victims come through the shared damage entry (damage.js); a recording family stands for a keeper beside the crab
+      dm.register(en.family);
+      dm.register({ name: 'rec', count: () => 1, view(i, V) { V.kind = 'keeper'; V.x = 4.5; V.y = 12.3; V.r = 0.4; V.vx = V.vy = 0; V.stun = 0; V.shut = false; V.cool = 0; V.blame = 0; return true; },
+        apply(i, src, fx, fy, d, k, byOcto) { bodyCalls.push(byOcto); return 1; }, push() {}, setTimers() {} });
+      hz.setDamage(dm);
       view(4, 6);
-      const crab = en.spawnAt('crab', 4.5, 12.55, 'floor');
+      const crab = en.spawnAt('crab', 4.5, 12.55, 'floor'); crab.vx = 1.2; // patrolling: a roaming body sets a boulder off
       hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
       const octo = calm(createOctopus(1.5, 3.5)); // far from the boulder's line: only the crab triggers it
       let shook = false;
@@ -313,12 +319,12 @@ async function runHazardEnemyTests(assert) {
       const ev = en.events.filter((e) => e.type === 'enemyKilled');
       assert(`${tag}: an enemy under it sets it off (cause 0, not the octopus) and is crushed`, shook && crab.dead && hz.data.cause[0] === 0 && ev.length === 1);
       assert(`${tag}: the crush goes through enemies.kill, so a corpse event follows (kind crab, reason crush)`, ev[0] && ev[0].kind === 'crab' && ev[0].reason === 'crush');
-      assert(`${tag}: a boulder an enemy set off is not the octopus's doing (bodies called with octoCaused false)`, bodyCalls.length > 0 && bodyCalls.every((c) => c === false));
+      assert(`${tag}: a boulder an enemy set off is not the octopus's doing (the other bodies are hit with byOcto false)`, bodyCalls.length > 0 && bodyCalls.every((c) => c === false));
     }
     {
       fresh(); // the octopus under it: octoCaused true; the bomb-released boulder too
       const hz = createHazards(createProps());
-      hz.setVictims({ kill: () => {}, bodies: (x, y, r, caused, mask) => mask });
+      hz.setDamage(createDamage());
       view(4, 6);
       hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
       const octo = calm(createOctopus(4.5, 6.5));
@@ -331,14 +337,15 @@ async function runHazardEnemyTests(assert) {
       assert('boulder: a bomb that shakes it loose makes it hers (cause 1)', hz2.data.cause[0] === 1);
     }
     {
-      fresh(); // once per victim: the callback owns the mask, the hazard keeps it between frames
-      const props = createProps(), hz = createHazards(props), seen = [];
-      hz.setVictims({ kill: () => {}, bodies: (x, y, r, caused, mask) => { seen.push(mask); return mask | 4; } });
+      fresh(); // once per victim per drop: the damage entry's hazard cooldown (2026-10-08, replaces the victim mask)
+      const props = createProps(), hz = createHazards(props), dm = createDamage(), k = createKeepers();
+      addKeeper(k, 4.5, 12.2, KM_CALM, 1); dm.register(keeperFamily(k)); hz.setDamage(dm);
       view(4, 6);
       hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
-      const octo = calm(createOctopus(4.5, 8.5));
-      for (let i = 0; i < STEPS(2); i++) { props.step(DT, W, octo, []); hz.update(DT, i * DT, octo, W, null, []); }
-      assert('boulder: the victim mask is kept between frames (a victim is hurt once per drop)', seen.length > 1 && seen[0] === 0 && seen.slice(1).every((m) => m === 4));
+      const octo = calm(createOctopus(5.2, 8.5)); // beside the fall line: she sets it off, it misses her
+      for (let i = 0; i < STEPS(2); i++) { dm.tick(DT); props.step(DT, W, octo, []); hz.update(DT, i * DT, octo, W, null, []); }
+      const hurts = k.events.filter((e) => e.type === 'hurt');
+      assert(`boulder: the keeper under it is hurt once per drop (${hurts.length} hits, ${hurts[0] && hurts[0].dmg} hp) and, as she set it off, it is her doing`, hurts.length === 1 && hurts[0].dmg >= 10 && !hurts[0].quiet);
     }
     // ---- item 6: nothing drops from off-screen ----
     {
@@ -379,7 +386,7 @@ async function runHazardEnemyTests(assert) {
     }
     // ---- spikes ----
     {
-      fresh(); const mk = () => { const hz = createHazards(), en = createEnemies(); hz.setVictims({ kill: (e, r) => en.kill(e, r), bodies: null }); hz.add(rec(W, 'spikes', 4.5, 12.5, 0, -1)); return { hz, en }; };
+      fresh(); const mk = () => { const hz = createHazards(), en = createEnemies(), dm = createDamage(); dm.register(en.family); hz.setDamage(dm); hz.add(rec(W, 'spikes', 4.5, 12.5, 0, -1)); return { hz, en }; };
       const octo = calm(createOctopus(1.5, 2.5));
       const calmCrab = mk(); const cc = calmCrab.en.spawnAt('crab', 4.5, 12.6, 'floor'); cc.vx = 1.2;
       for (let i = 0; i < STEPS(1); i++) calmCrab.hz.update(DT, i * DT, octo, W, null, calmCrab.en.all());
@@ -397,7 +404,8 @@ async function runHazardEnemyTests(assert) {
     }
     // ---- current jets ----
     {
-      fresh(); const props = createProps(), hz = createHazards(props), en = createEnemies();
+      fresh(); const props = createProps(), hz = createHazards(props), en = createEnemies(), dm = createDamage();
+      dm.register(en.family); hz.setDamage(dm);
       hz.add({ type: 'hazard', hk: HZ_JET, x: 4.5, y: 13, dx: 0, dy: -1, len: 7 });
       const bomb = props.add(PK_BOMB, 4.5, 9, 0, 0, { timer: 99 });
       const pir = en.spawnAt('piranha', 4.2, 9); const stunned = en.spawnAt('manta', 4.8, 9); stunned.stun = 1;

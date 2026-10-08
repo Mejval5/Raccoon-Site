@@ -6,6 +6,7 @@
 // ... explosion, particles").
 
 import { BOMB_RADIUS } from './config.js';
+import { drawBombSprite, spriteMeta, spriteRect } from './sprites.js';
 import { visibleObj, cullView } from './cull.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
@@ -357,6 +358,31 @@ function drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, 
   ctx.restore();
 }
 
+/** The painted bomb: the cool nodule with the hot one cross-faded over it as the fuse burns, the code fizz at the fuse tip. */
+function drawPaintedBomb(ctx, x, y, r, rot, burn, time) {
+  const m = spriteMeta('bomb'), sw = 1 + 0.05 * burn * Math.sin(time * 18);
+  const rr = r * sw;
+  drawBombSprite(ctx, 'bomb', x, y, rr, rot);
+  const q = Math.max(0, Math.min(1, (burn - 0.3) / 0.7)), hot = q * q * (3 - 2 * q) * (1 - (burn > 0.85 ? 0.12 * (0.5 + 0.5 * Math.sin(time * 40)) : 0));
+  if (hot > 0.01) { ctx.save(); ctx.globalAlpha = hot; drawBombSprite(ctx, 'bombHot', x, y, rr, rot); ctx.restore(); }
+  // the fuse tip in pixels from the body centre, turned with the body
+  const w = rr / m.ru, h = w * (spriteRect('bomb')[3] / spriteRect('bomb')[2]);
+  const ox = (m.tipU - m.cu) * w, oy = (m.tipV - m.cv) * h, cs = Math.cos(rot), sn = Math.sin(rot);
+  fuseFizz(ctx, x + ox * cs - oy * sn, y + ox * sn + oy * cs, r, burn, time);
+}
+
+/** Fuse fizz (screen space): the lit tip is a pale bubbling point, three tiny bubbles rise off it. */
+function fuseFizz(ctx, spx, spy, r, burn, time) {
+  const lit = Math.sin(time * (6 + burn * 22) * Math.PI) > -0.3;
+  ctx.fillStyle = lit ? 'rgba(235,248,255,0.95)' : 'rgba(170,205,225,0.8)';
+  ctx.beginPath(); ctx.arc(spx, spy, r * 0.16, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(210,238,255,0.8)'; ctx.lineWidth = 1;
+  for (let k = 0; k < 3; k++) {
+    const ph = (time * (1.6 + burn * 2.4) + k / 3) % 1;
+    ctx.beginPath(); ctx.arc(spx + Math.sin(ph * 9 + k * 2) * r * 0.18, spy - ph * r * 1.1, r * (0.07 + 0.05 * ph), 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
 /** Code-drawn bomb: a dark shell with a lit fuse spark; once exploded, an
  * expanding ring shockwave for its brief lingering frame. */
 export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time) {
@@ -367,6 +393,7 @@ export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, t
       // body (rolls: the fuse stub turns with the distance travelled), a lit fuse spark that blinks faster as it burns down
       const rot = b.rot || 0;
       const burn = 1 - Math.max(0, b.fuse) / (b.fuse0 || 1.5); // 0 fresh .. 1 about to go
+      if (spriteRect('bomb') && spriteRect('bombHot')) { drawPaintedBomb(ctx, s.x, s.y, r, rot, burn, time); continue; }
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.fillStyle = '#20262c';

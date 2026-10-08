@@ -136,11 +136,8 @@ export const CANNON_FIRE_PERIOD = 2.6; // glow 0.6 + reload 2.0 (enemies.js has 
 export const CANNON_SHOT_SPEED = 5;
 export const CANNON_SHOT_RADIUS = 0.25;
 
-export const BEHOLDER_SPAWN_TIME = 120; // s of run time
-export const BEHOLDER_SPAWN_HEIGHT = 20; // world units above the octopus
+// The Beholder's clock, entry and drift live in beholder.js (time pressure, 2026-10-08).
 export const BEHOLDER_RADIUS = 0.9;
-export const BEHOLDER_SPEED = 4.5; // u/s
-export const BEHOLDER_SPEED_RAMP = 0.1; // +u/s per 10s alive
 
 // --- M6: the 2021 creatures (OVERNIGHT.md §4 M6, DECISIONS §2) ---
 // Spiked mine was removed (Daniel: ugly, urchins cover the same job).

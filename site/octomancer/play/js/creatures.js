@@ -13,6 +13,7 @@ import { killOctopus } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
 import { PEARL_VALUE } from './shells.js';
 import { inCameraView } from './cull.js';
+import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
 
 export const CR_NONE = 0, CR_GCLAM = 1, CR_TENTACLE = 2;
 export const CREATURE_NAMES = ['', 'gclam', 'tentacle'];
@@ -32,7 +33,7 @@ export const CLAM_HALF_W = 0.95;     // half the shell width
 export const CLAM_SHUT_H = 0.8;      // height of the shut shell (the bonk box)
 export const CLAM_MOUTH_HALF_W = 0.85; // the octopus centre inside this box at the snap is caught
 export const CLAM_MOUTH_H = 1.0;
-export const CLAM_HP = 18;
+export const CLAM_HP = rowOf('gclam').hp; // creature-rules.js (18)
 export const PEARL_R = 0.16;
 const BONK_PUSH = 3;
 
@@ -54,7 +55,7 @@ export const TENT_FLING = 8;         // u/s away from the shell on release
 export const TENT_STUN_T = 2.0;
 export const TENT_REGRAB_CD = 3;     // s after a release before it can grab again
 export const TENT_MISS_CD = 1.2;     // s after a miss
-export const TENT_HP = 14;
+export const TENT_HP = rowOf('tentacle').hp; // creature-rules.js (14)
 export const TENT_SHELL_LEN = 1.3;   // the shell sprite's length in tiles
 export const TENT_MOUTH = 0.43;      // mouth distance from the shell centre
 
@@ -112,6 +113,7 @@ export function createCreatures() {
     ink: new Float32Array(CAP),                                  // ink damage taken while holding
     squeeze: new Float32Array(CAP),                              // 0..1 how tight it holds (draw)
     rs: new Uint32Array(CAP).fill(1),
+    hzCool: new Float64Array(CAP), blame: new Float64Array(CAP), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
   };
   const events = []; // {type:'pearl'|'pearlDrop'|'killed'|'snap'|'grab'|'release'|'eaten'|'wake'|'strike'|'bonk'|'tremble', ...}
   const loaded = new Set();
@@ -144,6 +146,44 @@ export function createCreatures() {
     d.alive[i] = 0;
     events.push({ type: 'killed', kind: CREATURE_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx, vy, face: d.side[i] });
     if (d.kind[i] === CR_GCLAM && d.pearl[i]) { d.pearl[i] = 0; events.push({ type: 'pearlDrop', x: d.x[i], y: d.fy[i] - 0.38 }); }
+  }
+
+  // ------------------------------------------------------------ damage (2026-10-08, creature-rules.js)
+
+  /** Is the creature's shell shut right now (a shut clam; a tentacle curled up in its shell)? The table's `shell` sources stop on it. */
+  function shut(i) {
+    const st = d.state[i];
+    if (d.kind[i] === CR_GCLAM) return !(st === CL_OPEN || st === CL_TREMBLE || (st === CL_OPENING && d.ang[i] > 0.4));
+    return st === TN_DORMANT || st === TN_RETRACT || st === TN_FED;
+  }
+  /** Body radius for blasts and hazards: the shell's half width. */
+  const bodyR = (i) => (d.kind[i] === CR_GCLAM ? CLAM_HALF_W : 0.55);
+  /**
+   * The one way a clam or a tentacle takes a hit: creature-rules.js resolveHit for its kind and `src` (dmg < 0: the source's
+   * own), with its shell's state. Both are anchored: no knock, no knock-out. A tentacle holding the octopus counts the damage
+   * toward letting go; at 0 hp it dies (and lets go). Returns the damage dealt.
+   */
+  function applyHit(i, src, fx, fy, dmg = -1, octo = null) {
+    if (!d.alive[i]) return 0;
+    const o = resolveHit(CREATURE_NAMES[d.kind[i]], SOURCES[src] ? src : 'ink', dmg, shut(i));
+    if (o.ignore || o.dmg <= 0) return 0;
+    d.hp[i] -= o.dmg;
+    if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB) d.ink[i] += o.dmg;
+    if (d.hp[i] <= 0 || o.kill) {
+      if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB && octo) release(i, octo, false);
+      let dx = d.x[i] - fx, dy = d.y[i] - fy;
+      const l = Math.hypot(dx, dy);
+      if (l < 1e-4) { dx = 0; dy = 0; } else { dx /= l; dy /= l; }
+      die(i, dx * (src === 'bomb' ? 3 : 0), dy * (src === 'bomb' ? 3 : 0) - 1);
+    }
+    return o.dmg;
+  }
+
+  function releaseNear(i, x, y, R, octo) {
+    if (d.kind[i] !== CR_TENTACLE || d.state[i] !== TN_GRAB || !octo || !d.alive[i]) return false;
+    const near = Math.max(0, Math.hypot(d.x[i] - x, d.y[i] - y) - bodyR(i) * 0.5) <= R || Math.hypot(octo.x - x, octo.y - y) <= R + 0.5;
+    if (near) release(i, octo, false);
+    return near;
   }
 
   // ------------------------------------------------------------ giant clam
@@ -394,20 +434,39 @@ export function createCreatures() {
         if (d.kind[i] === CR_GCLAM) updateClam(i, dt, octo, world); else updateTentacle(i, dt, octo, world);
       }
     },
-    /** A bomb blast of radius R at (x, y): a creature whose body is inside dies; a held octopus is let go. Returns the kills. */
+    /** A bomb blast of radius R at (x, y), by the table (damage.js blast): a body whose edge is inside takes the bomb; a held
+     * octopus is let go when the blast reaches her or the tentacle. Returns the kills. */
     blast(x, y, R, octo = null) {
       let n = 0;
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
-        const dd = Math.hypot(d.x[i] - x, d.y[i] - y);
-        const near = dd <= R + 0.5;
-        if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB && octo && (near || Math.hypot(octo.x - x, octo.y - y) <= R + 0.5)) release(i, octo, false);
-        if (!near) continue;
-        const l = dd || 1;
-        die(i, (d.x[i] - x) / l * 3, (d.y[i] - y) / l * 3 - 1);
-        n++;
+        releaseNear(i, x, y, R, octo);
+        const dd = Math.max(0, Math.hypot(d.x[i] - x, d.y[i] - y) - bodyR(i) * 0.5);
+        if (dd > R) continue;
+        applyHit(i, 'bomb', x, y, -1, octo);
+        if (!d.alive[i]) n++;
       }
       return n;
+    },
+    /** A blast at (x, y) radius R lets a tentacle's held octopus go when it reaches either of them. True when it let go. */
+    releaseNear,
+    /** 2026-10-08: the one way a creature takes a hit (creature-rules.js); see applyHit. */
+    applyHit,
+    /** The damage.js family adapter (register it with damage.register). `octo` (optional getter) lets a killed tentacle let go. */
+    family(getOcto = null) {
+      return {
+        name: 'creature',
+        count() { return d.n; },
+        view(i, V) {
+          if (!d.alive[i]) return false;
+          V.kind = CREATURE_NAMES[d.kind[i]]; V.x = d.x[i]; V.y = d.y[i]; V.r = bodyR(i); V.vx = 0; V.vy = 0; V.stun = 0;
+          V.shut = shut(i); V.cool = d.hzCool[i]; V.blame = d.blame[i];
+          return true;
+        },
+        apply(i, src, fx, fy, dmg) { return applyHit(i, src, fx, fy, dmg, getOcto ? getOcto() : null); },
+        push() {},
+        setTimers(i, cool, blame) { if (cool >= 0) d.hzCool[i] = cool; if (blame >= 0) d.blame[i] = blame; },
+      };
     },
     /** Something hits the circle (x, y, r) for `dmg` (src 'ink' | 'dash' | 'bomb'). Returns how many creatures were hit. */
     hit(x, y, r, dmg, src, octo = null) {
@@ -431,13 +490,7 @@ export function createCreatures() {
           }
         }
         if (!touched) continue;
-        n++;
-        d.hp[i] -= dmg;
-        if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB) d.ink[i] += dmg;
-        if (d.hp[i] <= 0) {
-          if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB && octo) release(i, octo, false);
-          die(i, 0, -1);
-        }
+        if (applyHit(i, src, x, y, dmg, octo) > 0) n++;
       }
       return n;
     },

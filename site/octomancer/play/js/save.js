@@ -9,7 +9,7 @@ const KEY = 'octomancer.best.v1';
 
 export const BEST_RUNS_MAX = 5;
 
-function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, time: 0, deaths: {} }; }
+function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, kills: 0, time: 0, swift: 0, deaths: {} }; } // swift: lifetime Swift Current bonuses
 /**
  * Story flags, all flat counters. marlo / pip / quill are the stage of each person (0 = not met): Marlo's stage is the number
  * of runs he was freed in (3 opens the hub shortcut to 1-3), Pip's 1 = freed and living in the hub, Quill's 1 = moved into
@@ -20,7 +20,11 @@ function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, ki
 // V2-PLAN 16 (npcs.js): angered<Name> / killed<Name> count the times you turned on / killed Marlo, Pip, Quill or the pool Host (the
 // journal's story lines); gone<Name> is how many dive ends they stay away: 2 when killed in a dive, 1 in the hub (setStoryExact lowers it).
 const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'relicsGiven', 'saidMarlo', 'saidPip', 'saidQuill', 'poolPaid', 'poolWon',
-  'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost'];
+  'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost',
+  // owners round 3 (quests rework): the host's stage (moves into the hub after a won wager), gifts promised for the hub (an outcome index,
+  // quests.js table.gifts), boons waiting for the next dive, later meetings kept, Quill met on a dig, Pip's mother met
+  'host', 'saidHost', 'giftMarlo', 'giftPip', 'giftQuill', 'giftHost', 'boonBombs', 'boonShells', 'boonJuice',
+  'laterMarlo', 'laterPip', 'laterQuill', 'laterHost', 'digQuill', 'mamaPip', 'explorePip'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
@@ -159,7 +163,7 @@ function cleanMeta(m) {
   const out = freshMeta();
   if (!m || typeof m !== 'object') return out;
   out.dives = Math.floor(num(m.dives)); out.clears = Math.floor(num(m.clears)); out.bestDepth = Math.floor(num(m.bestDepth));
-  out.shells = Math.floor(num(m.shells)); out.kills = Math.floor(num(m.kills)); out.time = num(m.time);
+  out.shells = Math.floor(num(m.shells)); out.kills = Math.floor(num(m.kills)); out.time = num(m.time); out.swift = Math.floor(num(m.swift));
   if (m.deaths && typeof m.deaths === 'object') {
     for (const k of Object.keys(m.deaths).slice(0, 64)) { const n = Math.floor(num(m.deaths[k])); if (n > 0) out.deaths[k] = n; }
   }
@@ -193,7 +197,7 @@ export function recordDive(sum) {
   m.dives++;
   if (entry.cleared) m.clears++;
   if (entry.depth > m.bestDepth) m.bestDepth = entry.depth;
-  m.shells += entry.shells; m.kills += entry.kills; m.time += entry.time;
+  m.shells += entry.shells; m.kills += entry.kills; m.time += entry.time; m.swift = (m.swift | 0) + Math.floor(num(sum && sum.swift));
   if (!entry.cleared) { const k = entry.cause || 'unknown'; m.deaths[k] = (m.deaths[k] || 0) + 1; }
   writeToStorage();
   return { rank: res.rank, bestRuns: res.list.map((r) => ({ ...r })) };

@@ -273,6 +273,14 @@ function move(o, joy, dt) {
   const moveForce = joy.mag * SWIM_PUSH_FORCE * mul * dt;
 
   const speed = len(o.vx, o.vy);
+  // 2026-10-08 movement-test fix (the "stuck in corners until I dash" bug): from (near) rest the formula below has no
+  // velocity direction, so velDir is (0,0), theta 0, and the final push is velDir*1 + perp*sin(0) = (0,0): NO thrust at all.
+  // In Unity a resting rigidbody never has exactly zero velocity, but here the collision cancels the velocity into a wall
+  // exactly, and the idle sink keeps pressing the body into the floor, so an octopus that settles into a floor corner
+  // (both components cancelled) or rests on a floor long enough for drag to bring its sideways speed under 1e-6 could not
+  // swim in ANY direction until a dash gave it speed again. The limit of the formula as speed -> 0 is the plain push
+  // direction (accelPossible is 1 there), so use that.
+  if (speed <= 1e-6) { applyImpulse(o, moveForce * pushDir.x, moveForce * pushDir.y); return; }
   const accelPossible = clamp(1 - Math.pow(speed / (SWIM_MAX_SPEED * mul), SWIM_ACCEL_CAP_EXP), 0, 1);
 
   const velDir = speed > 1e-6 ? { x: o.vx / speed, y: o.vy / speed } : { x: 0, y: 0 };
