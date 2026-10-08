@@ -10,6 +10,7 @@ import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { drawSprite, spriteRect, drawBombSprite } from './sprites.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
+import { drawTrace, traceDraw } from './draw-trace.js';
 
 const TAU = Math.PI * 2;
 const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
@@ -20,23 +21,15 @@ const hash = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - M
  * @param {ReturnType<import('./loot.js').createLoot>['data']} d
  * @param {number} time seconds
  */
-export function drawLoot(ctx, camera, cw, ch, d, time) {
+export function drawLoot(ctx, camera, cw, ch, d, time, skip = -1) {
   const ppu = camera.pxPerUnit;
   const sx = (wx) => cw / 2 + (wx - camera.x) * ppu, sy = (wy) => ch / 2 + (wy - camera.y) * ppu;
   cullView(camera, cw, ch);
   const fl = cullFlags('loot', d.n), fi = cullFlags('lootItems', d.ni), fr = cullFlags('lootRocks', d.nr);
   for (let i = 0; i < d.n; i++) {
+    if (i === skip) continue; // in the octopus's hand: drawLootOne draws it after the octopus
     if (!visibleAt(fl, i, d.x[i], d.y[i], 3)) continue; // r43: off-screen loot is not animated or drawn
-    const x = sx(d.x[i]), y = sy(d.y[i]);
-    const st = d.state[i];
-    switch (d.kind[i]) {
-      case LK_CLAM: if (st === ST_INTACT) drawClam(ctx, x, y, ppu, time, i); break;
-      case LK_POT: if (st === ST_INTACT) drawPot(ctx, x, y, ppu, i); break;
-      case LK_CHEST: drawChest(ctx, x, y, ppu, time, i, st, d.t[i], d.aux[i]); break;
-      case LK_POCKET: if (st === ST_INTACT) drawPocketCue(ctx, x, y, ppu, time, i); break;
-      case LK_RELIC: drawRelic(ctx, x, y, ppu, time, st === ST_INTACT); break;
-      default: break;
-    }
+    lootBody(ctx, sx(d.x[i]), sy(d.y[i]), ppu, d, i, time);
   }
   for (let i = 0; i < d.ni; i++) {
     if (d.itaken[i]) continue;
@@ -71,6 +64,28 @@ export function drawLoot(ctx, camera, cw, ch, d, time) {
       drawBoulder(ctx, x, y, 0.45 * ppu, i + 3, time * 2);
     }
   }
+}
+
+function lootBody(ctx, x, y, ppu, d, i, time) {
+  if (drawTrace.on) traceDraw('loot', i);
+  const st = d.state[i];
+  switch (d.kind[i]) {
+    case LK_CLAM: if (st === ST_INTACT) drawClam(ctx, x, y, ppu, time, i); break;
+    case LK_POT: if (st === ST_INTACT) drawPot(ctx, x, y, ppu, i); break;
+    case LK_CHEST: drawChest(ctx, x, y, ppu, time, i, st, d.t[i], d.aux[i]); break;
+    case LK_POCKET: if (st === ST_INTACT) drawPocketCue(ctx, x, y, ppu, time, i); break;
+    case LK_RELIC: drawRelic(ctx, x, y, ppu, time, st === ST_INTACT); break;
+    default: break;
+  }
+}
+
+/** Loot record i alone: the pot or clam in the octopus's hand, drawn after the octopus (drawLoot was told to skip it). */
+export function drawLootOne(ctx, camera, cw, ch, d, i, time) {
+  if (i < 0 || i >= d.n) return;
+  const ppu = camera.pxPerUnit;
+  cullView(camera, cw, ch);
+  if (!visibleAt(cullFlags('loot', d.n), i, d.x[i], d.y[i], 3)) return;
+  lootBody(ctx, cw / 2 + (d.x[i] - camera.x) * ppu, ch / 2 + (d.y[i] - camera.y) * ppu, ppu, d, i, time);
 }
 
 // ---- clam: the scallop sprite (r46); the fallback is two ribbed halves and a hinge ----
