@@ -292,6 +292,10 @@ await runChainTests(assert);
 import { runSkinsTests } from './skins.test.js';
 await runSkinsTests(assert);
 
+// --- the offering altar (altar.js: favour, hollows, anger, the offering check, the floor finder) ---
+import { runAltarTests } from './altar.test.js';
+await runAltarTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
