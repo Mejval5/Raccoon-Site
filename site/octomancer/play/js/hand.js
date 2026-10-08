@@ -32,7 +32,7 @@ export const STILL_SPEED = 1.5;    // u/s: below it the phone's Spell button may
 export const FLY_MAX_S = 1.5;      // a thrown thing is watched for hits this long ...
 export const FLY_MIN_SPEED = 2.5;  // ... or until it is slower than this
 export const WALL_SMASH = 3.5;     // u/s lost in one step: it hit something hard (a pot breaks)
-export const PRI_DOOR = 30, PRI_TALK = 20, PRI_BUY = 15, PRI_THING = 10;
+export const PRI_PORTAL = 40, PRI_DOOR = 30, PRI_TALK = 20, PRI_BUY = 15, PRI_THING = 10; // PRI_PORTAL: a whirlpool (main.js 'portal', entered on F only)
 
 const providers = []; // [{kind, priority, find, use}]
 
@@ -111,7 +111,7 @@ function shieldHit(hand, octo) {
 
 /** Use the current target (press with nothing held). */
 export function handUse(hand, octo, ctx) {
-  const t = hand.target || findTarget(octo, ctx);
+  const t = findTarget(octo, ctx); // fresh: the octopus may have moved (or been teleported) since the last search
   if (!t) return false;
   const p = providers.find((q) => q.kind === t.kind);
   if (!p) return false;
@@ -230,9 +230,10 @@ export function updateTarget(hand, octo, ctx) {
   return hand.target;
 }
 
-/** What the phone's Spell button should read: 'throw' while holding, 'grab' / 'use' when a target is in reach and the octopus is nearly still, else ''. */
+/** What the phone's Spell button should read: 'throw' while holding, 'enter' (a whirlpool) / 'grab' / 'use' when a target is in reach and the octopus is nearly still, else ''. */
 export function phoneHandMode(hand, octo) {
   if (hand.held) return 'throw';
   if (!hand.target || Math.hypot(octo.vx || 0, octo.vy || 0) >= STILL_SPEED) return '';
+  if (hand.target.priority >= PRI_PORTAL) return 'enter';
   return hand.target.priority > PRI_THING ? 'use' : 'grab';
 }

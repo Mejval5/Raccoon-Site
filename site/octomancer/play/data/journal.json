@@ -10,7 +10,7 @@
  "entries": [
   {"id":"place-hub","category":"place","name":"The Hub","text":"Where every dive begins: a village that fills with the people you help.","art":{"img":"img/journal/place-hub.webp"},"counters":[["seen","Visited"]]},
   {"id":"place-tutorial","category":"place","name":"The Training Cave","text":"Swimming, dashing and bombs. Finish it once and the dive's kelp lets go.","art":{"img":"img/journal/place-tutorial.webp"},"counters":[["seen","Visited"]]},
-  {"id":"place-shallows","category":"place","name":"The Shallows","text":"The first biome: sunlit tunnels, ledges and shafts. Find the ring to dive on.","art":{"img":"img/journal/place-shallows.webp"},"counters":[["seen","Visited"]]},
+  {"id":"place-shallows","category":"place","name":"The Shallows","text":"The first biome: sunlit tunnels, ledges, shafts. Press F at the ring to dive on.","art":{"img":"img/journal/place-shallows.webp"},"counters":[["seen","Visited"]]},
   {"id":"place-rest","category":"place","name":"The Still Grotto","text":"A calm cave at the end of a zone. Its spring heals you and fills your jar.","art":{"fn":"spring"},"counters":[["seen","Visited"]]},
   {"id":"place-shop","category":"place","name":"The Shell Stall","text":"A keeper with three pedestals in a side cave. Swim onto an item to buy it.","art":{"img":"img/journal/place-shop.webp"},"counters":[["seen","Visited"]]},
   {"id":"creature-urchin","category":"creature","name":"Urchin","text":"A spiny ball that sits still on the rock. It never chases, but it hurts.","art":{"img":"assets/enemy-urchin.webp"},"counters":[["seen","Dives met in"],["killed","Killed"],["killedBy","Killed by"]]},

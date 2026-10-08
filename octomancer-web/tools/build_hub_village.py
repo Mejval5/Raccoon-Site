@@ -124,15 +124,16 @@ hub = {
     'rows': [''.join(r) for r in g],
     'prompts': [
         {'x': 36, 'y': 12, 'r': 9, 'when': 'sealed', 'title': 'Welcome to the village',
-         'desktop': 'The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left.',
-         'touch': 'The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left.'},
+         'desktop': 'The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left: swim to it and press F.',
+         'touch': 'The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left: swim to it and tap Enter.'},
         {'x': 36, 'y': 33, 'r': 5, 'when': 'sealed', 'title': 'Sealed by kelp',
          'desktop': 'The kelp holds the dive shut. Finish the tutorial (the ring up on the stage) and it opens for good.',
          'touch': 'The kelp holds the dive shut. Finish the tutorial (the ring up on the stage) and it opens for good.'},
         {'x': 36, 'y': 12, 'r': 9, 'when': 'open', 'title': 'Welcome to the village',
-         'desktop': 'The dive whirlpool is down the shaft. The people you help move into the empty rooms around the plaza.',
-         'touch': 'The dive whirlpool is down the shaft. The people you help move into the empty rooms around the plaza.'},
+         'desktop': 'The dive whirlpool is down the shaft: press F in it to dive. The people you help move into the empty rooms around the plaza.',
+         'touch': 'The dive whirlpool is down the shaft: tap Enter in it to dive. The people you help move into the empty rooms around the plaza.'},
     ],
+    'mirror': {'x': 46.5, 'y': 19},  # the skins owner's mirror shell (skin-picker.js): in the wardrobe alcove A, base on the floor
     'spawns': [
         {'type': 'plankton-swarm', 'x': 40.5, 'y': 9.5, 'count': 6},
         {'type': 'plankton-swarm', 'x': 36.5, 'y': 31.5, 'count': 5},
