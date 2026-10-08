@@ -85,7 +85,8 @@ const SEEDS = [11, 23, 77];
           const btn = [...ov.querySelectorAll('button')].map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent, top: r.top, bottom: r.bottom }; });
           return { grad: /radial-gradient/.test(cs.backgroundImage), maxAlpha: Math.max(0, ...alphas), w: pr.width, h: pr.height, top: pr.top, right: pr.right, btn, vh: innerHeight, vw: innerWidth };
         });
-        check(`${tag} the tint is light with a clear hole around the body`, look.grad && look.maxAlpha <= 0.35, `(max alpha ${look.maxAlpha})`);
+        // 688f0928: the light tint with its clear hole is drawn on the game canvas (main.js render), not as a moving CSS gradient
+        check(`${tag} the tint is not a CSS gradient on the overlay (it is drawn on the canvas: no full-screen repaint per frame)`, !look.grad && look.maxAlpha <= 0.35, `(max alpha ${look.maxAlpha})`);
         if (kind === 'side') check(`${tag} a side panel on the right (${Math.round(look.w)} px wide)`, look.w <= look.vw * 0.36 && look.right > look.vw - 30);
         else check(`${tag} a bottom sheet (${Math.round(look.h)} px tall of ${look.vh})`, look.w >= look.vw - 2 && look.h <= look.vh * 0.52 && Math.abs(look.top + look.h - look.vh) < 2);
         check(`${tag} both buttons are on screen without scrolling`, look.btn.length === 2 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
