@@ -3157,7 +3157,7 @@ window.__octo = {
   juice() {
     const hb = run ? hotbar() : null;
     return {
-      juice: run ? run.juice : 0, casts: run ? castsOf(run.juice) : 0, cap: juiceCap(), perCast: JUICE.perCast, drops: juiceDrops.count(), clouds: inkClouds.count(),
+      juice: run ? run.juice : 0, casts: run ? castsOf(run.juice) : 0, cap: juiceCap(), perCast: JUICE.perCast, drops: juiceDrops.count(), leaks: juiceDrops.leaks(), clouds: inkClouds.count(),
       cloudList: Array.from({ length: inkClouds.data.n }, (_, i) => i).filter((i) => inkClouds.data.alive[i]).map((i) => ({ x: inkClouds.data.x[i], y: inkClouds.data.y[i], r: inkClouds.data.r[i], age: inkClouds.data.age[i] })),
       hotbar: hb ? { slots: hb.slots.map((sl) => sl.ids.slice()), sel: hb.sel, spell: selectedSpell(hb) } : null,
       inventory: inventoryOpen, ...runStats, jet: inkJet.count(), jetCooldown: inkJet.cooldown(),
