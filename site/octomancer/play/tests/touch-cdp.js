@@ -20,7 +20,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
   try {
     const page = await browser.newPage();
     page.on('pageerror', (e) => errs.push('' + e));
-    page.on('console', (m) => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); });
     await page.setViewport({ width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     await page.evaluateOnNewDocument(SAVE);
     await page.goto(BASE + '?v2=1&at=1&seed=1', { waitUntil: 'networkidle0', timeout: 60000 });

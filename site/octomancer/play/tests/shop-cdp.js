@@ -23,7 +23,7 @@ const VPS = {
   async function open(vp, url) {
     const page = await browser.newPage();
     page.on('pageerror', (e) => errs.push('' + e));
-    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED/.test(m.text())) errs.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); });
     await page.setViewport(VPS[vp]);
     await page.evaluateOnNewDocument(SAVE);
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });

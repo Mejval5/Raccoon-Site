@@ -854,8 +854,14 @@ function planDiveBFS(world, x, y) {
 }
 
 let overBudgetSince = 0; // performance.now() timestamp, 0 = not currently over budget
+let perfCheckAt = 0;
 function checkPerfStepDown() {
   if (dprForcedDown) return;
+  // four times a second is plenty for a 2 s window: metrics() copies and sorts the frame times, which every frame was a steady cost
+  // and garbage on a slow phone (verification 2026-10-08 profile)
+  const t = performance.now();
+  if (t - perfCheckAt < 250) return;
+  perfCheckAt = t;
   const m = loop.metrics();
   if (m.samples < 30) return; // not enough of a window yet to judge
   const now = performance.now();

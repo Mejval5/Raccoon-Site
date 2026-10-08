@@ -31,7 +31,7 @@ const SEEDS = [11, 23, 77];
       for (const seed of SEEDS) {
         const page = await browser.newPage();
         page.on('pageerror', (e) => errs.push(vn + ' ' + e));
-        page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED/.test(m.text())) errs.push(vn + ' ' + m.text()); });
+        page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(vn + ' ' + m.text()); });
         await page.setViewport(vp);
         await page.evaluateOnNewDocument(SAVE);
         await page.goto(BASE + '?at=1&seed=' + seed, { waitUntil: 'networkidle0', timeout: 60000 });

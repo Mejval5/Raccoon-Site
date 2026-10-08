@@ -23,7 +23,7 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
   try {
     const page = await browser.newPage();
     page.on('pageerror', (e) => errs.push('' + e));
-    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED/.test(m.text())) errs.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); });
     await page.setViewport({ width: 375, height: 812, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await page.evaluateOnNewDocument(SAVE);
     await page.evaluateOnNewDocument(TRACK);

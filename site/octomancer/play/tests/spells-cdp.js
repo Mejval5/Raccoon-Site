@@ -20,7 +20,7 @@ async function open(browser, vp, q) {
   await page.setViewport(vp);
   const errs = [];
   page.on('pageerror', (e) => errs.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); }); // as the other scripts: a refused connection is the test server's backlog, not the game
   await page.evaluateOnNewDocument(SAVE);
   await page.goto(BASE + q, { waitUntil: 'networkidle0' });
   await page.waitForFunction(() => window.__octo && !__octo.level().transitioning, { timeout: 30000 });

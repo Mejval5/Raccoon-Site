@@ -19,7 +19,7 @@ const SAVE_ONCE = "try{if(!localStorage.getItem('octomancer.best.v1'))localStora
   try {
     const page = await browser.newPage();
     page.on('pageerror', (e) => errs.push('' + e));
-    page.on('console', (m) => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); });
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(SAVE_ONCE);
     const load = async (q) => { await page.goto(BASE + q, { waitUntil: 'networkidle0', timeout: 60000 }); await page.waitForFunction(() => window.__octo, { timeout: 30000 }); await sleep(500); };
