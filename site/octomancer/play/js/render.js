@@ -78,19 +78,19 @@ import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_DRAW_ORDE
 // repeat, alpha), an optional tint laid over the texture, per-tile art keys, and up to two rim strokes along the layer's
 // outline (width in tiles). Every layer is drawn as if it touched air everywhere; the next, higher layer covers it and its
 // rim overlaps the boundary. Rock keeps the original navy fill + mint rim.
-const MAT_FILL = ['', 'rgb(58,84,142)', 'rgb(24,23,40)', 'rgb(68,70,78)', 'rgb(96,66,40)', 'rgb(128,122,112)'];
+const MAT_FILL = ['', 'rgb(58,84,142)', 'rgb(24,23,40)', 'rgb(68,70,78)', 'rgb(96,66,40)', 'rgb(128,122,112)', 'rgb(178,92,78)'];
 // fish bone (2026-10-08): keyed bones over a dark silt fill, calmed by a cool tint so it is no busier than the rock
-const MAT_TEX = ['', 'rock', 'matBedrock', 'matFishbone', 'matTimber', 'matMasonry'];
-const MAT_TEX_UNITS = new Float32Array([0, ROCK_TILE_UNITS, 4, 5, 2, 3]);
-const MAT_TEX_ALPHA = new Float32Array([0, 0.8, 1, 1, 1, 1]);
-const MAT_TINT = ['', '', 'rgba(14,8,30,0.32)', 'rgba(34,46,70,0.22)', 'rgba(176,122,66,0.2)', 'rgba(30,44,78,0.28)']; // timber: a warm lift (verification 2026-10-08: it read too dark and muddy under the deeper levels' tint)
-const MAT_TILE_ART = [null, null, null, null, null, null]; // per-tile block sprites (none today: the skull bone blocks were replaced by fish bone)
-const MAT_RIM = ['', 'rgba(70,205,165,0.95)', 'rgb(8,7,16)', 'rgb(24,28,38)', 'rgb(34,22,13)', 'rgb(44,44,58)'];
-const MAT_RIM_W = new Float32Array([0, 0.1, 0.2, 0.11, 0.12, 0.11]);
-const MAT_RIM2 = ['', '', 'rgba(132,124,184,0.6)', 'rgba(196,190,164,0.35)', 'rgba(176,128,80,0.5)', 'rgba(200,196,186,0.45)'];
-const MAT_RIM2_W = new Float32Array([0, 0, 0.035, 0.03, 0.03, 0.03]);
+const MAT_TEX = ['', 'rock', 'matBedrock', 'matFishbone', 'matTimber', 'matMasonry', 'matCoral'];
+const MAT_TEX_UNITS = new Float32Array([0, ROCK_TILE_UNITS, 4, 5, 2, 3, 2]);
+const MAT_TEX_ALPHA = new Float32Array([0, 0.8, 1, 1, 1, 1, 1]);
+const MAT_TINT = ['', '', 'rgba(14,8,30,0.32)', 'rgba(34,46,70,0.22)', 'rgba(176,122,66,0.2)', 'rgba(30,44,78,0.28)', 'rgba(40,20,48,0.12)']; // timber: a warm lift (verification 2026-10-08: it read too dark and muddy under the deeper levels' tint)
+const MAT_TILE_ART = [null, null, null, null, null, null, null]; // per-tile block sprites (none today: the skull bone blocks were replaced by fish bone)
+const MAT_RIM = ['', 'rgba(70,205,165,0.95)', 'rgb(8,7,16)', 'rgb(24,28,38)', 'rgb(34,22,13)', 'rgb(44,44,58)', 'rgb(70,26,30)'];
+const MAT_RIM_W = new Float32Array([0, 0.1, 0.2, 0.11, 0.12, 0.11, 0.11]);
+const MAT_RIM2 = ['', '', 'rgba(132,124,184,0.6)', 'rgba(196,190,164,0.35)', 'rgba(176,128,80,0.5)', 'rgba(200,196,186,0.45)', 'rgba(255,170,140,0.5)'];
+const MAT_RIM2_W = new Float32Array([0, 0, 0.035, 0.03, 0.03, 0.03, 0.03]);
 /** Texture keys the wall bake uses (a cell baked before one loaded is baked again when it arrives). */
-const MAT_ART_KEYS = new Set(['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone']);
+const MAT_ART_KEYS = new Set(['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone', 'matCoral']);
 export const MATERIAL_STYLE = { MAT_FILL, MAT_RIM, MAT_RIM_W };
 
 // The bedrock beyond the level's sides (drawOuterRock, every frame the camera shows past the level, e.g. under the death

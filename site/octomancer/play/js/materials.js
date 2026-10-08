@@ -8,28 +8,29 @@
 //   masonry   the shop's stone frame
 //   bone      fragile fish-bone blocks (2026-10-08): crumble from a dash, any projectile, a flung prop, a bomb or a boulder (fragile.js)
 //   timber    sunken-ship wooden platforms
+//   coral     grown by the Coral Wall spell (spells, coral.js): never in a generated level; crumbles after a while, lowest of all
 // Wall traps (hazards) draw before all terrain; pushable blocks are props (props.js PK_BLOCK), not tiles.
 //
 // Room / map ASCII: '#' rock, 'X' bedrock, 'B' fish-bone block, '=' timber, 'M' masonry, 'O' a pushable block (water cell + prop).
 
-export const MAT_WATER = 0, MAT_ROCK = 1, MAT_BEDROCK = 2, MAT_BONE = 3, MAT_TIMBER = 4, MAT_MASONRY = 5;
-export const MAT_COUNT = 6;
-export const MAT_NAMES = ['water', 'rock', 'bedrock', 'bone', 'timber', 'masonry'];
+export const MAT_WATER = 0, MAT_ROCK = 1, MAT_BEDROCK = 2, MAT_BONE = 3, MAT_TIMBER = 4, MAT_MASONRY = 5, MAT_CORAL = 6;
+export const MAT_COUNT = 7;
+export const MAT_NAMES = ['water', 'rock', 'bedrock', 'bone', 'timber', 'masonry', 'coral'];
 
 /** Draw priority per material id (higher draws on top and owns the shared edge). */
-export const MAT_PRIORITY = new Uint8Array([0, 4, 5, 2, 1, 3]);
+export const MAT_PRIORITY = new Uint8Array([0, 5, 6, 3, 2, 4, 1]);
 /** Material ids, lowest priority first (the order render.js bakes the layers in). */
-export const MAT_DRAW_ORDER = Uint8Array.from([MAT_TIMBER, MAT_BONE, MAT_MASONRY, MAT_ROCK, MAT_BEDROCK]);
+export const MAT_DRAW_ORDER = Uint8Array.from([MAT_CORAL, MAT_TIMBER, MAT_BONE, MAT_MASONRY, MAT_ROCK, MAT_BEDROCK]);
 
 /** A bomb breaks it (everything but bedrock). */
-export const MAT_BOMBABLE = new Uint8Array([0, 1, 0, 1, 1, 1]);
+export const MAT_BOMBABLE = new Uint8Array([0, 1, 0, 1, 1, 1, 1]);
 /** A falling boulder smashes through it (wooden platforms and bone blocks). */
-export const MAT_BOULDER_BREAKS = new Uint8Array([0, 0, 0, 1, 1, 0]);
+export const MAT_BOULDER_BREAKS = new Uint8Array([0, 0, 0, 1, 1, 0, 1]);
 
 /** Room ASCII character -> material id (solid chars only). */
-export const MAT_CHARS = { '#': MAT_ROCK, X: MAT_BEDROCK, B: MAT_BONE, '=': MAT_TIMBER, M: MAT_MASONRY };
+export const MAT_CHARS = { '#': MAT_ROCK, X: MAT_BEDROCK, B: MAT_BONE, '=': MAT_TIMBER, M: MAT_MASONRY }; // coral is never in a room (only the spell grows it)
 /** Material id -> its room ASCII character (water '.'). */
-export const MAT_CHAR_OF = ['.', '#', 'X', 'B', '=', 'M'];
+export const MAT_CHAR_OF = ['.', '#', 'X', 'B', '=', 'M', 'C'];
 /** Room ASCII for a pushable block (a water cell with a block prop in it). */
 export const PUSH_BLOCK_CHAR = 'O';
 

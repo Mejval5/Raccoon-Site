@@ -142,3 +142,16 @@ Sized for DPR 2 at 144 device px per tile. The code drawing stays as the fallbac
 | `bomb`, `bombHot`, `bombMark` | the bomb as a volcanic nodule with a kelp fuse, the same about to burst (dull glowing cracks, cross-faded in code), the tutorial bomb marker (a pale carved glyph) | `art-src/r3/gen02-bomb.webp` | generated, Milan style |
 | `juiceDrop0`-`3`, `iconInkCloud`, `iconJar` | four fish-juice droplets, the Ink Cloud spell icon, the juice jar (see-through glass; the liquid is drawn in code behind it) | `art-src/r3/gen03-icons.webp` | generated, Milan style |
 | `inkPuff0`-`3` | four translucent ink billows for the Ink Cloud (turned and swelled in code) | `art-src/r3/gen04-ink.webp` | generated, Milan style |
+
+## Round 4 art (spells) (`play/img/v2/sprites-r4.webp` + `play/js/sprite-atlas-r4.js`, `play/img/v2/mat-coral.webp`)
+
+Four new spell icons, three rune stones and a coral wall texture, built by `octomancer-web/tools/export_r4_art.py` (same pipeline as
+round 3: openai-image-gen, gpt-image-2, quality medium, `edit` with a contact sheet of Milan's sprites and the round 3 icon sheet as
+references; sprites on flat magenta, keyed and despilled). 3 images generated, no drafts; sources in `octomancer-web/art-src/r4/`
+(`_ref.png` is the reference contact sheet). Atlas is 512 x 226 (about 33 KB). The icons and the coral material are wired by the owner.
+
+| atlas sprite | what | source | owner |
+|---|---|---|---|
+| `iconRiptide`, `iconCoralWall`, `iconAnchor`, `iconLure` | hotbar icons, 128 px tall: a curling water current with bubbles, a branching red-orange coral on a rock, a barnacled anchor with kelp, an anglerfish lure (pale green bulb) | `art-src/r4/gen01-icons.webp` | generated, Milan style |
+| `runeHeavy`, `runeDelayed`, `runeLingering` | rune stones, 96 px tall: pale teal-green carved glyph (three bars and a down arrow, a spiral, a tapering wave) on a dark slate stone | `art-src/r4/gen02-runes.webp` | generated, Milan style |
+| `img/v2/mat-coral.webp` | packed living coral wall texture, 512 px, seamless (seams blended by the tool) | `art-src/r4/gen03-coral.webp` | generated, Milan style |

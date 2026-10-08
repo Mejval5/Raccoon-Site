@@ -31,7 +31,7 @@ import { MAT_ROCK, MAT_BONE, MAT_BOULDER_BREAKS, setTileDrawHook } from './mater
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
-import { createBombs, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
+import { createBombs, spawnRubble, IDLE_TOSS_X, IDLE_TOSS_Y } from './bomb.js';
 import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
@@ -93,12 +93,15 @@ import { setCorpseArt } from './corpses-draw.js';
 import { questFail } from './quests.js';
 import { setStoryExact } from './save.js';
 import { STAT_ANGERED } from './journal.js';
-import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY } from './spells.js';
+import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY, resolveSlot, slotPrice, SLOT } from './spells.js';
+import { createSpellFx } from './spell-fx.js';
+import { runeForLevel, takeRune, runeName, PICKUP_DWELL, PEDESTAL_R } from './runes.js';
+import { drawSpellFx, drawRunePedestal, drawAnchorHeld } from './spell-fx-draw.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
 import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { CR_DASH } from './fragile.js';
-import { createHotbar, selectNext, selectIndex, selectedSpell, moveSlot } from './hotbar.js';
+import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { createInventoryUI } from './inventory-ui.js';
 import { drawItemIcon } from './items-draw.js';
@@ -328,6 +331,9 @@ const inkPhys = { props: null, corpses: null }; // what an ink blob shoves (inkj
 let inkResident = null; // this step's resident chunks, for the ambient fish the blobs can hit (inkAmbientTargets)
 
 if (V2) enemies.setInkClouds(inkClouds);
+// SPELLS-PICK.md: the level side of Riptide, Coral Wall, Anchor and the Delayed motes (spell-fx.js); the rune pedestal of this level (runes.js)
+let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
+let runeSpot = null;
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
 let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
 let autoDiveOn = false;
@@ -742,6 +748,7 @@ function step(dt) {
       }
     }
   }
+  if (V2) { spellFx.update(dt, octo); handleSpellFxEvents(); } // Delayed motes, coral growing and crumbling, an Anchor landing
   if (V2 && !isSafeState(run)) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
   if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
@@ -769,12 +776,13 @@ function step(dt) {
       for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
       if (broke) handleLootEvents();
     }
-    inkClouds.update(dt);
+    inkClouds.update(dt, currentAt);
     stepJuice(dt);
   }
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
     blastLog.push(ev.x, ev.y);
+    if (V2) { inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); spellFx.blast(ev.x, ev.y, BOMB_RADIUS); } // SPELLS-PICK: a blast blows an ink cloud out and ends a Lure
     const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
@@ -909,6 +917,63 @@ function spellTarget(snap) {
   }
   return { x, y };
 }
+const castCtx = { clouds: null, fx: null, x: 0, y: 0, vx: 0, vy: 0, dirX: 1, dirY: 0, now: 0 };
+/**
+ * Cast the selected hotbar slot (its spell and runes). Where it lands (SPELLS-PICK / V2-PLAN 17): with the mouse at the cursor
+ * (short of rock, within SPELL_REACH) and along the line to it; with keys or on a phone, 'ahead' spells (Riptide, Coral Wall)
+ * land SLOT.phoneAim tiles along the facing and 'self' ones (Ink Cloud, Anchor) on the octopus. Returns the cast result.
+ */
+function castSelected(snap, forceAt = null) {
+  const ids = selectedIds(hotbar());
+  const p = resolveSlot(ids);
+  if (!p) return -1;
+  const sp = p.spell;
+  // the hub, the tutorial and the rest grotto: no currents or coral (their hazards do not run); a cloud and an Anchor are harmless there
+  if (isSafeState(run) && (sp.effect === 'riptide' || sp.effect === 'coral' || sp.effect === 'lure')) { ui.showToast(sp.name + ' stirs nothing here', 1400); return -1; }
+  const mouse = snap.src && snap.src.spell === 'mouse' ? cursorWorld() : null;
+  let at, dx = lastAim.x, dy = lastAim.y;
+  if (forceAt) at = forceAt;
+  else if (sp.self) at = { x: octo.x, y: octo.y };
+  else if (mouse) { at = spellTarget(snap); const ex = mouse.x - octo.x, ey = mouse.y - octo.y, l = Math.hypot(ex, ey); if (l > 0.2) { dx = ex / l; dy = ey / l; } }
+  else if (sp.aim === 'ahead') at = aheadOf(dx, dy, SLOT.phoneAim);
+  else at = { x: octo.x, y: octo.y };
+  castCtx.clouds = inkClouds; castCtx.fx = spellFx; castCtx.x = at.x; castCtx.y = at.y; castCtx.vx = octo.vx; castCtx.vy = octo.vy;
+  castCtx.dirX = dx; castCtx.dirY = dy; castCtx.now = sim.time;
+  spellFx.setOcto(octo);
+  const r = castSpell(run, ids, castCtx);
+  if (r === CAST_OK) {
+    if (sp.effect === 'cloud') sfx.inkPuff(); else sfx.chime();
+    if (sp.effect === 'anchor') particles.shakeFx(1.2, 0.1);
+    runStats.spellsCast++;
+    runStats.byEffect[sp.effect] = (runStats.byEffect[sp.effect] | 0) + 1;
+    if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_COLLECTED); }
+    for (const m of p.mods) discover('rune-' + m);
+  } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
+  else if (r === -1 && sp.effect === 'coral') runStats.refused++; // no cell could grow: nothing was paid
+  return r;
+}
+/** `d` tiles along (ux, uy) from the octopus, stopping short of the first rock. */
+function aheadOf(ux, uy, d) {
+  const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+  let x = octo.x, y = octo.y;
+  for (let t = 0.25; t <= d + 1e-6; t += 0.25) { const nx = octo.x + ux * t, ny = octo.y + uy * t; if (world.isSolid(nx, ny)) break; x = nx; y = ny; }
+  return { x, y };
+}
+/** The current (jets and Riptides) at a point, or null: ink clouds, juice droplets and Delayed motes ride it. */
+function currentAt(x, y) { return hazards.forceAt ? hazards.forceAt(x, y) : null; }
+/** spell-fx.js events: coral growing and crumbling, a mote going off, an Anchor crushing or smashing. */
+const crumbleTile = [0, 0];
+function handleSpellFxEvents() {
+  for (const ev of spellFx.events) {
+    if (ev.type === 'coralGrow') particles.pickupSparkle(ev.x, ev.y + 0.3, '#ffb49a');
+    else if (ev.type === 'coralCrumble') { particles.bombDebris(ev.x, ev.y); crumbleTile[0] = Math.floor(ev.x); crumbleTile[1] = Math.floor(ev.y); spawnRubble(props, crumbleTile, 1, ev.x, ev.y - 0.5); }
+    else if (ev.type === 'moteFire') particles.pickupSparkle(ev.x, ev.y, '#9dffd8');
+    else if (ev.type === 'anchorCrush') { particles.shakeFx(4, 0.2); sfx.thud(); }
+    else if (ev.type === 'anchorSmash') { particles.bombDebris(ev.x, ev.y); particles.shakeFx(3, 0.18); sfx.thud(); }
+    else if (ev.type === 'lure' || ev.type === 'lureGone') particles.pickupSparkle(ev.x, ev.y, '#c8ffd8');
+    else if (ev.type === 'riptide') { for (let i = 0; i < 4; i++) particles.trailBubble(ev.x + (i - 1.5) * 0.15, ev.y); }
+  }
+}
 /** One step of the octopus's own actions: hotbar switching, the ink jet, casting the selected spell. */
 function stepCombat(snap, dt) {
   const hb = hotbar();
@@ -922,17 +987,7 @@ function stepCombat(snap, dt) {
     if (src === 'touch' && dir.y === 0 && Math.abs(lastAim.y) > 0.5) dir = lastAim; // nothing to aim at: the facing direction, up or down too
     if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; }
   }
-  if (snap.spell.pressed) {
-    const id = selectedSpell(hb);
-    const at = spellTarget(snap);
-    const r = castSpell(run, id, { clouds: inkClouds, x: at.x, y: at.y, vx: octo.vx, vy: octo.vy });
-    if (r === CAST_OK) {
-      const row = spellById(id);
-      sfx.inkPuff();
-      runStats.spellsCast++;
-      if (row && row.journal) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); }
-    } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
-  }
+  if (snap.spell.pressed) castSelected(snap);
 }
 /**
  * A beaten creature's body leaks its fish juice: a slow trickle of droplets from where it died (nothing pops out of it).
@@ -942,7 +997,7 @@ function bodyJuice(x, y, kind, n) { juiceDrops.leak(x, y, n); }
 /** Fish juice droplets: pulled in within JUICE.magnetR, poured into the jar on touch (a full jar leaves them be). */
 function stepJuice(dt) {
   slurpCool = Math.max(0, slurpCool - dt);
-  juiceDrops.update(dt, octo, world, juiceCap() - run.juice);
+  juiceDrops.update(dt, octo, world, juiceCap() - run.juice, currentAt);
   const ev = juiceDrops.events;
   if (!ev.collected) return;
   addJuice(run, ev.collected);
@@ -950,7 +1005,7 @@ function stepJuice(dt) {
   if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
   discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
 }
-const runStats = { shots: 0, spellsCast: 0, empty: 0, fish: 0 }; // test hook counters (__octo.combat())
+const runStats = { shots: 0, spellsCast: 0, empty: 0, fish: 0, refused: 0, byEffect: {} }; // test hook counters (__octo.combat())
 
 function clampAxis(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -1081,8 +1136,8 @@ function render(alpha, frameMs) {
   });
   if (V2) {
     hotbarUI.update(hotbarState());
-    const row = spellById(selectedSpell(hotbar()));
-    touchUI.setSpell(!!row && run.juice >= row.cost * JUICE.perCast);
+    const price = slotPrice(selectedIds(hotbar()));
+    touchUI.setSpell(price > 0 && run.juice >= price * JUICE.perCast);
   }
   debug.tick();
 }
@@ -1139,6 +1194,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     inkJet = createInkJet();
     resetAmbient(); // the background fish inked on the last level
     if (V2) enemies.setInkClouds(inkClouds);
+    spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
   sim.time = 0;
   entry = null;
@@ -1425,6 +1481,7 @@ function stepV2(snap) {
     }
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
     if ((seeTick & 15) === 4) for (let i = 0; i < keepers.n; i++) if (keepers.mode[i] !== KM_DEAD && Math.hypot(octo.x - keepers.x[i], octo.y - keepers.y[i]) < 9) discover('person-keeper');
+    tryTakeRune();
     if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
       siphonSpot.taken = true;
       if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
@@ -1555,7 +1612,9 @@ function v2Extra(c, camera, w2s, cw, ch) {
     const ppu = camera.pxPerUnit;
     drawItemIcon(c, 'siphon', cw / 2 + (siphonSpot.x - camera.x) * ppu, ch / 2 + (siphonSpot.y - 0.08 + Math.sin(t * 1.4) * 0.03 - camera.y) * ppu, ppu * 0.36);
   }
+  if (runeSpot && !runeSpot.taken && visibleAt(cullFlags('rune', 1), 0, runeSpot.x, runeSpot.y, 1.5)) drawRunePedestal(c, camera, cw, ch, runeSpot, t);
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
+  drawSpellFx(c, camera, cw, ch, spellFx, octo, t);
   drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t, JUICE.life);
   inkJet.draw(c, camera, cw, ch, t);
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
@@ -1576,6 +1635,7 @@ function v2PreWall(c, camera, cw, ch) {
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
+  drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (run.state === S_BIOME) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
@@ -1745,16 +1805,18 @@ function siphonLevel() {
   return start + ((run.diveSeed >>> 0) % (BIOME_LEVELS - start + 1));
 }
 /** A floor spot 3-9 tiles from the start (open water with rock under it), found by a flood from the start; null if none. */
-function findFloorSpot() {
+function findFloorSpot(dMin = 3, dMax = 9, avoid = null) {
   const sx = Math.floor(world.startX), sy = Math.floor(world.startY);
   const seen = new Set([sx + ',' + sy]), q = [[sx, sy]];
-  for (let qi = 0; qi < q.length && qi < 900; qi++) {
+  const cap = dMax > 9 ? 4000 : 900;
+  for (let qi = 0; qi < q.length && qi < cap; qi++) {
     const [x, y] = q[qi];
     const d = Math.hypot(x - sx, y - sy);
-    if (d >= 3 && d <= 9 && world.isSolid(x + 0.5, y + 1.5) && !world.isSolid(x - 0.5, y + 0.5) && !world.isSolid(x + 1.5, y + 0.5) && !world.isSolid(x + 0.5, y - 0.5)) return { x: x + 0.5, y: y + 0.72 };
+    if (d >= dMin && d <= dMax && world.isSolid(x + 0.5, y + 1.5) && !world.isSolid(x - 0.5, y + 0.5) && !world.isSolid(x + 1.5, y + 0.5) && !world.isSolid(x + 0.5, y - 0.5)
+      && !(avoid && Math.hypot(x + 0.5 - avoid.x, y + 0.72 - avoid.y) < 3) && !(world.inShop && world.inShop(x + 0.5, y + 0.5))) return { x: x + 0.5, y: y + 0.72 };
     for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const k = nx + ',' + ny;
-      if (seen.has(k) || world.isSolid(nx + 0.5, ny + 0.5) || d > 9) continue;
+      if (seen.has(k) || world.isSolid(nx + 0.5, ny + 0.5) || d > dMax) continue;
       seen.add(k); q.push([nx, ny]);
     }
   }
@@ -1782,7 +1844,7 @@ function stepRest() {
 
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null; swift = null;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null; swift = null; runeSpot = null;
   npcs = makeNpcs();
   if (run.state === S_BIOME || run.state === S_REST) for (let w = 1; w < 5; w++) { // r3: a grudge lasts the whole dive (the grotto too)
     if (people.grudge[w] === G_ANGRY) npcMoods.hostile[w] = 1;
@@ -1811,7 +1873,38 @@ function setupLevelExtras() {
     setupTimePressure(spec);
     setupPeople();
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
+    placeRunePedestal();
   }
+}
+/** SPELLS-PICK: this level's rune pedestal: the next rune of the dive's order on a floor 8-22 tiles from the start (never the Siphon Shell's spot). */
+function placeRunePedestal() {
+  runeSpot = null;
+  if (MOVETEST) return;
+  const id = runeForLevel((run.diveSeed >>> 0) + 977 * (run.level | 0), hotbar());
+  if (!id) return;
+  const p = findFloorSpot(8, 22, siphonSpot);
+  if (p) runeSpot = { x: p.x, y: p.y, id, taken: false, dwell: 0, refusedAt: -99 };
+}
+/**
+ * The one rune pickup (retarget it to the hand's F verb when that lands): staying on the pedestal PICKUP_DWELL s takes the rune.
+ * `now` skips the dwell (an interact key). Returns true when it was taken.
+ */
+function tryTakeRune(now = false) {
+  if (!runeSpot || runeSpot.taken) return false;
+  const on = Math.hypot(octo.x - runeSpot.x, octo.y - (runeSpot.y - 0.35)) < PEDESTAL_R;
+  runeSpot.dwell = on ? runeSpot.dwell + STEP : 0;
+  if (!on || (!now && runeSpot.dwell < PICKUP_DWELL)) return false;
+  const slot = takeRune(hotbar(), runeSpot.id);
+  if (slot < 0) {
+    if (sim.time - runeSpot.refusedAt > 3) { ui.showToast('No spell on your bar can take the ' + runeName(runeSpot.id) + ' rune', 2200); runeSpot.refusedAt = sim.time; }
+    return false;
+  }
+  runeSpot.taken = true;
+  const id = runeSpot.id, row = spellById(id);
+  if (row) discover(row.journal); else { discover('rune-' + id); journal.bump('rune-' + id, STAT_COLLECTED); }
+  ui.showToast(row ? 'A rune: ' + row.name + ' (right click / F)' : 'A rune: ' + runeName(id) + ', set into ' + runeName(hotbar().slots[slot].ids[0]), 2600, false, true);
+  particles.pickupSparkle(runeSpot.x, runeSpot.y - 0.4, '#9dffd8'); sfx.chime();
+  return true;
 }
 
 // --- 2026-10-08: time pressure (beholder.js) and the Swift Current bonus (swift.js) ---
@@ -2722,6 +2815,29 @@ window.__octo = {
   dropJuice(x, y, n) { juiceDrops.spawn(x != null ? x : octo.x, y != null ? y : octo.y, n || 3); return juiceDrops.count(); },
   /** Whether a creature at (x, y) has lost the octopus to an ink cloud. */
   inkHides(x, y) { return inkClouds.hides(x, y, octo.x, octo.y); },
+  /** SPELLS-PICK test hooks: the spell effects of this level, the rune pedestal, a rune straight onto the bar, a cast at a point. */
+  spells() {
+    const co = spellFx.coralData, mo = spellFx.moteData, hd = hazards.data;
+    const cells = []; for (let i = 0; i < co.n; i++) if (co.state[i]) cells.push({ tx: co.tx[i], ty: co.ty[i], state: co.state[i], left: spellFx.coralLeft(i) });
+    const rips = []; for (let i = 0; i < hd.n; i++) if (hd.temp[i] && hd.kind[i] === 1) rips.push({ x: hd.x[i], y: hd.y[i], dx: hd.dx[i], dy: hd.dy[i], len: hd.len[i], hw: hd.hw[i], pw: hd.pw[i], age: hd.t[i], life: hd.v[i] });
+    const motes = []; for (let i = 0; i < mo.n; i++) if (mo.alive[i]) motes.push({ x: mo.x[i], y: mo.y[i], t: mo.t[i], delay: mo.delay[i] });
+    const hb = hotbar();
+    return { stats: { ...spellFx.stats }, cells, coral: spellFx.coralCount(), riptides: rips, motes, anchorT: octo.anchorT, anchorVy: octo.anchorVy,
+      rune: runeSpot ? { ...runeSpot } : null, slots: hb.slots.map((sl) => sl.ids.slice()), sel: hb.sel, price: slotPrice(selectedIds(hb)), lock: run.castLockUntil || 0, now: sim.time };
+  },
+  /** Put rune `id` straight onto the hotbar (as a pedestal would); returns the slot or -1. */
+  giveRune(id) { return takeRune(hotbar(), id); },
+  /** Replace the bar with these slots (arrays of ids) and select `sel` (tests). */
+  setSlots(slots, sel = 0) { const hb = hotbar(); hb.slots = slots.map((ids) => ({ ids: ids.slice() })); hb.sel = Math.max(0, Math.min(hb.slots.length - 1, sel)); return hb.slots.length; },
+  /** Cast the selected slot as the keyboard does, or at world point (x, y) along (dx, dy) when given. Returns the cast result (1 ok, 0 empty, -1 none, 2 locked). */
+  cast(x, y, dx, dy) {
+    if (dx !== undefined) lastAim = { x: dx, y: dy };
+    return castSelected({ src: { spell: 'key' } }, x !== undefined && x !== null ? { x, y } : null);
+  },
+  /** Is the world point (x, y) rock (tests stage spells in open water)? */
+  isSolid(x, y) { return world.isSolid(x, y); },
+  /** Move this level's rune pedestal next to (x, y) (tests and screenshots). */
+  placeRuneAt(x, y, id) { runeSpot = { x, y, id: id || (runeSpot && runeSpot.id) || runeForLevel(run.diveSeed >>> 0, hotbar()) || 'riptide', taken: false, dwell: 0, refusedAt: -99 }; return { ...runeSpot }; },
   openInventory() { return openInventory(); },
   closeInventory() { return closeInventory(); },
   /** Test hook: no contact damage while on (scripted whole-run playthroughs). */
