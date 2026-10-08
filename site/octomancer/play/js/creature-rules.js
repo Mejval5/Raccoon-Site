@@ -51,6 +51,10 @@ export const SOURCES = {
   slam:     { dmg: 4,  crush: false, knock: 4,  stun: STUN_S, blame: 'none', octoOnly: true, octo: { hearts: 1, stun: STUN_S, knock: STUN_KNOCKBACK } },
   snap:     { dmg: 30, crush: true,  knock: 0,  stun: 0,    blame: 'none',  octoOnly: true, octo: { kill: 'clam' } },
   grab:     { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'none',  octoOnly: true, octo: { kill: 'eaten' } },
+  // spells (SPELLS-PICK.md): Riptide is a jet the octopus made (a push, no damage: it only delivers bodies to what kills them);
+  // Anchor is the octopus landing like a falling rock (a body hit: it splats the one-hit kinds, only bumps the rest)
+  riptide:  { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'octo',  push: true, octo: {} },
+  anchor:   { dmg: 1,  crush: true,  knock: 4,  stun: 0.35, blame: 'octo',  octo: {} },
   beholder: { dmg: 999, crush: true, knock: 0,  stun: 0,    blame: 'none',  octoOnly: true, octo: { kill: '' } },
 };
 export const SOURCE_NAMES = Object.keys(SOURCES);
@@ -90,7 +94,7 @@ export const CREATURES = {
   pip:      { family: 'npc', hp: 2, mass: 0.6, physics: PH_SWIM },
   quill:    { family: 'npc', hp: 4, mass: 1.2, physics: PH_SWIM },
   host:     { family: 'npc', hp: 5, mass: 1,   physics: PH_SWIM },
-  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25 },
+  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25, riptide: 0.5 },
               why: 'super buff (Spelunky shopkeeper): ink and dashes barely scratch him, bombs, boulders and spikes really hurt' },
   octopus:  { family: 'octo', hp: 3, mass: 1, physics: PH_SWIM },
 };
@@ -125,6 +129,9 @@ export function resolveHit(kind, src, dmg = -1, shut = false) {
   o.stun = row.immuneKnockout ? 0 : s.stun * (row.stunScale !== undefined ? row.stunScale : 1);
   return o;
 }
+
+/** How strongly a push source (a jet, a Riptide) moves `kind`: its resist entry for that source (the keeper rides a Riptide at half force), else 1. */
+export function pushScale(kind, src) { const r = rowOf(kind); return r.resist && r.resist[src] !== undefined ? r.resist[src] : 1; }
 
 /** Does `kind` take anything at all from `src` (ignoring a shell's state)? For tests, the journal and the docs. */
 export function affects(kind, src) { return !resolveHit(kind, src).ignore; }

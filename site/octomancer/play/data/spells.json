@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "juice": {
   "perCast": 4,
   "jarCasts": 3,
@@ -12,6 +12,14 @@
   "life": 3.5
  },
  "start": "ink-cloud",
+ "slot": {
+  "maxMods": 2,
+  "radiusClamp": [0.5, 3],
+  "durationClamp": [0.4, 3],
+  "castLock": 0.4,
+  "maxPending": 4,
+  "phoneAim": 1.5
+ },
  "spells": [
   {
    "id": "ink-cloud",
@@ -21,8 +29,72 @@
    "radius": 2.1,
    "duration": 4,
    "drift": 0.25,
+   "power": 1,
+   "delay": 0,
+   "max": 4,
+   "aim": "self",
+   "uses": ["heavy", "delayed", "lingering"],
    "journal": "spell-ink-cloud",
    "blurb": "a puff of ink: enemies lose sight of you"
+  },
+  {
+   "id": "riptide",
+   "name": "Riptide",
+   "effect": "riptide",
+   "cost": 1,
+   "radius": 1.1,
+   "length": 5,
+   "duration": 3,
+   "swell": 0.3,
+   "fade": 0.5,
+   "power": 0.8,
+   "delay": 0,
+   "max": 2,
+   "aim": "ahead",
+   "uses": ["heavy", "delayed", "lingering"],
+   "journal": "spell-riptide",
+   "blurb": "a current runs from where you cast: it carries whatever is loose, you too"
+  },
+  {
+   "id": "coral-wall",
+   "name": "Coral Wall",
+   "effect": "coral",
+   "cost": 1,
+   "radius": 1,
+   "cells": 3,
+   "duration": 25,
+   "grow": 0.4,
+   "power": 1,
+   "delay": 0,
+   "max": 24,
+   "aim": "ahead",
+   "uses": ["heavy", "delayed", "lingering"],
+   "journal": "spell-coral-wall",
+   "blurb": "a column of coral grows up from the spot and crumbles after a while"
+  },
+  {
+   "id": "anchor",
+   "name": "Anchor",
+   "effect": "anchor",
+   "cost": 1,
+   "self": true,
+   "duration": 2,
+   "rest": 0.4,
+   "sink": 16,
+   "cap": 12,
+   "steer": 0.4,
+   "crushSpeed": 6,
+   "power": 1,
+   "delay": 0,
+   "aim": "self",
+   "uses": ["delayed"],
+   "journal": "spell-anchor",
+   "blurb": "you drop like a stone: crush what is under you, nothing throws you about"
   }
+ ],
+ "mods": [
+  { "id": "heavy", "kind": "mod", "name": "Heavy", "radiusMul": 1.6, "durationMul": 0.6, "cost": 1, "journal": "rune-heavy", "blurb": "bigger, but over sooner" },
+  { "id": "delayed", "kind": "mod", "name": "Delayed", "delayAdd": 1.5, "cost": 0, "journal": "rune-delayed", "blurb": "the cast drifts off as a glowing mote and goes off 1.5 s later" },
+  { "id": "lingering", "kind": "mod", "name": "Lingering", "durationMul": 2.5, "powerMul": 0.6, "cost": 1, "journal": "rune-lingering", "blurb": "lasts much longer, a little weaker; coral stays for the whole level" }
  ]
 }

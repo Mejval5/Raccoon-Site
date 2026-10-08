@@ -31,7 +31,7 @@ export async function runSpellTests(assert) {
   // ---------------------------------------------------------------- data
   assert('spells.json: Ink Cloud is the starting spell, costs 1 cast, 4 s, a jar of 3 casts, a full jar at the start',
     START_SPELL === 'ink-cloud' && spellById('ink-cloud').cost === 1 && spellById('ink-cloud').duration === 4 && JUICE.jarCasts === 3 && JUICE.startCasts === 3
-    && SPELLS.length === 1 && juiceCap() === 3 * JUICE.perCast && juiceStart() === juiceCap());
+    && SPELLS.length === 4 && juiceCap() === 3 * JUICE.perCast && juiceStart() === juiceCap());
   {
     let lo = 9, hi = 0;
     for (let k = 0; k < 400; k++) { const n = dropCount(1234, k); lo = Math.min(lo, n); hi = Math.max(hi, n); }
@@ -196,7 +196,7 @@ export async function runSpellTests(assert) {
       const b = castSpell(r, selectedSpell(hb), { clouds: cl, x: 0, y: 0, vx: 0, vy: 0 });
       assert('hotbar: switching back casts Ink Cloud' + ` [${selectedSpell(hb)} ${b} ${r.juice} ${cl.data.r[1]}]`, selectedSpell(hb) === 'ink-cloud' && b === CAST_OK && r.juice === 0 && Math.abs(cl.data.r[1] - spellById('ink-cloud').radius) < 1e-5);
     } finally { remove(); }
-    assert('the test-only row is removed again', !spellById('test-veil') && SPELLS.length === 1);
+    assert('the test-only row is removed again', !spellById('test-veil') && SPELLS.length === 4);
   }
 
   // ---------------------------------------------------------------- drawing (culled, no throw)

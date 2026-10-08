@@ -269,6 +269,14 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       return true;
     },
 
+    /** Spells (Coral Wall): a water tile becomes material `mat` (placeRock generalised). False when it is not open water or on the border. */
+    placeTile(tx, ty, mat) {
+      const x = Math.floor(tx), y = Math.floor(ty);
+      if (border(x, y) || tiles[y * W + x] !== 0 || !mat) return false;
+      setTile(x, y, mat);
+      return true;
+    },
+
     getWallOutline,
     wallSegmentsNear,
     getLayerOutline,

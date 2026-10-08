@@ -50,21 +50,21 @@ async function setStage(page) {
     await setStage(page);
     let j0 = await J(page);
     check('desktop: a dive starts with a full jar (3 casts)', j0.juice === j0.cap && j0.cap === 3 * j0.perCast);
-    await page.keyboard.press('KeyF'); await sleep(150);
+    await page.keyboard.press('KeyF'); await sleep(450); // spells: one 0.4 s cast lock between casts (SPELLS-PICK)
     let j1 = await J(page);
     check('keyboard F casts Ink Cloud (one cast paid, a cloud)', j1.juice === j0.juice - j0.perCast && j1.clouds === 1);
-    await page.keyboard.press('KeyC'); await sleep(150);
+    await page.keyboard.press('KeyC'); await sleep(450);
     let j2 = await J(page);
     check('keyboard C casts too', j2.juice === j1.juice - j0.perCast && j2.clouds === 2);
     const mid = { x: 900, y: 450 };
     await page.mouse.move(mid.x, mid.y);
-    await page.mouse.click(mid.x, mid.y, { button: 'right' }); await sleep(150);
+    await page.mouse.click(mid.x, mid.y, { button: 'right' }); await sleep(450);
     let j3 = await J(page);
     check('right click casts the selected spell toward the cursor', j3.juice === j2.juice - j0.perCast && j3.clouds === 3);
     const cl = j3.cloudList.sort((a, b) => a.age - b.age)[0];
     const oNow = await page.evaluate(() => __octo.state().octopus);
     check('the right-click cloud lands toward the cursor (right of the octopus, at most 3 tiles out)', cl.x > oNow.x + 0.5 && Math.hypot(cl.x - oNow.x, cl.y - oNow.y) <= 3.3, JSON.stringify([cl.x, cl.y, oNow.x, oNow.y]));
-    await page.keyboard.press('KeyF'); await sleep(150);
+    await page.keyboard.press('KeyF'); await sleep(450);
     const s0 = (await J(page)).empty;
     const shaken = await page.evaluate(() => !!document.querySelector('.octo-jar-shake'));
     check('keyboard F with an empty jar fails: the jar shakes, nothing is cast', (await J(page)).juice === 0 && s0 === 1 && shaken);

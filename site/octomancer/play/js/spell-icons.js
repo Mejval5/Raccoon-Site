@@ -14,13 +14,32 @@ function puffs(ctx, list, fill, ink, lw) {
   for (const [cx, cy, cr] of list) { ctx.beginPath(); ctx.arc(cx, cy, cr, 0, TAU); ctx.fill(); }
 }
 
+// painted icons (round 3 atlas: Ink Cloud; round 4: the first spell set and its runes, SPELLS-PICK.md)
+const ICON_SPRITE = { 'ink-cloud': 'iconInkCloud', riptide: 'iconRiptide', 'coral-wall': 'iconCoralWall', anchor: 'iconAnchor', lure: 'iconLure',
+  heavy: 'runeHeavy', delayed: 'runeDelayed', lingering: 'runeLingering' };
+
+/** A small carved rune stone (Heavy, Delayed, Lingering) set under a spell icon; greyed when it does nothing on that spell. */
+export function drawRuneBadge(ctx, id, x, y, r, greyed = false) {
+  ctx.save();
+  if (greyed) ctx.globalAlpha = 0.35;
+  const name = ICON_SPRITE[id];
+  if (!(name && spriteRect(name) && drawSprite(ctx, name, x, y, 0, 2 * r, 0.5, 0.5))) {
+    ctx.fillStyle = '#34444a'; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, r * 0.15);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#9dffd8'; ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(id[0].toUpperCase(), x, y + r * 0.05);
+  }
+  ctx.restore();
+}
+
 export function drawSpellIcon(ctx, id, x, y, r) {
   ctx.save();
   ctx.translate(x, y);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   const lw = Math.max(1.2, r * 0.11);
-  if (id === 'ink-cloud' && spriteRect('iconInkCloud')) drawSprite(ctx, 'iconInkCloud', 0, 0, 0, 2 * r, 0.5, 0.5);
-  else if (id !== 'ink-cloud' && spriteRect('stone')) drawSprite(ctx, 'stone', 0, 0, 0, 2 * r, 0.5, 0.5);
+  const painted = ICON_SPRITE[id];
+  if (painted && spriteRect(painted)) drawSprite(ctx, painted, 0, 0, 0, 2 * r, 0.5, 0.5);
+  else if (!painted && spriteRect('stone')) drawSprite(ctx, 'stone', 0, 0, 0, 2 * r, 0.5, 0.5);
   else if (id === 'ink-cloud') {
     const blobs = [[-0.5, 0.2, 0.36], [0.1, 0.32, 0.4], [0.5, 0.12, 0.32], [-0.25, -0.2, 0.4], [0.28, -0.22, 0.36], [0, -0.5, 0.26]];
     puffs(ctx, blobs.map(([a, b, c]) => [a * r, b * r, c * r]), '#2b2038', INK, lw);

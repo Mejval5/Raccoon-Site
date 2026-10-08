@@ -3,7 +3,7 @@
 // hand-made grid), bedrock survives bombs, bombs / boulders break what they should, and no seam inside a material.
 import {
   MAT_WATER, MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_CHARS, MAT_CHAR_OF, MAT_PRIORITY, MAT_DRAW_ORDER,
-  MAT_NAMES, setTileDrawHook,
+  MAT_NAMES, setTileDrawHook, MAT_CORAL,
 } from '../js/materials.js';
 import { createRoomBank, ROOM_W, ROOM_H, RC, CELL_ROCK } from '../js/rooms.js';
 import { parseAuthoredMap } from '../js/authored.js';
@@ -32,7 +32,7 @@ const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 export async function runMaterialsTests(assert, bank) {
   // ---- ids and room ASCII ----
   assert('materials: ids 0 water, 1 rock, 2 bedrock, 3 bone, 4 timber, 5 masonry', MAT_WATER === 0 && MAT_ROCK === 1 && MAT_BEDROCK === 2 && MAT_BONE === 3 && MAT_TIMBER === 4 && MAT_MASONRY === 5);
-  assert('materials: draw order is timber < bone < masonry < rock < bedrock (bedrock on top)', MAT_DRAW_ORDER.join() === [MAT_TIMBER, MAT_BONE, MAT_MASONRY, MAT_ROCK, MAT_BEDROCK].join() &&
+  assert('materials: draw order is coral < timber < bone < masonry < rock < bedrock (bedrock on top; coral only grows from the spell)', MAT_DRAW_ORDER.join() === [MAT_CORAL, MAT_TIMBER, MAT_BONE, MAT_MASONRY, MAT_ROCK, MAT_BEDROCK].join() &&
     MAT_DRAW_ORDER.every((m, k) => k === 0 || MAT_PRIORITY[m] > MAT_PRIORITY[MAT_DRAW_ORDER[k - 1]]));
   assert('materials: every solid char maps to its id and back', Object.keys(MAT_CHARS).every((c) => MAT_CHAR_OF[MAT_CHARS[c]] === c));
   {

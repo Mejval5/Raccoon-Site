@@ -4,7 +4,8 @@
 
 import { ITEM_DEFS } from './items.js';
 import { drawItemIcon } from './items-draw.js';
-import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from './spell-icons.js';
+import { drawSpellIcon, drawJarIcon, drawBombSlotIcon, drawRuneBadge } from './spell-icons.js';
+import { resolveSlot, modById } from './spells.js';
 import { onSpritesReady } from './sprites.js';
 
 function el(tag, className, text) {
@@ -58,15 +59,21 @@ export function createInventoryUI(root, handlers = {}) {
     sec.appendChild(el('h3', 'octo-inv-h', 'Spells'));
     const n = state.slots.length;
     state.slots.forEach((slot, i) => {
-      const id = slot.ids[0];
+      const fold = resolveSlot(slot.ids);
+      const id = fold ? fold.spell.id : slot.ids[0];
       const row = state.spellRow ? state.spellRow(id) : null;
+      const runes = slot.ids.filter((r) => modById(r));
       const li = el('div', 'octo-inv-row octo-inv-spell' + (i === state.sel ? ' is-selected' : ''));
       li.dataset.slot = String(i);
-      li.appendChild(iconCanvas(40, (ctx, px) => drawSpellIcon(ctx, id, px / 2, px / 2, px * 0.38)));
+      li.appendChild(iconCanvas(40, (ctx, px) => {
+        drawSpellIcon(ctx, id, px / 2, px * (runes.length ? 0.42 : 0.5), px * (runes.length ? 0.32 : 0.38));
+        runes.forEach((r, k) => drawRuneBadge(ctx, r, px * (runes.length === 1 ? 0.5 : 0.33 + 0.34 * k), px * 0.84, px * 0.13, !!fold && fold.greyed.includes(r)));
+      }));
       const text = el('div', 'octo-inv-text');
       text.append(el('div', 'octo-inv-name', (i + 1) + '. ' + (row ? row.name : id)));
       if (row && row.blurb) text.appendChild(el('div', 'octo-inv-blurb', row.blurb));
-      if (row) text.appendChild(el('div', 'octo-inv-meta', 'costs ' + row.cost + (row.cost === 1 ? ' cast' : ' casts')));
+      if (runes.length) text.appendChild(el('div', 'octo-inv-meta', 'runes: ' + runes.map((r) => modById(r).name + (fold && fold.greyed.includes(r) ? ' (does nothing here)' : '')).join(', ')));
+      if (row) { const c = fold ? fold.price : row.cost; text.appendChild(el('div', 'octo-inv-meta', 'costs ' + c + (c === 1 ? ' cast' : ' casts'))); }
       li.appendChild(text);
       const mv = el('div', 'octo-inv-moves');
       const up = el('button', 'octo-inv-move', '◀'); up.type = 'button'; up.dataset.dir = 'left';

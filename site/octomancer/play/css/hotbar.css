@@ -57,6 +57,21 @@
   pointer-events: none;
 }
 .octo-hb-key-bomb { left: auto; right: 4px; font-size: 10px; opacity: 0.85; }
+/* SPELLS-PICK: a slot whose runes make it cost more than one cast shows its price (in casts) in the top right, as a small juice drop count */
+.octo-hb-price {
+  position: absolute;
+  right: 3px;
+  top: 1px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: rgba(74, 106, 62, 0.92);
+  border: 1px solid var(--ink);
+  font: 700 10px/1.25 'Quicksand', sans-serif;
+  text-align: center;
+  color: #eaf5ee;
+  pointer-events: none;
+}
 
 /* selected: a paler carved rim plus a small kelp tie over the top edge */
 .octo-hb-slot.is-selected {

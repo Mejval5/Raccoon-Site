@@ -51,22 +51,84 @@ export function dropCount(seed, killIndex) {
   return JUICE.dropMin + Math.min(JUICE.dropMax - JUICE.dropMin, Math.floor(u * (JUICE.dropMax - JUICE.dropMin + 1)));
 }
 
-export const CAST_OK = 1, CAST_EMPTY = 0, CAST_NONE = -1;
-/** What each spell `effect` does. `ctx` = {clouds, x, y, vx, vy}. Returns true if it happened. */
-const EFFECTS = {
-  cloud(spell, ctx) { return ctx.clouds.puff(ctx.x, ctx.y, ctx.vx, ctx.vy, spell) >= 0; },
+// ------------------------------------------------------------------------------------------ rune modifiers (SPELLS-PICK.md section 2)
+/** Slot rules: maxMods, radiusClamp, durationClamp, castLock (s), maxPending (Delayed motes), phoneAim (tiles ahead). */
+export const SLOT = Object.freeze({ ...json.slot });
+/** The modifier rows (`kind: "mod"`): Heavy, Delayed, Lingering. They sit in a hotbar slot's id list after the spell. */
+export const MODS = (json.mods || []).map((m) => Object.freeze({ ...m }));
+const MOD_BY_ID = new Map(MODS.map((m) => [m.id, m]));
+export function modById(id) { return MOD_BY_ID.get(id) || null; }
+export function isMod(id) { return MOD_BY_ID.has(id); }
+/** A rune row of either kind (a spell or a modifier), for the journal and the pedestals. */
+export function runeRow(id) { return BY_ID.get(id) || MOD_BY_ID.get(id) || null; }
+/** Whether modifier `modId` changes `spellId` (Heavy and Lingering are greyed on Anchor: it has no size and its time is its own). */
+export function modApplies(spellId, modId) { const s = spellById(spellId); return !!s && !!modById(modId) && Array.isArray(s.uses) && s.uses.includes(modId); }
+
+const clampTo = (v, r) => (v < r[0] ? r[0] : v > r[1] ? r[1] : v);
+/**
+ * Fold a slot's id list (one spell, then up to SLOT.maxMods modifiers) into the numbers a cast uses and its whole-cast price.
+ * Returns { spell, mods (the ids that apply), greyed (the ids that do not), price (casts, a whole number, never below 1),
+ * radius, length, cells, duration, power, delay, permanent } or null when the list holds no spell. Pure: tests read it as is.
+ */
+export function resolveSlot(ids) {
+  const list = typeof ids === 'string' ? [ids] : ids || [];
+  let spell = null;
+  for (const id of list) { const s = spellById(id); if (s) { spell = s; break; } }
+  if (!spell) return null;
+  const mods = [], greyed = [];
+  let rm = 1, dm = 1, pm = 1, delay = spell.delay || 0, price = spell.cost, lingering = false;
+  for (const id of list) {
+    const m = modById(id);
+    if (!m) continue;
+    if (mods.length >= SLOT.maxMods || !modApplies(spell.id, id)) { greyed.push(id); continue; }
+    mods.push(id);
+    rm *= m.radiusMul || 1; dm *= m.durationMul || 1; pm *= m.powerMul || 1;
+    delay += m.delayAdd || 0; price += m.cost || 0;
+    if (id === 'lingering') lingering = true;
+  }
+  rm = clampTo(rm, SLOT.radiusClamp); dm = clampTo(dm, SLOT.durationClamp);
+  return {
+    spell, mods, greyed,
+    price: Math.max(1, Math.round(price)),
+    radius: (spell.radius || 0) * rm,
+    length: (spell.length || 0) * rm,
+    cells: Math.max(1, Math.round((spell.cells || 1) * rm)),
+    duration: (spell.duration || 0) * dm,
+    power: (spell.power || 1) * pm,
+    drift: spell.drift || 0,
+    delay,
+    permanent: lingering && spell.effect === 'coral', // Lingering Coral Wall lasts the level
+  };
+}
+/** A slot's price in casts (0 when it holds no spell). */
+export function slotPrice(ids) { const r = resolveSlot(ids); return r ? r.price : 0; }
+
+export const CAST_OK = 1, CAST_EMPTY = 0, CAST_NONE = -1, CAST_BUSY = 2;
+/**
+ * What each spell `effect` does with the folded slot `p` (resolveSlot) at ctx's point. ctx = {clouds, fx, x, y, vx, vy, dirX, dirY}:
+ * fx is the level's spell effects (spell-fx.js; absent in old tests, then only the cloud works). Returns true if it happened.
+ */
+export const EFFECTS = {
+  cloud(p, ctx) { return ctx.clouds.puff(ctx.x, ctx.y, ctx.vx, ctx.vy, p) >= 0; },
+  riptide(p, ctx) { return !!ctx.fx && ctx.fx.riptide(ctx.x, ctx.y, ctx.dirX, ctx.dirY, p); },
+  coral(p, ctx) { return !!ctx.fx && ctx.fx.coral(ctx.x, ctx.y, p); },
+  anchor(p, ctx) { return !!ctx.fx && ctx.fx.anchor(p); },
 };
 /**
- * Cast a spell (the hotbar's selected one) out of the run's jar: CAST_OK (paid and done), CAST_EMPTY (not enough juice:
- * the jar shakes) or CAST_NONE (no such spell). `ctx` is what the effects need ({clouds, x, y, vx, vy}).
+ * Cast a hotbar slot (its id list, or one spell id) out of the run's jar: CAST_OK (paid and done), CAST_EMPTY (not enough juice:
+ * the jar shakes), CAST_NONE (no such spell, or the effect could not happen: nothing is paid) or CAST_BUSY (the 0.4 s cast lock;
+ * only when ctx.now is given). A slot with Delayed is paid now and goes off later (ctx.fx.defer).
  */
-export function castSpell(run, spellId, ctx) {
-  const spell = spellById(spellId);
-  if (!spell || !EFFECTS[spell.effect]) return CAST_NONE;
-  const price = spell.cost * JUICE.perCast;
+export function castSpell(run, ids, ctx) {
+  const p = resolveSlot(ids);
+  if (!p || !EFFECTS[p.spell.effect]) return CAST_NONE;
+  if (ctx.now !== undefined && run.castLockUntil !== undefined && ctx.now < run.castLockUntil) return CAST_BUSY;
+  const price = p.price * JUICE.perCast;
   if (run.juice < price) return CAST_EMPTY;
-  if (!EFFECTS[spell.effect](spell, ctx)) return CAST_NONE;
+  const ok = p.delay > 0 && ctx.fx ? ctx.fx.defer(p, ctx) : EFFECTS[p.spell.effect](p, ctx);
+  if (!ok) return CAST_NONE;
   run.juice -= price;
+  if (ctx.now !== undefined) run.castLockUntil = ctx.now + SLOT.castLock;
   return CAST_OK;
 }
 
@@ -119,7 +181,7 @@ export function createJuiceDrops() {
      * One fixed step. `room` = droplets the jar can still take (0: a full jar neither pulls nor takes any). Only an octopus with the
      * Siphon Shell (octo.siphonR > 0) pulls droplets in within that reach and drinks them; for anyone else they just dissolve.
      */
-    update(dt, octo, world, room) {
+    update(dt, octo, world, room, force = null) { // force(x, y): the current at a point (jets, Riptides) carries droplets too
       events.collected = 0; events.n = 0;
       for (let j = 0; j < LEAKS; j++) {
         if (!lk.left[j]) continue;
@@ -150,6 +212,7 @@ export function createJuiceDrops() {
           const f = Math.exp(-DROP_DRAG * dt);
           d.vx[i] *= f; d.vy[i] = Math.min(DROP_BOB, d.vy[i] * f + DROP_SINK * dt);
         }
+        if (force) { const fo = force(d.x[i], d.y[i]); if (fo) { d.vx[i] += fo.fx * 0.3 * dt; d.vy[i] += fo.fy * 0.3 * dt; } }
         const nx = d.x[i] + d.vx[i] * dt, ny = d.y[i] + d.vy[i] * dt;
         if (!world.isSolid(nx, ny)) { d.x[i] = nx; d.y[i] = ny; }
         else if (!world.isSolid(nx, d.y[i])) { d.x[i] = nx; d.vy[i] = 0; }
@@ -165,6 +228,8 @@ export function createJuiceDrops() {
 export const MAX_CLOUDS = 4;
 const CLOUD_GROW = 0.25;  // s, the puff swells to full size
 const CLOUD_THIN = 0.6;   // s, the last part of its life it thins out (and stops hiding)
+const CLOUD_CARRY = 0.15; // a jet or a Riptide carries a cloud at this fraction of its push (hazards.js JET_DRIFT, a free swimmer's)
+const CLOUD_BLOWN = 0.35; // s a cloud a blast reached takes to thin away
 
 /** The ink clouds of one level: puffed by Ink Cloud, they drift a little, fade over their duration and hide the octopus. */
 export function createInkClouds() {
@@ -195,15 +260,34 @@ export function createInkClouds() {
       c.age[i] = 0; c.dur[i] = spell.duration; c.r[i] = spell.radius; c.seed[i] = (count++ * 2.39996) % 6.283;
       return i;
     },
-    update(dt) {
+    /**
+     * One step. `force(x, y)` (optional) is the current at a point (hazards.js forceAt: jets and Riptides, u/s^2, or null): a
+     * stream carries a cloud along at CLOUD_CARRY of its push (SPELLS-PICK: jets carry the cloud).
+     */
+    update(dt, force = null) {
       if (!c.live) return;
       for (let i = 0; i < MAX_CLOUDS; i++) {
         if (!c.alive[i]) continue;
         c.age[i] += dt;
         if (c.age[i] >= c.dur[i]) { c.alive[i] = 0; c.live--; continue; }
+        if (force) { const f = force(c.x[i], c.y[i]); if (f) { c.vx[i] += f.fx * CLOUD_CARRY * dt; c.vy[i] += f.fy * CLOUD_CARRY * dt; } }
         c.x[i] += c.vx[i] * dt; c.y[i] += c.vy[i] * dt;
         const f = Math.exp(-0.35 * dt); c.vx[i] *= f; c.vy[i] *= f;
       }
+    },
+    /** A blast at (x, y) with radius R blows out every cloud it reaches (SPELLS-PICK: a blast inside a cloud clears it): it thins away in CLOUD_BLOWN s. Returns how many. */
+    blast(x, y, R) {
+      let n = 0;
+      if (!c.live) return 0;
+      for (let i = 0; i < MAX_CLOUDS; i++) {
+        if (!c.alive[i] || Math.hypot(c.x[i] - x, c.y[i] - y) > R + c.r[i] * 0.5) continue;
+        const end = c.age[i] + CLOUD_BLOWN;
+        if (end < c.dur[i]) { c.dur[i] = end; n++; }
+        // pushed outward a little as it goes
+        const dx = c.x[i] - x, dy = c.y[i] - y, d = Math.hypot(dx, dy) || 1;
+        c.vx[i] += dx / d * 3; c.vy[i] += dy / d * 3;
+      }
+      return n;
     },
     /** Whether (px, py) is inside a cloud. */
     inside(px, py) {
