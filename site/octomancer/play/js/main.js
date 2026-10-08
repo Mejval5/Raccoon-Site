@@ -38,7 +38,7 @@ import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, spawnRubble, DROP_BELOW } from './bomb.js';
-import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, HAND_REACH } from './hand.js';
+import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, PRI_DOOR, HAND_REACH } from './hand.js';
 import { registerHandKinds } from './hand-kinds.js';
 import { drawHandTell, drawHeldArm, drawHeldGrip, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
 import { drawEnemyOne, drawBombOne } from './enemy-draw.js';
@@ -100,7 +100,9 @@ import { DASH_COOLDOWN } from './config.js';
 import { HEART_MAX, BOMB_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
-import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool } from './canvas-pool.js';
+import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool, acquireCanvas, releaseCanvas } from './canvas-pool.js';
+import { curtainPoint, cameraRegion, DOOR_REACH } from './backroom.js';
+import { drawCurtain, drawBackOverlay, drawHopFade, preloadBackroomArt } from './backroom-draw.js';
 import { cullStats, visibleAt, cullFlags, cullView, setGameView } from './cull.js';
 import { createNpcs, createMoods, resetMoods, npcByName, NPC_MARLO, NPC_PIP, NPC_QUILL, NPC_HOST, NPC_IDS, FL_SEALED, FL_CAGED, FL_FOLLOWING, FL_TALKING } from './npcs.js';
 import { drawNpcs, registerNpcCorpses } from './npcs-draw.js';
@@ -868,7 +870,7 @@ function step(dt) {
       particles.trailBubble(octo.x, octo.y);
     }
   }
-  world.update(octo.y);
+  if (!(back && back.inside)) world.update(octo.y); // back rooms: the grotto under the level is no depth reached
   if (V2 && !octo.dead) { stepV2(snap); stepNpcs(); }
   const resident = world.residentChunks();
   pickups.update(dt, sim.time, octo.dead ? NOBODY : octo, resident, world); // a dead body collects nothing
@@ -1375,7 +1377,10 @@ function render(alpha, frameMs) {
     followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : V2 && unlockAnim ? unlockCameraBias() : null,
     deathFocus: V2 && octo.dead ? deathFocus(w, h) : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
+    camRegion: back ? cameraRegion(back.lv, back.inside, world.width, backRegion) : null, // back rooms: the front's rows, or the grotto's box
+    overDraw: back && (back.inside || back.hopT > 0) ? backOverDraw : null,
   });
+  if (back && back.hopT > 0) { back.hopT = Math.max(0, back.hopT - frameMs / 1000); if (back.hopT === 0) dropHopSnap(); }
   if (drawTrace.on) traceHeldFrame();
   setGameView(renderer.camera, w, h); // gameplay checks (a boulder falls, a tentacle wakes, a cannon charges) only while the threat is on screen
   if (V2 && octo.dead) { // the clear hole in the death tint follows the body
@@ -1513,6 +1518,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   sim.time = 0;
   levelClock = 0;
   entry = null;
+  if (back) { releaseBack(); back = null; } // back rooms: the old level's grotto and its copies of the screen (setupLevelExtras makes the new one)
   unlockAnim = null; sealBumpAt = -99;
   keepers = createKeepers(); shopBrokenSeen = 0; // the old level's keepers never step in the new world (setupLevelExtras places this level's)
   runKills = 0;
@@ -1856,6 +1862,7 @@ function stepV2(snap) {
     }
   }
   if (run.state === S_REST) stepRest();
+  if (run.state === S_BIOME && back) stepBack();
   if (run.state === S_TUTORIAL) stepTutorial();
   if (run.state === S_BIOME || run.state === S_REST) stepPeople();
   if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
@@ -1984,6 +1991,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     if (keepers.n) drawKeepers(c, camera, cw, ch, keepers, t); // hostile keepers and their claws (under the octopus, like the enemies)
     let pk = 0;
     for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
+    if (back && back.spring) drawSpring(c, camera, cw, ch, back.spring.x, back.spring.y, t, back.spring.used); // back rooms: the grotto's spring
   }
   if (run.state === S_REST) {
     if (restSpring) drawSpring(c, camera, cw, ch, restSpring.x, restSpring.y, t, restSpring.used);
@@ -2006,6 +2014,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     else if (hand.target) {
       drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
       if (hand.target.kind === 'portal' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 1.45, 'F', t); // (phones: the Spell button reads Enter)
+      else if (hand.target.kind === 'backdoor' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 2.0, 'F', t); // back rooms: over the curtain
     }
   }
 }
@@ -2091,6 +2100,7 @@ function v2PreWall(c, camera, cw, ch) {
   const mr = run.state === S_HUB ? world.level.mirror : null;
   if (mr) drawMirrorShell(c, camera, cw, ch, mr.x, mr.y, !!(hand.target && hand.target.kind === 'mirror'));
   drawBlocks(c, camera, cw, ch, props.data); // blocks only exist in generated levels, so no state test
+  if (back) drawBackCurtains(c, camera, cw, ch);
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
 }
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
@@ -2277,7 +2287,7 @@ function findFloorSpot(dMin = 3, dMax = 9, avoid = null) {
     const [x, y] = q[qi];
     const d = Math.hypot(x - sx, y - sy);
     if (d >= dMin && d <= dMax && world.isSolid(x + 0.5, y + 1.5) && !world.isSolid(x - 0.5, y + 0.5) && !world.isSolid(x + 1.5, y + 0.5) && !world.isSolid(x + 0.5, y - 0.5)
-      && !(avoid && Math.hypot(x + 0.5 - avoid.x, y + 0.72 - avoid.y) < 3) && !(world.inShop && world.inShop(x + 0.5, y + 0.5))) return { x: x + 0.5, y: y + 0.72 };
+      && !(avoid && Math.hypot(x + 0.5 - avoid.x, y + 0.72 - avoid.y) < 3) && !(world.inShop && world.inShop(x + 0.5, y + 0.5)) && !nearCurtain(x + 0.5, y + 0.5)) return { x: x + 0.5, y: y + 0.72 };
     for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const k = nx + ',' + ny;
       if (seen.has(k) || world.isSolid(nx + 0.5, ny + 0.5) || d > dMax) continue;
@@ -2304,6 +2314,96 @@ function stepRest() {
   }
   const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F
   if (ev) onShopEvent(ev);
+}
+
+// --- back rooms (backroom.js, backroom-draw.js; BACKROOMS.md A, CONTROLS-IDEAS.md 5): F at the kelp curtain takes the octopus
+// into the grotto under the level (an annex of the same grid, behind a bedrock seam); it is drawn over the frozen, dimmed front
+// (a small copy of the screen taken at the hop), the camera kept to its box. F at the curtain inside brings her back to the same
+// spot. Nothing of it exists until the first entry (its loot, clam, eel, piranha and shells spawn then), and the copies of the
+// screen live only while she is inside: a level whose grotto is never entered costs nothing more.
+const BACK_HOP_S = 0.34; // s: the old view fades out over the new one
+let back = null;          // this level's grotto: {lv (level.back), inside, entered, hops, spring {x, y, used}, frontSnap, hopSnap, hopT, openT}
+const backRegion = { x0: 0, y0: 0, x1: 0, y1: 0 };
+const backPt = { x: 0, y: 0 };
+function setupBack() {
+  releaseBack();
+  const lv = V2 && run && run.state === S_BIOME && world.level ? world.level.back : null;
+  back = lv ? { lv, inside: false, entered: false, hops: 0, spring: lv.spring ? { x: lv.spring.x, y: lv.spring.y, used: false } : null, frontSnap: null, hopSnap: null, hopT: 0, openT: 0 } : null;
+  if (back) preloadBackroomArt();
+}
+function releaseBack() {
+  if (!back) return;
+  if (back.hopSnap && back.hopSnap !== back.frontSnap) releaseCanvas(back.hopSnap);
+  if (back.frontSnap) releaseCanvas(back.frontSnap);
+  back.hopSnap = back.frontSnap = null;
+}
+function dropHopSnap() { if (back && back.hopSnap) { if (back.hopSnap !== back.frontSnap) releaseCanvas(back.hopSnap); back.hopSnap = null; } }
+/** Whether (x, y) is near either curtain (things placed after the level keep off them). */
+function nearCurtain(x, y) {
+  const bk = world.level && world.level.back;
+  return !!bk && (Math.hypot(x - (bk.doorX + 0.5), y - (bk.doorY + 0.5)) < 2.5 || Math.hypot(x - (bk.retX + 0.5), y - (bk.retY + 0.5)) < 2.5);
+}
+/** A half-size copy of the screen (a GPU-side drawImage of the game canvas; never a pixel read). */
+function grabScreen() {
+  const w = Math.max(1, Math.round(canvas.width / 2)), h = Math.max(1, Math.round(canvas.height / 2));
+  const c = acquireCanvas(w, h);
+  c.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  return c;
+}
+/** Through the curtain: into the grotto (`inside`) or back out to the front. */
+function backHop(inside) {
+  const b = back;
+  if (!b || b.inside === inside || octo.dead) return false;
+  const lv = b.lv;
+  dropHopSnap();
+  const shot = grabScreen();
+  if (inside) { if (b.frontSnap) releaseCanvas(b.frontSnap); b.frontSnap = shot; }
+  else if (b.frontSnap) { releaseCanvas(b.frontSnap); b.frontSnap = null; }
+  b.hopSnap = shot; b.hopT = BACK_HOP_S; b.openT = 0.6;
+  const tx = (inside ? lv.retX : lv.doorX) + 0.5, ty = (inside ? lv.retY : lv.doorY) + 0.55;
+  const cam = renderer.camera; cam.x += tx - octo.x; cam.y += ty - octo.y; // she stays where she was on screen; the camera then eases into the region
+  octo.x = octo.prevX = tx; octo.y = octo.prevY = ty; octo.vx = octo.vy = 0;
+  ragdoll.place(octo, props, tx, ty);
+  b.inside = inside; b.hops++;
+  hand.target = null;
+  if (inside && !b.entered) { b.entered = true; spawnBackContents(); }
+  if (inside) { discover('place-backroom'); journal.bump('place-backroom', STAT_SEEN); }
+  for (let i = 0; i < 3; i++) particles.trailBubble(tx + (i - 1) * 0.3, ty - 0.2 - i * 0.25);
+  sfx.slurp();
+  return true;
+}
+/** The grotto's things, on the first entry only (BACKROOMS.md 4.3: spawned lazily). */
+function spawnBackContents() {
+  for (const s of back.lv.spawns) {
+    if (s.type === 'loot') loot.add(s);
+    else if (s.type === 'creature') creatures.add(s);
+    else if (s.type === 'hazard') hazards.add(s);
+    else if (s.type === 'enemy-slot') enemies.spawnAt(s.kind, s.x, s.y, s.placement, 0);
+    else if (s.type === 'shell') pickups.dropShell(s.x, s.y, 0, 0, s.sk);
+  }
+}
+/** One step in a level with a grotto: its spring (one heart, or one cast when the hearts are full; once). */
+function stepBack() {
+  const b = back;
+  if (b.openT > 0) b.openT = Math.max(0, b.openT - STEP);
+  if (!b.inside || !b.spring || b.spring.used || octo.dead) return;
+  if (!springReach(octo.x, octo.y, b.spring.x, b.spring.y)) return;
+  b.spring.used = true;
+  let what = '';
+  if (octo.hearts < octo.heartMax) { octo.hearts++; prevHearts = octo.hearts; what = 'a heart'; }
+  else if (run.juice < juiceCap()) { run.juice = Math.min(juiceCap(), run.juice + JUICE.perCast); what = 'a cast of juice'; }
+  particles.pickupSparkle(octo.x, octo.y, '#bfe8d8'); sfx.chime();
+  ui.showToast(what ? 'The spring gives you ' + what : 'The spring is cool and still');
+}
+const curtainOpen = () => (back && (back.openT > 0 || (hand.target && hand.target.kind === 'backdoor')) ? 1 : 0);
+function drawBackCurtains(c, camera, cw, ch) {
+  const lv = back.lv, t = sim.time, o = curtainOpen();
+  drawCurtain(c, camera, cw, ch, lv.doorX, lv.doorY, t, false, back.inside ? 0 : o, 0);
+  drawCurtain(c, camera, cw, ch, lv.retX, lv.retY, t, true, back.inside ? o : 0, 1);
+}
+function backOverDraw(c, camera, cw, ch) {
+  if (back.inside) drawBackOverlay(c, camera, cw, ch, back.lv, back.frontSnap);
+  if (back.hopT > 0) drawHopFade(c, cw, ch, back.hopSnap, back.hopT / BACK_HOP_S);
 }
 
 // --- the tutorial's rooms (tutorial.js, data/tutorial.json): coral doors that open on each room's goal, a free stall ---
@@ -2351,6 +2451,7 @@ function setupLevelExtras() {
     shopSt = createShopState(lv.shop, shopItems, run.diveSeed, 7, run.items);
     setupPeople();
   }
+  setupBack();
   if (run.state === S_BIOME) {
     const spec = levelSpec(run);
     const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
@@ -2562,6 +2663,15 @@ if (V2) {
     priority: PRI_PORTAL,
     find(o) { const p = portalAt(o); return p ? { x: p.x, y: p.y, ref: p } : null; },
     use(t) { const p = portalAt(octo); return p ? enterPortal(p) : false; },
+  });
+  registerInteract('backdoor', { // back rooms: the kelp curtain, both ways (backHop)
+    priority: PRI_DOOR,
+    find(o, reach) {
+      if (!back || !run || run.state !== S_BIOME || o.dead) return null;
+      const lv = back.lv, p = curtainPoint(back.inside ? lv.retX : lv.doorX, back.inside ? lv.retY : lv.doorY, backPt);
+      return Math.hypot(o.x - p.x, o.y - p.y) <= Math.min(reach, DOOR_REACH) ? { x: p.x, y: p.y, ref: 'backdoor', label: back.inside ? 'out' : 'in' } : null;
+    },
+    use() { return back ? backHop(!back.inside) : false; },
   });
   registerInteract('talk', {
     priority: PRI_TALK,
@@ -2876,6 +2986,8 @@ function onPoolEvent(ev, poolSt) {
 function otherSpawns() {
   const out = [];
   for (const s of levelSpawns()) if (s.type !== 'shell' && (s.type !== 'decor' || s.dk === 'boulder')) out.push(s.x, s.y);
+  const bk = world.level && world.level.back;
+  if (bk) out.push(bk.doorX + 0.5, bk.doorY + 0.5, bk.doorX + 0.5, bk.doorY - 0.5); // back rooms: no encounter on the curtain
   return Float32Array.from(out);
 }
 function levelSpawns() {
@@ -3368,6 +3480,27 @@ window.__octo = {
     applyPaused();
     window.dispatchEvent(new CustomEvent('restart'));
     return seed;
+  },
+  /** Back rooms (backroom.js): this level's grotto and whether the octopus is in it (null: the level has none). */
+  backroom() {
+    if (!back) return null;
+    const lv = back.lv, cam = renderer.camera;
+    return {
+      kind: lv.kind, doorX: lv.doorX, doorY: lv.doorY, retX: lv.retX, retY: lv.retY, box: { x0: lv.x0, y0: lv.y0, x1: lv.x1, y1: lv.y1 }, frontH: lv.frontH,
+      spring: back.spring ? { ...back.spring } : null, spawns: lv.spawns.map((s) => ({ type: s.type, x: s.x, y: s.y, kind: s.kind || s.ck || s.lk || s.hk || s.sk || 0 })),
+      inside: back.inside, entered: back.entered, hops: back.hops, snaps: (back.frontSnap ? 1 : 0) + (back.hopSnap && back.hopSnap !== back.frontSnap ? 1 : 0),
+      cam: { x: cam.x, y: cam.y, ppu: cam.pxPerUnit }, octo: { x: octo.x, y: octo.y }, target: hand.target ? hand.target.kind : '', depth: world.depth(), hearts: octo.hearts, heartMax: octo.heartMax, juice: run.juice,
+    };
+  },
+  /** Test hook: set the octopus's hearts (1 .. heartMax). */
+  setHearts(n) { octo.hearts = prevHearts = Math.max(1, Math.min(octo.heartMax, n | 0)); return octo.hearts; },
+  /** Test hook: put the octopus at the curtain (front, or inside when `inside`), standing in front of it. */
+  toCurtain(inside = false) {
+    if (!back) return null;
+    const lv = back.lv, x = (inside ? lv.retX : lv.doorX) + 0.5, y = (inside ? lv.retY : lv.doorY) + 0.55;
+    octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0;
+    ragdoll.place(octo, props, x, y);
+    return { x, y };
   },
   /** Debug: place the octopus (tests, screenshots). */
   teleport(x, y) {

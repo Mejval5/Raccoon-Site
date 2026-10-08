@@ -87,7 +87,7 @@ export async function runRagdollTests(assert) {
         const world = createLevelWorld(seed * 7919, lvl);
         for (let k = 0; k < 3; k++) {
           let x = 0, y = 0, tries = 0;
-          do { x = 2 + rng() * (world.width - 4); y = 2 + rng() * (world.height - 4); tries++; }
+          do { x = 2 + rng() * (world.width - 4); y = 2 + rng() * ((world.level.back ? world.level.back.frontH : world.height) - 4); tries++; } // the front rows (not a back room's annex)
           while (tries < 200 && (world.isSolid(x, y) || world.isSolid(x, y + 0.5) || world.isSolid(x + 0.5, y) || world.isSolid(x - 0.5, y) || world.isSolid(x, y - 0.5)));
           if (tries >= 200) continue;
           bodies++;

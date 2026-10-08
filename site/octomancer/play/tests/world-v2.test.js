@@ -110,7 +110,7 @@ export async function runWorldV2Tests(assert) {
 
   for (const seed of SEEDS) {
     const world = createLevelWorld(seed, 0);
-    assert(`v2 world s${seed}: 34x68 level, camera bounds are the level`, world.width === 34 && world.height === 68 && world.residentChunkCount() === 1);
+    assert(`v2 world s${seed}: 34x68 level, camera bounds are the level`, world.width === 34 && (world.level.back ? world.level.back.frontH === 68 && world.height === world.level.h : world.height === 68) && world.residentChunkCount() === 1); // back rooms: the grotto's annex under the 68 rows
     assert(`v2 world s${seed}: exit reachable from the start`, reachable(world, world.level.startX, world.level.startY)[world.level.exitY * LEVEL_W + world.level.exitX] === 1);
 
     // ---- bombs: any interior rock, never the border; retrace only nearby bands ----

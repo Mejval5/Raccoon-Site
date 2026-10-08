@@ -8,6 +8,7 @@ import { fetchBiome1Bank } from './rooms.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { buildLevelSpawns } from './level-spawns.js';
 import { questPathFor } from './quests.js';
+import { addBackRoom } from './backroom.js';
 
 let ready = null;
 function init(dataBase) {
@@ -25,6 +26,7 @@ self.onmessage = async (e) => {
     if (seed === undefined) { postMessage({ id, warm: true }); return; }
     const level = generateLevel(seed, levelIndex);
     const spawnInfo = buildLevelSpawns(level, seed, levelIndex);
+    addBackRoom(level, spawnInfo.spawns, seed, levelIndex); // back rooms: the annex under the level (before the quest path data, so its checksum matches)
     level.questPath = questPathFor(level); // vibe fixes: the quest planner's path data (planQuest uses it while the tiles match), not on the main thread
     postMessage({ id, level, spawnInfo });
   } catch (err) {

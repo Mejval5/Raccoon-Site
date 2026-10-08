@@ -101,6 +101,21 @@ export const FN = {
     for (const [x, y, r] of [[0, 0.05, 0.09], [0.12, -0.25, 0.12], [-0.08, -0.55, 0.08], [0.06, -0.82, 0.11]]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); }
     stroke(c, '#5f8a4a', 0.06); c.beginPath(); c.moveTo(-0.82, 0.3); c.quadraticCurveTo(-0.98, -0.2, -0.7, -0.6); c.quadraticCurveTo(-0.72, -0.15, -0.66, 0.3); c.closePath(); c.fill(); c.stroke();
   },
+  // back rooms: the kelp curtain over a dark niche in the rock, a ring of stones and a bubble leaking out
+  kelpdoor(c) {
+    c.fillStyle = '#0a141c'; c.strokeStyle = INK; c.lineWidth = 0.06;
+    c.beginPath(); c.moveTo(-0.55, 0.8); c.bezierCurveTo(-0.55, -0.2, -0.3, -0.6, 0, -0.6); c.bezierCurveTo(0.3, -0.6, 0.55, -0.2, 0.55, 0.8); c.closePath(); c.fill(); c.stroke();
+    for (const [x, y, r] of [[-0.6, 0.62, 0.17], [-0.6, 0.25, 0.13], [-0.5, -0.15, 0.12], [-0.28, -0.52, 0.12], [0.05, -0.68, 0.12], [0.34, -0.5, 0.12], [0.52, -0.12, 0.12], [0.6, 0.27, 0.13], [0.6, 0.64, 0.17]]) {
+      stroke(c, '#76838a', 0.05); c.beginPath(); c.ellipse(x, y, r, r * 0.8, 0, 0, TAU); c.fill(); c.stroke();
+    }
+    for (const [x, h, ph] of [[-0.3, 1.2, 0.2], [-0.05, 1.35, -0.15], [0.22, 1.15, 0.1]]) {
+      c.strokeStyle = '#3f8f7a'; c.lineWidth = 0.07; c.beginPath(); c.moveTo(x, 0.8); c.quadraticCurveTo(x + ph, 0.8 - h * 0.5, x - ph * 0.5, 0.8 - h); c.stroke();
+      c.fillStyle = '#6fc3a8';
+      for (let k = 1; k < 4; k++) { const yy = 0.8 - h * k / 4; c.beginPath(); c.ellipse(x + (k & 1 ? 0.09 : -0.09) + ph * 0.3, yy, 0.1, 0.05, k & 1 ? -0.6 : 0.6, 0, TAU); c.fill(); }
+    }
+    c.strokeStyle = 'rgba(210,245,235,0.9)'; c.lineWidth = 0.05;
+    for (const [x, y, r] of [[0.1, -0.85, 0.07], [-0.05, -0.98, 0.05]]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); }
+  },
   // the in-game boulder, drawn at pixel scale (drawBoulder's outline widths are in pixels: in unit space they were 80 px thick, a black blob)
   rock(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawBoulder(c, 0, 0, 0.78 * u, 7, 0.3); c.restore(); },
   fish(c) {

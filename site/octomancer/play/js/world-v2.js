@@ -17,6 +17,7 @@
 
 import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
+import { addBackRoom } from './backroom.js';
 import { MAT_FRAGILE, CR_BOMB, CR_BOULDER } from './fragile.js';
 import { planPools } from './pool.js';
 import { createFresh } from './fresh.js';
@@ -51,12 +52,13 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   // r43: opts.generated / opts.spawnInfo let a caller do the two expensive steps (generateLevel, buildLevelSpawns) in tasks of
   // their own and pass the results in; the world is the same either way
   const level = authored ? opts.level : (opts && opts.generated) || generateLevel(runSeed, levelIndex);
+  const spawnInfo = authored ? { spawns: level.spawns || [] } : (opts && opts.spawnInfo) || buildLevelSpawns(level, runSeed, levelIndex);
+  if (!authored && !(opts && opts.noBack)) addBackRoom(level, spawnInfo.spawns, runSeed, levelIndex); // back rooms (backroom.js): the worker has usually added it already
   const tiles = level.tiles;
   const W = level.w || LEVEL_W, H = level.h || LEVEL_H;
   const border = (x, y) => x < BORDER || x >= W - BORDER || y < BORDER || y >= H - BORDER;
   const bedrock = (x, y) => border(x, y) || (x >= 0 && y >= 0 && x < W && y < H && tiles[y * W + x] === MAT_BEDROCK);
   const startX = level.startX + 0.5, startY = level.startY + 0.5;
-  const spawnInfo = authored ? { spawns: level.spawns || [] } : (opts && opts.spawnInfo) || buildLevelSpawns(level, runSeed, levelIndex);
   const chunk = {
     tiles, width: W, height: H, spawns: spawnInfo.spawns, dirty: true,
     exclude: authored ? undefined : { x: startX, y: startY, r: START_SAFE_RADIUS },

@@ -292,6 +292,10 @@ await runChainTests(assert);
 import { runSkinsTests } from './skins.test.js';
 await runSkinsTests(assert);
 
+// --- 2026-10-08: back rooms (the kelp grotto under the level, entered on F) ---
+import { runBackroomTests } from './backroom.test.js';
+await runBackroomTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
