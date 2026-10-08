@@ -119,6 +119,19 @@ export const FN = {
   },
   gclam(c) { drawClamIcon(c); },
   pearl(c) { drawPearlIcon(c); },
+  swift(c) {
+    // Swift Current: three streaming lines of current curling into a small whirlpool
+    c.lineCap = 'round';
+    c.strokeStyle = INK; c.lineWidth = 0.2;
+    const lines = (w) => {
+      c.lineWidth = w;
+      for (const y of [-0.45, 0, 0.45]) { c.beginPath(); c.moveTo(-0.9, y); c.bezierCurveTo(-0.6, y - 0.25, -0.35, y + 0.25, -0.05, y); c.bezierCurveTo(0.15, y - 0.15, 0.3, y - 0.05, 0.35, y * 0.4); c.stroke(); }
+      c.beginPath(); c.arc(0.55, 0, 0.3, Math.PI, Math.PI * 2.7); c.stroke();
+      c.beginPath(); c.arc(0.58, 0.02, 0.12, 0, Math.PI * 1.6); c.stroke();
+    };
+    lines(0.2);
+    c.strokeStyle = '#9fdcf0'; lines(0.1);
+  },
   pot(c) {
     stroke(c, '#b9714a', 0.09);
     c.beginPath(); c.moveTo(-0.28, -0.7); c.bezierCurveTo(-0.9, -0.2, -0.75, 0.75, -0.3, 0.8); c.lineTo(0.3, 0.8); c.bezierCurveTo(0.75, 0.75, 0.9, -0.2, 0.28, -0.7); c.closePath(); c.fill(); c.stroke();
