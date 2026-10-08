@@ -70,6 +70,14 @@ export const FN = {
   // section 14: the fish juice jar (two thirds full) and the Ink Cloud spell, drawn at pixel scale like the boulder
   juice(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawJarIcon(c, -0.6 * u, -0.85 * u, 1.2 * u, 1.7 * u, 0.67, 3); c.restore(); },
   inkcloud(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'ink-cloud', 0, 0, 0.85 * u); c.restore(); },
+  // SPELLS-PICK: the first spell set and its runes (painted icons, round 4 atlas; drawSpellIcon falls back to a carved stone)
+  riptide(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'riptide', 0, 0, 0.85 * u); c.restore(); },
+  coralwall(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'coral-wall', 0, 0, 0.85 * u); c.restore(); },
+  lure(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'lure', 0, 0, 0.85 * u); c.restore(); },
+  anchor(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'anchor', 0, 0, 0.85 * u); c.restore(); },
+  runeheavy(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'heavy', 0, 0, 0.75 * u); c.restore(); },
+  runedelayed(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'delayed', 0, 0, 0.75 * u); c.restore(); },
+  runelingering(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'lingering', 0, 0, 0.75 * u); c.restore(); },
   // the rest grotto's spring: pale stones round a clear upwelling, a few rising bubbles and a kelp frond
   spring(c) {
     c.fillStyle = 'rgba(150,215,200,0.55)'; c.beginPath(); c.ellipse(0, 0.35, 0.62, 0.22, 0, 0, TAU); c.fill();

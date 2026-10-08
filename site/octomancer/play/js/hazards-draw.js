@@ -2,7 +2,7 @@
 // the octopus. Reads the flat hazard arrays. r46: the jet's rock chimney, the spine strip, the eel and the anemone are sprites
 // (js/sprites.js, generated in Milan's style) animated by transforms; the code shapes stay as the fallback until the atlas loads.
 
-import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_REACH, SPIKE_COUNT, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT, spikeSpan } from './hazards.js';
+import { HZ_JET, HZ_SPIKES, HZ_ROCK, HZ_EEL, HZ_ANEMONE, SPIKE_REACH, SPIKE_COUNT, EEL_HALF_BODY, EEL_RING_MAX, EEL_CHARGE_AT, EEL_FIRE_AT, JET_HALF_WIDTH, spikeSpan, tempEnvelope } from './hazards.js';
 import { prefersReducedMotion, DEATH_DURATION } from './config.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 import { drawSprite, drawSpriteSlice, spriteRect } from './sprites.js';
@@ -28,7 +28,7 @@ export function drawHazards(ctx, camera, cw, ch, d, time, isSolid) {
     if (!visibleAt(fl, i, d.x[i], d.y[i], d.kind[i] === HZ_JET ? d.len[i] + 1 : 2.5)) continue;
     const sx = cw / 2 + (d.x[i] - camera.x) * ppu, sy = ch / 2 + (d.y[i] - camera.y) * ppu;
     switch (d.kind[i]) {
-      case HZ_JET: drawJet(ctx, sx, sy, ppu, d.dx[i], d.dy[i], d.len[i], time, i); break;
+      case HZ_JET: if (d.temp[i]) drawRiptide(ctx, sx, sy, ppu, d, i, time); else drawJet(ctx, sx, sy, ppu, d.dx[i], d.dy[i], d.len[i], time, i); break;
       case HZ_SPIKES: drawSpikes(ctx, sx, sy, ppu, d.dx[i], d.dy[i], isSolid, d.x[i], d.y[i]); break;
       case HZ_ROCK: if (d.state[i] !== 3 && d.state[i] < 5) drawRock(ctx, sx, sy, ppu, d.state[i], time, i, d.v[i], isSolid, d.x[i], d.y[i], d.a[i]); break;
       case HZ_EEL: drawEel(ctx, sx, sy, ppu, d.state[i], d.r[i], d.t[i], time, isSolid, d.x[i], d.y[i]); break;
@@ -90,6 +90,43 @@ function drawJet(ctx, sx, sy, ppu, dx, dy, len, time, seed) {
   ctx.fillStyle = '#0d2c36';
   roundRect(ctx, 0.12 * ppu, -0.24 * ppu, 0.14 * ppu, 0.48 * ppu, 0.05 * ppu);
   ctx.fill();
+  ctx.restore();
+}
+
+// ---- Riptide (spells, a temporary jet in any direction): the same stream of bubbles and streaks, no chimney, swelling in and
+// fading out with its strength, as wide as its own half width (Heavy is wider). Streaks curl a little, like a rip current. ----
+function drawRiptide(ctx, sx, sy, ppu, d, i, time) {
+  const env = tempEnvelope(d, i), len = d.len[i], w = d.hw[i] / JET_HALF_WIDTH;
+  if (env <= 0.01) return;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(Math.atan2(d.dy[i], d.dx[i]));
+  ctx.globalAlpha = env;
+  const g = ctx.createLinearGradient(0, 0, len * ppu, 0);
+  g.addColorStop(0, 'rgba(150,235,240,0)'); g.addColorStop(Math.min(0.3, 0.8 / len), 'rgba(150,235,240,0.28)'); g.addColorStop(0.7, 'rgba(150,235,240,0.14)'); g.addColorStop(1, 'rgba(150,235,240,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(0, -0.55 * w * ppu); ctx.quadraticCurveTo(len * 0.5 * ppu, -1.0 * w * ppu, len * ppu, -1.05 * w * ppu);
+  ctx.lineTo(len * ppu, 1.05 * w * ppu); ctx.quadraticCurveTo(len * 0.5 * ppu, 1.0 * w * ppu, 0, 0.55 * w * ppu);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(225,255,255,0.45)'; ctx.lineWidth = Math.max(1, ppu * 0.03); ctx.lineCap = 'round';
+  const speed = 1.1 * d.pw[i] + 0.3;
+  for (let k = 0; k < 6; k++) {
+    const off = (k - 2.5) * 0.28 * w;
+    const u = (time * speed + k * 0.19 + i * 0.13) % 1;
+    const x0 = (0.1 + u * (len - 0.9)) * ppu, x1 = x0 + 0.8 * ppu, cy = off * ppu, bend = Math.sin(time * 3 + k) * 0.12 * ppu;
+    ctx.beginPath(); ctx.moveTo(x0, cy); ctx.quadraticCurveTo((x0 + x1) / 2, cy + bend, x1, cy); ctx.stroke();
+  }
+  const n = Math.round(len * 3.4 * w);
+  ctx.strokeStyle = 'rgba(235,255,255,0.85)'; ctx.fillStyle = 'rgba(200,245,255,0.2)'; ctx.lineWidth = Math.max(1, ppu * 0.03);
+  for (let b = 0; b < n; b++) {
+    const u = ((b / n) + time * 0.6 * speed + hash(b + i * 31) * 0.2) % 1;
+    const px = (0.05 + u * (len - 0.2)) * ppu;
+    const py = (hash(b * 3.1 + i) - 0.5) * 2 * (0.45 + 0.55 * u) * 0.95 * w * ppu + Math.sin(time * 5 + b) * 0.06 * ppu;
+    const r = (0.04 + hash(b + 7) * 0.06) * ppu;
+    ctx.globalAlpha = env * Math.min(1, (1 - u) * 1.8, u * 6);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill(); ctx.stroke();
+  }
   ctx.restore();
 }
 

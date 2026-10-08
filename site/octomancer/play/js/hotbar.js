@@ -18,14 +18,16 @@ export function createHotbar(spellIds = [START_SPELL]) {
 
 function noteSpell(hb) { const s = hb.slots[hb.sel]; if (s && s.ids.length && !isItemId(s.ids[0])) hb.lastSpell = hb.sel; }
 
-/** The spell the phone's Spell button casts: the selected slot's when it is a spell, else the last spell slot picked, else the first spell. */
-export function castableSpell(hb) {
-  const pick = (i) => { const s = hb.slots[i]; return s && s.ids.length && !isItemId(s.ids[0]) ? s.ids[0] : null; };
-  const a = pick(hb.sel); if (a) return a;
-  const b = pick(hb.lastSpell | 0); if (b) return b;
-  for (let i = 0; i < hb.slots.length; i++) { const c = pick(i); if (c) return c; }
-  return null;
+/** The slot the phone's Spell button casts: the selected slot when it is a spell, else the last spell slot picked, else the first spell; -1 when none. */
+export function castableIndex(hb) {
+  const ok = (i) => { const s = hb.slots[i]; return !!(s && s.ids.length && !isItemId(s.ids[0])); };
+  if (ok(hb.sel)) return hb.sel;
+  if (ok(hb.lastSpell | 0)) return hb.lastSpell | 0;
+  for (let i = 0; i < hb.slots.length; i++) if (ok(i)) return i;
+  return -1;
 }
+/** The first id of castableIndex's slot, or null. */
+export function castableSpell(hb) { const i = castableIndex(hb); return i < 0 ? null : hb.slots[i].ids[0]; }
 
 /** Make sure item `id` has a slot (appended at the end); returns its index, or -1 when the bar is full. */
 export function ensureSlot(hb, id) {

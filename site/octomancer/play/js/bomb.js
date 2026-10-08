@@ -89,7 +89,7 @@ export function createBombs(props = null) {
     if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill || octo.noKill || octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
     if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
       const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
-      if (d < reach) {
+      if (d < reach && !(octo.anchorT > 0)) { // Anchor (spells): a blast still hurts, but does not throw the octopus
         const f = (1 - d / reach) * OCTO_BLAST_IMPULSE;
         const nx = d > 1e-4 ? (octo.x - b.x) / d : 0, ny = d > 1e-4 ? (octo.y - b.y) / d : -1;
         octo.vx += nx * f; octo.vy += ny * f;

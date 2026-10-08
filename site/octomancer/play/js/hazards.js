@@ -9,7 +9,7 @@
 
 import { killOctopus, hitBody } from './octopus.js';
 import { octoHit } from './damage.js';
-import { IMPACT_SPEED, rowOf, PH_ANCHORED, PH_NONE } from './creature-rules.js';
+import { IMPACT_SPEED, rowOf, PH_ANCHORED, PH_NONE, pushScale } from './creature-rules.js';
 import { hasLineOfSight } from './pathfind.js';
 import { IMPALE_DEPTH } from './config.js';
 import { PK_ROCK, PK_BOMB, PK_POT, PK_RELIC, PK_RUBBLE, PK_FIND, PS_FREE, PS_HELD } from './props.js';
@@ -66,6 +66,7 @@ const span = { lo: 0, hi: 0 };
 let spanWorld = null;
 const spanSolid = (a, b) => spanWorld.isSolid(a + 0.5, b + 0.5);
 const jetOut = { fx: 0, fy: 0 };
+const forceOut = { fx: 0, fy: 0 };
 
 /**
  * The acceleration (u/s^2) hazard `i` (a jet) puts on a body at (x, y), or 0 when it is not in the stream. Lets props and
@@ -73,13 +74,24 @@ const jetOut = { fx: 0, fy: 0 };
  */
 export function jetForceAt(d, i, x, y) {
   if (d.kind[i] !== HZ_JET) return 0;
-  const dx = d.dx[i], dy = d.dy[i];
+  const dx = d.dx[i], dy = d.dy[i], tmp = d.temp ? d.temp[i] : 0; // older callers (tests) pass a hazard table without the spell columns
   const rx = x - d.x[i], ry = y - d.y[i];
   const s = rx * dx + ry * dy, l = -rx * dy + ry * dx;
-  if (s < 0 || s > d.len[i] || Math.abs(l) > JET_HALF_WIDTH) return 0;
-  const f = JET_ACC * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]) * (d.surge && d.surge[i] > 0 ? 1 + JET_SURGE_GAIN * Math.min(1, d.surge[i] / JET_SURGE_T) : 1); // a surge (chain.js); hand-made data has none
+  if (s < 0 || s > d.len[i] || Math.abs(l) > (tmp ? d.hw[i] : JET_HALF_WIDTH)) return 0;
+  // a Riptide (temp record, spells: addTempJet) swells in, fades out and carries its own strength (power x JET_ACC)
+  const env = tmp ? d.pw[i] * tempEnvelope(d, i) : 1;
+  if (env <= 0) return 0;
+  const f = JET_ACC * env * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]) * (d.surge && d.surge[i] > 0 ? 1 + JET_SURGE_GAIN * Math.min(1, d.surge[i] / JET_SURGE_T) : 1); // a surge (chain.js); hand-made data has none
   jetOut.fx = dx * f; jetOut.fy = dy * f;
   return jetOut;
+}
+
+/** A temporary jet's strength over its life: 0 -> 1 over its swell, 1 -> 0 over its last `fade` seconds. */
+export function tempEnvelope(d, i) {
+  const age = d.t[i], left = d.v[i] - age;
+  if (left <= 0) return 0;
+  const sw = d.a[i] > 0 ? Math.min(1, age / d.a[i]) : 1, fd = d.b[i] > 0 ? Math.min(1, left / d.b[i]) : 1;
+  return sw < fd ? sw : fd;
 }
 
 /**
@@ -208,6 +220,9 @@ export function createHazards(props = null) {
     gain: 1, // the pool vents' current push scale (setPoolGain), read by jetForceAt
     cause: new Uint8Array(CAP), // rock: 1 = the octopus caused the fall (stood under it, or bombed it loose); 0 = an enemy or nothing did
     pool: new Uint8Array(CAP), // jet: one of the Challenge Pool's vents (its push is scaled by poolGain, weak until a wager runs)
+    // spells (SPELLS-PICK, Riptide): a temporary jet in any direction. temp = 1 for such a record (it is reused once spent:
+    // kind goes back to HZ_NONE); its t = age, v = life (s), a = swell (s), b = fade (s), pw = strength (x JET_ACC), hw = half width.
+    temp: new Uint8Array(CAP), pw: new Float32Array(CAP), hw: new Float32Array(CAP),
     // chain reactions (chain.js): the chain a rock / eel was set off by (-1: none) and its generation; a jet's surge timer
     chain: new Int32Array(CAP).fill(-1), cdepth: new Uint8Array(CAP), surge: new Float32Array(CAP),
     imp: new Uint8Array(CAP), // rock: its impact (chain.js) has happened this drop
@@ -230,6 +245,7 @@ export function createHazards(props = null) {
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
     d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
+    d.temp[i] = 0; d.pw[i] = 1; d.hw[i] = JET_HALF_WIDTH;
     d.chain[i] = -1; d.cdepth[i] = 0; d.surge[i] = 0; d.imp[i] = 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
@@ -374,7 +390,10 @@ export function createHazards(props = null) {
   let jetI = 0, jetDt = 0;
   const jetBody = (f, k, V) => {
     const fo = jetForceAt(d, jetI, V.x, V.y);
-    if (fo) dmg.push(f, k, V, fo.fx, fo.fy, jetDt, JET_DRIFT);
+    if (!fo) return;
+    // a Riptide is the 'riptide' source: the creature table scales its push per kind (the keeper rides it at half force)
+    const sc = d.temp[jetI] ? pushScale(V.kind, 'riptide') : 1;
+    if (sc > 0) dmg.push(f, k, V, fo.fx * sc, fo.fy * sc, jetDt, JET_DRIFT);
   };
   function jetsPush(dt) {
     const pd = props ? props.data : null;
@@ -395,6 +414,7 @@ export function createHazards(props = null) {
   }
 
   function updateJet(i, dt, octo) {
+    if (octo.anchorT > 0) return; // Anchor (spells): nothing throws the octopus about
     const f = jetForceAt(d, i, octo.x, octo.y);
     if (!f) return;
     octo.vx += f.fx * dt;
@@ -574,6 +594,7 @@ export function createHazards(props = null) {
         }
       }
       for (let i = 0; i < d.n; i++) {
+        if (d.temp[i] && d.kind[i] === HZ_JET) { d.t[i] += dt; if (d.t[i] >= d.v[i]) { d.kind[i] = HZ_NONE; continue; } } // a Riptide runs out
         switch (d.kind[i]) {
           case HZ_JET: if (d.surge[i] > 0) d.surge[i] = Math.max(0, d.surge[i] - dt); updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
           case HZ_SPIKES: updateSpikes(i, octo, world); if (dmg) spikeBodies(i, world); break;
@@ -584,6 +605,47 @@ export function createHazards(props = null) {
         }
       }
       if (dmg || props) jetsPush(dt);
+    },
+    /**
+     * Spells (Riptide): a temporary current from (x, y) along the unit direction (dx, dy), `len` tiles long, half width `hw`,
+     * strength `power` x JET_ACC, living `life` s (swelling in over `swell`, fading over `fade`). Everything that obeys jets rides it
+     * (jetForceAt reads it like any jet). Returns its index, or -1 when the hazard pool is full.
+     */
+    addTempJet(x, y, dx, dy, len, hw, power, life, swell = 0.3, fade = 0.5) {
+      let i = -1;
+      for (let k = 0; k < d.n; k++) if (d.temp[k] && d.kind[k] === HZ_NONE) { i = k; break; }
+      if (i < 0) { if (d.n >= CAP) return -1; i = d.n++; }
+      d.kind[i] = HZ_JET; d.state[i] = 0; d.temp[i] = 1; d.pool[i] = 0; d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0;
+      d.x[i] = x; d.y[i] = y; d.dx[i] = dx; d.dy[i] = dy; d.len[i] = Math.max(0.5, len); d.hw[i] = hw; d.pw[i] = power;
+      d.t[i] = 0; d.v[i] = life; d.a[i] = swell; d.b[i] = fade; d.r[i] = 0; d.x0[i] = x; d.y0[i] = y;
+      if (d.chain) { d.chain[i] = -1; d.cdepth[i] = 0; d.surge[i] = 0; d.imp[i] = 0; } // chain reactions' columns
+      return i;
+    },
+    /** End a temporary jet now (a newer Riptide replaces the oldest). */
+    endTempJet(i) { if (i >= 0 && i < d.n && d.temp[i]) d.kind[i] = HZ_NONE; },
+    /** Is temp jet i still running? */
+    tempAlive(i) { return i >= 0 && i < d.n && d.temp[i] === 1 && d.kind[i] === HZ_JET; },
+    /** The summed current (u/s^2) of every jet and Riptide at (x, y), or null when none reaches it (ink clouds, droplets, Delayed motes). Shared object. */
+    forceAt(x, y) {
+      let fx = 0, fy = 0, hit = false;
+      for (let i = 0; i < d.n; i++) {
+        if (d.kind[i] !== HZ_JET) continue;
+        const f = jetForceAt(d, i, x, y);
+        if (f) { fx += f.fx; fy += f.fy; hit = true; }
+      }
+      if (!hit) return null;
+      forceOut.fx = fx; forceOut.fy = fy;
+      return forceOut;
+    },
+    /** Is the tile (tx, ty) inside a live jet or Riptide stream (Coral Wall never grows there)? */
+    inJet(tx, ty) {
+      const cx = tx + 0.5, cy = ty + 0.5;
+      for (let i = 0; i < d.n; i++) {
+        if (d.kind[i] !== HZ_JET) continue;
+        const rx = cx - d.x[i], ry = cy - d.y[i], s = rx * d.dx[i] + ry * d.dy[i], l = -rx * d.dy[i] + ry * d.dx[i];
+        if (s >= -0.5 && s <= d.len[i] + 0.5 && Math.abs(l) <= (d.temp[i] ? d.hw[i] : JET_HALF_WIDTH) + 0.3) return true;
+      }
+      return false;
     },
     /** main.js wires the shared damage entry in (damage.js createDamage with every family registered); null: only the octopus. */
     setDamage(dm) { dmg = dm || null; },
@@ -652,6 +714,7 @@ export function createHazards(props = null) {
     seen(x, y, range, isSolid) {
       const out = [];
       for (let i = 0; i < d.n; i++) {
+        if (d.temp[i] || d.kind[i] === HZ_NONE) continue; // a Riptide is a spell, not a hazard of the level
         if (Math.hypot(d.x[i] - x, d.y[i] - y) < range && hasLineOfSight(isSolid, x, y, d.x[i], d.y[i])) out.push(d.kind[i]);
       }
       return out;

@@ -16,6 +16,7 @@ const FILES = {
   questSign: 'hub-questsign.webp',
   banner: 'title-banner.webp',
   matBedrock: 'mat-bedrock.webp',   // materials: indestructible basalt (generated, Milan style)
+  matCoral: 'mat-coral.webp',       // materials: coral wall (generated, Milan style)
   matTimber: 'mat-timber.webp',     // materials: sunken-ship planks (generated, Milan style)
   matMasonry: 'mat-masonry.webp',   // materials: shop frame stone (generated, Milan style)
   matFishbone: 'mat-fishbone.webp', // materials: fragile packed fish bones, keyed (generated 2026-10-08, Milan style; 512 px = 3 world units)
@@ -48,7 +49,7 @@ export const art = {};
 const bitmaps = {};
 // vibe fixes: the two backdrop layers (drawn scaled every frame) and the opaque material textures (patterns in every band bake) too:
 // an opaque <img> was decoded again (as YUV) inside a frame after a level change
-const BITMAP_KEYS = new Set(['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone']);
+const BITMAP_KEYS = new Set(['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone', 'matCoral']);
 
 /** vibe fixes: decode an image's file into an ImageBitmap OFF the main thread: the bytes are fetched again (from the HTTP cache) and
  *  createImageBitmap(blob) decodes them on a worker. createImageBitmap(img) decodes on the main thread (an 84 ms task for the sprite

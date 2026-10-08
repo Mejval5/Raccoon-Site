@@ -138,7 +138,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     await page.mouse.click(at.x, at.y, { button: 'right' }); await step(page, 1);
     const j1 = await page.evaluate(() => __octo.juice());
     check('right click with the spell selected casts it at the cursor', j1.juice === j0.juice - j0.perCast && j1.clouds === j0.clouds + 1);
-    await page.keyboard.press('KeyC'); await step(page, 1);
+    await step(page, 25); await page.keyboard.press('KeyC'); await step(page, 1); // after the 0.4 s cast lock
     const j2 = await page.evaluate(() => __octo.juice());
     check('C casts the selected spell too', j2.juice === j1.juice - j0.perCast);
     await page.evaluate(() => __octo.setJuice ? __octo.setJuice(999) : 0);
