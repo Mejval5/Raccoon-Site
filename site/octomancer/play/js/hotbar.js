@@ -29,12 +29,20 @@ export function castableIndex(hb) {
 /** The first id of castableIndex's slot, or null. */
 export function castableSpell(hb) { const i = castableIndex(hb); return i < 0 ? null : hb.slots[i].ids[0]; }
 
-/** Make sure item `id` has a slot (appended at the end); returns its index, or -1 when the bar is full. */
+/** Make sure item `id` has a slot (appended at the end; the bomb stack goes first, slot 1); returns its index, or -1 when the bar is full. */
 export function ensureSlot(hb, id) {
   for (let i = 0; i < hb.slots.length; i++) if (hb.slots[i].ids.indexOf(id) >= 0) return i;
   if (hb.slots.length >= MAX_SLOTS) return -1;
   hb.slots.push({ ids: [id] });
+  if (id === BOMB_SLOT) { moveSlot(hb, hb.slots.length - 1, 0); return 0; }
   return hb.slots.length - 1;
+}
+
+/** 2026-10-08 (Daniel): the bomb stack is slot 1, the spells follow. Moves an existing bomb slot to the front (the selection
+ *  stays on the same slot); the player may reorder afterwards (the journal's Carried page), so call it once per bar. */
+export function bombFirst(hb) {
+  const i = hb.slots.findIndex((sl) => sl.ids[0] === BOMB_SLOT);
+  return i > 0 ? moveSlot(hb, i, 0) : false;
 }
 
 /** Step the selection by dir (+1 / -1) with wrap-around; returns the new selection. */

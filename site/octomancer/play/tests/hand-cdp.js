@@ -123,6 +123,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // (no slot indices are assumed: the HUD owner orders the bar, the bomb stack may come first)
     const nS = hb.slots.length, s0 = hb.sel, bombI = hb.slots.findIndex((x) => x[0] === 'bomb'), spellI = hb.slots.findIndex((x) => x[0] !== 'bomb');
     check('hotbar: a dive starts with the spell and the bomb stack', nS === 2 && bombI >= 0 && spellI >= 0);
+    check('hotbar: the bomb stack is slot 1, Ink Cloud slot 2 and selected (HUD owner order)', bombI === 0 && hb.slots[1][0] === 'ink-cloud' && s0 === 1);
     await page.keyboard.press('KeyE'); await step(page, 1);
     const afterE = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await page.keyboard.press('KeyQ'); await step(page, 1);
