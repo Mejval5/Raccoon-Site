@@ -14,6 +14,17 @@ function el(tag, className, text) {
   return e;
 }
 
+/** A button with its keyboard shortcut in a small key cap after the label (the cap is hidden on touch screens, play.css). */
+function keyButton(className, label, key) {
+  const b = el('button', className);
+  b.type = 'button';
+  const t = el('span', 'octo-btn-label', label);
+  const k = el('kbd', 'octo-key', key);
+  b.append(t, k);
+  b.setLabel = (s, kk) => { t.textContent = s; if (kk !== undefined) { k.textContent = kk; k.style.display = kk ? '' : 'none'; } };
+  return b;
+}
+
 /**
  * Run summary block (round 33): the generated title banner carrying the headline, a result line, label / value
  * rows, the best-runs list and a note. One per overlay (death, biome clear); `set` fills it, `el` is the node.
@@ -238,7 +249,17 @@ export function createUI(root, handlers) {
   const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Journal');
   journalBtn.type = 'button';
   journalBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJournal && handlers.onOpenJournal(); });
-  pause.panel.append(journalBtn, el('div', 'octo-credit', CREDIT_TEXT));
+  // Spelunky's quick restart from the pause menu (in a dive), and a way out of the tutorial; main.js shows the ones that apply (setPauseActions)
+  const pauseRestartBtn = keyButton('octo-btn-wide', 'Restart run', 'R');
+  pauseRestartBtn.classList.add('octo-pause-restart');
+  pauseRestartBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onQuickRestart && handlers.onQuickRestart(); });
+  const pauseLeaveBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-leave', 'Leave the tutorial');
+  pauseLeaveBtn.type = 'button';
+  pauseLeaveBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onLeaveTutorial && handlers.onLeaveTutorial(); });
+  pauseRestartBtn.style.display = pauseLeaveBtn.style.display = 'none';
+  const pauseBtns = el('div', 'octo-pause-btns');
+  pauseBtns.append(pauseRestartBtn, journalBtn, pauseLeaveBtn);
+  pause.panel.append(pauseBtns, el('div', 'octo-credit', CREDIT_TEXT));
   // Tapping the dimmed backdrop resumes too (but not clicks bubbling from
   // the panel's own future buttons, should any be added).
   pause.overlayEl.addEventListener('click', (e) => {
@@ -251,22 +272,30 @@ export function createUI(root, handlers) {
   const goTitle = el('div', 'octo-overlay-title', 'The dark took you');
   const goScore = el('div', 'octo-overlay-score');
   const goBest = el('div', 'octo-overlay-best');
-  const restartBtn = el('button', 'octo-btn-wide', 'Swim again');
-  restartBtn.type = 'button';
+  const restartBtn = keyButton('octo-btn-wide octo-go-restart', 'Swim again', '');
+  restartBtn.setLabel('Swim again', '');
+  // v2: 'Restart run' (a fresh dive at Shallows 1-1, no hub) is the first choice, 'Back to the hub' the second (setGameOverLabels)
+  const hubBtn = keyButton('octo-btn-wide octo-btn-ghost octo-go-hub', 'Back to the hub', 'H');
+  hubBtn.style.display = 'none';
+  let quickMode = false;
   const exitBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Exit');
   exitBtn.type = 'button';
   const goCredit = el('div', 'octo-credit', CREDIT_TEXT);
   const goSummary = createSummaryBlock(); // v2: the run summary replaces the score lines
   goSummary.el.style.display = 'none';
   const goActions = el('div', 'octo-go-actions'); // V2-PLAN 14: stays in view at the bottom of the side panel / sheet
-  goActions.append(restartBtn, exitBtn);
+  goActions.append(restartBtn, hubBtn, exitBtn);
   gameover.panel.append(goTitle, goSummary.el, goScore, goBest, goActions, goCredit);
   // V2-PLAN 14: the death screen is a side panel (desktop) or a bottom sheet (phones) over a light tint with a clear hole
   // around the body, which keeps simulating. It is laid out (hidden) at the moment of death so the camera can frame the
   // body in the free part of the screen before the panel fades in.
   let goRect = null;
   window.addEventListener('resize', () => { goRect = null; });
-  restartBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
+  restartBtn.addEventListener('click', () => {
+    if (quickMode) { if (handlers.onQuickRestart) handlers.onQuickRestart(); }
+    else if (handlers.onRestart) handlers.onRestart();
+  });
+  hubBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
   exitBtn.addEventListener('click', () => handlers.onExit && handlers.onExit());
 
   // --- v2 end-of-biome screen ---
@@ -280,8 +309,33 @@ export function createUI(root, handlers) {
   endScreen.panel.append(endTitle, endSub, endSummary.el, endBtn, el('div', 'octo-credit', CREDIT_TEXT));
   endBtn.addEventListener('click', () => handlers.onEndContinue && handlers.onEndContinue());
 
+  // --- first launch: the tutorial is offered (Spelunky: the tutorial is its own place; the dive stays sealed until it is done) ---
+  const offer = makeOverlay('octo-offer-overlay');
+  const offerTitle = el('div', 'octo-overlay-title');
+  const offerText = el('div', 'octo-offer-text');
+  const offerYes = keyButton('octo-btn-wide octo-offer-yes', '', 'Enter');
+  const offerNo = keyButton('octo-btn-wide octo-btn-ghost octo-offer-no', '', 'Esc');
+  const offerBtns = el('div', 'octo-pause-btns');
+  offerBtns.append(offerYes, offerNo);
+  offer.panel.append(offerTitle, offerText, offerBtns);
+  let offerCb = null;
+  const closeOffer = (yes) => { if (offer.overlayEl.style.display === 'none') return; offer.overlayEl.style.display = 'none'; const cb = offerCb; offerCb = null; if (cb) cb(yes); };
+  offerYes.addEventListener('click', (e) => { e.stopPropagation(); closeOffer(true); });
+  offerNo.addEventListener('click', (e) => { e.stopPropagation(); closeOffer(false); });
+
   const api = {
     updateHud,
+    /** A two-choice card (the first launch's tutorial offer). `done(yes)` is called once when a choice is made. */
+    showOffer(title, text, yes, no, done) {
+      offerTitle.textContent = title; offerText.textContent = text;
+      offerYes.setLabel(yes); offerNo.setLabel(no);
+      offerCb = done;
+      offer.overlayEl.style.display = 'flex';
+      offerYes.focus({ preventScroll: true });
+    },
+    isOfferShown() { return offer.overlayEl.style.display !== 'none'; },
+    /** Answer the open offer (keyboard: Enter = yes, Esc = no). */
+    answerOffer(yes) { closeOffer(!!yes); },
     /** Prompt banner: title + text, or null to hide it. */
     setPrompt(title, text) {
       if (!title) { promptEl.style.display = 'none'; return; }
@@ -332,8 +386,25 @@ export function createUI(root, handlers) {
     },
     hideEnd() { endScreen.overlayEl.style.display = 'none'; },
     isEndShown() { return endScreen.overlayEl.style.display !== 'none'; },
-    /** v2: the game-over button returns to the hub. */
-    setGameOverLabels(title, button) { goTitle.textContent = title; restartBtn.textContent = button; },
+    /** The game-over buttons. v2: `button` = 'Restart run' (onQuickRestart, key R) and `hubButton` = 'Back to the hub' (onRestart, key H);
+     *  without `hubButton` (endless) the single button restarts through onRestart. */
+    setGameOverLabels(title, button, hubButton) {
+      goTitle.textContent = title;
+      quickMode = !!hubButton;
+      restartBtn.setLabel(button, quickMode ? 'R' : '');
+      hubBtn.style.display = quickMode ? '' : 'none';
+      if (quickMode) hubBtn.setLabel(hubButton, 'H');
+    },
+    /** Which extra pause-menu buttons show: Restart run (in a dive), Leave the tutorial (in the tutorial). */
+    setPauseActions(restart, leave) {
+      pauseRestartBtn.style.display = restart ? '' : 'none';
+      pauseLeaveBtn.style.display = leave ? '' : 'none';
+    },
+    /** Test hook: the death screen's and the pause menu's buttons as shown ({label, key, shown}). */
+    buttons() {
+      const b = (x) => ({ label: x.querySelector('.octo-btn-label') ? x.querySelector('.octo-btn-label').textContent : x.textContent, key: x.querySelector('.octo-key') ? x.querySelector('.octo-key').textContent : '', shown: x.style.display !== 'none' });
+      return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
+    },
     hideControlsHelp() { controlsHelp.style.display = 'none'; },
     showControlsHelp() { controlsHelp.style.display = helpRetired ? 'none' : ''; },
     /** Retire the bottom-left controls line for good (the player knows the controls; Settings still lists them). */

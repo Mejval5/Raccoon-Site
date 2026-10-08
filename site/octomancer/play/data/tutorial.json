@@ -58,8 +58,8 @@
    "y": 14.5,
    "r": 8,
    "title": "The exit",
-   "desktop": "Swim into the whirlpool to finish the tutorial.",
-   "touch": "Swim into the whirlpool to finish the tutorial."
+   "desktop": "Swim into the whirlpool to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good.",
+   "touch": "Swim into the whirlpool to finish the tutorial. It takes you back to the hub, and the kelp on the dive opens for good."
   }
  ],
  "spawns": [

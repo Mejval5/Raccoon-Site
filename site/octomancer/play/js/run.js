@@ -1,11 +1,13 @@
 // v2 run flow (V2-PLAN section 10, B1-1), behind ?v2=1. A tiny flat state machine, no DOM:
 //
-//   hub -> tutorial -> biome1 L1 -> L2 -> L3 -> [rest grotto] -> end screen -> hub
+//   hub -> biome1 L1 -> L2 -> L3 -> [rest grotto] -> end screen -> hub
+//   hub -> tutorial -> hub (Spelunky style: the tutorial is its own place, entered from its ring in the hub)
 //   (the rest grotto, section 14: a calm room with a spring that refills hearts and juice and a stall; on when createRun gets rest:true)
-//   death anywhere returns to the hub.
+//   death anywhere returns to the hub; EV_RESTART (the death screen's / pause menu's 'Restart run') starts a fresh dive at
+//   Shallows 1-1 straight away, with exactly the resets a hub visit and a new dive would do.
 //
-// The tutorial is played once (the save remembers it); after that the hub entrance goes
-// straight to Shallows 1-1. main.js owns the fade and loads whatever levelSpec() asks for.
+// The dive whirlpool stays sealed until the tutorial has been finished once (the save remembers it); the tutorial stays
+// replayable from the hub. main.js owns the fade and loads whatever levelSpec() asks for.
 
 import { hashSeed2 } from './rng.js';
 
@@ -22,6 +24,12 @@ export const SHORTCUT_LEVEL = 2;
 /** r39: Marlo's ring in the hub (he was freed in three runs): the dive starts at Shallows 1-3. */
 export const EV_ENTER_SHORTCUT3 = 6;
 export const SHORTCUT3_LEVEL = 3;
+/** The hub's tutorial ring: the tutorial (always open; finishing it opens the dive). */
+export const EV_ENTER_TUTORIAL = 7;
+/** Quick restart (Spelunky): from a dive (dead or alive) straight into a fresh dive at Shallows 1-1, skipping the hub. */
+export const EV_RESTART = 8;
+/** Leave the tutorial from the pause menu without finishing it: back to the hub. */
+export const EV_LEAVE = 9;
 
 /** Why the octopus died: what hurtOctopus / killOctopus were told (octopus.js `cause`) -> text for the death screen. */
 export const CAUSE_TEXT = {
@@ -64,6 +72,7 @@ export function createRun(seed, opts = {}) {
     diveSeed: seed >>> 0,
     nextSeed: null,      // seed typed in the settings menu for the next dive (null = random); the dive's levels come from it exactly
     tutorialDone: !!opts.tutorialDone,
+    diveUnlocked: false, // the tutorial was just finished for the first time: the hub plays the unlock moment once (main.js clears it)
     levelsCleared: 0,    // biome levels exited in the current dive
     shells: 0,           // the currency: shells picked up and quest rewards, spent in shops; lost on death
     items: [],           // carried items (items.js): flat array of ids, kept between levels, lost on death
@@ -108,8 +117,17 @@ export function endDive(run, cleared, cause) {
   return run.last;
 }
 
-function startDive(run, level = 1) {
-  run.diveSeed = run.nextSeed !== null && run.nextSeed !== undefined ? run.nextSeed >>> 0 : hashSeed2(run.seed, run.dives);
+/** A death (or a dropped dive) back to the hub: the dive closes and everything carried is lost. */
+function toHub(run, died, cause) {
+  if (died) run.deaths++;
+  if (died && run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
+  run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
+  run.shopAggro = false; run.shopAggroWhy = '';
+  run.juice = 0; run.hotbar = null;
+}
+
+function startDive(run, level = 1, sameSeed = false) {
+  if (!sameSeed) run.diveSeed = run.nextSeed !== null && run.nextSeed !== undefined ? run.nextSeed >>> 0 : hashSeed2(run.seed, run.dives);
   run.dives++;
   run.state = S_BIOME;
   run.level = level;
@@ -124,16 +142,19 @@ function startDive(run, level = 1) {
 }
 
 /**
- * Apply an event. Returns true when the state or level changed (the caller then loads
+ * Apply an event (`cause`: EV_DEATH / EV_RESTART, what killed the octopus; `opts.sameSeed`: EV_RESTART replays this dive's seed). Returns true when the state or level changed (the caller then loads
  * levelSpec(run) behind a fade); events that do not apply in the current state return false.
  */
-export function runEvent(run, ev, cause) {
+export function runEvent(run, ev, cause, opts) {
   if (ev === EV_DEATH) {
-    run.deaths++;
-    if (run.state === S_BIOME && !run.dive.over) endDive(run, false, cause);
-    run.state = S_HUB; run.level = 0; run.levelsCleared = 0; run.shells = 0; run.items = [];
-    run.shopAggro = false; run.shopAggroWhy = '';
-    run.juice = 0; run.hotbar = null;
+    toHub(run, true, cause);
+    return true;
+  }
+  if (ev === EV_RESTART) {
+    // `cause` set: the octopus died (the death screen's button); none: the pause menu, alive (the dive is dropped, not a death)
+    if (run.state !== S_BIOME && run.state !== S_REST) return false;
+    toHub(run, !!cause, cause); // exactly what the death and the hub visit do ...
+    startDive(run, 1, !!(opts && opts.sameSeed)); // ... then what the hub's dive whirlpool does (a seeded run replays its dive seed)
     return true;
   }
   switch (run.state) {
@@ -148,13 +169,17 @@ export function runEvent(run, ev, cause) {
         startDive(run, SHORTCUT3_LEVEL);
         return true;
       }
+      if (ev === EV_ENTER_TUTORIAL) { run.state = S_TUTORIAL; return true; }
       if (ev !== EV_ENTER_DIVE) return false;
-      if (run.tutorialDone) startDive(run); else run.state = S_TUTORIAL;
+      if (!run.tutorialDone) return false; // the dive is sealed until the tutorial has been finished once
+      startDive(run);
       return true;
     case S_TUTORIAL:
+      if (ev === EV_LEAVE) { run.state = S_HUB; return true; }
       if (ev !== EV_EXIT) return false;
+      if (!run.tutorialDone) run.diveUnlocked = true; // first finish: the hub shows the dive opening
       run.tutorialDone = true;
-      startDive(run);
+      run.state = S_HUB; run.level = 0;
       return true;
     case S_BIOME:
       if (ev !== EV_EXIT) return false;
@@ -222,5 +247,10 @@ export function stageLabel(run) {
 
 /** True while a playable world is loaded (the end screen is an overlay over the last level). */
 export function isPlaying(run) { return run.state !== S_END; }
+/** The hub's dive whirlpool is open (the tutorial has been finished once). */
+export function diveOpen(run) { return !!run.tutorialDone; }
+/** 'Restart run' applies: in a dive (a Shallows level or the rest grotto). */
+export function canQuickRestart(run) { return run.state === S_BIOME || run.state === S_REST; }
+
 /** Hub, tutorial and the rest grotto: no Beholder timer, no enemies. */
 export function isSafeState(run) { return run.state === S_HUB || run.state === S_TUTORIAL || run.state === S_REST; }

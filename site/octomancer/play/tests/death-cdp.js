@@ -100,7 +100,7 @@ const SEEDS = [11, 23, 77];
         check(`${tag} both buttons are on screen without scrolling`, look.btn.length === 2 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
         if (seed === SEEDS[0]) {
           await page.screenshot({ path: path.join(process.env.TEMP || '.', `death-cdp-${vn}.png`) });
-          await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay button')][0].click());
+          await page.evaluate(() => document.querySelector('.octo-gameover-overlay .octo-go-hub').click());
           await sleep(300);
           await page.waitForFunction(() => !__octo.level().transitioning && !__octo.state().octopus.dead, { timeout: 15000 }).catch(() => {});
           const after = await page.evaluate(() => ({ dead: __octo.state().octopus.dead, shown: !!__octo.body(), stage: __octo.level().stage, overlay: getComputedStyle(document.querySelector('.octo-gameover-overlay')).display }));

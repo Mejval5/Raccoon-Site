@@ -48,8 +48,8 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; const oc = document
       await sleep(200);
       return ok;
     };
-    // the sequence of events that moves between levels: tutorial -> 1-1 -> 1-2 -> 1-3 -> rest grotto -> end -> hub -> 1-1 ...
-    const seq = ['exit', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter'];
+    // the sequence of events that moves between levels: tutorial -> hub -> 1-1 -> 1-2 -> 1-3 -> rest grotto -> end -> hub -> 1-1 ...
+    const seq = ['exit', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter', 'exit', 'exit', 'exit', 'exit', 'continue', 'enter'];
     // warm-up: three transitions fill the page's lazy caches (art, fonts, the shared rock grain, code), then the base is taken
     check('the warm-up transitions run', (await go(seq[0])) && (await go(seq[1])) && (await go(seq[2])));
     const base = await snap();
