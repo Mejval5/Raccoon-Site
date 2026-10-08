@@ -1337,7 +1337,7 @@ const FADE_MS = 320;
 const GENERATE_AT_MS = 80;     // r43: when, after the fade starts, the next level is generated
 const WARM_FRAMES = 18;        // r44: warm frames behind the dark screen before the fade-in (set-up, simulation and every group of the scene at least once, in turn)
 let warmGroupN = 0, warmSimN = 0, extrasPending = false;
-const WARM_SIM_STAGES = 7;
+const WARM_SIM_STAGES = 8;
 function runPendingExtras() { if (extrasPending) { extrasPending = false; timed('extras', () => setupLevelExtras()); } }
 /** r44: what the next frame behind the dark screen does: 0 = a piece of the renderer's set-up, -1 = one module's first update (see warmSim), 1..5 = draw one group of the scene. */
 function warmPhase() {
@@ -1359,6 +1359,7 @@ function warmSim(n) {
       case 4: if (V2) { addBlocks(resident); props.step(dt, world, octo, enemies.all()); } break;
       case 5: if (V2 && !isSafeState(run)) { hazards.update(dt, sim.time, octo, world, resident); loot.update(dt, octo, world, resident); loot.takeEvents(); } break;
       case 6: bombs.update(dt, world, octo, enemies); break;
+      case 7: if (V2) { updateTarget(hand, octo, handCtx); hotbarUI.update(hotbarState()); } break; // controls 2026-10-08: the hand's target search and the hotbar (bomb stack) of the new run
       default: break;
     }
   } catch (e) { /* a warm-up only: never stops a level from starting */ }
