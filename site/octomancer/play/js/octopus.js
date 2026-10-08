@@ -88,6 +88,10 @@ export function createOctopus(x, y) {
     pinAngle: 0,
     flat: 0,      // 0..1 how flat the splat pancake is (hazards.js drives it while the boulder presses down)
     noKill: false, // test hook (main.js godMode): instant deaths are skipped too
+    // --- spells (SPELLS-PICK.md): Anchor. While anchorT > 0 the body is a falling rock: it sinks hard, steers a little, cannot
+    // dash or swim up, and nothing throws it about (jets, blasts and knocks still hurt, but do not move it). startAnchor sets it.
+    anchorT: 0, anchorRest: 0, anchorRestS: 0.4, anchorSink: 16, anchorCap: 12, anchorSteer: 0.4,
+    anchorVy: 0, // the fall speed just before this step's collision (main.js: crush and smash on landing)
   };
 }
 
@@ -111,7 +115,7 @@ export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
   const along = (o.vx * dx + o.vy * dy) / d;
   if (along < 0) { o.vx -= (dx / d) * along; o.vy -= (dy / d) * along; }
   // applyImpulse divides by mass, so scale by mass here to get a flat knock u/s velocity change regardless of body mass.
-  applyImpulse(o, (dx / d) * knock * o.mass, (dy / d) * knock * o.mass);
+  if (!(o.anchorT > 0)) applyImpulse(o, (dx / d) * knock * o.mass, (dy / d) * knock * o.mass); // Anchor: hurt, but not thrown
   o.invulnTimer = HURT_INVULN;
   o.hurting = true;
   o.hurtTimer = HURT_RAGDOLL;
@@ -364,6 +368,7 @@ export function stepOctopus(o, input, dt, grid) {
     return;
   }
   if (o.stunT > 0) { stepLimp(o, dt, grid); return; }
+  if (o.anchorT > 0) { stepAnchor(o, input, dt, grid); return; }
 
   const joy = joystickCurve(input.move);
   o.swimming = joy.mag >= 0.01;
@@ -406,6 +411,44 @@ export function stepOctopus(o, input, dt, grid) {
     if (o.airT > 0.2 && impact > LAND_SQUASH_MIN) { o.squash = clamp(impact / 1.5, 0.35, 1); o.landedThisStep = true; }
     o.airT = 0;
   } else o.airT += dt;
+}
+
+/**
+ * Spells, Anchor: become a falling rock for `dur` s (ends early `rest` s after coming to rest on a floor). `p` = {sink (u/s^2),
+ * cap (u/s), steer (0..1 of the swim's sideways control), rest}. Any dash in progress is cancelled. Returns false when the body is
+ * not in control (dead, limp, held: nothing to anchor).
+ */
+export function startAnchor(o, dur, p = null) {
+  if (o.dead || o.limp || o.held > 0 || o.stunT > 0) return false;
+  o.anchorT = dur; o.anchorRest = 0;
+  if (p) { o.anchorSink = p.sink; o.anchorCap = p.cap; o.anchorSteer = p.steer; o.anchorRestS = p.rest; }
+  o.dashT = 0; o.swimming = false;
+  if (o.vy < 0) o.vy *= 0.3; // the upward part of a swim or dash is cut: it drops
+  return true;
+}
+
+/** One fixed step of an anchored body: no dash, no swim up, a hard sink with a speed cap, a little sideways steering. */
+function stepAnchor(o, input, dt, grid) {
+  o.anchorT = Math.max(0, o.anchorT - dt);
+  if (o.dashCooldown > 0) o.dashCooldown = Math.max(0, o.dashCooldown - dt);
+  o.swimming = false;
+  const mx = input.move ? clamp(input.move.x, -1, 1) : 0;
+  const want = mx * SWIM_MAX_SPEED * (o.swimMul || 1) * o.anchorSteer;
+  o.vx += (want - o.vx) * Math.min(1, dt * 6);
+  o.vy = Math.min(o.anchorCap, o.vy + o.anchorSink * dt);
+  o.anchorVy = o.vy;
+  // turn to hang upright, a slight lean with the steering
+  o.angle = rotateToDesiredAngle(o.angle, mx * 12, 0.5, SWIM_REST_ROTATE_CONST * 3, dt);
+  const pvy = o.vy;
+  contact.hit = 0;
+  integrateWithCollision(o, dt, grid);
+  const onFloor = contact.hit && contact.ny < -0.5;
+  if (onFloor) {
+    if (pvy > LAND_SQUASH_MIN) { o.squash = clamp(pvy / 6, 0.4, 1); o.landedThisStep = true; }
+    o.airT = 0;
+  } else o.airT += dt;
+  if (onFloor && Math.abs(o.vy) < 0.5) { o.anchorRest += dt; if (o.anchorRest >= o.anchorRestS) o.anchorT = 0; }
+  else o.anchorRest = 0;
 }
 
 /**
