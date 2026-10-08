@@ -2539,7 +2539,7 @@ function payQuest() {
   else if (p.id === 'pip-2') addStory('explorePip');
   else if (p.npc === 'quill') addStory('digQuill');
   story = getStory();
-  checkSkins(quest.cx, quest.cy - 0.4, quest.talk); // skins: their look, the first time
+  checkSkins(quest.cx, quest.cy - 0.1, quest.talk); // skins: their look, the first time
 }
 
 /**

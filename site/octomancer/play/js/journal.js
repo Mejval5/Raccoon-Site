@@ -5,7 +5,8 @@
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
 export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person', CAT_PROP = 'prop', CAT_SPELL = 'spell';
-export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_SPELL, CAT_LOOT, CAT_PROP];
+export const CAT_LOOK = 'look'; // 2026-10-08 skins: the octopus's looks (Items tab, after spells and runes)
+export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_SPELL, CAT_LOOK, CAT_LOOT, CAT_PROP];
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
 export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */

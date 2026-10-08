@@ -36,8 +36,6 @@ function image(url) {
 export function onArtReady(fn) { listeners.push(fn); }
 // r46: once the sprite atlas is in, every cached plate is redrawn with it
 onSpritesReady(() => { cache.clear(); for (const fn of listeners) fn(); });
-// 2026-10-08 skins: the Looks pages paint the octopus in each skin once its sheet (and the accessory atlas) is in
-onOctopusReady(() => { cache.clear(); for (const fn of listeners) fn(); });
 
 function stroke(ctx, fill, lw) { ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; }
 
@@ -225,6 +223,8 @@ export const GAME_DRAW = {
 };
 
 const cache = new Map();
+// 2026-10-08 skins: the Looks pages paint the octopus in each skin: redrawn when its sheet (and the accessory atlas) is in
+onOctopusReady(() => { cache.clear(); for (const fn of listeners) fn(); });
 /** The locked silhouette's ink: a warm brown that reads on parchment. */
 const LOCKED_INK = '#5b4636';
 

@@ -43,7 +43,7 @@ function giftPos(g, octo) {
   const k = Math.max(0, Math.min(1, g.t / GIFT_S));
   const e = k * k * (3 - 2 * k);
   const x = g.x + (octo.x - g.x) * e;
-  const y = g.y + (octo.y - 0.35 - g.y) * e - Math.sin(Math.PI * k) * 1.2;
+  const y = g.y + (octo.y - 0.35 - g.y) * e - Math.sin(Math.PI * k) * 0.55; // a low arc: it stays under the person's speech bubble
   return { x, y, k };
 }
 
@@ -62,7 +62,7 @@ export function drawSkinGifts(ctx, camera, cw, ch, gifts, octo, t) {
     const p = giftPos(g, octo);
     const s = worldToScreen(camera, cw, ch, p.x, p.y);
     const sk = skinById(g.id);
-    const w = ppu * 0.62;
+    const w = ppu * (0.85 + 0.25 * Math.sin(Math.PI * p.k));
     const wob = Math.sin(t * 9 + g.x) * 0.25 * (1 - p.k);
     if (sk.acc) drawSkinSprite(ctx, sk.acc.sprite, s.x, s.y, w, wob);
     else drawScales(ctx, s.x, s.y, w * 0.5, sk.body || '#9aa64a', sk.pattern ? sk.pattern.color : '#4f6a2a');
