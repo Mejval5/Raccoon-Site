@@ -111,7 +111,7 @@ export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
   const knock = opts && opts.knock !== undefined ? opts.knock : HURT_KNOCKBACK;
   const stun = opts && opts.stun ? opts.stun : 0;
   o.cause = cause || 'unknown'; // what last hurt it: the death screen names the killer (run.js CAUSE_TEXT)
-  o.hearts = Math.max(0, o.hearts - dmg);
+  o.hearts = Math.max(o.practice ? 1 : 0, o.hearts - dmg); // the tutorial's practice rooms (main.js octo.practice): the last heart stays
   let dx = o.x - fromX, dy = o.y - fromY;
   let d = len(dx, dy);
   if (d < 1e-4) { dx = 0; dy = -1; d = 1; }

@@ -90,16 +90,16 @@ function drawKelpCurtain(ctx, camera, cw, ch, r, t, octo, since) {
 }
 
 /**
- * @param {any} level the hub level (level.rooms from applyHubRooms, level.points)
+ * @param {any} level the hub level (level.village from applyHubRooms, level.points)
  * @param {any} table parseHubRooms result
  * @param {{story:any, tileAt:(x:number,y:number)=>number, octo:any, targetHitAt:number, targetHits:number, kelpBumpAt:number,
  *          keepsakeTaken:boolean}} s
  */
 export function drawHubRooms(ctx, camera, cw, ch, level, table, t, s) {
-  if (!level.rooms) return;
+  if (!level.village) return;
   const ppu = camera.pxPerUnit;
   const SX = (x) => cw / 2 + (x - camera.x) * ppu, SY = (y) => ch / 2 + (y - camera.y) * ppu;
-  for (const r of level.rooms) {
+  for (const r of level.village) {
     if (!inView(camera, cw, ch, r.x0 - 3, r.y0 - 3, r.x1 + 4, r.y1 + 3)) continue;
     const room = r.room;
     // the furniture: lamps first (their glow under everything), then the pieces
@@ -155,9 +155,9 @@ export function drawHubRooms(ctx, camera, cw, ch, level, table, t, s) {
     }
   }
   // the keepsake behind the fish bone
-  if (P.L && table.keepsake && inView(camera, cw, ch, P.L[0] - 2, P.L[1] - 2, P.L[0] + 2, P.L[1] + 2)) {
-    drawSprite(ctx, table.keepsake.sprite, SX(P.L[0] + 0.5), SY(P.L[1] + 1.02), 0, ppu * (table.keepsake.h || 0.9), 0.5, 1);
-    if (!s.keepsakeTaken) drawSprite(ctx, 'bomb', SX(P.L[0] - 0.2), SY(P.L[1] + 1.0), 0, ppu * 0.45, 0.5, 1, -0.4);
+  if (P.y && table.keepsake && inView(camera, cw, ch, P.y[0] - 2, P.y[1] - 2, P.y[0] + 2, P.y[1] + 2)) {
+    drawSprite(ctx, table.keepsake.sprite, SX(P.y[0] + 0.5), SY(P.y[1] + 1.02), 0, ppu * (table.keepsake.h || 0.9), 0.5, 1);
+    if (!s.keepsakeTaken) drawSprite(ctx, 'bomb', SX(P.y[0] - 0.2), SY(P.y[1] + 1.0), 0, ppu * 0.45, 0.5, 1, -0.4);
   }
 }
 

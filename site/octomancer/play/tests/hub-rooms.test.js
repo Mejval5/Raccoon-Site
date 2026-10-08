@@ -21,7 +21,7 @@ export async function runHubRoomsTests(assert) {
     applyHubRooms(lv, table, roomStates(table, { story, stat }));
     return lv;
   };
-  const isOpen = (lv, id) => lv.rooms.find((r) => r.id === id).open;
+  const isOpen = (lv, id) => lv.village.find((r) => r.id === id).open;
   const ALL = { marlo: 3, pip: 2, quill: 2, host: 1 };
   const keeperBought = (id, s) => (id === 'person-keeper' && s === 'collected' ? 1 : 0);
 
@@ -71,7 +71,7 @@ export async function runHubRoomsTests(assert) {
   }
 
   // --- the seals in the map ---
-  const door = (lv, id) => lv.rooms.find((r) => r.id === id).doors;
+  const door = (lv, id) => lv.village.find((r) => r.id === id).doors;
   const tilesOf = (lv, d) => { const out = []; for (let i = 0; i < d.length; i += 2) out.push(lv.tiles[d[i + 1] * lv.w + d[i]]); return out; };
   assert('hub rooms: a locked workshop is boarded up (timber door tiles), a locked den is rubble (rock), a locked grotto keeps its kelp door open water',
     tilesOf(fresh, door(fresh, 'workshop')).every((t) => t === MAT_TIMBER) && tilesOf(fresh, door(fresh, 'den')).every((t) => t === MAT_ROCK) && tilesOf(fresh, door(fresh, 'grotto')).every((t) => t === 0));
@@ -86,15 +86,15 @@ export async function runHubRoomsTests(assert) {
     return findPath(grid, lv.startX + 0.5, lv.startY + 0.5, x + 0.5, y + 0.5) !== null;
   };
   const P = full.points;
-  assert('hub rooms: everyone home, every room anchor is reachable from the start (A*)', full.rooms.every((r) => pathTo(full, r.ax, r.ay)));
+  assert('hub rooms: everyone home, every room anchor is reachable from the start (A*)', full.village.every((r) => pathTo(full, r.ax, r.ay)));
   assert('hub rooms: the rings, the wardrobe alcove and the practice target are reachable (A*)',
     pathTo(full, full.exitX, full.exitY) && pathTo(full, full.tutorialX, full.tutorialY) && pathTo(full, full.shortcutX, full.shortcutY) && pathTo(full, full.shortcut3X, full.shortcut3Y)
     && pathTo(full, P.A[0], P.A[1]) && pathTo(full, P.G[0], P.G[1]));
   const bone = []; for (let i = 0; i < full.tiles.length; i++) if (full.tiles[i] === MAT_BONE) bone.push(i % full.w, Math.floor(i / full.w));
-  assert('hub rooms: the keepsake (L) is sealed by fish bone (unreachable while it stands) and reachable once it crumbles', bone.length >= 4 && !pathTo(full, P.L[0], P.L[1]) && (() => {
+  assert('hub rooms: the keepsake (y) is sealed by fish bone (unreachable while it stands) and reachable once it crumbles', bone.length >= 4 && !pathTo(full, P.y[0], P.y[1]) && (() => {
     const lv = build({ ...ALL }, keeperBought);
     for (let i = 0; i < bone.length; i += 2) lv.tiles[bone[i + 1] * lv.w + bone[i]] = 0;
-    return pathTo(lv, P.L[0], P.L[1]);
+    return pathTo(lv, P.y[0], P.y[1]);
   })());
   assert('hub rooms: on a fresh save the dive, the tutorial ring and the empty rooms (nook, arena) are reachable; the boarded workshop, the rubble den and the kelp-curtained grotto are not',
     pathTo(fresh, fresh.exitX, fresh.exitY) && pathTo(fresh, fresh.tutorialX, fresh.tutorialY) && pathTo(fresh, roomOf(fresh, 'pip').ax, roomOf(fresh, 'pip').ay) && pathTo(fresh, roomOf(fresh, 'host').ax, roomOf(fresh, 'host').ay)
@@ -104,20 +104,20 @@ export async function runHubRoomsTests(assert) {
   // --- people and furniture placement ---
   const solid = (lv, x, y) => lv.tiles[y * lv.w + x] !== 0;
   assert('hub rooms: every standing person\'s anchor is open water with a floor right under it (Pip swims)',
-    full.rooms.filter((r) => r.room.npc && r.room.npc !== 'pip').every((r) => !solid(full, r.ax, r.ay) && !solid(full, r.ax, r.ay - 1) && solid(full, r.ax, r.ay + 1)));
+    full.village.filter((r) => r.room.npc && r.room.npc !== 'pip').every((r) => !solid(full, r.ax, r.ay) && !solid(full, r.ax, r.ay - 1) && solid(full, r.ax, r.ay + 1)));
   assert('hub rooms: Pip\'s anchor has open water about it to swim in', (() => { const r = roomOf(full, 'pip'); for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) if (solid(full, r.ax + dx, r.ay + dy)) return false; return true; })());
   let bad = '';
-  for (const r of full.rooms) for (const f of r.room.furnish) {
+  for (const r of full.village) for (const f of r.room.furnish) {
     if (!f.sprite || f.dy !== Math.round(f.dy)) continue; // floor pieces only (whole-tile dy)
     const x = Math.floor(r.ax + 0.5 + f.dx), y = r.ay + f.dy;
     if (!solid(full, x, y) || solid(full, x, y - 1)) bad += ` ${r.id}:${f.sprite}`;
   }
   assert('hub rooms: every floor furnishing stands on a floor tile with water above' + bad, bad === '');
   assert('hub rooms: roomAt finds the workshop at Marlo\'s spot and nothing in the dive chamber', roomAt(full, roomOf(full, 'marlo').ax + 0.5, roomOf(full, 'marlo').ay + 0.5).id === 'workshop' && roomAt(full, full.exitX + 0.5, full.exitY - 1) === null);
-  assert('hub rooms: plant keep-outs cover the furniture', Array.isArray(full.keepOut) && full.keepOut.length >= full.rooms.length);
+  assert('hub rooms: plant keep-outs cover the furniture', Array.isArray(full.keepOut) && full.keepOut.length >= full.village.length);
 
   // --- the kelp curtain pushes back while the grotto is locked ---
-  const g = fresh.rooms.find((r) => r.seal === SEAL_KELP);
+  const g = fresh.village.find((r) => r.seal === SEAL_KELP);
   const o = { x: g.dx0 + 0.5, y: g.dy0 + 1.5, vx: -3, vy: 0 };
   const pushed = kelpPush(fresh, o);
   const away = { x: g.dx1 + 4, y: g.dy0 + 1.5, vx: -3, vy: 0 };

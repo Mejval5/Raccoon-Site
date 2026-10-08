@@ -127,7 +127,7 @@ function addCand(c, s, x, y, d) {
 export function naturalStone(m) { return m === 1 || m === 2; }
 
 /** One rule for every cell (anchors and cluster mates alike): nothing within a tile of an enemy, hazard or loot anchor,
- * nothing in the shop stall or a keep-out (exit ring, shortcut, journal board, pool pedestal, a quest's cage). */
+ * nothing in the shop stall or a keep-out (exit ring, shortcut, tutorial ring, pool pedestal, a quest's cage). */
 export function keptOut(chunk, tx, ty) {
   const nf = chunk.plantFree;
   if (nf && tx >= nf.x0 && tx < nf.x1 && ty >= nf.y0 && ty < nf.y1) return true;

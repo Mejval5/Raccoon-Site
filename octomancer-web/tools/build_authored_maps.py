@@ -1,7 +1,7 @@
-"""Build site/octomancer/play/data/hub.json and tutorial.json (authored ASCII maps).
+"""Build site/octomancer/play/data/hub.json (authored ASCII map; historical: the hub has been edited by hand since). The tutorial is built by tutorial_map.py now.
 
 Legend: '#' rock, '.' water, 'S' start, 'E' exit (the dive entrance in the hub),
-'J' journal board (hub only), 'Q' quest sign (hub only), 'W' a breakable wall tile (rock; the tutorial bomb wall).
+'L' Quill's perch (hub only; the journal board 'J' was removed 2026-10-08), 'Q' quest sign (hub only), 'W' a breakable wall tile (rock; the tutorial bomb wall).
 Everything is rock outside the carved shapes; a 2 tile bedrock border is kept by the loader.
 Run: python octomancer-web/tools/build_authored_maps.py
 """
@@ -64,11 +64,11 @@ rect(hub, 9, 3, 10, 6, '#')
 rect(hub, 23, 3, 24, 5, '#')
 rect(hub, 7, 14, 10, 15, '#'); rect(hub, 8, 13, 9, 13, '#')
 rect(hub, 24, 14, 28, 15, '#'); rect(hub, 25, 13, 27, 13, '#')
-# alcove for the journal board (left) with a rock lip
+# alcove on the left with a rock lip
 rect(hub, 4, 9, 5, 13)
 border(hub)
 shave(hub)
-hub[13][7] = 'J'      # journal board, hung on the face of the left mound (rock at x=8), swim into it
+hub[12][9] = 'L'      # Quill's perch, above the left mound (the journal board beside it was removed 2026-10-08)
 hub[12][26] = 'Q'      # quest sign, standing on top of the right mound in open water (round 23)
 hub[12][22] = 'S'
 hub[21][16] = 'E'     # the dive entrance, ring on the floor of the well
@@ -76,8 +76,8 @@ hub_json = {
     'id': 'hub', 'name': 'The Hub', 'rows': rows(hub),
     'prompts': [
         {'x': 19, 'y': 12, 'r': 10, 'title': 'Welcome to the Shallows',
-         'desktop': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal.',
-         'touch': 'Swim into the glowing ring in the floor to dive. Swim into the board on the left to read your journal.'},
+         'desktop': 'Swim into the glowing ring in the floor to dive. Press Tab or I (or open the pause menu) to read your journal.',
+         'touch': 'Swim into the glowing ring in the floor to dive. Tap pause, then Journal, to read your journal.'},
     ],
     'spawns': [{'type': 'plankton-swarm', 'x': 26.5, 'y': 9.5, 'count': 6}],
 }
@@ -122,7 +122,7 @@ tut_json = {
                {'type': 'plankton-swarm', 'x': 47.5, 'y': 11.5, 'count': 7}],
 }
 
-for name, data in (('hub', hub_json), ('tutorial', tut_json)):
+for name, data in (('hub', hub_json),):  # tutorial.json: tutorial_map.py
     width = len(data['rows'][0])
     assert all(len(r) == width for r in data['rows']), name
     with open(os.path.join(out_dir, name + '.json'), 'w', encoding='utf8') as f:

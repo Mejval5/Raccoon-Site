@@ -123,6 +123,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // (no slot indices are assumed: the HUD owner orders the bar, the bomb stack may come first)
     const nS = hb.slots.length, s0 = hb.sel, bombI = hb.slots.findIndex((x) => x[0] === 'bomb'), spellI = hb.slots.findIndex((x) => x[0] !== 'bomb');
     check('hotbar: a dive starts with the spell and the bomb stack', nS === 2 && bombI >= 0 && spellI >= 0);
+    check('hotbar: the bomb stack is slot 1, Ink Cloud slot 2 and selected (HUD owner order)', bombI === 0 && hb.slots[1][0] === 'ink-cloud' && s0 === 1);
     await page.keyboard.press('KeyE'); await step(page, 1);
     const afterE = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await page.keyboard.press('KeyQ'); await step(page, 1);
@@ -260,10 +261,13 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     {
       const p = await open(browser, 'desktop', '?seed=5');
       await p.evaluate(() => { __octo.setStory('marlo', 1); __octo.setStory('quill', 1); });
-      const res = await p.evaluate(() => { // sweep the hub's water for a spot beside a resident (from the right: the journal board on the left opens the book)
+      // 2026-10-08: the hub journal board is gone: swimming where it stood (left of Quill's ledge) opens nothing
+      const nook = await p.evaluate(() => { const lv = __octo.level(); __octo.teleport(lv.quillX - 1.5, lv.quillY + 1.5); __octo.step(30); return { open: __octo.level().journalOpen, quill: lv.quillX }; });
+      check('hub: no journal board: swimming where it stood opens nothing', nook.quill >= 0 && nook.open === false, JSON.stringify(nook));
+      const res = await p.evaluate(() => { // sweep the hub's water for a spot beside a resident (from the right)
         const lv = __octo.level();
         for (let x = lv.w - 1.5; x > 1; x -= 0.7) for (let y = 1; y < lv.h - 1; y += 0.7) {
-          if (__octo.tileAt(Math.floor(x), Math.floor(y)) || Math.hypot(x - lv.boardX - 0.5, y - lv.boardY - 0.5) < 3) continue;
+          if (__octo.tileAt(Math.floor(x), Math.floor(y))) continue;
           __octo.teleport(x, y); __octo.step(1);
           const h = __octo.hand(); if (h.target && h.target.kind === 'talk') { __octo.stepDraw(1); return true; }
         }
@@ -317,16 +321,16 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // ================================================================== the tutorial's bomb floor
     {
       const p = await open(browser, 'desktop', '?at=tutorial&seed=7');
-      for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(37.5, 11.5); __octo.stepDraw(1); });
+      for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(61.5, 11.4); __octo.stepDraw(1); });
       const pr = await p.evaluate(() => ({ text: (document.querySelector('.octo-prompt') || document.body).textContent, hb: __octo.juice().hotbar }));
-      check('tutorial: the bomb prompt names B (drop) and right-click (sticky), and the bomb is picked on the bar', /press B/.test(pr.text) && /sticks/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
+      check('tutorial: the bomb prompt names C (drop) and B / X (quick bomb), and the bomb is picked on the bar', /press C/.test(pr.text) && /B or X/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
       await p.keyboard.press('KeyB'); await step(p, 1);
       await p.evaluate(() => __octo.input({ move: { x: -1, y: -0.3 } }));
       await step(p, 40); await p.evaluate(() => __octo.input(null));
       await shot(p, 'tutorial-bomb');
       await step(p, 80);
-      const open1 = await p.evaluate(() => { const lv = __octo.level(); let broken = 0; for (let x = 34; x <= 41; x++) for (let y = 14; y <= 15; y++) if (!__octo.tileAt(x, y)) broken++; return broken; });
-      check(`tutorial: one dropped bomb breaks through the floor (${open1} tiles)`, open1 >= 4 && await p.evaluate(() => !__octo.tileAt(37, 14) && !__octo.tileAt(37, 15)));
+      const open1 = await p.evaluate(() => { const lv = __octo.level(); let broken = 0; for (let x = 58; x <= 65; x++) for (let y = 13; y <= 14; y++) if (!__octo.tileAt(x, y)) broken++; return broken; });
+      check(`tutorial: one dropped bomb breaks through the floor (${open1} tiles)`, open1 >= 4 && await p.evaluate(() => !__octo.tileAt(61, 13) && !__octo.tileAt(61, 14)));
       await shot(p, 'tutorial-bomb-after');
       await p.close();
     }

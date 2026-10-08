@@ -3,23 +3,27 @@
 // returns (tiles + start / exit + marks), at any size. Behind ?v2=1.
 //
 // Rows: '#' rock, '.' water, 'S' start, 'E' exit (in the hub: the dive entrance),
-// 'J' journal board, 'Q' the hub residents' anchor (no sign is drawn any more: Marlo stands there, Pip swims beside it), 'R' shortcut ring to Shallows 1-2 (hub; drawn once unlocked), 'T' Marlo's shortcut ring to Shallows 1-3 (hub; r39), 'U' the tutorial ring (hub: always open; finishing the tutorial unseals the dive 'E'), 'W' a bomb-breakable wall tile (rock like any other interior rock).
+// 'L' Quill's perch in the hub (he stands on the rock under it; the journal board that stood beside it is gone, 2026-10-08: Tab / I and the pause menu open the book), 'Q' the hub residents' anchor (no sign is drawn any more: Marlo stands there, Pip swims beside it), 'R' shortcut ring to Shallows 1-2 (hub; drawn once unlocked), 'T' Marlo's shortcut ring to Shallows 1-3 (hub; r39), 'U' the tutorial ring (hub: always open; finishing the tutorial unseals the dive 'E'), 'W' a bomb-breakable wall tile (rock like any other interior rock).
 // Rest grotto (data/rest.json, end of the zone): 'H' the spring's centre (level.springX / springY, tile centre, -1 when absent),
 // 'K' the shop keeper's tile and three 'P' the pedestal tiles (level.shop = { kx, ky, px:Int16Array(6) } like level.js, null when absent;
 // pedestals sorted left to right). All of them are water tiles; the floor under them is rock, as in a generated shop room.
-// Hub village (data/hub-rooms.json): '1'..'9' a room's anchor (where its person stands), lowercase letters a room's door tiles,
-// 'A' the wardrobe alcove (level.wardrobeX / wardrobeY), 'G' the Ink Jet practice target, 'L' the hidden keepsake. All water tiles,
-// listed in level.points[char] as x, y pairs.
+// Hub village (data/hub-rooms.json): lowercase letters are a room's anchor (where its person stands) or its door tiles,
+// 'A' the wardrobe alcove (level.wardrobeX / wardrobeY, where the skins mirror stands), 'G' the Ink Jet practice target.
+// All water tiles, listed in level.points[char] as x, y pairs.
+// Tutorial rooms (data/tutorial.json): 'V' a sticky-mine wall tile (rock, level.sticky), '1'..'9' a coral door tile of that
+// door (level.doors[n], opened by tutorial.js when its room's goal is done); `rooms` passes through; spawns written by name
+// ({type:'hazard'|'creature'|'loot', name, x, y, dx, dy} or {type:'enemy', kind, placement, x, y}) become real spawn records.
 // Materials (materials.js): 'X' bedrock, 'B' bone block, '=' timber, 'M' masonry. The 2-tile border is written as rock
 // and becomes bedrock (the world treats it as unbreakable).
 
 import { MK_START, MK_EXIT } from './rooms.js';
 import { createPathGrid, findPath } from './pathcheck.js';
-import { MAT_CHARS, MAT_ROCK, MAT_BEDROCK } from './materials.js';
+import { MAT_CHARS, MAT_ROCK, MAT_BEDROCK, MAT_CORAL } from './materials.js';
+import { expandSpawns } from './tutorial.js';
 
-export const MK_BOARD = 9, MK_SIGN = 10, MK_SHORTCUT = 11, MK_SHORTCUT3 = 12, MK_TUTORIAL = 13;
+export const MK_SIGN = 10, MK_SHORTCUT = 11, MK_SHORTCUT3 = 12, MK_TUTORIAL = 13;
 export const AUTHORED_BORDER = 2;
-const POINT_RE = /^[1-9a-zAGL]$/;
+const POINT_RE = /^[a-zAG]$/;
 
 /**
  * @param {{id:string, name?:string, rows:string[], prompts?:any[], spawns?:any[]}} json
@@ -29,8 +33,8 @@ export function parseAuthoredMap(json) {
   const h = rows.length, w = rows[0].length;
   const tiles = new Uint8Array(w * h);
   const marks = new Int16Array(3 * 16);
-  const walls = [];
-  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, bx = -1, by = -1, qx = -1, qy = -1, rx = -1, ry = -1, tx3 = -1, ty3 = -1, ux = -1, uy = -1, hx = -1, hy = -1, kx = -1, ky = -1;
+  const walls = [], sticky = [], doors = {};
+  let nMarks = 0, sx = -1, sy = -1, ex = -1, ey = -1, lx = -1, ly = -1, qx = -1, qy = -1, rx = -1, ry = -1, tx3 = -1, ty3 = -1, ux = -1, uy = -1, hx = -1, hy = -1, kx = -1, ky = -1;
   const ped = [];
   const points = {};
   for (let y = 0; y < h; y++) {
@@ -40,9 +44,11 @@ export function parseAuthoredMap(json) {
       let t = 0;
       if (MAT_CHARS[ch] !== undefined) t = MAT_CHARS[ch];
       else if (ch === 'W') { t = MAT_ROCK; walls.push(x, y); }
+      else if (ch === 'V') { t = MAT_ROCK; sticky.push(x, y); }
+      else if (ch >= '1' && ch <= '9') { t = MAT_CORAL; (doors[ch] || (doors[ch] = [])).push(x, y); }
       else if (ch === 'S') { sx = x; sy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_START; nMarks++; }
       else if (ch === 'E') { ex = x; ey = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_EXIT; nMarks++; }
-      else if (ch === 'J') { bx = x; by = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_BOARD; nMarks++; }
+      else if (ch === 'L') { lx = x; ly = y; }
       else if (ch === 'Q') { qx = x; qy = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SIGN; nMarks++; }
       else if (ch === 'R') { rx = x; ry = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SHORTCUT; nMarks++; }
       else if (ch === 'T') { tx3 = x; ty3 = y; marks[nMarks * 3] = x; marks[nMarks * 3 + 1] = y; marks[nMarks * 3 + 2] = MK_SHORTCUT3; nMarks++; }
@@ -72,11 +78,14 @@ export function parseAuthoredMap(json) {
   } else if (kx >= 0 || ped.length) throw new Error('map ' + json.id + ': a shop needs one K and three P');
   return {
     authored: true, id: json.id, name: json.name || json.id, w, h, tiles, marks, nMarks,
-    startX: sx, startY: sy, exitX: ex, exitY: ey, boardX: bx, boardY: by, signX: qx, signY: qy, shortcutX: rx, shortcutY: ry, shortcut3X: tx3, shortcut3Y: ty3, tutorialX: ux, tutorialY: uy,
+    startX: sx, startY: sy, exitX: ex, exitY: ey, quillX: lx, quillY: ly, signX: qx, signY: qy, shortcutX: rx, shortcutY: ry, shortcut3X: tx3, shortcut3Y: ty3, tutorialX: ux, tutorialY: uy,
     points, wardrobeX: points.A ? points.A[0] : -1, wardrobeY: points.A ? points.A[1] : -1,
     springX: hx >= 0 ? hx + 0.5 : -1, springY: hy >= 0 ? hy + 0.5 : -1, shop,
     walls: Int16Array.from(walls), // x,y pairs of the bomb wall tiles
-    prompts: json.prompts || [], spawns: json.spawns || [],
+    sticky: Int16Array.from(sticky), // x,y pairs of the sticky-mine wall tiles (tutorial)
+    doors: Object.fromEntries(Object.entries(doors).map(([k, v]) => [k, Int16Array.from(v)])), // door number -> x,y pairs (coral)
+    rooms: json.rooms || [],
+    prompts: json.prompts || [], spawns: expandSpawns(json.spawns || [], tiles, w, h),
     // 2026-10-08 skins: the mirror shell (the looks picker), placed by data: {x, y} = the centre of its base on the floor (hub.json)
     mirror: json.mirror && Number.isFinite(json.mirror.x) && Number.isFinite(json.mirror.y) ? { x: +json.mirror.x, y: +json.mirror.y } : null,
     nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0,
@@ -94,9 +103,10 @@ export async function fetchAuthoredMaps(base = 'data/') {
  * A* check for an authored map (pathcheck.js, real octopus radius): the exit trigger is reachable from S.
  * Bomb-wall tiles count as passable only when `bombsGuaranteed` (the tutorial refills bombs, tutorial.js).
  */
-export function authoredSolvable(map, bombsGuaranteed = false) {
+export function authoredSolvable(map, bombsGuaranteed = false, doorsOpen = false) {
   const wall = new Uint8Array(map.w * map.h);
-  if (bombsGuaranteed) for (let i = 0; i < map.walls.length; i += 2) wall[map.walls[i + 1] * map.w + map.walls[i]] = 1;
+  if (bombsGuaranteed) for (const list of [map.walls, map.sticky || []]) for (let i = 0; i < list.length; i += 2) wall[list[i + 1] * map.w + list[i]] = 1;
+  if (doorsOpen && map.doors) for (const list of Object.values(map.doors)) for (let i = 0; i < list.length; i += 2) wall[list[i + 1] * map.w + list[i]] = 1;
   const grid = createPathGrid(map.w, map.h, (x, y) => map.tiles[y * map.w + x] !== 0 && !wall[y * map.w + x]);
   return findPath(grid, map.startX + 0.5, map.startY + 0.5, map.exitX + 0.5, map.exitY + 0.5) !== null;
 }

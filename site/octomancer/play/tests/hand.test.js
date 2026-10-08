@@ -12,7 +12,7 @@ import { createLoot, ST_INTACT, ST_DONE } from '../js/loot.js';
 import { createOctopus, hurtOctopus, stepOctopus } from '../js/octopus.js';
 import { createHand, stepHand, attach, stepFlying, updateTarget, phoneHandMode, registerInteract, unregisterInteract, clearInteracts, interactKinds, findTarget, handUse, HAND_REACH, HOLD_DROP_S, PRI_DOOR } from '../js/hand.js';
 import { registerHandKinds, WEIGHT } from '../js/hand-kinds.js';
-import { createHotbar, castableSpell, selectIndex, selectNext, ensureSlot, isItemId, BOMB_SLOT } from '../js/hotbar.js';
+import { createHotbar, castableSpell, selectIndex, selectNext, ensureSlot, isItemId, BOMB_SLOT, bombFirst, selectedSpell } from '../js/hotbar.js';
 import { createInput } from '../js/input.js';
 import { createShopState, shopBuy, shopGrab, shopLetGo, shopKnock, shopStep, W_SHELF, W_LOOSE, W_HELD } from '../js/shop.js';
 import { BOMB_RADIUS } from '../js/config.js';
@@ -114,7 +114,9 @@ export async function runHandTests(assert) {
     selectNext(hb, 1);
     assert('hotbar: scrolling wraps round', hb.sel === 0);
     const hb2 = createHotbar(['ink-cloud']);
-    assert('hotbar: ensureSlot adds the bomb once', ensureSlot(hb2, BOMB_SLOT) === 1 && ensureSlot(hb2, BOMB_SLOT) === 1 && hb2.slots.length === 2);
+    assert('hotbar: ensureSlot adds the bomb once, as slot 1 (Daniel: bombs first), the selection stays on Ink Cloud', ensureSlot(hb2, BOMB_SLOT) === 0 && ensureSlot(hb2, BOMB_SLOT) === 0 && hb2.slots.length === 2 && hb2.slots[0].ids[0] === BOMB_SLOT && selectedSpell(hb2) === 'ink-cloud');
+    const hb3 = createHotbar(['ink-cloud', 'anchor', BOMB_SLOT]); selectIndex(hb3, 1);
+    assert('hotbar: bombFirst moves the bomb stack of an old bar to slot 1 and keeps the selection', bombFirst(hb3) && hb3.slots.map((sl) => sl.ids[0]).join() === 'bomb,ink-cloud,anchor' && selectedSpell(hb3) === 'anchor' && bombFirst(hb3) === false);
   }
 
   // ---------------------------------------------------------------- bombs: drop and sticky, fuse and radius

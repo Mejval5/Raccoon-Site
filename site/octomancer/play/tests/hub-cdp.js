@@ -155,7 +155,7 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       check('target: three Ink Jet hits within the window win a practice round (story.hubPractice), the host calls it', h.story.hubPractice >= 1 && h.talk.who === 'host', JSON.stringify({ round: h.round, practice: h.story.hubPractice, talk: h.talk }));
       await shot(p, 'full-desk-target');
       // the fish bone: a dash crumbles it; the keepsake behind gives a bomb for the next dive, once
-      const L = h.points.L;
+      const L = h.points.y;
       const boneX = L[0] - 4; // the bone wall sits two tiles left of the hollow
       const before = await p.evaluate((x, y) => [__octo.tileAt(x, y), __octo.tileAt(x + 1, y)], boneX, L[1]);
       check('secret: fish bone (material 3) seals the hollow', before.every((t) => t === 3), JSON.stringify(before));

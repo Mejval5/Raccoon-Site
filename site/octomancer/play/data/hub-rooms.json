@@ -2,7 +2,7 @@
  "_doc": "The hub village's rooms (js/hub-rooms.js). One room per person, built into data/hub.json: `anchor` is the map char of the spot the person stands on (feet on the floor; Pip swims about it), `door` the map char of the door tiles, `area` the room's rectangle relative to the anchor [dx0, dy0, dx1, dy1] in tiles (inclusive; entering it discovers the journal place). `unlock`: {story: key, min} (save.js story counters) or {journal: entry id, stat: seen|killed|collected|..., min}; once a room has been seen open it stays open (save.js story.hubRooms, one bit per room in table order). `seal` while locked: 'kelp' (a kelp curtain over the door: the octopus is pushed back), 'planks' (the door tiles are timber), 'rubble' (the door tiles are rock with a rubble heap drawn over them), 'empty' (open, but nobody lives there: the room is dim and its furniture bare). `furnish`: sprites of img/v2/sprites*.webp at [dx, dy] from the anchor (the sprite's bottom centre, dy 1 = the floor line under the anchor), `h` tall in tiles; `when` 'open' (default), 'locked' or 'always'; `need` {story, min} for a piece that comes with a later stage; `back` true = drawn dimmer, as part of the wall. `kind` (instead of a sprite): 'relics' (Quill's idols on the shelf: story.relicsGiven of them), 'lamp' (a hanging glow lamp from the ceiling above), 'glow' (a soft light pool). `lines` are what the person says in the room when they have nothing else to say (people with a quests.json row speak those first).",
  "rooms": [
   { "id": "workshop", "npc": "marlo", "name": "Marlo's Workshop", "journal": "place-workshop",
-    "anchor": "1", "door": "m", "area": [-6, -6, 10, 0], "seal": "planks",
+    "anchor": "w", "door": "m", "area": [-6, -6, 10, 0], "seal": "planks",
     "unlock": { "story": "marlo", "min": 1 },
     "moved": "Marlo moved into the old workshop.",
     "furnish": [
@@ -16,7 +16,7 @@
       { "sprite": "tank", "dx": 3.4, "dy": 1, "h": 0.8, "when": "locked", "rot": -80 }
     ] },
   { "id": "nook", "npc": "pip", "name": "Pip's Nook", "journal": "place-nook",
-    "anchor": "2", "door": "p", "area": [-8, -4, 6, 3], "seal": "empty",
+    "anchor": "n", "door": "p", "area": [-8, -4, 6, 3], "seal": "empty",
     "unlock": { "story": "pip", "min": 1 },
     "moved": "Pip moved into the shell house.",
     "furnish": [
@@ -27,7 +27,7 @@
       { "sprite": "clam", "dx": -1.3, "dy": 4, "h": 0.55, "need": { "story": "explorePip", "min": 1 } }
     ] },
   { "id": "grotto", "npc": "quill", "name": "Quill's Collection", "journal": "place-grotto",
-    "anchor": "3", "door": "q", "area": [-6, -6, 9, 0], "seal": "kelp",
+    "anchor": "g", "door": "q", "area": [-6, -6, 9, 0], "seal": "kelp",
     "unlock": { "story": "quill", "min": 1 },
     "moved": "Quill moved into the grotto.",
     "furnish": [
@@ -38,7 +38,7 @@
       { "kind": "lamp", "dx": 0.2, "dy": -3.6 }
     ] },
   { "id": "arena", "npc": "host", "name": "The Little Arena", "journal": "place-arena",
-    "anchor": "4", "door": "h", "area": [-10, -7, 5, 0], "seal": "empty",
+    "anchor": "r", "door": "h", "area": [-10, -7, 5, 0], "seal": "empty",
     "unlock": { "story": "host", "min": 1 },
     "moved": "The pool host opened a little arena.",
     "furnish": [
@@ -48,7 +48,7 @@
       { "kind": "lamp", "dx": -2.5, "dy": -3.6 }
     ] },
   { "id": "den", "npc": "keeper", "name": "The Keeper's Den", "journal": "place-den",
-    "anchor": "5", "door": "k", "area": [-5, -5, 6, 0], "seal": "rubble",
+    "anchor": "d", "door": "k", "area": [-5, -5, 6, 0], "seal": "rubble",
     "unlock": { "journal": "person-keeper", "stat": "collected", "min": 1 },
     "moved": "The shopkeeper dug out a den.",
     "lines": ["Off duty. The stall can wait.", "Buy something down there, and I eat well up here.", "Mind the chair. It is older than you."],
@@ -59,7 +59,7 @@
       { "kind": "lamp", "dx": 1.0, "dy": -3.2 }
     ] }
 ,
-  { "id": "plaza", "npc": "", "name": "The Plaza", "anchor": "6", "area": [-11, -13, 16, 0], "seal": "none",
+  { "id": "plaza", "npc": "", "name": "The Plaza", "anchor": "z", "area": [-11, -13, 16, 0], "seal": "none",
     "furnish": [
       { "kind": "lamp", "dx": -5.5, "dy": -8.5, "when": "always" },
       { "kind": "lamp", "dx": 3.5, "dy": -9.5, "when": "always" },

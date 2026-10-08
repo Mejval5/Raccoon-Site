@@ -8,9 +8,9 @@ to the dive chamber (the dive whirlpool E and the 1-2 shortcut ring R), and one 
   lower left   Pip's family nook            (door 'p', open: an empty shell house until Pip moves in)
   lower right  the host's little arena      (door 'h', open: a dusty arena with the Ink Jet practice target G)
   bottom left  the shopkeeper's off-duty den (door 'k', rubble while locked), off the dive chamber
-  a fish-bone wall (B) on the dive chamber's right hides a small hollow with a keepsake (L)
+  a fish-bone wall (B) on the dive chamber's right hides a small hollow with a keepsake (y); 'L' is Quill's perch on the plaza floor
   the wardrobe alcove (A) beside the plaza floor (the skins owner hooks the picker there)
-Room anchors (where the person stands): '1' Marlo, '2' Pip, '3' Quill, '4' host, '5' keeper. Doors, anchors, A, G and L
+Room anchors (where the person stands): 'w' Marlo, 'n' Pip, 'g' Quill, 'r' host, 'd' keeper, 'z' the plaza. Doors, anchors, A, G and y
 are water tiles; the loader (authored.js) lists them in level.points. data/hub-rooms.json says which door belongs to whom.
 Run: python octomancer-web/tools/build_hub_village.py
 """
@@ -91,7 +91,7 @@ put(29, 13, 'U')                    # on the stage
 put(36, 35, 'E')
 put(41, 35, 'R')
 put(36, 18, 'Q')                    # the plaza spot (residents without a room)
-put(33, 18, '6')                    # the plaza's own furnishings (lamps, pots)
+put(33, 18, 'z')                    # the plaza's own furnishings (lamps, pots)
 put(46, 18, 'A')
 for y in range(8, 12):
     for x in (19, 20): g[y][x] = 'q'
@@ -102,13 +102,14 @@ for y in range(23, 26):
 for y in range(33, 36):
     for x in (22, 23): g[y][x] = 'k'
 put(62, 11, 'T')
-put(57, 11, '1')
-put(12, 27, '2')
-put(10, 11, '3')
-put(62, 29, '4')
-put(15, 39, '5')
+put(57, 11, 'w')                    # room anchors (lowercase: digits are the tutorial's coral doors)
+put(12, 27, 'n')
+put(10, 11, 'g')
+put(62, 29, 'r')
+put(15, 39, 'd')
 put(57, 29, 'G')
-put(50, 35, 'L')
+put(50, 35, 'y')                    # the keepsake behind the fish bone
+put(39, 18, 'L')                    # Quill's perch (authored.js quillX): where he stands while his grotto is not open
 
 # the bedrock border stays rock
 for y in range(H):
@@ -130,8 +131,8 @@ hub = {
          'desktop': 'The kelp holds the dive shut. Finish the tutorial (the ring up on the stage) and it opens for good.',
          'touch': 'The kelp holds the dive shut. Finish the tutorial (the ring up on the stage) and it opens for good.'},
         {'x': 36, 'y': 12, 'r': 9, 'when': 'open', 'title': 'Welcome to the village',
-         'desktop': 'The dive whirlpool is down the shaft: press F in it to dive. The people you help move into the empty rooms around the plaza.',
-         'touch': 'The dive whirlpool is down the shaft: tap Enter in it to dive. The people you help move into the empty rooms around the plaza.'},
+         'desktop': 'The dive whirlpool is down the shaft: press F in it to dive. Press Tab or I for your journal. The people you help move into the empty rooms.',
+         'touch': 'The dive whirlpool is down the shaft: tap Enter in it to dive. Tap pause, then Journal, for your journal. The people you help move into the empty rooms.'},
     ],
     'mirror': {'x': 46.5, 'y': 19},  # the skins owner's mirror shell (skin-picker.js): in the wardrobe alcove A, base on the floor
     'spawns': [

@@ -34,6 +34,7 @@ export function tick(sim, mx, my, act = {}) {
   if (octo.dashedThisStep) sim.dashes++;
   world.update(octo.y);
   if (sim.tutorial) tutorialStep(sim.tutorial, octo, sim.wallIntact ? sim.wallIntact() : true, STEP);
+  if (sim.onStep) sim.onStep(sim); // e.g. the tutorial's rooms (tutorial.js tutorialRooms) opening their doors
   sim.props.step(STEP, world, octo);
   sim.bombs.update(STEP, world, octo, noEnemies);
   if (snap.bomb.pressed) sim.bombs.place(octo, octo.x, octo.y, act.aim || null); // thrown along act.aim, else a soft toss

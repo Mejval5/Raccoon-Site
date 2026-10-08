@@ -58,13 +58,13 @@ export function openMask(states) { let m = 0; for (const s of states) if (s.open
 
 /**
  * Lay the rooms into a freshly parsed hub level (authored.js; before the world is built): locked plank and rubble doors become
- * solid, and `level.rooms` gets each room's geometry and state:
+ * solid, and `level.village` gets each room's geometry and state:
  * {id, room, open, seal, ax, ay (anchor tile), x0, y0, x1, y1 (area, inclusive tiles), doors: [x, y, ...], dx0, dy0, dx1, dy1 (door rect)}.
  * Also adds plant keep-outs around the furniture (level.keepOut, read by world-v2.js); `aspect(name)` = a sprite's width / height.
  */
 export function applyHubRooms(level, table, states, aspect = null) {
   const pts = level.points || {};
-  level.rooms = [];
+  level.village = [];
   level.keepOut = level.keepOut || [];
   for (const st of states) {
     const r = st.room, a = pts[r.anchor];
@@ -78,7 +78,7 @@ export function applyHubRooms(level, table, states, aspect = null) {
       x0: ax + r.area[0], y0: ay + r.area[1], x1: ax + r.area[2], y1: ay + r.area[3], doors, dx0, dy0, dx1, dy1,
     };
     if (!st.open && SEAL_MAT[rec.seal] !== undefined) for (let i = 0; i < doors.length; i += 2) level.tiles[doors[i + 1] * level.w + doors[i]] = SEAL_MAT[rec.seal];
-    level.rooms.push(rec);
+    level.village.push(rec);
     // no plants over the furniture or on the person's spot (the walls and the ceiling keep theirs)
     level.keepOut.push({ x0: ax - 1, x1: ax + 2, y0: ay - 2, y1: ay + 2 });
     for (const f of r.furnish) {
@@ -88,21 +88,21 @@ export function applyHubRooms(level, table, states, aspect = null) {
     }
   }
   const keep = (ch, rx, up) => { const p = pts[ch]; if (p) level.keepOut.push({ x0: p[0] - rx, x1: p[0] + rx + 1, y0: p[1] - up, y1: p[1] + 2 }); };
-  keep('A', 2, 2); keep('G', 1, 2); keep('L', 2, 2);
-  return level.rooms;
+  keep('A', 2, 2); keep('G', 1, 2); keep('y', 2, 2);
+  return level.village;
 }
 
 /** The room record of a person in this level (or null). */
 export function roomOf(level, npc) {
-  if (!level.rooms) return null;
-  for (const r of level.rooms) if (r.room.npc === npc) return r;
+  if (!level.village) return null;
+  for (const r of level.village) if (r.room.npc === npc) return r;
   return null;
 }
 
 /** The room whose area holds the point (or null). */
 export function roomAt(level, x, y) {
-  if (!level.rooms) return null;
-  for (const r of level.rooms) if (x >= r.x0 && x < r.x1 + 1 && y >= r.y0 && y < r.y1 + 1) return r;
+  if (!level.village) return null;
+  for (const r of level.village) if (x >= r.x0 && x < r.x1 + 1 && y >= r.y0 && y < r.y1 + 1) return r;
   return null;
 }
 
@@ -111,8 +111,8 @@ export function roomAt(level, x, y) {
  * door away from the room's anchor). Returns true when it pushed.
  */
 export function kelpPush(level, o) {
-  if (!level.rooms) return false;
-  for (const r of level.rooms) {
+  if (!level.village) return false;
+  for (const r of level.village) {
     if (r.open || r.seal !== SEAL_KELP || !r.doors.length) continue;
     const m = 0.45;
     if (o.x < r.dx0 - m || o.x > r.dx1 + 1 + m || o.y < r.dy0 - m || o.y > r.dy1 + 1 + m) continue;
@@ -130,6 +130,6 @@ export function kelpPush(level, o) {
 /** The tiles a locked room seals off (to treat as walls for a reachability check): [x, y, ...] of kelp doors. */
 export function softWalls(level) {
   const out = [];
-  if (level.rooms) for (const r of level.rooms) if (!r.open && r.seal === SEAL_KELP) out.push(...r.doors);
+  if (level.village) for (const r of level.village) if (!r.open && r.seal === SEAL_KELP) out.push(...r.doors);
   return out;
 }
