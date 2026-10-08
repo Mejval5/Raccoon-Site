@@ -46,6 +46,18 @@ export const FN = {
     c.strokeStyle = '#c9a56a'; c.lineWidth = 0.09; c.beginPath(); c.moveTo(0.1, -0.5); c.quadraticCurveTo(0.35, -0.85, 0.6, -0.7); c.stroke();
     c.fillStyle = '#ffd24a'; c.beginPath(); c.arc(0.62, -0.72, 0.13, 0, TAU); c.fill();
   },
+  // the Ink Jet: the dark ink drop the hotbar's jet slot shows, with a short trail of smaller drops behind it
+  inkjet(c) {
+    c.save(); c.rotate(-0.5);
+    c.fillStyle = '#1a1030'; c.strokeStyle = '#0b0618'; c.lineWidth = 0.08; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(0, -0.78);
+    c.bezierCurveTo(0.26, -0.4, 0.7, -0.04, 0.6, 0.3); c.bezierCurveTo(0.52, 0.7, -0.52, 0.7, -0.6, 0.3); c.bezierCurveTo(-0.7, -0.04, -0.26, -0.4, 0, -0.78);
+    c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(150,130,200,0.55)'; c.beginPath(); c.ellipse(-0.22, 0.08, 0.12, 0.2, 0.3, 0, TAU); c.fill();
+    c.fillStyle = '#1a1030';
+    for (const [x, y, r] of [[0, 0.86, 0.11], [0.04, 1.06, 0.07]]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+    c.restore();
+  },
   bombpack(c) {
     for (const [x, y] of [[-0.42, 0.25], [0.42, 0.25], [0, -0.3]]) { c.save(); c.translate(x, y); c.scale(0.55, 0.55); FN.bomb(c); c.restore(); }
   },

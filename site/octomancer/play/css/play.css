@@ -645,6 +645,62 @@ body {
   .octo-bk-prog .octo-bk-lrow, .octo-bk-bestline, .octo-bk-none { font-size: 12px; line-height: 1.25; }
   .octo-bk-prog .octo-bk-sub { margin-top: 3px; font-size: 11px; }
 }
+/* 2026-10-08: the Carried page (Tab / I) and the item pages of the collection. Carried cards are smaller (four to a row),
+   grouped under small section labels; a hotbar card shows its slot number, a count where it has one, and can be dragged. */
+.octo-bk-cgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 6px; padding-top: 2px; }
+.octo-bk-csect { grid-column: 1 / -1; margin-top: 4px; font: 700 11px 'Quicksand', sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px dashed rgba(58,42,27,.3); }
+.octo-bk-csect:first-child { margin-top: 0; }
+.octo-bk-ccard .octo-bk-plate { max-width: 64px; }
+.octo-bk-ccard .octo-bk-cardname { font-size: 11.5px; }
+.octo-bk-ccard[data-slot] { touch-action: none; }
+.octo-bk-ccard.is-held .octo-bk-plate { box-shadow: inset 0 0 0 2px #0f3039, 0 0 0 3px #62b5a8; }
+.octo-bk-ccard.is-picked { border-color: #1d7d8a; border-style: dashed; background: rgba(29,125,138,.12); }
+.octo-bk-ccard.is-drop { border-color: #1d7d8a; background: rgba(29,125,138,.18); }
+.octo-bk-ccard.is-dragging { z-index: 5; opacity: .85; pointer-events: none; transition: none; }
+.octo-bk-slotno, .octo-bk-cnt { position: absolute; display: flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font: 700 11px/1 'Quicksand', sans-serif; pointer-events: none; }
+.octo-bk-slotno { left: 3px; top: 3px; background: rgba(239,227,191,.92); color: #3a2a1b; box-shadow: 0 0 0 1px #0f3039; }
+.octo-bk-cnt { right: 3px; bottom: 3px; background: rgba(16,32,44,.85); color: #e6f5ef; }
+.octo-bk-cnone { grid-column: 1 / -1; font-size: 12px; font-style: italic; color: var(--ink-soft); }
+.octo-bk-entry.has-facts { gap: 6px; }
+.octo-bk-entry.has-facts .octo-bk-plate-big { width: 128px; border-radius: 14px; }
+.octo-bk-entry.has-facts .octo-bk-name { font-size: 21px; }
+.octo-bk-entry.has-facts .octo-bk-text { font-size: 13px; line-height: 1.3; }
+.octo-bk-entry.has-facts .octo-bk-ledger { margin-top: 0; padding-top: 5px; gap: 2px; }
+.octo-bk-entry.has-facts .octo-bk-lrow { font-size: 13px; }
+.octo-bk-facts .octo-bk-lv { color: #1f5a66; text-align: right; }
+.octo-bk-facts .octo-bk-lk { white-space: nowrap; }
+.octo-bk-where { align-self: stretch; font: 600 12.5px/1.3 'Quicksand', sans-serif; font-style: italic; color: var(--ink-soft); }
+.octo-bk-use { align-self: stretch; font: 600 12.5px/1.3 'Quicksand', sans-serif; color: #4a3826; }
+.octo-bk-use b { color: var(--ink); }
+.octo-bk-acts { display: flex; gap: 6px; align-self: stretch; justify-content: center; flex-wrap: wrap; }
+.octo-bk-act, .octo-bk-link { min-height: 36px; min-width: 40px; padding: 0 12px; border-radius: 999px; border: 2px solid #3a2a1b; background: #f6edd2; color: var(--ink); font: 700 13px 'Quicksand', sans-serif; cursor: pointer; box-shadow: 0 2px 0 rgba(58,42,27,.35); touch-action: manipulation; }
+.octo-bk-act:disabled { opacity: .4; cursor: default; }
+.octo-bk-act:active:not(:disabled), .octo-bk-link:active { background: var(--paper-dk); }
+.octo-bk-link { min-height: 30px; border-width: 0; background: none; box-shadow: none; color: #1f5a66; text-decoration: underline; text-underline-offset: 3px; padding: 0 6px; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-facts .octo-bk-bio { flex-direction: row; align-items: center; gap: 10px; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-facts .octo-bk-plate-big { width: 84px; flex: none; }
+.octo-book[data-mode="single"] .octo-bk-entry.has-facts .octo-bk-name { font-size: 18px; text-align: left; }
+@media (max-height: 520px) {
+  .octo-bk-tabs { gap: 3px; } /* seven bookmarks: a little less space between them, so "Progress" fits its tab at 375 px high */
+  /* short landscape: six small plates to a row, no captions (the right page names the highlighted one) */
+  .octo-bk-cgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px 4px; }
+  .octo-bk-ccard { min-height: 0; padding: 2px; }
+  .octo-bk-ccard .octo-bk-plate { max-width: 46px; }
+  .octo-bk-ccard .octo-bk-cardname { display: none; }
+  .octo-bk-slotno, .octo-bk-cnt { min-width: 15px; height: 15px; font-size: 10px; padding: 0 3px; }
+  .octo-bk-csect { font-size: 10px; margin-top: 2px; }
+  .octo-bk-entry.has-facts { gap: 3px; padding-top: 0; }
+  .octo-bk-entry.has-facts .octo-bk-kicker { display: none; }
+  .octo-bk-entry.has-facts .octo-bk-bio { flex-direction: row; align-items: center; gap: 10px; }
+  .octo-bk-entry.has-facts .octo-bk-plate-big { width: 56px; flex: none; }
+  .octo-bk-entry.has-facts .octo-bk-name { font-size: 16px; text-align: left; }
+  .octo-bk-entry.has-facts .octo-bk-text { font-size: 12px; line-height: 1.25; max-width: none; }
+  .octo-bk-entry.has-facts .octo-bk-lrow { font-size: 12px; }
+  .octo-bk-entry.has-facts .octo-bk-ledger { padding-top: 3px; gap: 1px; }
+  .octo-bk-where, .octo-bk-use { font-size: 11.5px; line-height: 1.22; }
+  .octo-bk-act { min-height: 32px; font-size: 12px; padding: 0 10px; }
+  .octo-bk-link { min-height: 24px; font-size: 12px; }
+}
 #hud > .octo-toast.is-small { padding: 4px 12px; font-size: 11px; font-weight: 600; background: rgba(6, 22, 34, 0.74); border-color: rgba(186, 255, 234, 0.4); color: #cfeee4; bottom: calc(18px + var(--safe-b)); }
 .octo-pause-btns { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
 

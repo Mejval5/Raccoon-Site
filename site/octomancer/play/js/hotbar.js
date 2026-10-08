@@ -54,6 +54,17 @@ export function addSpell(hb, id) {
   return true;
 }
 
+/** Swap slots a and b (the journal's Carried page: drag one onto another, or pick one and then the other). The selection stays on the same slot object. */
+export function swapSlots(hb, a, b) {
+  const n = hb.slots.length;
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a >= n || b >= n || a === b) return false;
+  const picked = hb.slots[hb.sel], last = hb.lastSpell !== undefined ? hb.slots[hb.lastSpell | 0] : null;
+  const t = hb.slots[a]; hb.slots[a] = hb.slots[b]; hb.slots[b] = t;
+  hb.sel = hb.slots.indexOf(picked);
+  if (last) hb.lastSpell = Math.max(0, hb.slots.indexOf(last)); // the controls branch's "last spell slot" follows its slot too
+  return true;
+}
+
 /** Short string that changes whenever the slots, their order or the selection change. */
 export function hotbarKey(hb) {
   return hb.sel + ':' + hb.slots.map((s) => s.ids.join('+')).join(',');

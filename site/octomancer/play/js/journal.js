@@ -9,19 +9,20 @@ export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
 export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
-export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_COUNT = 5;
+export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_USED = 5, STAT_CARRIED = 6, STAT_COUNT = 7;
 
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
+export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells and Runes', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
 /**
  * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
  * (a real sprite, generated art, an item icon or a code drawing: journal-art.js) and which counters apply. Ids are
  * stable: saves store them. Fetched once when the module loads (every importer is a browser module).
+ * Item, spell and rune rows also have `where` (one line: where it is found), shown on the page and, as a tease, on the locked page.
  * A People row also has `story`: {key, lines:[[stage, text]...]}: the questline so far, read from the save's story flags (storyLines).
- * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][], story:any}[]}
+ * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][], story:any, where:string|null}[]}
  */
 export const ENTRIES = [];
-const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, angered: STAT_ANGERED };
+const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, angered: STAT_ANGERED, used: STAT_USED, carried: STAT_CARRIED };
 {
   const res = await fetch(new URL('../data/journal.json', import.meta.url));
   if (!res.ok) throw new Error('journal.json ' + res.status);
@@ -30,7 +31,7 @@ const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_
   for (const t of json.tabs) TABS.push({ id: t.id, title: t.title, cats: t.categories.slice() });
   for (const r of json.entries) {
     const counters = (r.counters || []).filter((c) => STAT_KEYS[c[0]] !== undefined).map((c) => [c[0], String(c[1])]);
-    ENTRIES.push({ id: r.id, cat: r.category, name: r.name, text: r.text, art: r.art || null, counters, story: r.story || null });
+    ENTRIES.push({ id: r.id, cat: r.category, name: r.name, text: r.text, art: r.art || null, counters, story: r.story || null, where: r.where || null });
   }
 }
 
@@ -41,6 +42,8 @@ export function creatureId(kind) {
   const id = 'creature-' + kind;
   return INDEX.has(id) ? id : null;
 }
+/** The entry row for an id, or null. */
+export function entryById(id) { const i = INDEX.get(id); return i === undefined ? null : ENTRIES[i]; }
 /** Journal id for a pickup type ('shell' -> 'item-shell'), or null. */
 export function itemId(type) {
   const id = 'item-' + type;
@@ -83,6 +86,10 @@ export function createJournal(store) {
       const i = INDEX.get(id);
       if (i === undefined || !Array.isArray(saved[id])) continue;
       for (let k = 0; k < STAT_COUNT; k++) stats[i * STAT_COUNT + k] = Math.max(0, Math.floor(Number(saved[id][k]) || 0));
+      // 2026-10-08: saves from before STAT_USED counted spell casts and bomb throws as "collected"; they move to "used"
+      if (saved[id].length <= STAT_USED && (id === 'item-bomb' || (ENTRIES[i].cat === CAT_SPELL && id.startsWith('spell-')))) {
+        stats[i * STAT_COUNT + STAT_USED] = stats[i * STAT_COUNT + STAT_COLLECTED]; stats[i * STAT_COUNT + STAT_COLLECTED] = 0; dirty = true;
+      }
       if (!found[i]) { found[i] = 1; count++; } // a counter without a discovery can only come from a hand-edited save: show it
     }
   }
@@ -126,7 +133,7 @@ export function createJournal(store) {
     stat(id, stat) { const i = INDEX.get(id); return i === undefined ? 0 : stats[i * STAT_COUNT + stat]; },
     /** Write pending counter changes to the store. */
     flush() { if (dirty) persistStats(); },
-    /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected, angered], in ENTRIES order. */
+    /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected, angered, used, carried], in ENTRIES order. */
     list(cat) {
       const out = [];
       for (let i = 0; i < ENTRIES.length; i++) {
