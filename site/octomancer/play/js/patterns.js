@@ -95,19 +95,33 @@ export function compilePatterns(json) {
 export function matchPatterns(t, tiles, w, h, hits = null) {
   const { nv, vRock, vWater, vAx, vAy } = t;
   let buf = hits || new Int32Array(3 * 256), n = 0;
+  // r44 perf: the window's water mask rolls one column at a time (shift right, drop the bits that wrapped into the last
+  // column, add the new column), so a tile is read 5 times instead of 25; rock is the complement (cells outside the
+  // level count as rock). Same masks and the same order of hits as building every window from scratch.
+  if (_cols.length < w + 4) _cols = new Int32Array(w + 4);
+  const cols = _cols;
+  const bk = variantBuckets(t), b0 = bk.bits[0], b1 = bk.bits[1], b2 = bk.bits[2], bStart = bk.start, bList = bk.list;
   for (let oy = -2; oy <= h - 3; oy++) {
-    for (let ox = -2; ox <= w - 3; ox++) {
-      let rock = 0, water = 0;
-      for (let ky = 0; ky < KERNEL; ky++) {
-        const ty = oy + ky, rowIn = ty >= 0 && ty < h;
-        for (let kx = 0; kx < KERNEL; kx++) {
-          const tx = ox + kx;
-          const bit = 1 << (ky * KERNEL + kx);
-          if (rowIn && tx >= 0 && tx < w && tiles[ty * w + tx] === 0) water |= bit; else rock |= bit;
+    // cols[tx + 2]: the water of column tx over rows oy..oy+4, placed at the kernel's last column (bits ky*5 + 4)
+    for (let tx = -2; tx < w + 2; tx++) {
+      let c = 0;
+      if (tx >= 0 && tx < w) {
+        for (let ky = 0; ky < KERNEL; ky++) {
+          const ty = oy + ky;
+          if (ty >= 0 && ty < h && tiles[ty * w + tx] === 0) c |= 1 << (ky * KERNEL + KERNEL - 1);
         }
       }
-      for (let v = 0; v < nv; v++) {
-        if ((rock & vRock[v]) !== vRock[v] || (water & vWater[v]) !== vWater[v]) continue;
+      cols[tx + 2] = c;
+    }
+    let water = 0;
+    for (let k = 0; k < KERNEL - 1; k++) water = ((water >>> 1) & NOT_LAST_COL) | cols[k];
+    for (let ox = -2; ox <= w - 3; ox++) {
+      water = ((water >>> 1) & NOT_LAST_COL) | cols[ox + 2 + KERNEL - 1];
+      // only the variants that agree with the window on the key cells, in ascending order (same hits, same order)
+      const combo = ((water >>> b0) & 1) | (((water >>> b1) & 1) << 1) | (((water >>> b2) & 1) << 2);
+      for (let li = bStart[combo], le = bStart[combo + 1]; li < le; li++) {
+        const v = bList[li];
+        if ((water & vRock[v]) !== 0 || (water & vWater[v]) !== vWater[v]) continue;
         const ax = ox + vAx[v], ay = oy + vAy[v];
         if (ax < 0 || ay < 0 || ax >= w || ay >= h) continue;
         if (n + 3 > buf.length) { const nb = new Int32Array(buf.length * 2); nb.set(buf); buf = nb; }
@@ -117,6 +131,43 @@ export function matchPatterns(t, tiles, w, h, hits = null) {
   }
   return { hits: buf, n: n / 3 };
 }
+let _cols = new Int32Array(0);
+/**
+ * r44 perf: the variants split by three key kernel cells (the ones most variants pin to rock or water): for each of the 8
+ * water/rock combinations of those cells, the variants that do not contradict it, in ascending order. Built once per table.
+ */
+const _buckets = new WeakMap();
+function variantBuckets(t) {
+  let bk = _buckets.get(t);
+  if (bk && bk.nv === t.nv) return bk;
+  const { nv, vRock, vWater } = t;
+  const used = [];
+  for (let b = 0; b < KERNEL * KERNEL; b++) {
+    let c = 0;
+    for (let v = 0; v < nv; v++) if (((vRock[v] | vWater[v]) >>> b) & 1) c++;
+    used.push([c, b]);
+  }
+  used.sort((p, q) => q[0] - p[0] || p[1] - q[1]);
+  const bits = [used[0][1], used[1][1], used[2][1]];
+  const start = new Int32Array(9), list = [];
+  for (let combo = 0; combo < 8; combo++) {
+    start[combo] = list.length;
+    for (let v = 0; v < nv; v++) {
+      let ok = true;
+      for (let k = 0; k < 3 && ok; k++) {
+        const isWater = (combo >> k) & 1, m = 1 << bits[k];
+        if (isWater ? vRock[v] & m : vWater[v] & m) ok = false;
+      }
+      if (ok) list.push(v);
+    }
+  }
+  start[8] = list.length;
+  bk = { nv, bits, start, list: Int32Array.from(list) };
+  _buckets.set(t, bk);
+  return bk;
+}
+let NOT_LAST_COL = (1 << (KERNEL * KERNEL)) - 1; // every kernel bit but the last column's (ky*5 + 4)
+for (let ky = 0; ky < KERNEL; ky++) NOT_LAST_COL &= ~(1 << (ky * KERNEL + KERNEL - 1));
 
 /**
  * Turn hits into spawn records for one level. Hits are shuffled with `rng`, then taken in order while the
