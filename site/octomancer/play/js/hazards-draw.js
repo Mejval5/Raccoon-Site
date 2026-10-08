@@ -167,7 +167,7 @@ export function drawImpaleOverlay(ctx, camera, cw, ch, octo, d, t, isSolid) {
   for (let n = 0; n < NT; n++) {
     const cy = lo + step * (j - 1 + n + 0.5);
     // the tip standing out of the far side of the body: a dark wound ring where the flesh closes round it, then the tip
-    const bx = 0.5, tip = 0.88, hw = 0.085;
+    const bx = 0.6, tip = 1.0, hw = 0.09;
     ctx.fillStyle = INK;
     ctx.beginPath(); ctx.ellipse(bx * ppu, cy * ppu, 0.07 * ppu, 0.13 * ppu, 0, 0, TAU); ctx.fill();
     const g = ctx.createLinearGradient(bx * ppu, 0, tip * ppu, 0);

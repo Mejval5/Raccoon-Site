@@ -28,7 +28,9 @@ const EYES = [[0.381, 0.7006, 0.0736], [0.5974, 0.709, 0.0952]];
 
 const RIM_Y = -0.4, RX = 0.92, RY = 0.13;       // the rim ellipse of the shut shell (tile units, origin on the floor under the middle)
 const LID_MAX = 45 * Math.PI / 180;             // how far the lid swings open about its hinge
-const SHELL = '#8296ab', SHELL_LIGHT = '#b0bfca', SHELL_DARK = '#5f7289', SAND = '#cdbd9c';
+// verification 2026-10-08: warm bone-and-sand valves (Milan's clam palette) instead of cold slate, so it sits with the painted
+// sprites; the teal Tridacna mantle and no barnacles keep it apart from the mauve Barnacle Clam (the chest)
+const SHELL = '#b9ab8f', SHELL_LIGHT = '#e3d7bb', SHELL_DARK = '#7f705a', SAND = '#efe3c6';
 const FRILL = '#4fae9f', FRILL_2 = '#9a7cc4', CAVITY = '#3a2f4c';
 
 /** The lower half of the rim ellipse: the front lip. */
@@ -93,10 +95,10 @@ function valveRibs(c, dir, depth, pw, col, light) {
 /** The cup's outer wall and front lip (in front of the octopus: it swims in over the lip). */
 function drawCup(c, limp) {
   valvePath(c, 1, 0.43, 0.6);
-  c.fillStyle = limp ? '#6c7682' : SHELL; c.fill();
+  c.fillStyle = limp ? '#8c826f' : SHELL; c.fill();
   c.save(); c.clip();
-  c.fillStyle = limp ? '#565f6a' : SHELL_DARK; c.globalAlpha = 0.5; c.fillRect(-1.2, -0.1, 2.4, 0.3); c.globalAlpha = 1;
-  valveRibs(c, 1, 0.43, 0.6, limp ? '#4b535e' : SHELL_DARK, limp ? '#9aa3ab' : SHELL_LIGHT);
+  c.fillStyle = limp ? '#6d6455' : SHELL_DARK; c.globalAlpha = 0.5; c.fillRect(-1.2, -0.1, 2.4, 0.3); c.globalAlpha = 1;
+  valveRibs(c, 1, 0.43, 0.6, limp ? '#5a5246' : SHELL_DARK, limp ? '#b0a690' : SHELL_LIGHT);
   c.fillStyle = limp ? '#8d8a80' : SAND; c.globalAlpha = 0.3; c.beginPath(); c.ellipse(0.1, -0.22, 0.55, 0.05, -0.08, 0, TAU); c.fill(); c.globalAlpha = 1;
   c.restore();
   valvePath(c, 1, 0.43, 0.6);
@@ -111,10 +113,10 @@ function drawLid(c, theta, limp) {
   c.save();
   c.translate(-RX, RIM_Y); c.rotate(-theta); c.translate(RX, -RIM_Y);
   valvePath(c, -1, 0.56, 0.7);
-  c.fillStyle = limp ? '#6c7682' : SHELL; c.fill();
+  c.fillStyle = limp ? '#8c826f' : SHELL; c.fill();
   c.save(); c.clip();
-  c.fillStyle = limp ? '#565f6a' : SHELL_DARK; c.globalAlpha = 0.45; c.beginPath(); c.ellipse(0.2, -0.35, 1.2, 0.14, 0, 0, TAU); c.fill(); c.globalAlpha = 1;
-  valveRibs(c, -1, 0.56, 0.7, limp ? '#4b535e' : SHELL_DARK, limp ? '#9aa3ab' : SHELL_LIGHT);
+  c.fillStyle = limp ? '#6d6455' : SHELL_DARK; c.globalAlpha = 0.45; c.beginPath(); c.ellipse(0.2, -0.35, 1.2, 0.14, 0, 0, TAU); c.fill(); c.globalAlpha = 1;
+  valveRibs(c, -1, 0.56, 0.7, limp ? '#5a5246' : SHELL_DARK, limp ? '#b0a690' : SHELL_LIGHT);
   c.fillStyle = limp ? '#8d8a80' : SAND; c.globalAlpha = 0.3; c.beginPath(); c.ellipse(-0.1, -0.78, 0.5, 0.05, -0.08, 0, TAU); c.fill(); c.globalAlpha = 1;
   c.restore();
   valvePath(c, -1, 0.56, 0.7);

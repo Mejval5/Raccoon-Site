@@ -352,8 +352,9 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         // r39 Challenge Pool: two floor vents either side of the plinth (they only push); the pedestal, the rocks and the
         // chest are pool.js. No enemy shares the room.
         pools.push(x0, y0);
-        // r40: the left vent sits at column 2 or 1, the right one at 7 or 8: column 3 beside the plinth is the host's
-        for (const [lx, offs] of [[2, [0, -1]], [7, [0, 1]]]) {
+        // r40: the host stands at column 3.3 beside the plinth (main.js, pool-draw.js), so the left vent keeps to column 1 (its mouth and
+        // plume end at column 2, a full tile clear of him; at column 2 his fin overlapped it). The right one sits at 8, else 7.
+        for (const [lx, offs] of [[1, [0]], [8, [0, -1]]]) {
           for (const off of offs) {
             const tx = x0 + lx + off;
             let ty = -1;
@@ -495,6 +496,9 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
         } else if (name === 'fossil') { // r37: a fossil is embedded in thick rock (the whole 3x3 around it is rock)
           for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (t[idx(tx + ox, ty + oy)] === 0) return null;
         } else if (t[idx(tx, ty)] !== 0) return null; // foliage and boulders stand in water on a surface
+        // a floor boulder rests on solid ground on BOTH sides as well as under its middle: one on the last tile of a ledge reads as
+        // overhanging the drop (the rock outline rounds that corner off, and the boulder's sand skirt reaches past the tile)
+        if (name === 'boulder' && dy === -1 && (t[idx(tx - 1, ty + 1)] === 0 || t[idx(tx, ty + 1)] === 0 || t[idx(tx + 1, ty + 1)] === 0)) return null;
         return { type: 'decor', dk: name, x, y, dx, dy };
       };
       for (const r of selectSpawns(table, hit, levelIndex, drng, buildDecor, occ, (p) => table.kind[p] === 'decor')) kept.push(r);

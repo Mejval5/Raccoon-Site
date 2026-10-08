@@ -73,7 +73,7 @@ export function runFeelTests(assert) {
     const pt = createParticles();
     pt.blastFeel(5, 5, 0);
     let m = pt.shakePx(), peak = Math.max(Math.abs(m.x), Math.abs(m.y));
-    for (let i = 0; i < 50; i++) { m = pt.shakePx(); peak = Math.max(peak, Math.abs(m.x), Math.abs(m.y)); }
+    for (let i = 0; i < 50; i++) { m = pt.shakePx(i * 16.7); peak = Math.max(peak, Math.abs(m.x), Math.abs(m.y)); }
     assert('shake stays within 6 px', peak <= 6.001 && peak > 0);
     for (let i = 0; i < 12; i++) pt.update(0.02);
     assert('shake lasts 0.25 s and then is exactly zero', (m = pt.shakePx(), Math.abs(m.x) + Math.abs(m.y) > 0));
@@ -81,7 +81,7 @@ export function runFeelTests(assert) {
     m = pt.shakePx();
     assert('shake is gone after 0.25 s', m.x === 0 && m.y === 0);
     pt.shakeFx(SHAKE_HURT_PX);
-    let hp = 0; for (let i = 0; i < 40; i++) { m = pt.shakePx(); hp = Math.max(hp, Math.abs(m.x), Math.abs(m.y)); }
+    let hp = 0; for (let i = 0; i < 40; i++) { m = pt.shakePx(i * 16.7); hp = Math.max(hp, Math.abs(m.x), Math.abs(m.y)); }
     assert('damage shake peaks at 3 px', hp <= 3.001 && hp > 0);
     const old = globalThis.matchMedia;
     globalThis.matchMedia = () => ({ matches: true });

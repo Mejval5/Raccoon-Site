@@ -63,7 +63,7 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
       if (!ok) { check('transition ' + (rows.length + 1) + ' (' + ev + ') ran', false); continue; }
       // until the screen is back
       let waited = 0;
-      while (waited < 15000) { await sleep(150); waited += 150; if (!(await page.evaluate(() => __octo.level().transitioning))) break; }
+      while (waited < 15000) { await sleep(150); waited += 150; if (!(await page.evaluate(() => __octo.transitioning()))) break; } // the cheap hook (level() copies the level: garbage while the time is measured)
       await sleep(100); // the observer delivers entries a little late
       // only tasks that started after the event (a garbage collection this script forced after the last transition is not the game's)
       const dark = await page.evaluate(() => __octo.lastTransition());

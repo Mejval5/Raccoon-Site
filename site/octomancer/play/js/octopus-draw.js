@@ -47,12 +47,12 @@ let bake = null; // { img, data } once both the sheet and JSON are ready
 let bakeFailed = false;
 if (!FORCE_CODE) {
   Promise.all([
-    fetch('assets/octopus.json').then((r) => { if (!r.ok) throw new Error('octopus.json ' + r.status); return r.json(); }),
+    fetch(new URL('../assets/octopus.json', import.meta.url)).then((r) => { if (!r.ok) throw new Error('octopus.json ' + r.status); return r.json(); }),
     new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('octopus.webp failed to load'));
-      img.src = 'assets/octopus.webp';
+      img.src = new URL('../assets/octopus.webp', import.meta.url).href; // module-relative: the test page lives in tests/
     }),
   ]).then(([data, img]) => {
     // Round-3 fix (Daniel's screenshot review, seed 42 depth 15 x2 + seed 11
@@ -343,18 +343,23 @@ function drawOctopusUnclipped(ctx, o) {
 }
 function drawOctopusPlain(ctx, o) {
   const splat = o.dead && o.deathStyle === 'splat';
+  const impaled = o.dead && o.deathStyle === 'impale';
   if (splat) { // V2-PLAN 16: a pancake: the body frame squashed wide and thin about its centre
     const f = Math.max(0, Math.min(1, o.flat || 0));
     ctx.save();
     ctx.scale(1 + SPLAT_WIDE * f, 1 - SPLAT_THIN_K * f);
+  } else if (impaled) { // the hurt frame is curled up and half of it hides behind the strip: draw it bigger so it reads as a skewered body
+    ctx.save();
+    ctx.scale(IMPALE_SCALE, IMPALE_SCALE);
   }
   if (!FORCE_CODE && bake && !bakeFailed) {
     drawBaked(ctx, o, bake);
   } else {
     drawPlaceholder(ctx, o);
   }
-  if (splat) ctx.restore();
+  if (splat || impaled) ctx.restore();
 }
+const IMPALE_SCALE = 1.3; // verification pass 2026-10-08: the skewered body looked small on the tips
 const SPLAT_WIDE = 1.1;   // 2.1x as wide when fully flat (the sprite cell has empty margins, so it reads about 1.6 tiles)...
 const SPLAT_THIN_K = 0.7;  // ...and 0.3x as tall (hazards.js SPLAT_THIN is the matching height in tiles)
 

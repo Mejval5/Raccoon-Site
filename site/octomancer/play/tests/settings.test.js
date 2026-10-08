@@ -63,7 +63,7 @@ export async function runSettingsTests(assert) {
   {
     const p = createParticles(); p.shakeFx(4, 0.12);
     p.update(0.06);
-    let peak = 0; for (let i = 0; i < 60; i++) { const m = p.shakePx(); peak = Math.max(peak, Math.abs(m.x), Math.abs(m.y)); }
+    let peak = 0; for (let i = 0; i < 60; i++) { const m = p.shakePx(i * 16.7); peak = Math.max(peak, Math.abs(m.x), Math.abs(m.y)); }
     assert('shake: a 0.12 s shake is at half strength after 0.06 s (fades over its own duration)', peak <= 2.01 && peak > 1, String(peak));
     p.update(0.07);
     const m = p.shakePx();

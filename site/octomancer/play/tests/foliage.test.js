@@ -2,7 +2,7 @@
 // placement is deterministic per seed, no two neighbours on a rim are the same kind, every base sits on its floor,
 // ceiling or wall rim (on the tile grid and on the drawn, smoothed outline), and nothing grows on an enemy, hazard,
 // loot anchor, the shop or a portal.
-import { compileFoliage, setFoliageTable, placeFoliage, SURF_FLOOR, SURF_CEIL, SURF_WALL, SURF_HOVER, MIN_SINK } from '../js/foliage.js';
+import { compileFoliage, setFoliageTable, placeFoliage, SURF_FLOOR, SURF_CEIL, SURF_WALL, SURF_HOVER, MIN_SINK, ROPE_GAP } from '../js/foliage.js';
 import { createLevelWorld } from '../js/world-v2.js';
 
 function segDist(px, py, s) {
@@ -38,7 +38,7 @@ export async function runFoliageTests(assert) {
   }
   // ---- 200 levels: rims, neighbours, keep-outs, variety ----
   {
-    let n = 0, offRim = 0, offOutline = 0, sinkBad = 0, twins = 0, kept = 0, levels = 0, worstOutline = 0, kindsPerLevel = 0;
+    let ropes = 0, n = 0, offRim = 0, offOutline = 0, sinkBad = 0, twins = 0, kept = 0, levels = 0, worstOutline = 0, kindsPerLevel = 0;
     const used = new Set(), bySurf = [0, 0, 0, 0];
     let example = '';
     for (let seed = 1; seed <= 67; seed++) for (let lvl = 0; lvl < 3; lvl++) {
@@ -91,6 +91,11 @@ export async function runFoliageTests(assert) {
         if (nb === undefined) continue;
         if (F.kind[nb] === F.kind[i] || (F.scale[nb] === F.scale[i] && Math.abs((F.x[nb] - F.cx[nb]) - (F.x[i] - F.cx[i])) < 1e-6)) twins++;
       }
+      // no hanging plant meets a floor plant in about the same column (low corridors read as one rope otherwise)
+      for (let i = 0; i < F.n; i++) if (F.surf[i] === SURF_CEIL) for (let j = 0; j < F.n; j++) {
+        if (F.surf[j] !== SURF_FLOOR || F.y[j] <= F.y[i] || Math.abs(F.x[i] - F.x[j]) > 1) continue;
+        if (F.y[i] + T.h[F.kind[i]] * F.scale[i] + ROPE_GAP - 0.01 > F.y[j] - T.h[F.kind[j]] * F.scale[j]) ropes++;
+      }
       kindsPerLevel += kinds.size;
     }
     assert(`foliage: ${levels} levels, ${(n / levels).toFixed(0)} plants per level (floor ${(bySurf[0] / levels).toFixed(0)}, ceiling ${(bySurf[1] / levels).toFixed(0)}, wall ${(bySurf[2] / levels).toFixed(0)}, fish ${(bySurf[3] / levels).toFixed(1)}), ${used.size} kinds used, ${(kindsPerLevel / levels).toFixed(1)} per level`,
@@ -98,6 +103,7 @@ export async function runFoliageTests(assert) {
     assert(`foliage: every base is on its rock tile's rim with water on its open side (${offRim} off${example ? ', first ' + example : ''}) and sunk ${MIN_SINK}-0.5 tiles (${sinkBad} not)`, offRim === 0 && sinkBad === 0);
     assert(`foliage: every rim point is on the drawn (smoothed) outline within 0.25 tiles (${offOutline} not, worst ${worstOutline.toFixed(2)})`, offOutline === 0);
     assert(`foliage: no two neighbours on a rim share a kind or a scale and offset (${twins})`, twins === 0);
+    assert(`foliage: a ceiling plant never comes within ${ROPE_GAP} tiles of a floor plant in the same column (${ropes} ropes)`, ropes === 0);
     assert(`foliage: nothing grows within a tile of an enemy, hazard or loot anchor, in the shop, the exit ring or the pool room (${kept})`, kept === 0);
   }
 }

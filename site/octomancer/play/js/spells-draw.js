@@ -47,16 +47,20 @@ function bakeMurk() {
   return c;
 }
 
-/** One ink billow: a dark violet-black disc, dense in the middle, with a soft lumpy edge. */
+/**
+ * One ink billow: a soft violet-black puff, dense only in its core, thinning to a smoky, slightly lighter edge so overlapping
+ * billows read as billowing ink (solid in the middle of the cloud, translucent wisps at its rim), not a flat black blob.
+ */
 function bakePuff() {
   const c = sharedCanvas(document.createElement('canvas'));
   c.width = c.height = PUFF_PX;
   const g = c.getContext('2d'), m = PUFF_PX / 2;
-  const lumps = [[0, 0, 0.62], [0.2, -0.16, 0.42], [-0.22, -0.12, 0.4], [0.16, 0.2, 0.4], [-0.18, 0.2, 0.38]];
-  for (const [dx, dy, rr] of lumps) {
+  const lumps = [[0, 0, 0.6, 0.85], [0.22, -0.16, 0.4, 0.55], [-0.24, -0.1, 0.38, 0.55], [0.16, 0.22, 0.38, 0.5], [-0.18, 0.22, 0.36, 0.5]];
+  for (const [dx, dy, rr, core] of lumps) {
     const x = m + dx * m, y = m + dy * m, r = rr * m;
-    const gr = g.createRadialGradient(x, y, r * 0.15, x, y, r);
-    gr.addColorStop(0, 'rgba(14,10,26,0.9)'); gr.addColorStop(0.6, 'rgba(20,14,38,0.7)'); gr.addColorStop(1, 'rgba(26,18,48,0)');
+    const gr = g.createRadialGradient(x, y, r * 0.1, x, y, r);
+    gr.addColorStop(0, `rgba(16,11,30,${core})`); gr.addColorStop(0.45, `rgba(24,17,44,${core * 0.6})`);
+    gr.addColorStop(0.8, `rgba(44,34,74,${core * 0.2})`); gr.addColorStop(1, 'rgba(52,42,84,0)');
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
   }
   return c;
@@ -89,6 +93,7 @@ export function drawJuiceDrops(ctx, camera, cw, ch, d, time, life = 3.5) {
 }
 
 const BILLOWS = 7; // around the centre, plus the centre one
+const WISPS = 5;   // smaller, fainter puffs drifting at the rim
 /** How opaque a cloud is at `age` of `dur`: a quick swell, thick for a while, then it thins out over the rest of its life. */
 export function cloudAlpha(age, dur) {
   const t = age / dur;
@@ -112,15 +117,22 @@ export function drawInkClouds(ctx, camera, cw, ch, c, time, pass = 0) {
     const grow = Math.min(1, 0.55 + 0.45 * c.age[i] / 0.25) * (1 + 0.12 * c.age[i] / c.dur[i]);
     const R = c.r[i] * grow, seed = c.seed[i];
     const cx = cw / 2 + (c.x[i] - camera.x) * ppu, cy = ch / 2 + (c.y[i] - camera.y) * ppu;
-    ctx.globalAlpha = a;
-    for (let k = 0; k <= BILLOWS; k++) {
-      let bx = cx, by = cy, br = R * 1.05;
-      if (k > 0) {
+    for (let k = 0; k <= BILLOWS + WISPS; k++) {
+      let bx = cx, by = cy, br = R * 1.05, ba = 1;
+      if (k > 0 && k <= BILLOWS) { // the billows around the core: each swells and drifts on its own
         const ang = seed + (k / BILLOWS) * TAU + Math.sin(time * 0.7 + k * 1.7 + seed) * 0.25;
         const off = R * (0.5 + 0.08 * Math.sin(time * 1.1 + k * 2.3));
         bx += Math.cos(ang) * off * ppu; by += Math.sin(ang) * off * ppu * 0.85;
         br = R * (0.62 + 0.1 * Math.sin(k * 3.1 + seed));
+        ba = 0.8;
+      } else if (k > BILLOWS) { // thin wisps curling off the rim
+        const j = k - BILLOWS, ang = seed * 1.7 + (j / WISPS) * TAU + time * 0.18 + Math.sin(time * 0.9 + j * 2.1) * 0.3;
+        const off = R * (0.95 + 0.12 * Math.sin(time * 0.8 + j * 1.9 + seed));
+        bx += Math.cos(ang) * off * ppu; by += Math.sin(ang) * off * ppu * 0.85;
+        br = R * (0.36 + 0.06 * Math.sin(j * 2.7 + seed));
+        ba = 0.45;
       }
+      ctx.globalAlpha = a * ba;
       const s = br * 2 * ppu;
       ctx.drawImage(puffSprite, bx - s / 2, by - s / 2, s, s);
     }

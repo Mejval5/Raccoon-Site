@@ -2094,6 +2094,8 @@ window.__octo = {
       bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), journalOpen: journalScreen.isOpen(), endShown: ui.isEndShown(),
     };
   },
+  /** Test hook: whether a level transition runs (cheap: level() copies the whole level, which made garbage when a timing test polled it). */
+  transitioning() { return !!transitioning; },
   /** v2: journal ids found, open the journal, apply a run event by name (tests, review). */
   journal() { return { found: journal.list().filter((e) => e.found).map((e) => e.id), count: journal.count(), open: journalScreen.isOpen(), tab: journalScreen.tab(), entry: journalScreen.entry() }; },
   openJournal(tab, entry) { journalScreen.show(tab); if (entry) journalScreen.showEntry(entry); return true; },

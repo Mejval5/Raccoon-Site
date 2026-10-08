@@ -146,7 +146,7 @@ export const PORTAL_SEAT = 0.03;
 export const PORTAL_TINTS = {
   none: null,
   warm: { mul: [1.0, 0.66, 0.42], k: 0.7 },  // the shortcut ring
-  gold: { mul: [1.0, 0.84, 0.40], k: 0.7 },  // Marlo's ring
+  gold: { mul: [0.6, 0.94, 0.74], k: 0.7 },  // Marlo's ring (key kept for old callers): sea-glass green since the 2026-10-08 verification, no gold
 };
 const LIGHT_LO = 105, LIGHT_HI = 185; // luminance (0-255) where a pixel starts / finishes counting as 'light arm'
 

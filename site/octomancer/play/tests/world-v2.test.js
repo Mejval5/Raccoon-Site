@@ -85,6 +85,9 @@ export async function runWorldV2Tests(assert) {
       resident: world.residentChunks(), pickups: [], bubbles: [], critters: [], depth: 30, enemies: [], shots: [], bombs: [],
       particles: null, shakeOffset: null, dreadLevel: 0, extraDraw: null,
     });
+    // the deep rock's foliage waits for the two plant images: load them first (same URLs, so the renderer's copies come from the
+    // cache), so a slow or busy machine does not use up the frame budget waiting on the network; the bake itself still has 200 frames
+    await Promise.all(['plant1.webp', 'plant2.webp'].map((n) => { const im = new Image(); im.src = new URL('../assets/' + n, import.meta.url).href; return im.decode().catch(() => null); }));
     let frames = 0;
     // frames with a pause between them: the plant images (the deep rock's foliage) load between tasks
     while (!(renderer.ready() && renderer.canvasStats().deepStage >= 3 && renderer.canvasStats().cells >= 2) && frames < 200) { frame(); frames++; await new Promise((r) => setTimeout(r, 8)); }

@@ -199,6 +199,24 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
         });
         const bad = res.filter((x) => !x.visible || !x.story || x.steps < 1 || x.over > 1);
         check(w + 'x' + h + ': every People entry at its longest story fits the fixed page (no scrolling)', bad.length === 0, JSON.stringify(res.map((x) => [x.id.slice(7), x.steps, x.sh + '/' + x.ch])));
+        if (w === 812) {
+          // phone landscape: the People grid shows no cut-off card, the bookmark names fit their tabs, and Progress has nothing cut off
+          const lay = await pg.evaluate(async () => {
+            __octo.openJournal('people'); await new Promise((r) => setTimeout(r, 120));
+            const L = document.querySelector('.octo-bk-left').getBoundingClientRect();
+            const cut = [...document.querySelectorAll('.octo-bk-card')].filter((c) => c.getBoundingClientRect().bottom > L.bottom - 1).length;
+            const tabs = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => { const n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(), b = t.getBoundingClientRect(); return n.top < b.top - 0.5 || n.bottom > b.bottom + 0.5; }).length;
+            const out = { cut, tabs };
+            for (const t of ['places', 'bestiary', 'items', 'traps', 'progress']) {
+              __octo.openJournal(t); await new Promise((r) => setTimeout(r, 120));
+              const sc = [...document.querySelectorAll('.octo-bk-page')].filter((p) => p.clientHeight && p.scrollHeight - p.clientHeight > 1).length;
+              out[t] = sc;
+            }
+            __octo.closeJournal();
+            return out;
+          });
+          check('812x375: People grid has no cut-off card, tab names fit, no page scrolls on any tab', lay.cut === 0 && lay.tabs === 0 && lay.places === 0 && lay.bestiary === 0 && lay.items === 0 && lay.traps === 0 && lay.progress === 0, JSON.stringify(lay));
+        }
         if (w === 375 || w === 1440) { await pg.evaluate(() => __octo.openJournal('people', 'person-diver')); await sleep(300); await pg.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-people-' + w + '.png') }); await pg.evaluate(() => __octo.closeJournal()); }
       }
       await pg.close();

@@ -26,9 +26,14 @@ const FILES = {
 /** r44: the same animation at about 0.55 scale (380 px cells), used only on a DPR >= 2 screen wider than 900 css px (a desktop at DPR 2 drew the normal sheet 1.9x too big and it looked soft). It loads under the key 'whirlpool' instead of the normal sheet, never both. */
 export const WHIRLPOOL_HI_FILE = 'whirlpool-sheet-hi.webp';
 /** 'hi' or 'lo': which whirlpool sheet this page loads. `?whirl=hi|lo` forces one (tests, review). */
+let whirlParam;
 export function whirlpoolSheetKey() {
   if (typeof window === 'undefined') return 'lo';
-  try { const q = new URLSearchParams(location.search).get('whirl'); if (q === 'hi' || q === 'lo') return q; } catch (e) { /* no URL: the default */ }
+  if (whirlParam === undefined) { // the URL is read once (this runs every frame a whirlpool is drawn; parsing it each time showed up in phone profiles)
+    whirlParam = null;
+    try { const q = new URLSearchParams(location.search).get('whirl'); if (q === 'hi' || q === 'lo') whirlParam = q; } catch (e) { /* no URL: the default */ }
+  }
+  if (whirlParam) return whirlParam;
   return pickWhirlSheet(window.devicePixelRatio || 1, window.innerWidth);
 }
 /** The rule: the big sheet only for a DPR >= 2 screen wider than 900 css px. */

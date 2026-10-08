@@ -56,6 +56,12 @@ const CAMERA_LOOKAHEAD_MAX = 3.2; // world units, caps the offset at high dash s
 // (not the look-ahead point) always stays within this fraction of the half
 // viewport from screen centre, on each axis.
 const CAMERA_OCTO_MAX_OFFSET_FRAC = 0.3;
+// Hub on a portrait phone: the view is only ~11 units wide, the hub 34, and the octopus starts to the right of the whirlpool (which sits in
+// the middle of the hub), so the usual follow left the whirlpool half off the left edge. In a small world (<= HUB_FRAME_MAX_W wide, no taller
+// than the view: only the hub) on a portrait screen the camera aims at the middle of the world and may trail the octopus by this larger
+// fraction, so the whirlpool sits centred and whole at the start and the octopus is still always on screen.
+const HUB_FRAME_MAX_W = 36;
+const HUB_FRAME_OCTO_FRAC = 0.7;
 
 function clampNum(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -76,7 +82,8 @@ export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, wo
 
   const aheadX = clampNum(vx * CAMERA_LOOKAHEAD_TIME, -CAMERA_LOOKAHEAD_MAX, CAMERA_LOOKAHEAD_MAX);
   const aheadY = clampNum(vy * CAMERA_LOOKAHEAD_TIME, -CAMERA_LOOKAHEAD_MAX, CAMERA_LOOKAHEAD_MAX);
-  const desiredX = aimX + aheadX; // r40: the aim may lean away from the octopus (the pool's pedestal); the octopus clamp below still uses the octopus
+  const hubPortrait = canvasH > canvasW && worldW <= HUB_FRAME_MAX_W && worldH <= halfViewH * 2 + 0.01;
+  const desiredX = hubPortrait ? worldW / 2 : aimX + aheadX; // r40: the aim may lean away from the octopus (the pool's pedestal); the octopus clamp below still uses the octopus
   const desiredY = aimY + aheadY;
 
   const clampedX = worldW > halfViewW * 2
@@ -100,7 +107,7 @@ export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, wo
   // within CAMERA_OCTO_MAX_OFFSET_FRAC of screen centre on each axis, so a
   // big look-ahead offset (e.g. at dash speed) never drifts the octopus
   // itself out toward the edge of the view.
-  const maxOffX = halfViewW * CAMERA_OCTO_MAX_OFFSET_FRAC;
+  const maxOffX = halfViewW * (hubPortrait ? HUB_FRAME_OCTO_FRAC : CAMERA_OCTO_MAX_OFFSET_FRAC);
   const maxOffY = halfViewH * CAMERA_OCTO_MAX_OFFSET_FRAC;
   cam.x = clampNum(cam.x, targetX - maxOffX, targetX + maxOffX);
   cam.y = clampNum(cam.y, targetY - maxOffY, targetY + maxOffY);

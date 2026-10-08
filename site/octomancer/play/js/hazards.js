@@ -335,8 +335,15 @@ export function createHazards(props = null) {
     if (!landed) return;
     // never settle on top of the octopus: wait (state 4) until it swims clear
     if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
-    d.state[i] = 3;
     const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i]);
+    // a boulder balanced on a ledge corner (its middle over the drop) must not turn into a rock tile hanging in the water: it
+    // rolls off instead, towards the middle of the cell it is in, and settles lower down
+    if (world.tileAt && world.tileAt(tx, ty) === 0 && world.tileAt(tx, ty + 1) === 0) {
+      const dir = tx + 0.5 - d.x[i];
+      pd.vx[pid] = (dir < 0 ? -1 : 1) * Math.max(1, Math.abs(dir) * 4); pd.vy[pid] = Math.max(pd.vy[pid], 0.3); pd.grounded[pid] = 0;
+      return;
+    }
+    d.state[i] = 3;
     props.remove(pid); d.pid[i] = -1;
     if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
     events.push({ type: 'rockLanded', x: d.x[i], y: d.y[i] });

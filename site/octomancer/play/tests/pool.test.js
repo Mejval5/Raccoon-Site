@@ -27,6 +27,7 @@ export async function runPoolTests(assert) {
   assert('pool room: a two-tile plinth in the middle of the floor (the pedestal stands on it)', room.cells[11].slice(4, 6) === '##' && room.cells[10].slice(3, 7) === '....');
 
   // ---- placement over generated levels ----
+  const hostVent = [];
   let levels = 0, pools = 0, bad = [], jets = 0, enemiesIn = 0, loneChest = 0;
   for (let seed = 1; seed <= 150; seed++) for (let lv = 0; lv < 3; lv++) {
     const L = generateLevel(seed, lv, bank);
@@ -52,13 +53,14 @@ export async function runPoolTests(assert) {
       const inside = (r) => r.x >= plan.x0 && r.x < plan.x0 + ROOM_W && r.y >= plan.y0 && r.y < plan.y0 + ROOM_H;
       for (const r of sp) {
         if (!inside(r)) continue;
-        if (r.type === 'hazard' && r.set === 'pool') jets++;
+        if (r.type === 'hazard' && r.set === 'pool') { jets++; if (Math.abs(r.x - (plan.x - 1.7)) < 1.4) hostVent.push(seed + '/' + lv); } // the host stands at plan.x - 1.7
         else if (r.type === 'enemy-slot') enemiesIn++;
         else if (r.type === 'hazard' || r.type === 'loot') loneChest++;
       }
     }
   }
   assert(`pool placement: ${pools} of ${levels} levels hold a Challenge Pool, every plinth carries its pedestal and is reachable by A*` + (bad.length ? ' [' + bad.slice(0, 4).join(', ') + ']' : ''), pools >= 20 && bad.length === 0);
+  assert('pool placement: no vent stands within 1.4 tiles of the host (his fin overlapped a vent at column 2)' + (hostVent.length ? ' [' + hostVent.slice(0, 4).join(', ') + ']' : ''), hostVent.length === 0);
   assert(`pool placement: its room holds its vents (${jets}) and nothing else: no enemy (${enemiesIn}), trap or loot (${loneChest})`, jets >= pools && jets <= pools * 2 && enemiesIn === 0 && loneChest === 0);
 
   // ---- the state machine ----

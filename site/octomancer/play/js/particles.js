@@ -163,10 +163,10 @@ export function createParticles() {
       }
       this.shakeFx(2.5, 0.18);
     },
-    /** v2: the current shake offset in screen pixels (|x|, |y| <= SHAKE_MAX_PX). */
-    shakePx() {
+    /** v2: the current shake offset in screen pixels (|x|, |y| <= SHAKE_MAX_PX). `nowMs` (tests) picks the wobble phase; the game passes nothing. */
+    shakePx(nowMs = performance.now()) {
       if (fxT <= 0) return { x: 0, y: 0 };
-      const k = fxAmp * (fxT / fxDur), t = performance.now() * 0.06;
+      const k = fxAmp * (fxT / fxDur), t = nowMs * 0.06;
       return { x: Math.sin(t) * k, y: Math.cos(t * 1.37) * k };
     },
     /** 0.2s screen shake, skipped entirely under reduced motion (M7 also

@@ -81,7 +81,7 @@ const MAT_FILL = ['', 'rgb(58,84,142)', 'rgb(24,23,40)', 'rgb(118,106,90)', 'rgb
 const MAT_TEX = ['', 'rock', 'matBedrock', '', 'matTimber', 'matMasonry'];
 const MAT_TEX_UNITS = new Float32Array([0, ROCK_TILE_UNITS, 4, 0, 2, 3]);
 const MAT_TEX_ALPHA = new Float32Array([0, 0.8, 1, 0, 1, 1]);
-const MAT_TINT = ['', '', 'rgba(14,8,30,0.32)', '', '', 'rgba(30,44,78,0.28)'];
+const MAT_TINT = ['', '', 'rgba(14,8,30,0.32)', '', 'rgba(176,122,66,0.2)', 'rgba(30,44,78,0.28)']; // timber: a warm lift (verification 2026-10-08: it read too dark and muddy under the deeper levels' tint)
 const MAT_TILE_ART = [null, null, null, ['matBoneA', 'matBoneB'], null, null];
 const MAT_RIM = ['', 'rgba(70,205,165,0.95)', 'rgb(8,7,16)', 'rgb(46,30,18)', 'rgb(34,22,13)', 'rgb(44,44,58)'];
 const MAT_RIM_W = new Float32Array([0, 0.1, 0.2, 0.11, 0.12, 0.11]);
@@ -880,7 +880,9 @@ export function createRenderer(ctx, world) {
   const DEEP_ROCK = 'rgba(18,58,80,0.9)';
   let deepLevel = null, deepStage = 0, deepCanvas = null, deepScratch = null, deepCircles = null, deepCount = 0, deepPlantList = [];
   const deepHash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263 + 1013, 1274126177); h ^= h >>> 13; return (Math.imul(h, 1103515245) >>> 0); };
+  let deepAl = null, deepAlTmp = null, deepAlStep = 0; // deepAlphaStep's work in progress
   function resetDeepRock() {
+    deepAl = deepAlTmp = null; deepAlStep = 0;
     releaseCanvas(deepCanvas); releaseCanvas(deepScratch);
     deepCanvas = deepScratch = null; deepCircles = null; deepCount = 0; deepPlantList = []; deepStage = 0;
   }
@@ -923,40 +925,91 @@ export function createRenderer(ctx, world) {
     releaseCanvas(deepScratch); deepScratch = null;
     deepCanvas = c; deepStage = 2;
   }
-  function deepStage3(tint) {
-    // foliage on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark), drawn live at screen
-    // resolution (drawDeepRock); the list keeps only plants that stand on THICK deep rock (rock behind and beside the base), so
-    // none hangs in open water. r38 checked the blurred blob's alpha for that; r43 rasterises the same circles (eroded by
-    // 0.2 tile, which is about what the blur takes off an edge) into 4 cells per tile, so there is no read-back.
-    const W = world.width, H = world.height, RS = 4, OW = W * RS, OH = H * RS;
-    const occ = new Uint8Array(OW * OH);
-    for (let i = 0; i < deepCount; i++) {
-      const cx = deepCircles[i * 3], cy = deepCircles[i * 3 + 1], r = Math.max(0, deepCircles[i * 3 + 2] - 0.2), r2 = r * r;
-      const x0 = Math.max(0, Math.floor((cx - r) * RS)), x1 = Math.min(OW - 1, Math.ceil((cx + r) * RS));
-      const y0 = Math.max(0, Math.floor((cy - r) * RS)), y1 = Math.min(OH - 1, Math.ceil((cy + r) * RS));
-      for (let yy = y0; yy <= y1; yy++) {
-        const dy = (yy + 0.5) / RS - cy;
-        for (let xx = x0; xx <= x1; xx++) { const dx = (xx + 0.5) / RS - cx; if (dx * dx + dy * dy <= r2) occ[yy * OW + xx] = 1; }
+  /** The deep mass as the alpha the player sees: its circles rasterised at 8 cells per tile (the bake's own 8 px per tile) and blurred
+   *  with three box passes that approximate deepStage2's gaussian (4 px). No read-back from the canvas. Float32 0..1, OW x OH.
+   *  Built over four calls (one per frame: the raster, then one blur pass each), so no single frame pays for all of it: on a phone at
+   *  4x the whole thing was a 30+ ms task during the level's fade-in (verification 2026-10-08). Returns the array when done, else null. */
+  function deepAlphaStep(OW, OH, RS) {
+    if (deepAlStep === 0) {
+      const a = deepAl = new Float32Array(OW * OH); deepAlTmp = new Float32Array(OW * OH);
+      for (let i = 0; i < deepCount; i++) {
+        const cx = deepCircles[i * 3], cy = deepCircles[i * 3 + 1], r = deepCircles[i * 3 + 2], r2 = r * r;
+        const x0 = Math.max(0, Math.floor((cx - r) * RS)), x1 = Math.min(OW - 1, Math.ceil((cx + r) * RS));
+        const y0 = Math.max(0, Math.floor((cy - r) * RS)), y1 = Math.min(OH - 1, Math.ceil((cy + r) * RS));
+        for (let yy = y0; yy <= y1; yy++) {
+          const dy = (yy + 0.5) / RS - cy;
+          for (let xx = x0; xx <= x1; xx++) { const dx = (xx + 0.5) / RS - cx; if (dx * dx + dy * dy <= r2) a[yy * OW + xx] = 1; }
+        }
+      }
+      deepAlStep = 1;
+      return null;
+    }
+    const a = deepAl, t = deepAlTmp, R = 3, inv = 1 / (2 * R + 1);
+    for (let y = 0; y < OH; y++) { // horizontal: running sum, edges clamp to the border cell
+      const row = y * OW; let sum = 0;
+      for (let k = -R; k <= R; k++) sum += a[row + Math.min(OW - 1, Math.max(0, k))];
+      for (let x = 0; x < OW; x++) {
+        t[row + x] = sum * inv;
+        sum += a[row + Math.min(OW - 1, x + R + 1)] - a[row + Math.max(0, x - R)];
       }
     }
-    const opaque = (wx, wy) => occ[Math.min(OH - 1, Math.max(0, Math.floor(wy * RS))) * OW + Math.min(OW - 1, Math.max(0, Math.floor(wx * RS)))] === 1;
+    for (let x = 0; x < OW; x++) { // vertical
+      let sum = 0;
+      for (let k = -R; k <= R; k++) sum += t[Math.min(OH - 1, Math.max(0, k)) * OW + x];
+      for (let y = 0; y < OH; y++) {
+        a[y * OW + x] = sum * inv;
+        sum += t[Math.min(OH - 1, y + R + 1) * OW + x] - t[Math.max(0, y - R) * OW + x];
+      }
+    }
+    if (++deepAlStep <= 3) return null;
+    deepAlStep = 0; deepAlTmp = null;
+    const done = deepAl; deepAl = null;
+    return done;
+  }
+  function deepStage3(tint) {
+    // foliage on the deep rock's floors and ceilings (the sprites are the near plants, tinted dark), drawn live at screen
+    // resolution (drawDeepRock). r47: each plant is anchored on the edge of the mass AS DRAWN (the blurred alpha, deepAlpha), not on
+    // the tile edge: the blobs of the water cells next to a rock cell (r 0.55-0.95) and the blur move the visible edge up to a tile
+    // from the tile's own, which left bases sunk in the face (pasted on the rock) or floating beside it. A plant is kept only where
+    // the rock under its base is solid, the water in front of it is open (not a small pocket in the mass), and the edge is about
+    // level under the whole base.
+    const W = world.width, H = world.height, RS = DEEP_PX, OW = W * RS, OH = H * RS;
+    const al = deepAlphaStep(OW, OH, RS);
+    if (!al) return; // the alpha is still being built (one part per frame); deepStage stays 2
+    const A = (wx, wy) => al[Math.min(OH - 1, Math.max(0, Math.floor(wy * RS))) * OW + Math.min(OW - 1, Math.max(0, Math.floor(wx * RS)))];
+    // the y where the mass's alpha falls through 0.5 going out of it from (wx, wy) in direction dir (-1 up, +1 down); null if the start is not in it
+    const edgeOf = (wx, wy, dir) => {
+      if (A(wx, wy) < 0.6) return null;
+      let prev = wy;
+      for (let n = 1; n <= 2.5 * RS; n++) { const yy = wy + dir * n / RS; if (A(wx, yy) < 0.5) return (yy + prev) / 2; prev = yy; }
+      return null;
+    };
     const list = [];
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1; x < W - 1; x++) {
         if (world.tileAt(x, y) === 0) continue;
         const h = deepHash(x * 3 + 1, y * 5 + 2);
         const floor = world.tileAt(x, y - 1) === 0, ceil = world.tileAt(x, y + 1) === 0;
-        if (!(floor && h % 5 === 0) && !(ceil && !floor && h % 9 === 0)) continue;
+        if (!(floor && h % 3 === 0) && !(ceil && !floor && h % 5 === 0)) continue;
         const dyIn = floor ? 1 : -1; // one tile into the rock, and the neighbours of that tile: the mass under the plant is thick
         if (!deepSolid(x, y + dyIn) || !deepSolid(x - 1, y) || !deepSolid(x + 1, y) || !deepSolid(x - 1, y + dyIn) || !deepSolid(x + 1, y + dyIn)) continue;
         const img = (h >>> 8) & 1, ph = 1.5 + ((h >>> 12) % 10) / 10, pw = ph * (tint[img].width / tint[img].height);
-        const by = floor ? y + 0.15 : y + 0.85, inY = floor ? y + 0.55 : y + 0.45; // base line, and a line inside the rock under it
-        let thick = true;
-        for (let o = -1; o <= 1 && thick; o++) {
-          const sxp = x + 0.5 + o * Math.min(0.75, pw * 0.4);
-          if (!opaque(sxp, by) || !opaque(sxp, inY)) thick = false;
+        const dir = floor ? -1 : 1; // out of the rock, into the water
+        let lo = Infinity, hi = -Infinity, ok = true;
+        const half = Math.min(0.75, pw * 0.4);
+        for (let o = -1; o <= 1 && ok; o++) {
+          const e = edgeOf(x + 0.5 + o * half, y + 0.5, dir);
+          if (e === null) ok = false; else { if (e < lo) lo = e; if (e > hi) hi = e; }
         }
-        if (!thick) continue;
+        if (!ok || hi - lo > 0.5) continue; // an uneven or distant edge: the base would sink at one side and float at the other
+        const edge = floor ? hi : lo; // the sample deepest in the rock, so no part of the base floats over a dip
+        const by = edge - dir * 0.1; // a hair under the drawn edge
+        let good = true;
+        for (let o = -1; o <= 1 && good; o++) {
+          const sxp = x + 0.5 + o * half;
+          if (A(sxp, by - dir * 0.35) < 0.8 || A(sxp, by + dir * 0.6) > 0.3) good = false;
+        }
+        if (!good) continue;
         list.push({ x: x + 0.5, y: by, pw, ph, ceil: !floor, img });
       }
     }
@@ -968,7 +1021,7 @@ export function createRenderer(ctx, world) {
     if (deepLevel !== world.level) { resetDeepRock(); deepLevel = world.level; }
     if (deepStage === 0) deepStage1();
     else if (deepStage === 1) deepStage2();
-    else if (deepStage === 2) { const tint = deepTintOf(plants); if (tint) deepStage3(tint); else return false; }
+    else if (deepStage === 2) { const tint = deepTintOf(plants); if (tint) deepStage3(tint); else return false; } // five calls: the alpha in four, then the list
     else return false;
     return true;
   }

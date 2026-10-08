@@ -12,6 +12,7 @@ import { ENTRIES, CATEGORIES, CAT_HAZARD } from '../js/journal.js';
 import { setDefaultBank, generateLevel, LEVEL_W, BORDER } from '../js/level.js';
 import { createLevelWorld } from '../js/world-v2.js';
 import { createRoomBank } from '../js/rooms.js';
+import { buildLevelSpawns } from '../js/level-spawns.js';
 import { loadBiome1Json } from './biome1.test.js';
 
 const DT = 0.02;
@@ -190,6 +191,23 @@ export async function runHazardTests(assert) {
       ok && world.tileAt(cell[0], cell[1]) === 1 && world.isSolid(cell[0] + 0.5, cell[1] + 0.5) && world.isBreakable(cell[0] + 0.5, cell[1] + 0.5) && v > 0 && world.dirty);
     assert('placeRock (world-v2): refuses rock, water in the border ring and a second placement; a bomb then clears it',
       !world.placeRock(cell[0], cell[1]) && !world.placeRock(0, 0) && !world.placeRock(1, 30) && world.breakTile(cell[0], cell[1]) && world.tileAt(cell[0], cell[1]) === 0);
+  }
+
+  // ---- a boulder balanced on a ledge corner rolls off instead of becoming a rock tile in mid-water; decor boulders sit on solid ground ----
+  {
+    const bank = createRoomBank(await loadBiome1Json());
+    setDefaultBank(bank);
+    let boulders = 0, perched = [];
+    for (let seed = 1; seed <= 40; seed++) for (let lv = 0; lv < 3; lv++) {
+      const L = generateLevel(seed, lv, bank);
+      for (const s of buildLevelSpawns(L, seed, lv).spawns) {
+        if (s.type !== 'decor' || s.dk !== 'boulder' || s.dy !== -1) continue;
+        boulders++;
+        const tx = Math.floor(s.x), ty = Math.floor(s.y);
+        if (!(L.tiles[(ty + 1) * L.w + tx - 1] && L.tiles[(ty + 1) * L.w + tx] && L.tiles[(ty + 1) * L.w + tx + 1])) perched.push(seed + '/' + lv + '@' + tx + ',' + ty);
+      }
+    }
+    assert(`decor boulders: all ${boulders} floor boulders stand on rock under their middle and both sides (none on a ledge end)` + (perched.length ? ' [' + perched.slice(0, 4).join(', ') + ']' : ''), boulders >= 50 && perched.length === 0);
   }
 
   // ---- electric eel ----

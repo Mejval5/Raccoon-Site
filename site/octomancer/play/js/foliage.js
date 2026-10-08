@@ -261,6 +261,55 @@ export function placeFoliageCells(T, chunk, W, H, cand, seed) {
     placed[slot(s, tx, ty, d)] = k;
     count[k]++;
   }
+  return unrope(T, out);
+}
+
+/** A hanging ceiling plant and a floor plant in about the same column must not touch: in a low corridor they read as one rope from
+ * floor to ceiling. Where their drawn extents come within ROPE_GAP tiles the ceiling plant is shrunk to fit (down to ROPE_MIN of its
+ * scale) or dropped; the floor plant always stays. Placement time only, deterministic (the arrays are walked in order). */
+export const ROPE_GAP = 0.4, ROPE_MIN = 0.55, ROPE_COLS = 1.0;
+export function unrope(T, out) {
+  const n = out.n, cols = new Map();
+  const ext = (i) => T.h[out.kind[i]] * out.scale[i];
+  for (let i = 0; i < n; i++) {
+    if (out.surf[i] !== SURF_FLOOR) continue;
+    const c = Math.floor(out.x[i]);
+    let a = cols.get(c); if (!a) cols.set(c, a = []);
+    a.push(i);
+  }
+  if (!cols.size) return out;
+  let dropped = 0;
+  const keep = new Uint8Array(n).fill(1);
+  for (let i = 0; i < n; i++) {
+    if (out.surf[i] !== SURF_CEIL) continue;
+    const c = Math.floor(out.x[i]);
+    let room = Infinity; // the lowest the hanging plant may reach: the top of the highest floor plant near its column
+    for (let dc = -1; dc <= 1; dc++) {
+      const a = cols.get(c + dc);
+      if (!a) continue;
+      for (const j of a) {
+        if (out.y[j] <= out.y[i] || Math.abs(out.x[j] - out.x[i]) > ROPE_COLS) continue; // only a floor plant below it
+        room = Math.min(room, out.y[j] - ext(j) - ROPE_GAP);
+      }
+    }
+    if (room === Infinity) continue;
+    const reach = ext(i), avail = room - out.y[i];
+    if (reach <= avail) continue;
+    const fit = (avail - 0.02) / T.h[out.kind[i]];
+    if (avail > 0 && fit >= T.vary0[out.kind[i]] * ROPE_MIN) out.scale[i] = fit;
+    else { keep[i] = 0; dropped++; }
+  }
+  if (!dropped) return out;
+  let o = 0;
+  for (let i = 0; i < n; i++) {
+    if (!keep[i]) continue;
+    if (o !== i) {
+      out.kind[o] = out.kind[i]; out.surf[o] = out.surf[i]; out.x[o] = out.x[i]; out.y[o] = out.y[i]; out.nx[o] = out.nx[i]; out.ny[o] = out.ny[i];
+      out.cx[o] = out.cx[i]; out.cy[o] = out.cy[i]; out.scale[o] = out.scale[i]; out.phase[o] = out.phase[i]; out.flip[o] = out.flip[i]; out.support[o] = out.support[i];
+    }
+    o++;
+  }
+  out.n = o;
   return out;
 }
 

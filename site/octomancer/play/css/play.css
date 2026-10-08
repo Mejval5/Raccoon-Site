@@ -569,6 +569,24 @@ body {
   .octo-bk-entry.has-story .octo-bk-lrow { font-size: 12px; }
   .octo-bk-plate { max-width: 62px; }
   .octo-bk-foot { padding-top: 3px; }
+  /* short screens (phone landscape): compact cards so two rows fit the left page, counters in two columns, bookmark names that fit their tabs */
+  .octo-bk-grid { gap: 4px 6px; padding-top: 4px; }
+  .octo-bk-card { padding: 3px 2px; gap: 2px; }
+  .octo-bk-grid .octo-bk-plate { max-width: 46px; border-radius: 9px; }
+  .octo-bk-cardname { font-size: 11px; line-height: 1.12; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .octo-bk-entry.has-story .octo-bk-ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 14px; }
+  .octo-bk-tabname { font-size: 10px; letter-spacing: 0; }
+  .octo-bk-tab { padding: 0; }
+  /* Progress: the two pages are compact, and the 1 / 2 page numbers (they sat on top of the text) are dropped */
+  .octo-bk-no { display: none; }
+  .octo-bk-prog { gap: 2px; }
+  .octo-bk-bignum { font-size: 38px; margin-top: 0; }
+  .octo-bk-bigsub { font-size: 12px; margin-bottom: 2px; }
+  .octo-bk-bars { gap: 3px; }
+  .octo-bk-barrow { font-size: 12px; gap: 1px 8px; }
+  .octo-bk-bar { height: 7px; }
+  .octo-bk-prog .octo-bk-lrow, .octo-bk-bestline, .octo-bk-none { font-size: 12px; line-height: 1.25; }
+  .octo-bk-prog .octo-bk-sub { margin-top: 3px; font-size: 11px; }
 }
 #hud > .octo-toast.is-small { padding: 4px 12px; font-size: 11px; font-weight: 600; background: rgba(6, 22, 34, 0.74); border-color: rgba(186, 255, 234, 0.4); color: #cfeee4; bottom: calc(18px + var(--safe-b)); }
 .octo-pause-btns { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }

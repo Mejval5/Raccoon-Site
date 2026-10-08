@@ -1,14 +1,15 @@
 // Node script (not part of tests/index.html): section 14 (fish juice, Ink Cloud, Ink Jet, hotbar, inventory, Siphon Shell, rest
 // grotto) in real Chrome against a running copy of the game: every input method fires its action (keyboard, mouse, real CDP
 // touches), the empty jar, the Siphon Shell, the spring, the phone layout, and screenshots (desktop 1440x900, phone 412x915).
-//   node spells-cdp.js [port]      port default 59250 (serve with python -m http.server <port> --directory site)
+//   node spells-cdp.js [port | baseUrl]      port default 59250 (serve with python -m http.server <port> --directory site)
 // puppeteer-core is resolved from $OCTO_TOOLS (default %TEMP%/octo-tools). Exits 1 on a failed check.
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
-const port = process.argv[2] || 59250;
-const BASE = 'http://127.0.0.1:' + port + '/octomancer/play/index.html';
-const OUT = 'D:/Projects/Raccoon-Site/octomancer-web/night/juice-';
+// the argument is a port or, like the other *-cdp.js scripts, the game's full URL
+const arg = process.argv[2] || '59250';
+const BASE = /^https?:/.test(arg) ? arg : 'http://127.0.0.1:' + arg + '/octomancer/play/index.html';
+const OUT = path.join(__dirname, '..', '..', '..', '..', 'octomancer-web', 'night', 'juice-'); // this checkout's night/ folder
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:[]}))}catch(e){}";
 const fails = [];
