@@ -912,9 +912,12 @@ export function createRenderer(ctx, world) {
     releaseCanvas(deepCanvas); releaseCanvas(deepScratch);
     deepCanvas = deepScratch = null; deepCircles = null; deepCount = 0; deepPlantList = []; deepStage = 0;
   }
-  function deepSolid(x, y) { return x < 0 || y < 0 || x >= world.width || y >= world.height || world.tileAt(x, y) !== 0; }
+  // back rooms (backroom.js): the deep rock is the front's rows only, so a level with a grotto bakes the same size of canvas as one
+  // without (the pool's exact-size reuse) and its parallax is unchanged; the grotto is enclosed and needs none behind it
+  const deepH = () => (world.level && world.level.back ? world.level.back.frontH : world.height);
+  function deepSolid(x, y) { return x < 0 || y < 0 || x >= world.width || y >= deepH() || world.tileAt(x, y) !== 0; }
   function deepStage1() {
-    const W = world.width, H = world.height;
+    const W = world.width, H = deepH();
     // the mass as overlapping round blobs (one per rock cell, a few extra beside the edges), blurred in step 2: organic, soft-edged
     // silhouettes instead of a tile grid
     deepScratch = acquireCanvas(W * DEEP_PX, H * DEEP_PX);
@@ -999,7 +1002,7 @@ export function createRenderer(ctx, world) {
     // from the tile's own, which left bases sunk in the face (pasted on the rock) or floating beside it. A plant is kept only where
     // the rock under its base is solid, the water in front of it is open (not a small pocket in the mass), and the edge is about
     // level under the whole base.
-    const W = world.width, H = world.height, RS = DEEP_PX, OW = W * RS, OH = H * RS;
+    const W = world.width, H = deepH(), RS = DEEP_PX, OW = W * RS, OH = H * RS;
     const al = deepAlphaStep(OW, OH, RS);
     if (!al) return; // the alpha is still being built (one part per frame); deepStage stays 2
     const A = (wx, wy) => al[Math.min(OH - 1, Math.max(0, Math.floor(wy * RS))) * OW + Math.min(OW - 1, Math.max(0, Math.floor(wx * RS)))];
@@ -1053,7 +1056,7 @@ export function createRenderer(ctx, world) {
   }
   function drawDeepRock(canvasW, canvasH, depth) {
     if (!deepCanvas || deepLevel !== world.level) return;
-    const ppu = camera.pxPerUnit, W = world.width, H = world.height, cx0 = W / 2, cy0 = H / 2, s = DEEP_SCALE;
+    const ppu = camera.pxPerUnit, W = world.width, H = deepH(), cx0 = W / 2, cy0 = H / 2, s = DEEP_SCALE;
     const camLx = cx0 + (camera.x - cx0) * DEEP_PARALLAX, camLy = cy0 + (camera.y - cy0) * DEEP_PARALLAX;
     const dx = canvasW / 2 + (cx0 * (1 - s) - camLx) * ppu, dy = canvasH / 2 + (cy0 * (1 - s) - camLy) * ppu;
     const dw = W * s * ppu, dh = H * s * ppu;

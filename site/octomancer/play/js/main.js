@@ -101,7 +101,7 @@ import { HEART_MAX, BOMB_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_M
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
 import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool, acquireCanvas, releaseCanvas } from './canvas-pool.js';
-import { curtainPoint, cameraRegion, DOOR_REACH } from './backroom.js';
+import { curtainPoint, cameraRegion, addBackRoom, DOOR_REACH } from './backroom.js';
 import { drawCurtain, drawBackOverlay, drawHopFade, preloadBackroomArt } from './backroom-draw.js';
 import { cullStats, visibleAt, cullFlags, cullView, setGameView } from './cull.js';
 import { createNpcs, createMoods, resetMoods, npcByName, NPC_MARLO, NPC_PIP, NPC_QUILL, NPC_HOST, NPC_IDS, FL_SEALED, FL_CAGED, FL_FOLLOWING, FL_TALKING } from './npcs.js';
@@ -3816,6 +3816,8 @@ window.__octo = {
     const spec = levelSpec(run);
     if (!V2 || spec.kind !== 'generated') return null;
     const lv = generateLevel(spec.seed, spec.levelIndex), t = world.level.tiles;
+    addBackRoom(lv, buildLevelSpawns(lv, spec.seed, spec.levelIndex).spawns, spec.seed, spec.levelIndex); // back rooms: the worker adds the annex too
+    if (lv.tiles.length !== t.length) return false;
     for (let i = 0; i < t.length; i++) if (lv.tiles[i] !== t[i]) return false;
     return lv.exitX === world.level.exitX && lv.exitY === world.level.exitY && lv.startX === world.level.startX;
   },
