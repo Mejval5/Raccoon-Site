@@ -181,3 +181,55 @@ body is thrown, a free swimmer drifts, a walker or an anchored body stays put).
   creatures fighting each other never anger a keeper. A corpse thrown by a blast could become a `block`-like source.
 - **Test hooks:** `__octo.creatureRules()`, `__octo.resolveHit(kind, src)`, `__octo.damageHit(family, i, src, dmg, byOcto)`
   and `__octo.damageBodies()`.
+
+## 4. Chain reactions (2026-10-08)
+
+Daniel: "chain reactions - oh yeah!" Spelunky style: blasts and impacts set off other things. A source does not only damage
+bodies (section 2); it can also **set off** things. That is a second table next to `SOURCES` in `creature-rules.js`:
+
+- `TRIGGER_TARGETS`: what can be set off, and what that does.
+- `TRIGGERS`: per source, which targets it sets off and how far (tiles), and the delay range of a link. `idle` is the set a
+  spontaneous event uses (a clam snapping at the octopus, an eel's own periodic shock): only bombs, so a periodic creature never
+  keeps its neighbours ticking.
+
+| Source (what went off) | Sets off (reach in tiles) | Delay |
+|---|---|---|
+| bomb (a blast) | bomb 2.5 (its radius), rock, clam, tentacle, eel, pot, jet 5 (the shove ring), tile, trap 4 | 0.12-0.26 s |
+| boulder (its impact: the first hard stop of a drop) | bomb 1.3, clam 2.2, pot 1.3, tile 1.3, trap 1.3, rock 4.5 (the shake) | 0.10-0.24 s |
+| snap (a giant clam) | clam 3, pot 1.6, bomb 1.6; spontaneous: bomb only | 0.14-0.28 s |
+| shock (an eel) | eel 4, bomb 3, clam 2.5; spontaneous: bomb only | 0.10-0.22 s |
+
+| Target | What going off means | Adapter |
+|---|---|---|
+| bomb | the fuse is cut, it explodes this step; its blast joins the chain | `bombs.chainTarget()` / `bombs.trigger(id, ctx)` |
+| rock | a hanging boulder rumbles 0.2 s and drops; its impact joins the chain | `hazards.chainTargets()[0]` |
+| eel | it crackles 0.12 s and shocks; the shock joins the chain | `hazards.chainTargets()[1]` |
+| jet | it surges 0.8 s (up to 3.2x push), throwing what is in its stream | `hazards.chainTargets()[2]` |
+| clam | a giant clam snaps (an open one still catches the octopus in its mouth; a shut one clacks); the snap joins the chain | `creatures.chainTargets()[0]` |
+| tentacle | a dormant one wakes and uncoils (and strikes if she is there) | `creatures.chainTargets()[1]` |
+| pot | a pot or a loot clam bursts (how 'chain') | `loot.chainTargets()[0]` |
+| trap | a trapped chest's trap springs (spike burst through the damage entry, or the swarm); the chest stays shut and safe | `loot.chainTargets()[1]` |
+| tile | a fragile tile (`MAT_BOULDER_BREAKS`: bone, timber; new breakable materials join by adding themselves there) shatters | main.js |
+
+**The queue** is `js/chain.js` (`createChain()`): `emit(src, x, y, parent, byOcto, self)` finds the targets through the
+adapters and queues one link per target, each due after its delay (nearer = sooner); `step(dt)` fires the due links. Rules:
+
+- **Readable:** every link waits 0.1-0.3 s. While it waits a glowing mote runs from the source to the target along a shallow
+  arc and a ring closes on the target; when it fires a ring opens there and a short knock plays (pitch rises with the
+  generation). `js/chain-draw.js`, `sfx.chainTick(depth)`.
+- **Capped:** at most 24 links per chain, 8 generations, 48 pending links, and 6 links fire per fixed step (the rest wait a
+  step). A target goes off at most once per chain (a visited set), so a chain can never loop.
+- **Off-screen rule:** a chain that started off screen never sets off anything off screen (`cull.js inCameraView`, 0.5 tile
+  margin). A chain started on screen may run on past the edge.
+- **Blame:** a chain keeps the blame of what started it (her bomb: hers; a boulder a crab set off: nobody's). A boulder it shakes
+  loose carries it, so a keeper it lands on is angered only when she started it.
+- **Hooks for other owners:** a new target kind = a row in `TRIGGER_TARGETS`, a reach in the `TRIGGERS` rows and an adapter
+  `{ name, each(x, y, r, cb), fire(i, ctx) }` registered in main.js (a proxy, like the damage families). A new source (the hand
+  owner's drop bomb or urchin mine, a thrown corpse) = a `TRIGGERS` row and one `chain.emit(src, x, y, parentCtx)` where it goes
+  off. The bombs adapter reads `bombs.list()` and `b.id`, so any bomb in that list chains.
+- **Test hooks:** `__octo.chain()`, `__octo.chainInfo(id)`, `__octo.chainEmit(src, x, y)`, `__octo.bombAt(x, y, fuse, loose)`,
+  `__octo.bombs()`, `__octo.addHazard(name, x, y, dx, dy)`, `__octo.addLoot(name, x, y, trap)`. Tests: `tests/chain.test.js`
+  (on the test page), `node tests/chain-cdp.js <baseUrl> [shotDir] [w] [h]`.
+
+What changed in play: a bomb no longer drops every hanging boulder in its reach at once (`hazards.blast`, no longer called by
+main.js); each one rumbles and drops as a link. A boulder whose ceiling a bomb removed still falls at once.

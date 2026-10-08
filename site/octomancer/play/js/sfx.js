@@ -136,6 +136,11 @@ export function createSfx(audio) {
         noiseBurst(audio, ctx, dest, { dur: 0.14, gain: 0.25, filterFreq: 1800 });
       });
     },
+    /** Chain reactions (chain.js): a link going off: a short hollow knock that rises with the chain's generation (depth 1..8). */
+    chainTick(depth = 1) {
+      const f = 380 * Math.pow(1.09, Math.min(8, Math.max(1, depth)) - 1);
+      play((ctx, dest) => tone(audio, ctx, dest, { freq: f, sweep: f * 0.55, dur: 0.07, type: 'triangle', gain: 0.14 }));
+    },
     /** V2-PLAN 16: an electric shock: a buzzing zap that falls away. */
     zap() {
       play((ctx, dest) => {

@@ -258,6 +258,10 @@ await runRagdollTests(assert);
 import { runTimePressureTests } from './timepressure.test.js';
 await runTimePressureTests(assert);
 
+// --- 2026-10-08: chain reactions (chain.js, creature-rules.js TRIGGERS) ---
+import { runChainTests } from './chain.test.js';
+await runChainTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

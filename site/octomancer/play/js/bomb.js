@@ -49,6 +49,7 @@ export function createBombs(props = null) {
   const events = []; // {type:'exploded', x, y}
   const broken = []; // scratch: x,y of each tile a blast removed
   const fuse0 = props ? BOMB_FUSE_V2 : BOMB_FUSE;
+  let nextId = 1; // chain reactions: a stable id per bomb (the list is filtered every step, so an index would move)
 
   function explode(b, world, octo, enemies) {
     b.exploded = true;
@@ -86,10 +87,10 @@ export function createBombs(props = null) {
       props.blast(b.x, b.y, r);
       spawnRubble(props, broken, nb, b.x, b.y);
     }
-    events.push({ type: 'exploded', x: b.x, y: b.y, tiles: nb });
+    events.push({ type: 'exploded', x: b.x, y: b.y, tiles: nb, id: b.id, chain: b.chain, depth: b.depth }); // chain.js: the blast joins the chain that set it off
   }
 
-  return {
+  const api = {
     events,
     props,
     list() { return bombs; },
@@ -97,11 +98,12 @@ export function createBombs(props = null) {
     /**
      * Place a bomb if the octopus has one in stock. v2: it starts at (x, y) with the octopus's velocity plus
      * THROW_SPEED along `aim` ({x, y}, unit length; a short vector throws proportionally less), or a short toss
-     * forward (octo.throwDir, the last swim direction) and a little down when `aim` is null. `opts.pinned` keeps a bomb in place (tests).
+     * forward (octo.throwDir, the last swim direction) and a little down when `aim` is null. `opts.pinned` keeps a bomb in place (tests), `opts.fuse` sets its fuse, `opts.free` costs no bomb.
      */
     place(octo, x, y, aim = null, opts = null) {
-      if (!tryUseBomb(octo)) return false;
-      const b = { x, y, fuse: fuse0, fuse0, exploded: false, age: 0, pid: -1, rot: 0 };
+      if (!(opts && opts.free) && !tryUseBomb(octo)) return false; // opts.free: a test / scripted bomb that costs nothing
+      const f0 = opts && opts.fuse > 0 ? opts.fuse : fuse0;
+      const b = { x, y, fuse: f0, fuse0: f0, exploded: false, age: 0, pid: -1, rot: 0, id: nextId++, chain: -1, depth: 0, lit: 0 };
       if (props) {
         let ax = 0, ay = 0;
         if (aim && (aim.x || aim.y)) { ax = aim.x; ay = aim.y; const l = Math.hypot(ax, ay); if (l > 1) { ax /= l; ay /= l; } } // a short vector throws proportionally less
@@ -110,12 +112,35 @@ export function createBombs(props = null) {
           ax = f * IDLE_TOSS_X; ay = IDLE_TOSS_Y;
         }
         const ovx = octo.vx || 0, ovy = octo.vy || 0;
-        b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: fuse0, grace: 0.35 });
-        if (b.pid < 0) { octo.bombs++; return false; }
+        b.pid = props.add(PK_BOMB, x, y, ovx + ax * THROW_SPEED, ovy + ay * THROW_SPEED, { timer: f0, grace: 0.35 });
+        if (b.pid < 0) { if (!(opts && opts.free)) octo.bombs++; return false; }
         if (opts && opts.pinned) props.hold(b.pid, -1, -1);
       }
       bombs.push(b);
       return true;
+    },
+
+    /**
+     * Chain reactions (chain.js): bomb `id` is set off by a link; its fuse is cut and it goes off on this step's update.
+     * ctx {chain, depth} is carried to the 'exploded' event so the blast joins the same chain. False when it is gone.
+     */
+    trigger(id, ctx = null) {
+      for (const b of bombs) {
+        if (b.id !== id || b.exploded) continue;
+        b.fuse = 0; b.lit = 1;
+        if (props && b.pid >= 0) props.data.timer[b.pid] = 0;
+        b.chain = ctx && ctx.chain >= 0 ? ctx.chain : -1; b.depth = ctx ? ctx.depth | 0 : 0;
+        return true;
+      }
+      return false;
+    },
+    /** The chain.js target adapter of the live bombs ('bomb'). */
+    chainTarget() {
+      return {
+        name: 'bomb',
+        each(x, y, r, cb) { for (const b of bombs) if (!b.exploded && Math.hypot(b.x - x, b.y - y) <= r) cb(b.id, b.x, b.y); },
+        fire: (id, ctx) => api.trigger(id, ctx),
+      };
     },
 
     /** One fixed step: tick fuses, explode, break rock, hurt octo, kill enemies via `enemies.killInRadius`.
@@ -143,4 +168,5 @@ export function createBombs(props = null) {
       bombs = bombs.filter((b) => !(b.exploded && b.age > 0.4));
     },
   };
+  return api;
 }

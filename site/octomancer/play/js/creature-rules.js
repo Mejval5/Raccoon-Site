@@ -128,3 +128,51 @@ export function resolveHit(kind, src, dmg = -1, shut = false) {
 
 /** Does `kind` take anything at all from `src` (ignoring a shell's state)? For tests, the journal and the docs. */
 export function affects(kind, src) { return !resolveHit(kind, src).ignore; }
+
+// ---------------------------------------------------------------- chain reactions (2026-10-08, "chain reactions - oh yeah!")
+//
+// Spelunky-style chains: a source does not only DAMAGE bodies (SOURCES, resolveHit), it can also SET OFF things: a lit bomb, a
+// hanging boulder, a giant clam's snap, a tentacle, an eel's shock, a pot or loot clam, a fragile tile, a jet's surge, a
+// chest's trap. TRIGGERS says, per source, which TARGET kinds it sets off and how far (tiles); chain.js turns that into a queue
+// of delayed links (the chain reads, one link after the other) with a budget, a cap and the off-screen rule. No system checks
+// a kind or a source by hand: every link is a row here. See octomancer-web/CREATURES.md, section 4.
+//
+//   sets:  target kind -> reach in tiles (the target's centre within it, from the source's point)
+//   idle:  the targets a SPONTANEOUS event sets off (one not caused by a chain: a clam snapping at the octopus, an eel's own
+//          periodic shock). A periodic creature would otherwise keep its neighbours ticking forever. Omitted: same as `sets`.
+//   delay: [nearest, farthest] s from the source going off to the target going off (0.1-0.3: each link reads on its own)
+
+/** What a trigger target is and what setting it off does (for the docs, the tests). */
+export const TRIGGER_TARGETS = {
+  bomb:     { why: 'a lit bomb: its fuse is cut and it goes off at once' },
+  rock:     { why: 'a hanging boulder: its support is shaken, it rumbles a moment and drops' },
+  clam:     { why: 'a giant clam: it snaps shut (an open one with the octopus in its mouth still kills)' },
+  tentacle: { why: 'a dormant tentacle: it wakes and uncoils' },
+  eel:      { why: 'an eel: it discharges its shock early' },
+  pot:      { why: 'a breakable pot or loot clam: it bursts and spills its shells' },
+  tile:     { why: 'a fragile tile (bone, timber: materials.js MAT_BOULDER_BREAKS): it shatters' },
+  jet:      { why: 'a current jet: it surges, throwing whatever is in its stream' },
+  trap:     { why: 'a trapped chest: its trap springs (spike burst, or the piranha swarm); the chest stays shut and is safe after' },
+};
+export const TRIGGER_TARGET_NAMES = Object.keys(TRIGGER_TARGETS);
+
+/** Per source (a SOURCES name): which targets it sets off and how far (tiles). */
+export const TRIGGERS = {
+  // a bomb going off: other bombs inside its blast radius (2.5), everything else out to the shove ring (2 radii)
+  bomb:    { delay: [0.12, 0.26], sets: { bomb: 2.5, rock: 5, clam: 5, tentacle: 5, eel: 5, pot: 5, tile: 4, jet: 5, trap: 4 } },
+  // a falling boulder (a hazard rock, a chase rock) landing: what it lands on, and a shake that loosens boulders near by
+  boulder: { delay: [0.1, 0.24], sets: { bomb: 1.3, clam: 2.2, pot: 1.3, rock: 4.5, tile: 1.3, trap: 1.3 } },
+  // a giant clam's snap: the slam startles the clams next to it and cracks pots; at the octopus (spontaneous) only a bomb in its mouth
+  snap:    { delay: [0.14, 0.28], sets: { clam: 3, pot: 1.6, bomb: 1.6 }, idle: { bomb: 1.6 } },
+  // an eel's shock: it jumps to the eels near by, sets off bombs and makes clams flinch; its own periodic shock only reaches bombs
+  shock:   { delay: [0.1, 0.22], sets: { eel: 4, bomb: 3, clam: 2.5 }, idle: { bomb: 3 } },
+};
+export const TRIGGER_SOURCES = Object.keys(TRIGGERS);
+
+/** The reach (tiles) at which `src` sets off `target` (0: it does not). spontaneous: the event was not itself caused by a chain. */
+export function triggerReach(src, target, spontaneous = false) {
+  const row = TRIGGERS[src];
+  if (!row) return 0;
+  const set = spontaneous && row.idle ? row.idle : row.sets;
+  return set[target] || 0;
+}

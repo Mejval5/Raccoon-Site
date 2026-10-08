@@ -114,6 +114,8 @@ export function createCreatures() {
     squeeze: new Float32Array(CAP),                              // 0..1 how tight it holds (draw)
     rs: new Uint32Array(CAP).fill(1),
     hzCool: new Float64Array(CAP), blame: new Float64Array(CAP), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
+    chain: new Int32Array(CAP).fill(-1), cdepth: new Uint8Array(CAP), // chain.js: the chain a clam's snap belongs to (-1: its own)
+    rouse: new Uint8Array(CAP),                                  // a tentacle a chain woke: it uncoils even with the octopus away
   };
   const events = []; // {type:'pearl'|'pearlDrop'|'killed'|'snap'|'grab'|'release'|'eaten'|'wake'|'strike'|'bonk'|'tremble', ...}
   const loaded = new Set();
@@ -126,6 +128,7 @@ export function createCreatures() {
     d.dx[i] = rec.dx || 0; d.dy[i] = rec.dy || 0; d.side[i] = rec.side || 1;
     d.rs[i] = hash2(rec.x, rec.y);
     d.cd[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0; d.fed[i] = 0; d.ang[i] = 0;
+    d.chain[i] = -1; d.cdepth[i] = 0; d.rouse[i] = 0;
     if (code === CR_GCLAM) {
       d.fy[i] = rec.y + 0.5;
       d.x[i] = rec.x; d.y[i] = d.fy[i] - 0.4;
@@ -193,6 +196,12 @@ export function createCreatures() {
     return Math.abs(octo.x - d.x[i]) < CLAM_MOUTH_HALF_W && octo.y > d.fy[i] - CLAM_MOUTH_H && octo.y < d.fy[i] - 0.1;
   }
 
+  /** A clam's snap (chain.js: it carries the chain that made it snap, then the clam forgets it). */
+  function snapEvent(i, kill, far) {
+    events.push({ type: 'snap', x: d.x[i], y: d.fy[i], kill, far, i, chain: d.chain[i], depth: d.cdepth[i] });
+    d.chain[i] = -1; d.cdepth[i] = 0;
+  }
+
   function updateClam(i, dt, octo, world) {
     const st = d.state[i], cx = d.x[i], fy = d.fy[i];
     const near = !octo.dead && Math.hypot(octo.x - cx, octo.y - fy) < CLAM_WAKE_R;
@@ -205,13 +214,13 @@ export function createCreatures() {
         d.t[i] += dt;
         const u = Math.min(1, d.t[i] / CLAM_OPENING_T);
         d.ang[i] = u * u * (3 - 2 * u);
-        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; events.push({ type: 'snap', x: cx, y: fy, kill: false, far: true }); break; }
+        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; snapEvent(i, false, true); break; }
         if (d.t[i] >= CLAM_OPENING_T) { d.state[i] = CL_OPEN; d.t[i] = 0; d.ang[i] = 1; }
         break;
       }
       case CL_OPEN:
         d.t[i] += dt; d.ang[i] = 1;
-        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; events.push({ type: 'snap', x: cx, y: fy, kill: false, far: true }); break; }
+        if (!near) { d.state[i] = CL_SNAP; d.t[i] = 0; snapEvent(i, false, true); break; }
         if (d.t[i] >= CLAM_OPEN_T) { d.state[i] = CL_TREMBLE; d.t[i] = 0; events.push({ type: 'tremble', x: cx, y: fy }); }
         break;
       case CL_TREMBLE:
@@ -226,7 +235,7 @@ export function createCreatures() {
             kill = killOctopus(octo, 'clam', 'clam', px, py, 90 * s);
             if (kill) d.fed[i] = 1;
           }
-          events.push({ type: 'snap', x: cx, y: fy, kill, far: false });
+          snapEvent(i, kill, false);
         }
         break;
       default: { // CL_SNAP: the lid slams shut
@@ -312,7 +321,14 @@ export function createCreatures() {
         break;
       case TN_WAKE: {
         d.t[i] += dt;
+        if (!aware && d.rouse[i]) { // a chain woke it (chain.js): it uncoils blindly along its mouth, then curls back
+          const k = ease(d.t[i] / TENT_WAKE_T) * 1.7;
+          d.tipx[i] = mx + d.mdx[i] * k; d.tipy[i] = my + d.mdy[i] * k;
+          if (d.t[i] >= TENT_WAKE_T) { d.rouse[i] = 0; startRetract(i, 0.6); }
+          break;
+        }
         if (!aware) { startRetract(i, 0.6); break; }
+        if (d.t[i] >= TENT_WAKE_T) d.rouse[i] = 0;
         // the limb uncoils out of the shell towards the octopus
         const k = ease(d.t[i] / TENT_WAKE_T) * Math.min(1.5, dist) / (dist || 1);
         d.tipx[i] = mx + (octo.x - mx) * k; d.tipy[i] = my + (octo.y - my) * k;
@@ -447,6 +463,36 @@ export function createCreatures() {
         if (!d.alive[i]) n++;
       }
       return n;
+    },
+    /**
+     * Chain reactions (chain.js): set creature i off. A giant clam snaps: an open one trembles out its last instant and slams
+     * (the octopus in its mouth is still caught), a shut one clacks. A dormant tentacle wakes and uncoils (and strikes if the
+     * octopus is there). ctx {chain, depth} rides on the snap event. False when it cannot go off now.
+     */
+    trigger(i, ctx = null) {
+      if (i < 0 || i >= d.n || !d.alive[i]) return false;
+      if (d.kind[i] === CR_GCLAM) {
+        const st = d.state[i];
+        if (st === CL_SNAP) return false;
+        d.chain[i] = ctx && ctx.chain >= 0 ? ctx.chain : -1; d.cdepth[i] = ctx ? ctx.depth | 0 : 0;
+        if (st === CL_SHUT) { d.state[i] = CL_SNAP; d.t[i] = 0; d.ang[i] = 0.35; snapEvent(i, false, false); } // a startled clack
+        else { d.state[i] = CL_TREMBLE; d.t[i] = CLAM_TREMBLE_T; } // snaps on its next step, with the mouth check
+        return true;
+      }
+      if (d.state[i] !== TN_DORMANT || d.fed[i]) return false;
+      d.state[i] = TN_WAKE; d.t[i] = 0; d.rouse[i] = 1;
+      events.push({ type: 'wake', x: d.mx[i], y: d.my[i] });
+      return true;
+    },
+    /** The chain.js target adapters: 'clam' (giant clams not already snapping) and 'tentacle' (dormant ones). */
+    chainTargets() {
+      const api = this;
+      return [
+        { name: 'clam', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === CR_GCLAM && d.state[i] !== CL_SNAP && Math.hypot(d.x[i] - x, d.y[i] - y) <= r) cb(i, d.x[i], d.y[i]); } },
+        { name: 'tentacle', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === CR_TENTACLE && d.state[i] === TN_DORMANT && !d.fed[i] && Math.hypot(d.mx[i] - x, d.my[i] - y) <= r) cb(i, d.mx[i], d.my[i]); } },
+      ];
     },
     /** A blast at (x, y) radius R lets a tentacle's held octopus go when it reaches either of them. True when it let go. */
     releaseNear,
