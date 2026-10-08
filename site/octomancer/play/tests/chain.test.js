@@ -15,6 +15,7 @@ import { createLoot, LK_POT, LK_CLAM, LK_CHEST, TRAP_SPIKES, ST_INTACT } from '.
 import { createOctopus } from '../js/octopus.js';
 import { MAT_BONE, MAT_TIMBER, MAT_BOULDER_BREAKS } from '../js/materials.js';
 import { resetGameView, setGameView } from '../js/cull.js';
+import { BOMB_RADIUS } from '../js/config.js';
 
 const DT = 0.02;
 
@@ -87,7 +88,7 @@ export function scene(rows, octoAt = [1.5, 1.5]) {
     for (const ev of bombs.events) {
       if (ev.type !== 'exploded') continue;
       log.exploded.push({ id: ev.id, t: log.time, chain: ev.chain, depth: ev.depth });
-      loot.explode(ev.x, ev.y, 2.5); onLoot();
+      loot.explode(ev.x, ev.y, BOMB_RADIUS); onLoot();
       chain.emit('bomb', ev.x, ev.y, ev.chain >= 0 ? ev : null, true);
     }
   }
@@ -131,20 +132,21 @@ export async function runChainTests(assert0) {
 
   // ---- a bomb sets off every target kind in its reach ----
   {
-    // a low room (floor row 7): the bomb at (17, 5.5); everything sits in its shove ring (2.5 .. 5 tiles), out of the blast
+    // a low room (floor row 7): the bomb at (17, 5); everything sits in its shove ring (BOMB_RADIUS 2.0 .. 4.0 tiles; tiles and
+    // traps 3.2), out of the blast (controls 2026-10-08: the blast is 2.0, so the scene is laid out tighter than for 2.5)
     const rows = room(34, 8);
-    rows[4] = rows[4].slice(0, 13) + '==' + rows[4].slice(15); // a timber beam (13..14, 4)
-    rows[3] = rows[3].slice(0, 19) + 'B' + rows[3].slice(20);  // a bone block (19, 3)
+    rows[3] = rows[3].slice(0, 14) + '==' + rows[3].slice(16); // a timber beam (14..15, 3)
+    rows[2] = rows[2].slice(0, 18) + 'B' + rows[2].slice(19);  // a bone block (18, 2)
     const sc = scene(rows);
-    const bx = 17, by = 5.5;
-    const rk = sc.hz.add(hzRec(sc, 'rock', 15.5, 1.5));
-    const eel = sc.hz.add(hzRec(sc, 'eel', 21.5, 3.5));
-    const jet = sc.hz.add(hzRec(sc, 'jet', 12.5, 6.5, 0, -1));
-    sc.cr.add({ type: 'creature', ck: CR_GCLAM, x: 13.5, y: 6.5, dx: 0, dy: -1, side: 1, tilt: 0 }); sc.cr.data.state[0] = CL_OPEN; sc.cr.data.ang[0] = 1; sc.cr.data.t[0] = 0;
-    sc.cr.add({ type: 'creature', ck: CR_TENTACLE, x: 20.5, y: 6.5, dx: 0, dy: -1, side: 1, tilt: 0 });
-    sc.loot.add({ lk: LK_POT, x: 21.5, y: 6.5, dx: 0, dy: -1, n: 2 });
-    sc.loot.add({ lk: LK_CLAM, x: 14.0, y: 6.5, dx: 0, dy: -1, n: 2 });
-    sc.loot.add({ lk: LK_CHEST, x: 20.0, y: 6.5, dx: 0, dy: -1, n: 4, aux: TRAP_SPIKES });
+    const bx = 17, by = 5;
+    const rk = sc.hz.add(hzRec(sc, 'rock', 16.5, 1.5));
+    const eel = sc.hz.add(hzRec(sc, 'eel', 20.5, 3.5));
+    const jet = sc.hz.add(hzRec(sc, 'jet', 13.5, 6.5, 0, -1));
+    sc.cr.add({ type: 'creature', ck: CR_GCLAM, x: 14.5, y: 6.5, dx: 0, dy: -1, side: 1, tilt: 0 }); sc.cr.data.state[0] = CL_OPEN; sc.cr.data.ang[0] = 1; sc.cr.data.t[0] = 0;
+    sc.cr.add({ type: 'creature', ck: CR_TENTACLE, x: 20.6, y: 6.5, dx: 0, dy: -1, side: 1, tilt: 0 });
+    sc.loot.add({ lk: LK_POT, x: 19.6, y: 6.5, dx: 0, dy: -1, n: 2 });
+    sc.loot.add({ lk: LK_CLAM, x: 15.3, y: 6.5, dx: 0, dy: -1, n: 2 });
+    sc.loot.add({ lk: LK_CHEST, x: 18.8, y: 6.5, dx: 0, dy: -1, n: 4, aux: TRAP_SPIKES });
     sc.octo.x = 10; sc.octo.y = 2; // near enough that the clam stays open (6 tiles), out of the blast (7.6)
     const ok = [rk, eel, jet].every((i) => i >= 0);
     sc.bomb(bx, by, 0.05);
@@ -160,7 +162,7 @@ export async function runChainTests(assert0) {
     assert('bomb -> tentacle: the dormant tentacle wakes', sc.log.wakes.length >= 1 && tgts.has('tentacle'));
     assert('bomb -> pot and loot clam: both burst (how: chain)', sc.log.breaks.filter((b) => b.how === 'chain').length === 2 && tgts.has('pot'), JSON.stringify(sc.log.breaks));
     assert('bomb -> trapped chest: the trap springs, the chest stays shut and safe', sc.log.traps.length === 1 && sc.loot.data.state[2] === ST_INTACT && sc.loot.data.aux[2] === 0 && tgts.has('trap'));
-    assert('bomb -> fragile tiles: the bone block and the timber beam in the shove ring shatter', sc.world.tileAt(19, 3) === 0 && sc.world.tileAt(13, 4) === 0 && sc.world.tileAt(14, 4) === 0 && tgts.has('tile'));
+    assert('bomb -> fragile tiles: the bone block and the timber beam in the shove ring shatter', sc.world.tileAt(18, 2) === 0 && sc.world.tileAt(14, 3) === 0 && sc.world.tileAt(15, 3) === 0 && tgts.has('tile'));
     const first = sc.log.links.filter((l) => l.depth === 1).map((l) => l.t - t0);
     assert('bomb links: each target went off 0.1-0.3 s after the blast (plus the per-step budget)', first.length >= 9 && first.every((t) => t >= 0.1 - DT && t <= 0.3 + DT * 3), first.map((t) => t.toFixed(2)).join(','));
     sc.run(2.5);
@@ -275,7 +277,7 @@ export async function runChainTests(assert0) {
     setGameView(cam, 640, 400);
     const far1 = s2.bomb(40, 9.5, 99), near = s2.bomb(17.5, 9.5, 99);
     s2.chain.emit('bomb', 41.5, 9.5, null, true); // started off screen: the bomb next to it (off screen) stays put
-    s2.chain.emit('bomb', 19.6, 9.5, null, true); // started off screen: a target ON screen may still go off
+    s2.chain.emit('bomb', 19.4, 9.5, null, true); // started off screen: a target ON screen may still go off (within the 2.0 bomb reach)
     s2.run(0.5);
     assert('off-screen: a chain that started off screen sets off nothing off screen', !s2.log.exploded.some((e) => e.id === far1) && s2.chain.stats.offscreen >= 1);
     assert('off-screen: ... but it may set off a target on screen', s2.log.exploded.some((e) => e.id === near));
