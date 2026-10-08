@@ -1,5 +1,7 @@
-/* Spell hotbar + inventory (hotbar-ui.js, inventory-ui.js). Carved stone slots bound with kelp, ink outlines, soft inner
-   shadows. No gold, no glow, no gloss: the selected slot gets a paler sea-green rim and a kelp tie across the top. */
+/* Spell hotbar + inventory (hotbar-ui.js, inventory-ui.js). 2026-10-08 (Daniel's Noita reference): the usable hotbar is one row
+   of small square slots at the top left, no panel behind it: dark translucent squares with a thin sea-glass border, the
+   selected one outlined bright, key numbers 1-9, counts and prices on the slots. The Ink Jet cooldown and the juice jar live
+   in the HUD's top-right column (hud-strip.js), so their hotbar cells are hidden here. No gold, no glow, no gloss. */
 
 .octo-hotbar,
 #hud > .octo-hotbar {
@@ -11,18 +13,14 @@
   --ink: #10202c;
   --rim: #b6dcc6;
   position: absolute;
-  left: 50%;
-  bottom: calc(14px + var(--safe-b));
-  transform: translateX(-50%);
+  left: calc(10px + var(--safe-l));
+  top: calc(8px + var(--safe-t));
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  max-width: calc(100vw - 24px);
-  border-radius: 14px;
-  background: linear-gradient(180deg, #34503a, #263d2c);
-  border: 2px solid var(--ink);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), 0 3px 8px rgba(0, 0, 0, 0.4);
+  gap: 5px;
+  padding: 0;
+  max-width: var(--hb-max-w, calc(100vw - 420px)); /* the top-right column owns the rest of the row; many slots wrap */
   font-family: 'Quicksand', sans-serif;
   color: #e3efe6;
   pointer-events: none; /* #hud > * opts in; the bar itself lets clicks through, only the slots take them */
@@ -30,18 +28,18 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.octo-hb-slots { display: flex; gap: 6px; }
+.octo-hb-slots { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .octo-hb-slot {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   flex: none;
-  border-radius: 9px;
-  border: 2px solid var(--ink);
-  background: radial-gradient(circle at 50% 35%, var(--stone-lit), var(--stone) 55%, var(--stone-dark));
-  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.5), inset 0 -1px 2px rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  border: 1.5px solid rgba(186, 222, 206, 0.38);
+  background: rgba(8, 18, 26, 0.58);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   color: inherit;
   font: inherit;
 }
@@ -74,27 +72,14 @@
   pointer-events: none;
 }
 
-/* selected: a paler carved rim plus a small kelp tie over the top edge */
+/* selected: outlined bright sea glass (Noita), no tie, no glow */
 .octo-hb-slot.is-selected {
-  border-color: var(--rim);
-  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--ink);
-}
-.octo-hb-slot.is-selected::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: -7px;
-  width: 20px;
-  height: 7px;
-  margin-left: -10px;
-  border-radius: 3px;
-  background: var(--kelp);
-  border: 2px solid var(--ink);
-  border-bottom: none;
-  pointer-events: none;
+  border: 2px solid #a8f2cc;
+  background: rgba(14, 34, 40, 0.7);
+  box-shadow: 0 0 0 1px var(--ink), 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-.octo-hb-sep { width: 3px; align-self: stretch; margin: 2px 0; border-radius: 2px; background: var(--ink); opacity: 0.55; }
+.octo-hb-sep { width: 4px; align-self: stretch; } /* a small gap between the spells and the items (bombs) */
 
 .octo-hb-bomb { cursor: default; }
 /* the Ink Jet slot: a dark veil over the ink sac that shrinks to nothing as the jet refills (hotbar-ui.js jetShade) */
@@ -131,31 +116,16 @@
 .octo-jar-shake { animation: octo-jar-shake 0.32s ease-out; }
 @media (prefers-reduced-motion: reduce) { .octo-jar-shake { animation-duration: 0.01s; } }
 
-/* phones: small, top centre under the HUD row (the owner may move it with a later rule) */
-.octo-hotbar.is-compact,
-#hud > .octo-hotbar.is-compact {
-  top: calc(env(safe-area-inset-top, 0px) + 58px);
-  bottom: auto;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 60vw;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 10px;
-}
-.octo-hotbar.is-compact .octo-hb-slots { gap: 4px; }
-.octo-hotbar.is-compact .octo-hb-slot { width: 34px; height: 34px; border-radius: 7px; border-width: 1.5px; }
+/* phones: the same row, smaller slots, no key numbers */
+.octo-hotbar.is-compact .octo-hb-slots, .octo-hotbar.is-compact { gap: 4px; }
+.octo-hotbar.is-compact .octo-hb-slot { width: 34px; height: 34px; border-radius: 5px; }
 .octo-hotbar.is-compact .octo-hb-spell .octo-hb-key,
 .octo-hotbar.is-compact .octo-hb-key-bomb,
 .octo-hotbar.is-compact .octo-hb-key-jet { display: none; }
 .octo-hotbar.is-compact .octo-hb-count { font-size: 9px; }
-.octo-hotbar.is-compact .octo-hb-slot.is-selected::after { top: -6px; width: 16px; height: 6px; margin-left: -8px; }
-.octo-hotbar.is-compact .octo-hb-jar { gap: 3px; }
-.octo-hotbar.is-compact .octo-hb-jarcv { width: 18px; height: 24px; }
-.octo-hotbar.is-compact .octo-hb-casts { font-size: 12px; }
 
-/* the juice jar and its casts live on the HUD strip (hud-strip.js) now: the bar keeps the spells, the Ink Jet and the bomb slot */
-#hud > .octo-hotbar .octo-hb-jar { display: none; }
+/* the Ink Jet cooldown and the juice jar are in the HUD's top-right column (hud-strip.js): the row keeps what right click uses */
+#hud > .octo-hotbar .octo-hb-jar, #hud > .octo-hotbar .octo-hb-jet { display: none; }
 
 /* hidden behind the settings / journal / inventory panels, like the HUD bar */
 #hud.octo-modal-open > .octo-hotbar { visibility: hidden; }
@@ -250,19 +220,9 @@
   .octo-inv-head { padding: 6px 12px; }
 }
 
-/* The desktop bar owns the bottom centre: toasts sit above it and the controls hint stops short of it. */
-#hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-toast { bottom: calc(86px + var(--safe-b)); }
-#hud:has(> .octo-hotbar:not(.is-compact):not([style*="display: none"])) > .octo-controls-help { max-width: min(560px, calc(50vw - 130px)); }
-/* Phones: the bar sits at the top, so the prompt banner moves a little lower; in portrait the touch buttons own the bottom right
-   (two rows) and a centred toast would run under them, so toasts sit above them. */
-#hud:has(> .octo-hotbar.is-compact) > .octo-prompt { top: calc(112px + var(--safe-t)); }
-/* portrait phones with carried items: their row under the HUD strip's left end would run under the centred bar, so the bar
-   (and the title card and prompt under it) step down one row */
+/* Phones: the prompt banner sits below the top rows. */
+#hud:has(> .octo-hotbar.is-compact) > .octo-prompt { top: calc(124px + var(--safe-t)); }
 @media (max-width: 600px) {
-  #hud:has(.octo-hud-items:not([style*="none"])) > .octo-hotbar.is-compact { top: calc(env(safe-area-inset-top, 0px) + 80px); }
-  #hud:has(.octo-hud-items:not([style*="none"])):has(> .octo-hotbar.is-compact) > .octo-prompt,
-  #hud:has(.octo-hud-items:not([style*="none"])) > .octo-title { top: calc(134px + var(--safe-t)); }
-}
-@media (max-width: 600px) {
+  #hud:has(> .octo-hotbar.is-compact) > .octo-prompt { top: calc(150px + var(--safe-t)); }
   #hud:has(> .octo-hotbar.is-compact) > .octo-toast { bottom: calc(176px + var(--safe-b)); }
 }

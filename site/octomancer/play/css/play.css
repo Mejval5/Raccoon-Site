@@ -84,38 +84,35 @@ body {
 .octo-btn.is-empty { opacity: 0.45; }
 
 
-/* --- the one-line HUD strip (hud-strip.js, 2026-10-08, Spelunky 2 style): one line floating over the scene, no band. Left: hearts,
-   bombs, the juice jar (icon + number on its lower right) on one dark translucent pill, the carried items right under it.
-   Right: shells, the hourglass with the level / run clocks and the Swift Current target, the level; no backing, ink outlined.
-   The line is centred on the pause button and stops short of it; mute and settings hang below it as before. --- */
-#hud { --hud-h: 54px; --hud-ink: #10202c; }
+/* --- the HUD (2026-10-08, Daniel's Spelunky / Noita references). Top left: the usable hotbar row (hotbar.css). Top right, next
+   to the pause / mute / settings column, one right-aligned column (hud-strip.js): the run line (level / run clocks, Swift
+   Current, level), the vitals as icon + integer (hearts, bombs, juice casts, shells), thin cooldown bars (Ink Jet, dash), the
+   perks (carried items, hover / tap for a tooltip) and the timed effects. No panels; ink-outlined text reads over bright water. --- */
+#hud { --hud-ink: #10202c; --hb-max-w: calc(100vw - 500px); }
 .octo-hud-bar {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: calc(var(--hud-h) + var(--safe-t));
-  padding: var(--safe-t) calc(66px + var(--safe-r)) 8px calc(14px + var(--safe-l));
+  top: calc(6px + var(--safe-t));
+  right: calc(64px + var(--safe-r));
+  max-width: calc(100vw - 64px - 120px);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   font-family: 'Quicksand', sans-serif;
   color: #f4efe2;
   z-index: 2;
 }
-#hud > .octo-hud-bar { pointer-events: none; } /* the strip takes no clicks: a click or tap at the very top still reaches the game */
-.octo-hud-left, .octo-hud-right { display: flex; align-items: center; flex: none; }
-.octo-hud-left { gap: 14px; padding: 3px 14px 3px 9px; border-radius: 999px; background: rgba(6, 16, 24, 0.58); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); }
-.octo-hud-right { gap: 18px; }
-.octo-hud-badge { position: relative; display: flex; align-items: center; height: 36px; flex: none; }
+#hud > .octo-hud-bar { pointer-events: none; } /* the column takes no clicks (the perk icons opt back in for their tooltips) */
+.octo-hud-runline, .octo-hud-vitals { display: flex; align-items: center; justify-content: flex-end; flex: none; }
+.octo-hud-runline { gap: 10px; min-height: 26px; }
+.octo-hud-vitals { gap: 12px; }
+.octo-hud-badge { position: relative; display: flex; align-items: center; height: 34px; flex: none; }
 .octo-hud-icon { flex: none; filter: drop-shadow(0 0 1px #10202c) drop-shadow(0 1px 2px rgba(0,0,0,.55)); }
-.octo-hud-heart-icon { width: 36px; height: auto; }
-.octo-hud-bomb-icon { width: 34px; height: 34px; }
-.octo-hud-jar-icon { width: 26px; height: 34px; margin: 0 3px; }
-.octo-hud-shell-icon { width: 32px; height: 32px; }
-/* the number on the icon's lower right corner, ink outlined */
-.octo-hud-num, .octo-hud-level-t, .octo-hud-time, .octo-hud-endless {
+.octo-hud-heart-icon { width: 33px; height: auto; }
+.octo-hud-bomb-icon { width: 31px; height: 31px; }
+.octo-hud-jar-icon { width: 23px; height: 31px; margin: 0 3px; }
+.octo-hud-shell-icon { width: 29px; height: 29px; }
+.octo-hud-num, .octo-hud-level-t, .octo-hud-time, .octo-hud-endless, .octo-hud-effect-t {
   font-weight: 700;
   color: #f4efe2;
   text-shadow: -1.5px -1.5px 0 var(--hud-ink), 1.5px -1.5px 0 var(--hud-ink), -1.5px 1.5px 0 var(--hud-ink), 1.5px 1.5px 0 var(--hud-ink),
@@ -123,67 +120,93 @@ body {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.octo-hud-num { align-self: flex-end; margin: 0 0 -4px -7px; font-size: 21px; line-height: 1; } /* on the icon's lower right corner, growing to the right */
+.octo-hud-num { align-self: flex-end; margin: 0 0 -3px -7px; font-size: 19px; line-height: 1; } /* on the icon's lower right corner */
+.octo-hud-hearts .octo-hud-num { color: #ffd9d0; }
 .octo-hud-hearts.is-low .octo-hud-num { color: #f2a493; }
 .octo-hud-bombs.is-empty .octo-hud-icon, .octo-hud-jar.is-empty .octo-hud-icon { opacity: .55; }
+.octo-hud-jar .octo-hud-num { color: #e4d8f6; }
 .octo-hud-jar.is-empty .octo-hud-num { color: #e2a397; }
 .octo-hud-badge.octo-jar-shake { animation: octo-jar-shake 0.32s ease-out; }
-/* the clocks: fixed size and contained, so a tick (10 a second at most) lays out nothing else */
-.octo-hud-clock { position: relative; display: flex; align-items: center; gap: 6px; flex: none; }
-.octo-hud-glass { width: 22px; height: 30px; flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.55)); }
+/* the run line: clocks (fixed size, contained: a tick lays out nothing else), Swift Current, level */
+.octo-hud-clock { display: flex; align-items: center; gap: 5px; flex: none; }
+.octo-hud-glass { width: 15px; height: 21px; flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.55)); }
 .octo-hud-glass svg { width: 100%; height: 100%; display: block; }
-.octo-hud-times { display: flex; align-items: baseline; justify-content: flex-start; gap: 5px; width: 164px; height: 26px; contain: strict; }
-.octo-hud-time { font-size: 18.5px; line-height: 26px; }
+.octo-hud-times { display: flex; align-items: baseline; gap: 4px; width: 132px; height: 22px; contain: strict; }
+.octo-hud-time { font-size: 15px; line-height: 22px; }
 .octo-hud-time-run { color: #d9e4dc; }
-.octo-hud-time-slash { font-weight: 700; font-size: 16px; line-height: 26px; color: #d9e4dc; text-shadow: 0 0 2px var(--hud-ink), 0 1px 1px var(--hud-ink); }
-.octo-hud-swift { display: flex; align-items: center; gap: 3px; font-size: 13.5px; font-weight: 700; color: #cbe9f2; white-space: nowrap;
+.octo-hud-time-slash { font-weight: 700; font-size: 13px; line-height: 22px; color: #d9e4dc; text-shadow: 0 0 2px var(--hud-ink), 0 1px 1px var(--hud-ink); }
+.octo-hud-swift { display: flex; align-items: center; gap: 3px; font-size: 12.5px; font-weight: 700; color: #cbe9f2; white-space: nowrap;
   text-shadow: 0 0 2px var(--hud-ink), 0 1px 1px var(--hud-ink); }
-.octo-hud-swift svg { width: 18px; height: 11px; filter: drop-shadow(0 1px 0 var(--hud-ink)); }
+.octo-hud-swift svg { width: 16px; height: 10px; filter: drop-shadow(0 1px 0 var(--hud-ink)); }
 .octo-hud-swift.is-earned { color: #bdf2c4; }
 .octo-hud-swift.is-missed { opacity: .45; text-decoration: line-through; }
-.octo-hud-level { display: flex; align-items: center; gap: 6px; flex: none; }
-.octo-hud-place { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--hud-ink); background: #24485a; object-fit: cover; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
-.octo-hud-level-t { font-size: 21px; line-height: 1; }
+.octo-hud-level { display: flex; align-items: center; gap: 5px; flex: none; }
+.octo-hud-place { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--hud-ink); background: #24485a; object-fit: cover; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.octo-hud-level-t { font-size: 15px; line-height: 1; }
 .octo-hud-endless { font-size: 15px; }
-/* carried passive items: a compact row right under the vitals pill */
-.octo-hud-items { position: absolute; top: calc(100% - 6px); left: calc(18px + var(--safe-l)); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; max-width: calc(50vw - 20px); }
-.octo-hud-item { width: 25px; height: 25px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
+/* the cooldown bars: thin tracks, the fill scaled by transform (no layout), a soft brighten when ready */
+.octo-hud-timers { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.octo-hud-timer { display: flex; align-items: center; gap: 5px; }
+.octo-hud-track { position: relative; width: 90px; height: 5px; border-radius: 3px; overflow: hidden; background: rgba(8, 18, 26, 0.62); box-shadow: 0 0 0 1px rgba(16, 32, 44, 0.9); }
+.octo-hud-fill { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(1); border-radius: 3px; }
+.octo-hud-jetbar .octo-hud-fill { background: #8f74c9; }
+.octo-hud-dashbar .octo-hud-fill { background: #6fc7aa; }
+.octo-hud-timer.is-ready .octo-hud-fill { filter: brightness(1.18); }
+.octo-hud-timer-icon { width: 13px; height: 13px; flex: none; filter: drop-shadow(0 0 1px var(--hud-ink)); }
+.octo-hud-timer-icon svg { width: 100%; height: 100%; display: block; }
+@keyframes octo-hud-ready-a { 0% { filter: brightness(1.9); } 100% { filter: brightness(1.18); } }
+@keyframes octo-hud-ready-b { 0% { filter: brightness(1.9); } 100% { filter: brightness(1.18); } }
+.octo-hud-timer.is-flash-a .octo-hud-fill { animation: octo-hud-ready-a .35s ease-out; }
+.octo-hud-timer.is-flash-b .octo-hud-fill { animation: octo-hud-ready-b .35s ease-out; }
+/* the perks: carried passive items, small, wrapping; hover or tap shows the tooltip */
+.octo-hud-items { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px; max-width: 190px; pointer-events: auto; }
+.octo-hud-item { width: 24px; height: 24px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); cursor: help; touch-action: manipulation; }
+.octo-hud-tip { max-width: 230px; padding: 3px 8px; border-radius: 6px; background: rgba(6, 16, 24, 0.9); border: 1px solid rgba(186, 222, 206, 0.35);
+  font-size: 12px; font-weight: 600; line-height: 1.3; color: #e8f2ec; text-align: right; }
+/* the timed effects, one per line: time left, then the icon */
+.octo-hud-effects { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.octo-hud-effect { display: flex; align-items: center; gap: 4px; height: 20px; }
+.octo-hud-effect-t { font-size: 13px; line-height: 1; }
+.octo-hud-effect-icon { width: 18px; height: 18px; flex: none; display: block; filter: drop-shadow(0 0 1px var(--hud-ink)) drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+.octo-hud-effect-icon svg { width: 100%; height: 100%; display: block; }
 
 /* phones and small windows */
 @media (max-width: 600px), (max-height: 500px) {
-  #hud { --hud-h: 48px; }
-  .octo-hud-bar { padding-bottom: 7px; padding-left: calc(8px + var(--safe-l)); }
-  .octo-hud-left { gap: 8px; padding: 2px 10px 2px 7px; }
-  .octo-hud-items { left: calc(14px + var(--safe-l)); }
-  .octo-hud-right { gap: 11px; }
-  .octo-hud-badge { height: 30px; }
+  #hud { --hb-max-w: calc(100vw - 420px); }
+  .octo-hud-bar { top: calc(4px + var(--safe-t)); gap: 3px; }
+  .octo-hud-vitals { gap: 8px; }
+  .octo-hud-badge { height: 28px; }
   .octo-hud-heart-icon { width: 27px; }
-  .octo-hud-bomb-icon { width: 28px; height: 28px; }
-  .octo-hud-jar-icon { width: 20px; height: 27px; margin: 0 2px; }
-  .octo-hud-shell-icon { width: 26px; height: 26px; }
-  .octo-hud-num { font-size: 16px; }
-  .octo-hud-place { width: 25px; height: 25px; }
-  .octo-hud-level-t { font-size: 16px; }
-  .octo-hud-glass { width: 16px; height: 23px; }
-  .octo-hud-clock { gap: 4px; }
-  .octo-hud-times { width: 128px; height: 22px; gap: 4px; }
-  .octo-hud-time { font-size: 14.5px; line-height: 22px; }
-  .octo-hud-time-slash { font-size: 13px; line-height: 22px; }
+  .octo-hud-bomb-icon { width: 26px; height: 26px; }
+  .octo-hud-jar-icon { width: 19px; height: 26px; margin: 0 2px; }
+  .octo-hud-shell-icon { width: 24px; height: 24px; }
+  .octo-hud-num { font-size: 16px; margin-left: -6px; }
+  .octo-hud-runline { gap: 7px; min-height: 22px; }
+  .octo-hud-times { width: 116px; height: 20px; }
+  .octo-hud-time { font-size: 13.5px; line-height: 20px; }
+  .octo-hud-place { width: 19px; height: 19px; }
+  .octo-hud-level-t { font-size: 14px; }
+  .octo-hud-track { width: 70px; height: 4px; }
+  .octo-hud-items { max-width: 160px; }
   .octo-hud-item { width: 22px; height: 22px; }
+  .octo-hud-effect { height: 18px; }
+  .octo-hud-effect-t { font-size: 12px; }
+  .octo-hud-effect-icon { width: 16px; height: 16px; }
 }
-/* portrait phones: the two clocks stack (level over run), the Swift Current target hangs under them */
+/* portrait phones: the two clocks stack (level over run) to keep the column narrow */
 @media (max-width: 600px) {
-  .octo-hud-times { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; width: 60px; height: 32px; }
-  .octo-hud-time { font-size: 14px; line-height: 15px; }
-  .octo-hud-time-run { font-size: 11.5px; line-height: 14px; }
+  #hud { --hb-max-w: calc(100vw - 252px); } /* 412 px: four slots in one row next to the column; narrower phones wrap */
+  #hud > .octo-hotbar.is-compact .octo-hb-slot { width: 31px; height: 31px; }
+  .octo-hud-times { flex-direction: column; align-items: flex-end; justify-content: center; gap: 0; width: 58px; height: 30px; }
+  .octo-hud-time { font-size: 13px; line-height: 15px; }
+  .octo-hud-time-run { font-size: 11px; line-height: 13px; }
   .octo-hud-time-slash { display: none; }
-  .octo-hud-swift { position: absolute; top: 100%; left: 20px; margin-top: 1px; font-size: 10.5px; }
+  .octo-hud-swift { font-size: 11px; }
   .octo-hud-swift svg { width: 13px; height: 8px; }
 }
 @media (max-width: 380px) {
-  .octo-hud-bar { padding-left: calc(6px + var(--safe-l)); padding-right: calc(62px + var(--safe-r)); }
-  .octo-hud-left { gap: 4px; padding: 2px 8px 2px 5px; }
-  .octo-hud-right { gap: 7px; }
+  .octo-hud-vitals { gap: 5px; }
+  .octo-hud-runline { gap: 5px; }
   .octo-hud-place { display: none; } /* the narrowest phones: the level reads as text only */
 }
 
@@ -343,7 +366,7 @@ body {
 .octo-prompt-text { font-size: 14px; font-weight: 600; line-height: 1.35; }
 /* phones: a compact hint (the hotbar sits at the top, the buttons at the right), well clear of both */
 @media (max-width: 600px) {
-  #hud > .octo-prompt { top: calc(112px + var(--safe-t)); width: min(76vw, 300px); padding: 6px 10px 7px; border-radius: 10px; }
+  #hud > .octo-prompt { top: calc(150px + var(--safe-t)); width: min(76vw, 300px); padding: 6px 10px 7px; border-radius: 10px; }
   .octo-prompt-title { font-size: 12px; margin-bottom: 1px; }
   .octo-prompt-text { font-size: 11.5px; line-height: 1.3; }
 }
@@ -387,7 +410,8 @@ body {
 .octo-title-current { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #bfe6ff; opacity: .85; text-shadow: 0 1px 2px rgba(0,0,0,.7); white-space: nowrap; } /* Swift Current target */
 .octo-title-current svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
 .octo-title-sub { font-size: clamp(9px, 2.2vw, 10px); font-weight: 600; color: #a8f0d8; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-top: 3px; }
-@media (max-width: 600px) { #hud > .octo-title { top: calc(112px + var(--safe-t)); } } /* phones: below the top hotbar */
+@media (max-width: 600px) { #hud > .octo-title { top: calc(150px + var(--safe-t)); } } /* portrait phones: below the top rows */
+@media (max-height: 500px) and (min-width: 601px) { #hud > .octo-title { width: min(40vw, 240px); } } /* landscape phones: between the hotbar and the HUD column */
 
 /* v2 run summary (round 33): death and biome-clear screens. The panel scrolls on a short phone. */
 .octo-end-overlay .octo-overlay-panel, .octo-gameover-overlay .octo-overlay-panel { max-height: 94dvh; overflow-y: auto; touch-action: pan-y; }

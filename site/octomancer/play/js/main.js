@@ -82,6 +82,7 @@ import { drawContactShadows } from './feel-draw.js';
 import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, SPLAT_SHAKE_PX, SPLAT_HITSTOP, prefersReducedMotion, setMotionSettings, osPrefersReducedMotion } from './config.js';
 import { createSettingsPanel } from './settings-ui.js';
 import { seedFromText } from './settings.js';
+import { DASH_COOLDOWN } from './config.js';
 import { HEART_MAX, BOMB_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
@@ -1138,6 +1139,9 @@ function render(alpha, frameMs) {
     levelTime: V2 && (run.state === S_BIOME || run.state === S_REST) ? levelClock : null, // the clocks show in a dive only
     runTime: V2 ? run.dive.time : 0,
     swift: V2 && run.state === S_BIOME && swift ? swift : null,
+    jet: V2 ? inkJet.charge() : undefined, // the two cooldowns as thin bars (hud-strip.js), 0..1, 1 = ready
+    dash: V2 ? (octo.dashCooldown > 0 ? Math.max(0, 1 - octo.dashCooldown / DASH_COOLDOWN) : 1) : undefined,
+    effects: V2 ? hudEffects() : null,
   });
   if (V2) {
     hotbarUI.update(hotbarState());
@@ -1145,6 +1149,34 @@ function render(alpha, frameMs) {
     touchUI.setSpell(price > 0 && run.juice >= price * JUICE.perCast);
   }
   debug.tick();
+}
+
+/** The timed effects on the octopus and its spells, for the HUD column (hud-strip.js EFFECTS): {id, left (s, omitted: no
+ *  timer)}. One reused array; the column shows tenths, so its text changes at most 10 times a second. */
+const hudFx = [];
+const fxPool = [];
+function fxPush(id, left) { const e = fxPool[hudFx.length] || (fxPool[hudFx.length] = { id: '', left: undefined }); e.id = id; e.left = left; hudFx.push(e); }
+function hudEffects() {
+  hudFx.length = 0;
+  if (octo.dead) return hudFx;
+  if (octo.anchorT > 0) fxPush('anchor', octo.anchorT);
+  if (octo.stunT > 0) fxPush('stun', octo.stunT);
+  if (octo.dashInvuln > 0) fxPush('dashsafe', octo.dashInvuln);
+  if (inkClouds.inside && inkClouds.inside(octo.x, octo.y)) fxPush('cloud');
+  const co = spellFx.coralData;
+  let coral = -1;
+  for (let i = 0; i < co.n; i++) { const l = spellFx.coralLeft(i); if (l > coral) coral = l; }
+  if (coral > 0) fxPush('coral', coral);
+  const hd = hazards.data;
+  let rip = -1;
+  for (let i = 0; i < hd.n; i++) if (hd.temp && hd.temp[i] && hd.kind[i] === 1) rip = Math.max(rip, hd.v[i] - hd.t[i]);
+  if (rip > 0) fxPush('riptide', rip);
+  if (spellFx.lureLive()) fxPush('lure');
+  const mo = spellFx.moteData;
+  let next = Infinity;
+  for (let i = 0; i < mo.n; i++) if (mo.alive[i]) next = Math.min(next, mo.delay[i] - mo.t[i]);
+  if (next < Infinity) fxPush('delayed', Math.max(0, next));
+  return hudFx;
 }
 
 /** V2-PLAN 14: the part of the canvas (device px) the death panel leaves free, below the HUD row: the camera frames the

@@ -4,8 +4,10 @@
 // Checks: hearts / bombs / jar / shells / items / level on the strip follow the game's values; the strip writes only on a change
 // (no DOM mutation in a quiet second but the clock, at most ~10 clock writes a second, few layouts a second); the level and run
 // clocks run, stop on pause and on death, the level clock resets per level and the run clock per run; the death screen shows
-// both clocks; the Swift Current target sits by the clock (not under the banner); the layout at 1440x900, 412x915 and 915x412:
-// one strip at the top, nothing overlapping the pause / mute / gear buttons, the hotbar or each other, inside the viewport.
+// both clocks; the Swift Current target sits by the clock (not under the banner); the Ink Jet / dash cooldown bars; timed effects
+// (an Anchor) appear, count down at most ~10 writes a second and go; the layout at 1440x900, 412x915, 915x412 and 375x812: the
+// hotbar row top left, the HUD column top right left of the 44 px corner buttons, the bottom free, nothing overlapping the touch
+// controls, the buttons, the hotbar or each other; a perk's tooltip on a tap.
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
@@ -104,35 +106,79 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       check('new run: both clocks start from zero', h.stage === '1-1' && h.runClock < 3 && h.levelClock < 3, `${h.level} / ${h.run}`);
       await page.close();
     }
-    // ---------------------------------------------------------------- layout at three viewports
+    // ---------------------------------------------------------------- cooldown bars and timed effects (desktop)
+    {
+      const page = await open(1440, 900, false, '?at=1&seed=5');
+      await page.evaluate(() => __octo.god(true));
+      let h = await H(page);
+      check('timers: the Ink Jet and dash bars show full (ready) at rest', h.jet === 1 && h.dash === 1, JSON.stringify({ jet: h.jet, dash: h.dash }));
+      await page.evaluate(() => __octo.fireInk(1, 0)); await sleep(250);
+      h = await H(page);
+      check('timers: the Ink Jet bar drops after a shot and refills', h.jet < 0.5, String(h.jet));
+      await sleep(1700);
+      h = await H(page);
+      check('timers: ... and is full again after its cooldown', h.jet === 1, String(h.jet));
+      check('effects: none at rest', h.effects.length === 0, h.effects.join());
+      await page.evaluate(() => { __octo.setSlots([['anchor'], ['ink-cloud']], 0); __octo.setJuice(99); });
+      await sleep(150);
+      const cast = await page.evaluate(() => __octo.cast());
+      await sleep(200);
+      h = await H(page);
+      const anc = h.effects.find((e) => e.startsWith('anchor'));
+      check('effects: an Anchor shows with its seconds left', cast === 1 && !!anc && /\d\.\ds$/.test(anc), `${cast} ${h.effects.join()}`);
+      const t0 = anc ? parseFloat(anc.split(' ')[1]) : 0;
+      if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'hud-1440-effects.png') });
+      await sleep(600);
+      h = await H(page);
+      const anc2 = h.effects.find((e) => e.startsWith('anchor'));
+      check('effects: ... counting down', !anc2 || parseFloat(anc2.split(' ')[1]) < t0, `${t0} -> ${anc2}`);
+      await page.waitForFunction(() => !__octo.hud().effects.some((e) => e.startsWith('anchor')), { timeout: 15000 }).catch(() => {});
+      check('effects: ... and gone when it ends', !(await H(page)).effects.some((e) => e.startsWith('anchor')));
+      const writes = await page.evaluate(async () => {
+        const box = document.querySelector('.octo-hud-effects'); let n = 0;
+        const mo = new MutationObserver((l) => { n += l.length; });
+        mo.observe(box, { subtree: true, childList: true, characterData: true, attributes: true });
+        __octo.setSlots([['anchor'], ['ink-cloud']], 0); __octo.setJuice(99); __octo.cast();
+        await new Promise((r) => setTimeout(r, 1000));
+        mo.disconnect(); return n;
+      });
+      check('effects: a running timer writes at most ~10 times a second', writes > 0 && writes <= 14, String(writes));
+      await page.close();
+    }
+    // ---------------------------------------------------------------- layout at four viewports
     for (const [w, ht, mobile, tag] of [[1440, 900, false, 'desktop'], [412, 915, true, 'portrait'], [915, 412, true, 'landscape'], [375, 812, true, 'small-portrait']]) {
       const page = await open(w, ht, mobile, '?at=2&seed=5');
-      await page.evaluate(() => { __octo.god(true); __octo.giveShells(14500); __octo.giveItem('lantern'); __octo.giveItem('flippers'); __octo.giveItem('magnet'); __octo.setClocks(65.4, 3599.5); });
+      await page.evaluate(() => { __octo.god(true); __octo.giveShells(14500); for (const id of ['lantern', 'flippers', 'magnet', 'goggles', 'urchincap']) __octo.giveItem(id); __octo.setClocks(65.4, 3599.5); __octo.setSlots([['ink-cloud'], ['anchor'], ['riptide']], 0); });
       await sleep(400);
       const r = await page.evaluate(() => {
         const R = (sel) => { const e = document.querySelector(sel); if (!e || getComputedStyle(e).display === 'none') return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
-        const kids = ['.octo-hud-hearts', '.octo-hud-bombs', '.octo-hud-jar', '.octo-hud-shells', '.octo-hud-clock', '.octo-hud-level', '.octo-hud-swift', '.octo-hud-items'];
-        return { vw: innerWidth, vh: innerHeight, bar: R('.octo-hud-bar'), left: R('.octo-hud-left'), right: R('.octo-hud-right'), hotbar: R('.octo-hotbar'),
-          btns: ['.octo-pause-btn', '.octo-mute-btn', '.octo-gear-btn'].map(R), kids: kids.map((k) => [k, R(k)]).filter((x) => x[1]),
-          title: R('.octo-title'), times: document.querySelector('.octo-hud-times').textContent };
+        const kids = ['.octo-hud-runline', '.octo-hud-vitals', '.octo-hud-timers', '.octo-hud-items', '.octo-hud-effects'];
+        const touch = [...document.querySelectorAll('#touch-ui > *')].filter((e) => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0).map((e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; });
+        return { vw: innerWidth, vh: innerHeight, bar: R('.octo-hud-bar'), hotbar: R('.octo-hotbar'), slots: [...document.querySelectorAll('.octo-hb-slot')].filter((e) => getComputedStyle(e).display !== 'none').length,
+          btns: ['.octo-pause-btn', '.octo-mute-btn', '.octo-gear-btn'].map(R), kids: kids.map((k) => [k, R(k)]).filter((x) => x[1]), touch,
+          small: ['.octo-pause-btn', '.octo-mute-btn', '.octo-gear-btn'].map((s) => document.querySelector(s).getBoundingClientRect()).some((b) => b.width < 43.5 || b.height < 43.5),
+          times: document.querySelector('.octo-hud-times').textContent };
       });
       const ov = (a, b) => a && b && a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
-      check(`${tag}: one strip across the top`, r.bar && r.bar.t <= 0.5 && r.bar.l <= 0.5 && r.bar.r >= r.vw - 0.5 && r.bar.b < 70, JSON.stringify(r.bar));
-      check(`${tag}: left and right groups on one line inside the strip, apart`, r.left && r.right && r.left.r < r.right.l && Math.abs((r.left.t + r.left.b) / 2 - (r.right.t + r.right.b) / 2) < 6 && r.right.b <= r.bar.b + 1, JSON.stringify({ l: r.left, r: r.right }));
+      check(`${tag}: the hotbar row sits at the top left`, r.hotbar && r.hotbar.l < 40 && r.hotbar.t < 30 && r.slots >= 4, JSON.stringify(r.hotbar));
+      check(`${tag}: the HUD column sits at the top right, left of the corner buttons`, r.bar && r.bar.t < 30 && r.bar.r <= Math.min(...r.btns.map((b) => b.l)) + 0.5 && r.bar.l > r.vw * 0.25, JSON.stringify(r.bar));
+      check(`${tag}: the bottom of the screen is free (hotbar and column in the top part)`, r.hotbar.b < r.vh * 0.3 && r.bar.b < r.vh * 0.6, JSON.stringify({ hb: r.hotbar.b, bar: r.bar.b, vh: r.vh }));
       const hits = [];
       for (const [k, b] of r.kids) {
         if (b.l < -0.5 || b.r > r.vw + 0.5 || b.t < -0.5) hits.push(k + ' off screen');
         r.btns.forEach((x, i) => { if (ov(b, x)) hits.push(k + ' x button ' + i); });
         if (ov(b, r.hotbar)) hits.push(k + ' x hotbar');
+        r.touch.forEach((x, i) => { if (ov(b, x)) hits.push(k + ' x touch control ' + i); });
       }
-      for (let i = 0; i < r.kids.length; i++) for (let j = i + 1; j < r.kids.length; j++) {
-        const a = r.kids[i], b = r.kids[j];
-        if (a[0] === '.octo-hud-clock' && b[0] === '.octo-hud-swift') continue; // the target is part of the clock
-        if (ov(a[1], b[1])) hits.push(a[0] + ' x ' + b[0]);
-      }
-      check(`${tag}: nothing on the strip overlaps the buttons, the hotbar or each other`, hits.length === 0, hits.join('; '));
-      check(`${tag}: the hotbar does not overlap the corner buttons`, !r.btns.some((b) => ov(b, r.hotbar)));
-      check(`${tag}: a long run reads 59:5x and shells 14500`, /01:0[56]\.\d/.test(r.times) && /59:5\d\.\d/.test(r.times) && (await H(page)).shells === '14500', r.times);
+      for (let i = 0; i < r.kids.length; i++) for (let j = i + 1; j < r.kids.length; j++) if (ov(r.kids[i][1], r.kids[j][1])) hits.push(r.kids[i][0] + ' x ' + r.kids[j][0]);
+      r.btns.forEach((x, i) => { if (ov(x, r.hotbar)) hits.push('hotbar x button ' + i); });
+      r.touch.forEach((x, i) => { if (ov(x, r.hotbar)) hits.push('hotbar x touch control ' + i); });
+      check(`${tag}: nothing overlaps the buttons, the touch controls, the hotbar or each other`, hits.length === 0, hits.join('; '));
+      check(`${tag}: the pause / mute / settings buttons stay 44 px`, !r.small);
+      check(`${tag}: a long run reads 59:5x and shells 14500, five perks`, /01:0[56]\.\d/.test(r.times) && /59:5\d\.\d/.test(r.times) && (await H(page)).shells === '14500' && (await H(page)).items === 5, r.times);
+      // a perk's tooltip on a tap / hover
+      const tipText = await page.evaluate(() => { const c = document.querySelector('.octo-hud-item'); c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); const t = document.querySelector('.octo-hud-tip'); return t.style.display === 'none' ? '' : t.textContent; });
+      check(`${tag}: tapping a perk shows its name and what it does`, /:/.test(tipText), tipText);
       if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `hud-${tag}.png`) });
       await page.close();
     }
