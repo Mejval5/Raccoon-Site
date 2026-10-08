@@ -237,7 +237,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
         box.appendChild(story);
       }
       if (facts.length) box.appendChild(ledger(facts, 'octo-bk-facts'));
-      if (e.where) box.appendChild(el('div', 'octo-bk-where', 'Found: ' + e.where));
+      if (e.where && e.cat !== 'look') box.appendChild(el('div', 'octo-bk-where', 'Found: ' + e.where)); // (a look's hint is only a tease for the locked page)
       const rows = counterRows(e);
       if (rows.length) box.appendChild(ledger(rows));
     } else {

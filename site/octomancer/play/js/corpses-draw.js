@@ -7,6 +7,7 @@
 import { drawEnemyBody } from './enemy-draw.js';
 import { kindName, LIFE_AFTER_REST, FADE_TIME } from './corpses.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
+import { drawTrace, traceDraw } from './draw-trace.js';
 
 const artFns = new Map();
 /** Register the art function of one corpse kind (a later call replaces an earlier one). */
@@ -56,19 +57,29 @@ setCorpseArt('urchin', spriteArt('urchin', { faceLeft: true }));
 setCorpseArt('horns', spriteArt('horns', { faceLeft: true }));
 
 /** Draw every live corpse that is on screen (device pixels), `d` = corpses.data. Called before the hazards. */
-export function drawCorpses(ctx, camera, cw, ch, d, t) {
+export function drawCorpses(ctx, camera, cw, ch, d, t, skip = -1) {
   if (!d.live) return;
   const ppu = camera.pxPerUnit;
   cullView(camera, cw, ch);
   const fl = cullFlags('corpses', d.cap);
   for (let i = 0; i < d.n; i++) {
-    if (!d.alive[i]) continue;
+    if (!d.alive[i] || i === skip) continue; // skip: the body in the octopus's hand, drawn after it (drawCorpseOne)
     if (!visibleAt(fl, i, d.x[i], d.y[i], 1.8)) continue;
-    const name = kindName(d.kind[i]);
-    const fn = artFns.get(name);
-    if (!fn) continue;
-    const alpha = Math.min(1, Math.max(0, (LIFE_AFTER_REST - d.restT[i]) / FADE_TIME));
-    if (alpha <= 0) continue;
-    fn(ctx, cw / 2 + (d.x[i] - camera.x) * ppu, ch / 2 + (d.y[i] - camera.y) * ppu, ppu, d.rot[i], d.face[i], alpha, t);
+    corpseBody(ctx, camera, cw, ch, ppu, d, i, t);
   }
+}
+function corpseBody(ctx, camera, cw, ch, ppu, d, i, t) {
+  const fn = artFns.get(kindName(d.kind[i]));
+  if (!fn) return;
+  const alpha = Math.min(1, Math.max(0, (LIFE_AFTER_REST - d.restT[i]) / FADE_TIME));
+  if (alpha <= 0) return;
+  if (drawTrace.on) traceDraw('corpse', i);
+  fn(ctx, cw / 2 + (d.x[i] - camera.x) * ppu, ch / 2 + (d.y[i] - camera.y) * ppu, ppu, d.rot[i], d.face[i], alpha, t);
+}
+/** Corpse i alone: the body in the octopus's hand, drawn after the octopus (drawCorpses was told to skip it). */
+export function drawCorpseOne(ctx, camera, cw, ch, d, i, t) {
+  if (i < 0 || i >= d.n || !d.alive[i]) return;
+  cullView(camera, cw, ch);
+  if (!visibleAt(cullFlags('corpses', d.cap), i, d.x[i], d.y[i], 1.8)) return;
+  corpseBody(ctx, camera, cw, ch, camera.pxPerUnit, d, i, t);
 }

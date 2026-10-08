@@ -2,11 +2,14 @@
 //   drawHandTell   a single tentacle curls out of the arms toward what F would take (a pot, a corpse, a stunned fish) and
 //                  its tip coils; a faint bioluminescent ring breathes round the target. People, wares and doors (priority
 //                  above things) get the same curl with a paler ring.
-//   drawHeldArm    the arm that holds a carried thing: from under the body to the thing, wrapped once round it.
+//   drawHeldArm    the arm that holds a carried thing: from under the body to the thing (drawn before the octopus).
+//   drawHeldGrip   its end, wrapped once round the thing and curled across its front (drawn after the thing, which is drawn
+//                  after the octopus: what the hand holds is always on top, main.js drawHeld).
 //   drawKeeperNotice  the shopkeeper's '!' when a ware is knocked off its pedestal: a bone-white mark that pops and fades.
 // All coordinates are world units; the camera turns them into canvas px.
 
-const SKIN = '#c05060', SKIN_DARK = '#904050', SUCKER = '#f0d8d2', OUTLINE = 'rgba(24,16,18,0.55)';
+import { wornColors } from './skin-draw.js'; // the arm takes the worn look's colour (skins.js)
+const SUCKER = '#f0d8d2', OUTLINE = 'rgba(24,16,18,0.55)';
 
 function toScreen(camera, cw, ch, x, y, out) {
   out.x = cw / 2 + (x - camera.x) * camera.pxPerUnit;
@@ -22,7 +25,7 @@ function tentacle(ctx, ax, ay, bx, by, bend, w0, w1, suckers) {
   const N = 10;
   // outline pass, then the skin, as round-capped segments of falling width
   for (const pass of [0, 1]) {
-    ctx.strokeStyle = pass ? SKIN : OUTLINE;
+    ctx.strokeStyle = pass ? wornColors().body : OUTLINE;
     ctx.lineCap = 'round';
     let px = ax, py = ay;
     for (let k = 1; k <= N; k++) {
@@ -56,7 +59,7 @@ export function drawHandTell(ctx, camera, cw, ch, ox, oy, tx, ty, t, use = false
   ctx.globalAlpha = 0.9;
   tentacle(ctx, A.x, A.y, B.x, B.y, ppu * 0.16 * Math.sin(t * 2.3), ppu * 0.13, ppu * 0.05, true);
   // the tip curls (a little spiral toward the thing)
-  ctx.strokeStyle = SKIN; ctx.lineWidth = ppu * 0.05; ctx.lineCap = 'round';
+  ctx.strokeStyle = wornColors().body; ctx.lineWidth = ppu * 0.05; ctx.lineCap = 'round';
   const a0 = Math.atan2(uy, ux) - Math.PI / 2;
   ctx.beginPath(); ctx.arc(B.x + ux * ppu * 0.06, B.y + uy * ppu * 0.06, ppu * 0.065, a0, a0 + Math.PI * 1.5); ctx.stroke();
   // a soft bioluminescent halo round the target (a glow in the water, never a hard UI ring)
@@ -74,7 +77,8 @@ export function drawHandTell(ctx, camera, cw, ch, ox, oy, tx, ty, t, use = false
   ctx.restore();
 }
 
-/** The arm round a carried thing at (hx, hy) of radius r. */
+/** The arm to a carried thing at (hx, hy) of radius r: drawn BEFORE the octopus (its root goes under the body); the thing
+ * itself and the grip round it (drawHeldGrip) are drawn after the octopus. (ox, oy) = the octopus as drawn (interpolated). */
 export function drawHeldArm(ctx, camera, cw, ch, ox, oy, hx, hy, r, t) {
   const ppu = camera.pxPerUnit;
   toScreen(camera, cw, ch, ox, oy + 0.15, A);
@@ -82,12 +86,37 @@ export function drawHeldArm(ctx, camera, cw, ch, ox, oy, hx, hy, r, t) {
   const dx = B.x - A.x, dy = B.y - A.y, l = Math.hypot(dx, dy) || 1;
   ctx.save();
   tentacle(ctx, A.x, A.y, B.x - dx / l * r * ppu * 0.6, B.y - dy / l * r * ppu * 0.6, ppu * 0.12 * Math.sin(t * 2), ppu * 0.15, ppu * 0.09, true);
-  // wrapped once round the thing: an arc over its near side, under what is drawn next (the octopus)
-  ctx.strokeStyle = OUTLINE; ctx.lineWidth = ppu * 0.1; ctx.lineCap = 'round';
-  const a0 = Math.atan2(-dy, -dx) - 1.3, a1 = a0 + 2.6;
-  ctx.beginPath(); ctx.arc(B.x, B.y, r * ppu * 0.95, a0, a1); ctx.stroke();
-  ctx.strokeStyle = SKIN; ctx.lineWidth = ppu * 0.075;
-  ctx.beginPath(); ctx.arc(B.x, B.y, r * ppu * 0.95, a0, a1); ctx.stroke();
+  ctx.restore();
+}
+
+/** The grip, drawn over the carried thing (after it, after the octopus): the arm's end wraps once round its near side and
+ * the tip curls across its front, so the thing reads as held, not floating in front of the body. */
+export function drawHeldGrip(ctx, camera, cw, ch, ox, oy, hx, hy, r, t) {
+  const ppu = camera.pxPerUnit;
+  toScreen(camera, cw, ch, ox, oy + 0.15, A);
+  toScreen(camera, cw, ch, hx, hy, B);
+  const dx = B.x - A.x, dy = B.y - A.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+  const R = r * ppu * 0.85; // a little inside the thing's rim: the arm overlaps it
+  const q = ppu * Math.min(1, Math.max(0.45, r / 0.35)); // a thinner arm round a small thing (a little fish), so it still shows
+  ctx.save();
+  // the arm's last stretch comes onto the thing from the body's side ...
+  const ex = B.x - ux * r * ppu * 1.05, ey = B.y - uy * r * ppu * 1.05;
+  const a0 = Math.atan2(-uy, -ux) - 1.2, a1 = a0 + 2.4;
+  const sx = B.x + Math.cos(a0) * R, sy = B.y + Math.sin(a0) * R;
+  tentacle(ctx, ex, ey, sx, sy, 0, q * 0.095, q * 0.085, false);
+  // ... wraps round the near side ...
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = q * 0.085 + 1.6;
+  ctx.beginPath(); ctx.arc(B.x, B.y, R, a0, a1); ctx.stroke();
+  ctx.strokeStyle = wornColors().body; ctx.lineWidth = q * 0.08;
+  ctx.beginPath(); ctx.arc(B.x, B.y, R, a0, a1); ctx.stroke();
+  ctx.fillStyle = SUCKER;
+  for (let k = 1; k < 4; k++) { const a = a0 + (a1 - a0) * k / 4; ctx.beginPath(); ctx.arc(B.x + Math.cos(a) * (R - q * 0.025), B.y + Math.sin(a) * (R - q * 0.025), Math.max(0.8, q * 0.014), 0, Math.PI * 2); ctx.fill(); }
+  // ... and the tip curls a little way across the thing's front, breathing
+  const ta = a1, tx0 = B.x + Math.cos(ta) * R, ty0 = B.y + Math.sin(ta) * R;
+  const reach = R * (0.75 + 0.08 * Math.sin(t * 2.6));
+  const tx1 = B.x + Math.cos(ta) * (R - reach) + Math.cos(ta + Math.PI / 2) * R * 0.25, ty1 = B.y + Math.sin(ta) * (R - reach) + Math.sin(ta + Math.PI / 2) * R * 0.25;
+  if (r >= 0.25) tentacle(ctx, tx0, ty0, tx1, ty1, R * 0.25, q * 0.075, q * 0.035, false); // (a small thing: the wrap alone)
   ctx.restore();
 }
 

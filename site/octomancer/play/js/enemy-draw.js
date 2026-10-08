@@ -8,6 +8,7 @@
 import { BOMB_RADIUS } from './config.js';
 import { drawBombSprite, spriteMeta, spriteRect } from './sprites.js';
 import { visibleObj, cullView } from './cull.js';
+import { drawTrace, traceDraw } from './draw-trace.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -239,12 +240,34 @@ function drawBarrel(ctx, sx, sy, ppu, e, time) {
   ctx.restore();
 }
 
-export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha = 1) {
-  const ppu = camera.pxPerUnit;
+/** `skip`: the creature in the octopus's hand (hand.js), drawn after the octopus by drawEnemyOne instead. */
+export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha = 1, skip = null) {
   cullView(camera, canvasW, canvasH);
   for (const e of enemies) {
-    if (e.dead) continue;
+    if (e.dead || e === skip) continue;
     if (!visibleObj(e, e.x, e.y, 3)) continue; // r43: far from the camera it is not animated or drawn (its AI and collisions run in enemies.js)
+    enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha);
+  }
+  for (const s of shots) {
+    if (s.dead) continue;
+    if (!visibleObj(s, s.x, s.y, 1)) continue;
+    const angle = Math.atan2(s.vy, s.vx);
+    const img = s.radius > 0.23 ? shotImg : mantaBallImg;
+    drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, s.x, s.y, 0.4, angle, 0);
+  }
+}
+
+/** Enemy e alone, at the same interpolated position drawEnemies would use (the stunned creature in the octopus's hand). */
+export function drawEnemyOne(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha = 1) {
+  if (!e || e.dead) return;
+  cullView(camera, canvasW, canvasH);
+  if (!visibleObj(e, e.x, e.y, 3)) return;
+  enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha);
+}
+
+function enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha) {
+    const ppu = camera.pxPerUnit;
+    if (drawTrace.on) traceDraw('enemy', e);
     const { x: ex, y: ey } = interpPos(e, alpha);
     const fl = flashOf(e, time);
     const tell = e.tell || 0;
@@ -309,14 +332,6 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
     }
     if (e.inkStain > 0 && sc) drawInkStain(ctx, sc.x, sc.y, ppu, e);
     if (e.stun > 0 && sc) drawStunStars(ctx, sc.x, sc.y, ppu, time);
-  }
-  for (const s of shots) {
-    if (s.dead) continue;
-    if (!visibleObj(s, s.x, s.y, 1)) continue;
-    const angle = Math.atan2(s.vy, s.vx);
-    const img = s.radius > 0.23 ? shotImg : mantaBallImg;
-    drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, s.x, s.y, 0.4, angle, 0);
-  }
 }
 
 // V2-PLAN 16: corpses reuse each enemy's own sprite. kind -> [image, drawn height in tiles]
@@ -385,15 +400,21 @@ function fuseFizz(ctx, spx, spy, r, burn, time) {
 
 /** Code-drawn bomb: a dark shell with a lit fuse spark; once exploded, an
  * expanding ring shockwave for its brief lingering frame. */
-export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time) {
-  for (const b of bombs) {
+export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time, skip = null) {
+  for (const b of bombs) if (b !== skip) bombBody(ctx, camera, worldToScreen, canvasW, canvasH, b, time); // skip: in the octopus's hand (drawBombOne)
+}
+/** Bomb b alone: the one in the octopus's hand, drawn after the octopus (drawBombs was told to skip it). */
+export function drawBombOne(ctx, camera, worldToScreen, canvasW, canvasH, b, time) { if (b) bombBody(ctx, camera, worldToScreen, canvasW, canvasH, b, time); }
+function bombBody(ctx, camera, worldToScreen, canvasW, canvasH, b, time) {
+  {
+    if (drawTrace.on) traceDraw('bomb', b);
     const s = worldToScreen(camera, canvasW, canvasH, b.x, b.y);
     const r = camera.pxPerUnit * 0.32;
     if (!b.exploded) {
       // body (rolls: the fuse stub turns with the distance travelled), a lit fuse spark that blinks faster as it burns down
       const rot = b.rot || 0;
       const burn = 1 - Math.max(0, b.fuse) / (b.fuse0 || 1.5); // 0 fresh .. 1 about to go
-      if (spriteRect('bomb') && spriteRect('bombHot')) { drawPaintedBomb(ctx, s.x, s.y, r, rot, burn, time); continue; }
+      if (spriteRect('bomb') && spriteRect('bombHot')) { drawPaintedBomb(ctx, s.x, s.y, r, rot, burn, time); return; }
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.fillStyle = '#20262c';

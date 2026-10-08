@@ -11,6 +11,7 @@ import { itemGlyph } from './v2-props-draw.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 import { KM_CALM, KM_DEAD, CLAW_TELL, shoulderX, shoulderY } from './shopkeeper.js';
 import { W_LOOSE, W_HELD } from './shop.js';
+import { drawTrace, traceDraw } from './draw-trace.js';
 
 const TAU = Math.PI * 2;
 export const KEEPER_DRAW_W = 1.95; // tiles (the calm keeper behind the counter is 1.5)
@@ -170,17 +171,20 @@ function bang(ctx, x, y, ppu, t) {
 }
 
 /** Wares knocked off their pedestals (loose props.js bodies): the item's icon where the body is, tumbling with it. */
-export function drawLooseWares(ctx, camera, cw, ch, st, props, time) {
+export function drawLooseWares(ctx, camera, cw, ch, st, props, time, skip = -1) {
   if (!st || !props || !st.ware) return;
-  const { ppu, sx, sy } = view(camera, cw, ch);
+  for (let i = 0; i < st.ware.length; i++) if (i !== skip) drawWare(ctx, camera, cw, ch, st, props, i, time); // skip: the ware in the octopus's hand
+}
+/** Loose or held ware slot i alone (the one in the octopus's hand is drawn after the octopus; drawLooseWares skipped it). */
+export function drawWare(ctx, camera, cw, ch, st, props, i, time) {
   const d = props.data;
-  for (let i = 0; i < st.ware.length; i++) {
-    if ((st.ware[i] !== W_LOOSE && st.ware[i] !== W_HELD) || st.pid[i] < 0 || !d.alive[st.pid[i]]) continue;
-    const p = st.pid[i], x = sx(d.x[p]), y = sy(d.y[p]);
-    if (x < -ppu * 2 || x > cw + ppu * 2 || y < -ppu * 2 || y > ch + ppu * 2) continue;
-    ctx.save();
-    ctx.translate(x, y); ctx.rotate(d.x[p] * 1.4); // rolls as it goes
-    itemGlyph(ctx, st.items[st.stock[i]].glyph, 0, 0, ppu * 0.3, time + i);
-    ctx.restore();
-  }
+  if (i < 0 || i >= st.ware.length || (st.ware[i] !== W_LOOSE && st.ware[i] !== W_HELD) || st.pid[i] < 0 || !d.alive[st.pid[i]]) return;
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const p = st.pid[i], x = sx(d.x[p]), y = sy(d.y[p]);
+  if (x < -ppu * 2 || x > cw + ppu * 2 || y < -ppu * 2 || y > ch + ppu * 2) return;
+  if (drawTrace.on) traceDraw('ware', i);
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(d.x[p] * 1.4); // rolls as it goes
+  itemGlyph(ctx, st.items[st.stock[i]].glyph, 0, 0, ppu * 0.3, time + i);
+  ctx.restore();
 }

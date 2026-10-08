@@ -69,7 +69,7 @@ export function registerHandKinds(env) {
     use(t) {
       const li = env.props.data.ref[t.ref], loot = env.loot;
       return propHeld(env, t.ref, 'pot', {
-        shield: true,
+        shield: true, li, // li, bomb, ci, enemy, slot: what main.js draws on top of the octopus (drawHeld)
         alive() { return loot.data.state[li] === ST_INTACT && env.props.data.alive[t.ref] === 1; },
         onShield() { loot.smash(li, 'shield'); },
         impact() { loot.smash(li, 'throw'); },
@@ -89,7 +89,7 @@ export function registerHandKinds(env) {
       const bombs = env.bombs, b = bombs.byProp(t.ref);
       if (!b) return null;
       b.armed = true; // a mine picked off the wall keeps counting
-      return propHeld(env, t.ref, 'bomb', {
+      return propHeld(env, t.ref, 'bomb', { bomb: b,
         alive() { return !b.exploded && b.pid === t.ref && env.props.data.alive[t.ref] === 1; },
         release(vx, vy, thrown) {
           this.carried = false; env.props.release(t.ref);
@@ -121,7 +121,7 @@ export function registerHandKinds(env) {
       const pos = { x: 0, y: 0, vx: 0, vy: 0 };
       let carried = true;
       return {
-        r: d.radius[i], weight: WEIGHT.corpse, shield: false, speed: THROW.corpse, dmg: THROWN_DMG,
+        ci: i, r: d.radius[i], weight: WEIGHT.corpse, shield: false, speed: THROW.corpse, dmg: THROWN_DMG,
         place(x, y, vx, vy) { c.place(i, x, y, vx, vy); },
         alive() { return d.alive[i] === 1 && d.seq[i] === seq && (!carried || d.state[i] === CS_CARRY); },
         release(vx, vy) { carried = false; c.release(i, vx, vy); },
@@ -179,7 +179,7 @@ export function registerHandKinds(env) {
       // it cannot be paid for: lift it, unpaid (Spelunky: walking out with it is theft)
       const pid = shopGrab(st, env.props, slot);
       if (pid < 0) return null;
-      return propHeld(env, pid, 'ware', {
+      return propHeld(env, pid, 'ware', { slot,
         alive() { return st.ware[slot] === W_HELD && st.pid[slot] === pid && env.props.data.alive[pid] === 1 || (!this.carried && env.props.data.alive[pid] === 1); },
         tick(o) {
           if (env.world && env.world.inShop && !env.world.inShop(o.x, o.y)) { // carried out of the stall: stolen

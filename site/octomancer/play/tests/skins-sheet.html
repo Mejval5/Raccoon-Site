@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Skins sheet</title>
+<style>body{margin:0;background:#10202c}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+// Test page (not shipped): every octopus skin (skins.js) in every pose the game draws (portrait, idle, swim, hurt, stunned, dead
+// ragdoll, impaled, splat), through the game's own drawOctopus. ?ppu=<px per tile>. window.__sheetDone is set when it has drawn.
+import { drawOctopus, setOctopusSkin, onOctopusReady, drawOctopusPortrait, isBaked } from '../js/octopus-draw.js';
+import { SKINS } from '../js/skins.js';
+import { skinSheetStats, ensureSkinAtlas, skinAtlasReady } from '../js/skin-draw.js';
+
+const q = new URLSearchParams(location.search);
+const PPU = +(q.get('ppu') || 96);
+const POSES = [
+  ['portrait', null],
+  ['idle', { }],
+  ['swim', { swimming: true, __speed: 6 }],
+  ['hurt', { hurting: true }],
+  ['stunned', { stunT: 1 }],
+  ['dead', { dead: true, limp: true }],
+  ['impaled', { dead: true, deathStyle: 'impale' }],
+  ['splat', { dead: true, deathStyle: 'splat', flat: 1 }],
+];
+const CW = 2.2 * PPU, RH = 2.4 * PPU, LX = 2.6 * PPU;
+const W = Math.ceil(LX + POSES.length * CW), H = Math.ceil(0.6 * PPU + SKINS.length * RH);
+const cv = document.getElementById('c'); cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function main() {
+  await new Promise((r) => onOctopusReady(r));
+  ensureSkinAtlas();
+  for (let k = 0; k < 50 && !skinAtlasReady(); k++) await sleep(50);
+  ctx.fillStyle = '#24485a'; ctx.fillRect(0, 0, W, H);
+  ctx.font = '600 ' + Math.round(PPU * 0.2) + 'px sans-serif'; ctx.fillStyle = 'rgba(220,235,240,0.8)';
+  POSES.forEach(([n], i) => ctx.fillText(n, LX + i * CW + CW * 0.3, PPU * 0.4));
+  for (let r = 0; r < SKINS.length; r++) {
+    const s = SKINS[r];
+    setOctopusSkin(s.id);
+    for (let k = 0; k < 100 && s.body && !skinSheetStats().ready; k++) await sleep(30);
+    const y = 0.6 * PPU + r * RH + RH / 2;
+    ctx.fillStyle = 'rgba(220,235,240,0.8)'; ctx.fillText(s.name, PPU * 0.15, y);
+    POSES.forEach(([n, pose], i) => {
+      const x = LX + i * CW + CW / 2;
+      if (!pose) { drawOctopusPortrait(ctx, s.id, x, y, PPU * 1.9); return; }
+      const o = { radius: 0.45, swimming: false, dashCooldown: 0, __t: 0.3, __speed: 0, stunT: 0, held: 0, ...pose };
+      ctx.save(); ctx.translate(x, y); ctx.scale(PPU, PPU); drawOctopus(ctx, o, 1); ctx.restore();
+    });
+  }
+  window.__sheetDone = { baked: isBaked(), stats: skinSheetStats() };
+}
+main();
+</script>
+</body></html>

@@ -67,7 +67,7 @@ export function handPoint(octo, r, isSolid = null, out = { x: 0, y: 0 }) {
   const a = (octo.angle || 0) * Math.PI / 180;
   const fx = Math.sin(a), fy = -Math.cos(a); // the mantle's facing; the arms are the other way
   const k = (octo.radius || 0.45) * 0.55 + r * 0.9;
-  const side = (octo.throwDir || 1) * 0.18;
+  const side = (octo.handSide !== undefined ? octo.handSide : (octo.throwDir || 1)) * 0.18; // handSide: eases across on a turn (attach)
   let x = octo.x - fx * k + side, y = octo.y - fy * k;
   if (isSolid && isSolid(x, y)) { // in the floor: carry it beside the body instead, else against it
     const sx = octo.x + (octo.throwDir || 1) * (octo.radius * 0.6 + r), sy = octo.y + 0.05;
@@ -121,6 +121,7 @@ export function handUse(hand, octo, ctx) {
   hand.held = r; hand.heldKind = t.kind; hand.grabs++;
   hand.events.push({ type: 'grab', kind: t.kind, x: t.x, y: t.y });
   setCarry(hand, octo);
+  octo.handSide = octo.throwDir || 1;
   attach(hand, octo, ctx);
   return true;
 }
@@ -163,6 +164,7 @@ export function handDrop(hand, octo, ctx) {
 }
 
 const HP = { x: 0, y: 0 };
+const SIDE_EASE = 0.2; // per step (-1 .. 1): a turn moves the held thing across in 10 steps
 /** Keep the held thing in the tentacles (call after the physics of the step) and watch what is in flight. */
 export function attach(hand, octo, ctx) {
   const h = hand.held;
@@ -173,6 +175,9 @@ export function attach(hand, octo, ctx) {
       hand.held = null; hand.heldKind = '';
       setCarry(hand, octo);
     } else {
+      // the side it is carried on follows the facing, eased over ~0.2 s: a turn swings it across instead of snapping it
+      const dir = octo.throwDir || 1, s = octo.handSide === undefined ? dir : octo.handSide;
+      octo.handSide = Math.abs(dir - s) <= SIDE_EASE ? dir : s + Math.sign(dir - s) * SIDE_EASE;
       handPoint(octo, h.r || 0.3, ctx && ctx.isSolid, HP);
       h.place(HP.x, HP.y, octo.vx || 0, octo.vy || 0);
     }

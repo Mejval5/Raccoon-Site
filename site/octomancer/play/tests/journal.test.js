@@ -1,4 +1,5 @@
 // B1-4 journal tests (journal.js + save.js persistence).
+import { isSkinId } from '../js/skins.js';
 import { ATLAS_RECTS } from '../js/sprite-atlas.js';
 import { createJournal, ENTRIES, CATEGORIES, TABS, creatureId, itemId, causeEntryId, tabOfCat, completion, percent, counterRows, storyLines, STAT_SEEN, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED } from '../js/journal.js';
 import { artList, hasArt, FN, GAME_DRAW } from '../js/journal-art.js';
@@ -34,8 +35,8 @@ export async function runJournalTests(assert) {
 
   // --- round 38: tabs, art, counters ---
   assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
-  assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells and loot); scenery props (rune, fossil, bush, weed, boulder, fish-bone wall) sit in Places beside the places',
-    TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 6 &&
+  assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells, the octopus looks and loot); scenery props (rune, fossil, bush, weed, boulder, fish-bone wall) sit in Places beside the places',
+    TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,look,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 6 &&
     ENTRIES.filter((e) => TABS.find((t) => t.id === 'items').cats.includes(e.cat)).every((e) => !e.id.startsWith('prop-')));
   assert('journal data (r39): descriptions match the game (no manta spit, no piranha chase, no ceiling-only horns, no score for shells)',
     !/spits/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) && /dives/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) &&
@@ -55,6 +56,7 @@ export async function runJournalTests(assert) {
       else if (art.game) { if (typeof GAME_DRAW[art.game] !== 'function') bad.push(id + ' game'); }
       else if (art.fn) { if (typeof FN[art.fn] !== 'function') bad.push(id + ' fn'); }
       else if (art.sprite) { if (!ATLAS_RECTS[art.sprite]) bad.push(id + ' sprite'); } // r46: the sprite atlas
+      else if (art.skin) { if (!isSkinId(art.skin)) bad.push(id + ' skin'); } // skins: the octopus in a look
       else bad.push(id + ' empty');
     }
     assert('journal art: every sprite referenced by journal.json exists (files load, item icons and code drawings are defined)' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0 && checked.size >= 15);
