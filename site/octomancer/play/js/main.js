@@ -29,7 +29,7 @@ import { createCreatures, creatureJournalId, CREATURE_CODE, CR_GCLAM, CL_OPENING
 import { drawCreaturesBack, drawCreaturesFront } from './creatures-draw.js';
 import { drawBlocks } from './blocks-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES, LOOT_CODE as LOOT_CODE_ } from './loot.js';
-import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
+import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode, canCarry, ITEM_DEFS } from './items.js';
 import { drawLoot, drawLootOne } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
@@ -40,6 +40,8 @@ import { createAutofire } from './autofire.js';
 import { createBombs, spawnRubble, DROP_BELOW } from './bomb.js';
 import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, PRI_DOOR, HAND_REACH } from './hand.js';
 import { registerHandKinds } from './hand-kinds.js';
+import { createAltarLevel } from './altar-level.js'; // the offering altar (altar.js, altar-draw.js)
+import { registerKeeperGrab } from './altar.js';
 import { drawHandTell, drawHeldArm, drawHeldGrip, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
 import { drawEnemyOne, drawBombOne } from './enemy-draw.js';
 import { drawTrace } from './draw-trace.js';
@@ -377,6 +379,22 @@ let keeperNotice = 0; // s left of the shopkeeper's '!' (he saw a ware knocked o
 // SPELLS-PICK.md: the level side of Riptide, Coral Wall, Anchor and the Delayed motes (spell-fx.js); the rune pedestal of this level (runes.js)
 let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
 let runeSpot = null;
+// the offering altar (altar-level.js): one on some Shallows level of a dive (?altar=1: every level)
+const altarLv = createAltarLevel({
+  world: () => world, octo: () => octo, run: () => run, corpses: () => corpses, kindName: (id) => corpseKindName(id),
+  enemies: () => enemies.all(), keepers: () => keepers, keeperDead: KM_DEAD,
+  found: (id) => journal.has(id), discover: (id) => discover(id), bump: (id, st) => journal.bump(id, st), statCollected: STAT_COLLECTED, statAngered: STAT_ANGERED,
+  toast: (text, ms) => ui.showToast(text, ms, false, true),
+  heal: () => { if (octo.hearts >= octo.heartMax) return false; octo.hearts++; prevHearts = octo.hearts; return true; },
+  jarFull: () => run.juice >= juiceCap(), fillJar: () => { run.juice = juiceCap(); },
+  canCarry: (id) => canCarry(run.items, id),
+  giveItem: (id) => { if (!giveItem(run.items, octo, id)) return false; discover(itemJournalId(id)); journal.bump(itemJournalId(id), STAT_COLLECTED); return true; },
+  itemName: (id) => (ITEM_DEFS[id] ? ITEM_DEFS[id].name : id),
+  spawnEnemy: (kind, x, y) => enemies.spawnAt(kind, x, y, 'open'),
+  puff: (x, y, col) => particles.deathPoof(x, y, col), bubble: (x, y) => particles.trailBubble(x, y), shake: (px) => particles.shakeFx(px, 0.3),
+  chime: () => sfx.chime(), thud: () => sfx.thud(),
+  avoid: (x, y) => altarAvoid(x, y), forced: V2 && params.get('altar') === '1',
+});
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
 let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
 let autoDiveOn = false;
@@ -962,6 +980,7 @@ function step(dt) {
     // 2026-10-08: the creatures, NPCs and keepers already took the blast inside bombs.update (damage.js blast, by the creature table)
     if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
     if (V2 && npcs) npcs.drain(onNpcEvent);
+    if (V2 && run.state === S_BIOME) altarLv.blast(ev.x, ev.y, BOMB_RADIUS + 0.5); // bombing the offering altar angers it
     if (V2 && liveWorld()) {
       loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents();
       chain.emit('bomb', ev.x, ev.y, ev.chain >= 0 ? ev : null, true); // chain.js: the bombs, boulders, clams, eels, pots ... it sets off (replaces hazards.blast)
@@ -1855,6 +1874,7 @@ function stepV2(snap) {
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
     if ((seeTick & 15) === 4) for (let i = 0; i < keepers.n; i++) if (keepers.mode[i] !== KM_DEAD && Math.hypot(octo.x - keepers.x[i], octo.y - keepers.y[i]) < 9) discover('person-keeper');
     tryTakeRune();
+    altarLv.step(STEP);
     if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
       siphonSpot.taken = true;
       if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
@@ -1902,7 +1922,11 @@ function stepV2(snap) {
     }
     if (unlockAnim) best = null; // the unlock moment speaks for itself (the title card)
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
-  } else ui.setPrompt(null);
+  } else {
+    const ap = run.state === S_BIOME && !unlockAnim ? altarLv.prompt() : null; // the first offering altar's sign
+    const touchy = ap && (snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer()));
+    ui.setPrompt(ap ? ap.title : null, ap ? (touchy ? ap.touch : ap.desktop) : '');
+  }
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
     for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
     for (const ck of creatures.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(creatureJournalId(ck));
@@ -1975,6 +1999,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawCreaturesBack(c, camera, cw, ch, creatures.data, t);
     if (shopSt) { drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt); drawLooseWares(c, camera, cw, ch, shopSt, props, t); }
   }
+  if (run.state === S_BIOME && altarLv.altar) altarLv.draw(c, camera, cw, ch, t); // the offering altar (under the bodies laid on it)
   drawRubble(c, camera, cw, ch, props.data);
   if (world.fresh) world.fresh.draw(c, camera, cw, ch, world.tileAt); // raw edges and silt haze over a fresh crater (fresh.js)
   const hh = heldView ? hand.held : null; // the held thing is skipped here and drawn after the octopus (drawHeld)
@@ -2439,6 +2464,7 @@ function stepTutorial() {
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
   quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(run.state === S_TUTORIAL ? world.level : null); relicHeld = false; siphonSpot = null; restSpring = null; swift = null; runeSpot = null;
+  altarLv.setup(-1, 0, 0, 0); // no altar unless the dive's level below gets one
   npcs = makeNpcs();
   if (run.state === S_BIOME || run.state === S_REST) for (let w = 1; w < 5; w++) { // r3: a grudge lasts the whole dive (the grotto too)
     if (people.grudge[w] === G_ANGRY) npcMoods.hostile[w] = 1;
@@ -2470,7 +2496,29 @@ function setupLevelExtras() {
     setupPeople();
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
     placeRunePedestal();
+    if (!MOVETEST) altarLv.setup(run.level | 0, Math.max(1, run.dive.startLevel | 0), BIOME_LEVELS, spec.seed);
   }
+}
+let altarSpawns = null, altarSpawnsLv = null;
+function altarSpawnsOf() { // the level's fixed things (pots, clams, hazards, creatures, blocks) as x, y pairs, once per level
+  if (altarSpawnsLv !== world.level) {
+    const out = [];
+    for (const sp of levelSpawns()) if (sp.type === 'loot' || sp.type === 'hazard' || sp.type === 'creature' || sp.type === 'block' || (sp.type === 'decor' && sp.dk === 'boulder')) out.push(sp.x, sp.y);
+    altarSpawns = out; altarSpawnsLv = world.level;
+  }
+  return altarSpawns;
+}
+/** The altar's floor must keep clear of the other set pieces, the shop, the exit, hazards and loot. */
+function altarAvoid(x, y) {
+  const near = (p, r) => p && Math.hypot(p.x - x, p.y - y) < r;
+  if (near(runeSpot, 4) || near(siphonSpot, 4) || (questClear && Math.hypot(questClear[0] - x, questClear[1] - y) < 6)) return true;
+  if (world.inShop && (world.inShop(x, y - 0.5) || world.inShop(x - 3, y - 0.5) || world.inShop(x + 3, y - 0.5))) return true;
+  if (shopSt && Math.hypot(shopSt.keeperX - x, shopSt.keeperY - y) < 7) return true;
+  if (world.exitX >= 0 && Math.hypot(world.exitX + 0.5 - x, world.exitY + 0.5 - y) < 7) return true;
+  const hd = hazards.data; for (let i = 0; i < hd.n; i++) if (Math.abs(hd.x[i] - x) < 3.5 && Math.abs(hd.y[i] - (y - 1)) < 3.5) return true;
+  const os = altarSpawnsOf(); for (let i = 0; i < os.length; i += 2) if (Math.abs(os[i] - x) < 3 && Math.abs(os[i + 1] - (y - 1)) < 2.5) return true; // the level's own pots, clams, enemies, hazards
+  for (let i = 0; i < keepers.n; i++) if (Math.hypot(keepers.x[i] - x, keepers.y[i] - y) < 6) return true;
+  return false;
 }
 /** SPELLS-PICK: this level's rune pedestal: the next rune of the dive's order on a floor 8-22 tiles from the start (never the Siphon Shell's spot). */
 function placeRunePedestal() {
@@ -2649,6 +2697,7 @@ const handEnv = {
 };
 if (V2) {
   registerHandKinds(handEnv);
+  registerKeeperGrab({ keepers: () => (run && run.state === S_BIOME ? keepers : null), keeperDead: KM_DEAD }); // a stunned keeper can be carried (to the altar)
   registerInteract('mirror', { // skins: the hub's mirror shell opens the looks picker
     priority: PRI_TALK + 1,
     find(o, reach) {
@@ -3756,6 +3805,15 @@ window.__octo = {
   setStory(k, n) { if (k) { setStory(k, n); story = getStory(); if (run && run.state === S_HUB) arriveInHub(); } return { ...story }; },
   /** Test hook: carry an item as if it had been found (items.js). */
   giveItem(id) { return run ? giveItem(run.items, octo, id) : false; },
+  /** The offering altar of this level (altar-level.js snapshot) or null. */
+  altar() { return altarLv.snapshot(); },
+  /** Put an altar with its centre at x on the floor y (default: the floor under the octopus); sign: show the first-meeting sign. */
+  placeAltarAt(x, y, sign) {
+    if (x == null) { x = octo.x; y = Math.floor(octo.y) + 1; for (let k = 0; k < 6 && !world.isSolid(x, y + 0.5); k++) y++; }
+    altarLv.place(x, y, 7);
+    if (sign === false) altarLv.sign = null;
+    return altarLv.snapshot();
+  },
   giveShells(n) { if (run) gainShells(run, n | 0); return run ? run.shells : 0; },
   runEvent(name) {
     const ev = { enter: EV_ENTER_DIVE, exit: EV_EXIT, death: EV_DEATH, continue: EV_CONTINUE, shortcut: EV_ENTER_SHORTCUT, shortcut3: EV_ENTER_SHORTCUT3, tutorial: EV_ENTER_TUTORIAL, leave: EV_LEAVE }[name];

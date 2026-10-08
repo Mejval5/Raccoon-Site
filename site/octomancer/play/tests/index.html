@@ -295,6 +295,9 @@ await runSkinsTests(assert);
 // --- 2026-10-08: back rooms (the kelp grotto under the level, entered on F) ---
 import { runBackroomTests } from './backroom.test.js';
 await runBackroomTests(assert);
+// --- the offering altar (altar.js: favour, hollows, anger, the offering check, the floor finder) ---
+import { runAltarTests } from './altar.test.js';
+await runAltarTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

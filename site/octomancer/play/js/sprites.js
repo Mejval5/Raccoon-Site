@@ -18,6 +18,7 @@ const atlases = [
   { file: 'sprites-r3.webp', rects: ATLAS_R3_RECTS, img: null, ready: false },
   { file: 'sprites-r4.webp', rects: ATLAS_R4_RECTS, img: null, ready: false },
   { file: 'sprites-hub.webp', rects: ATLAS_HUB_RECTS, img: null, ready: false },
+  { file: 'altar.webp', rects: { altar: [0, 0, 322, 200] }, img: null, ready: false }, // the offering altar (altar-draw.js)
 ];
 const listeners = [];
 
