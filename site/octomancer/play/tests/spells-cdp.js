@@ -104,7 +104,7 @@ async function setStage(page) {
     const iOpen = (await J(page)).inventory; await page.keyboard.press('Escape'); await sleep(150);
     check('I opens it too and Esc closes it', iOpen && !(await J(page)).inventory && !(await page.evaluate(() => __octo.state().paused)));
     const help = await page.evaluate(() => document.querySelector('.octo-controls-help').textContent);
-    check('the on-screen help lists the new controls and no mouse steering', /left-click/.test(help) && /right-click or F/.test(help) && !/hold mouse/.test(help), help);
+    check('the on-screen help lists the new controls and no mouse steering', /left-click/.test(help) && /right-click or C/.test(help) && /Hand: F/.test(help) && !/hold mouse/.test(help), help);
     check('desktop: no page errors', page.errs.length === 0, page.errs.join(' | '));
     await page.close();
 
