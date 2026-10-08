@@ -37,3 +37,5 @@ functions/.secret.local
 
 # wedding invite key, kept locally so unlock URLs can be printed
 .svatba-key
+# wedding gifts admin key (also the DARY_ADMIN_KEY secret)
+.dary-admin-key

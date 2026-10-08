@@ -9,7 +9,8 @@
  * be switched off.
  *
  * The path is laid out along a main axis (the direction of progress) and a
- * cross axis (the wiggle). ORIENTATION picks how those map to the screen:
+ * cross axis (the wiggle). ORIENTATION picks how those map to the screen
+ * ('auto' switches with the screen width):
  *   - 'vertical':   level 1 at the bottom, climbing upwards; scrolls up/down.
  *   - 'horizontal': level 1 on the left, going right; scrolls sideways.
  * A page can override it with data-orientation on #dary-meter, and
@@ -28,7 +29,10 @@
   'use strict';
 
   // ---- Settings ---------------------------------------------------------------
-  var ORIENTATION = 'vertical';
+  // 'auto' = horizontal on phones (swiping sideways leaves the page free to
+  // scroll), vertical on wider screens. 'vertical' or 'horizontal' fixes it.
+  var ORIENTATION = 'auto';
+  var PHONE_QUERY = '(max-width: 699px)';
   // Small grey amounts next to each level plus the raw total in a corner, for
   // checking the curve. Set to false and no amount appears anywhere.
   var DEBUG_AMOUNTS = true;
@@ -43,7 +47,7 @@
   // `focus` is where the next level sits in the window, as a fraction along
   // the direction of progress (0 = the level 1 end, 1 = the far end).
   var LAYOUT = {
-    vertical: { step: 118, padStart: 64, padEnd: 130, amp: 30, focus: 0.58 },
+    vertical: { step: 118, minStep: 92, padStart: 64, padEnd: 130, amp: 30, focus: 0.58 },
     horizontal: { step: 176, padStart: 70, padEnd: 210, amp: 24, focus: 0.5 }
   };
 
@@ -311,14 +315,15 @@
   // Point k: 0 is the start, 1..LEVEL_COUNT the levels. `s` runs along the main
   // axis in px, `c` across it in % (a gentle zigzag that never sits dead centre,
   // so every label has room on one side).
-  function makeGeometry() {
+  // `steps[k]` is the distance from point k to k+1; without it every step is LAYOUT.step.
+  function makeGeometry(steps) {
     var L = LAYOUT[orient];
-    var length = L.padStart + LEVEL_COUNT * L.step + L.padEnd;
-    var pts = [];
+    var pts = [], s = L.padStart;
     for (var k = 0; k <= LEVEL_COUNT; k++) {
-      pts.push({ s: L.padStart + k * L.step, c: 50 + L.amp * Math.sin((k + 0.5) * Math.PI / 3) });
+      if (k) s += steps ? steps[k - 1] : L.step;
+      pts.push({ s: s, c: 50 + L.amp * Math.sin((k + 0.5) * Math.PI / 3) });
     }
-    return { step: L.step, length: length, pts: pts };
+    return { length: s + L.padEnd, pts: pts, steps: steps || null };
   }
   // (s, c) -> SVG user units. Vertical: x = c, y grows downwards so level 1 is at the bottom.
   function toXY(s, c) {
@@ -327,7 +332,7 @@
   function fmt(p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }
   // The cubic between points k and k+1, in (s, c): flat tangents along the main axis.
   function bezier(k) {
-    var a = geo.pts[k], b = geo.pts[k + 1], h = geo.step / 2;
+    var a = geo.pts[k], b = geo.pts[k + 1], h = (b.s - a.s) / 2;
     return [[a.s, a.c], [a.s + h, a.c], [b.s - h, b.c], [b.s, b.c]];
   }
   function lerp(p, q, u) { return [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u]; }
@@ -417,15 +422,13 @@
     root = document.getElementById('dary-meter');
     scroller = document.getElementById('dary-path');
     if (!root || !scroller) return false;
-    // ?darypath= wins, then the guest's own pick, then the page's, then ORIENTATION.
+    // ?darypath= wins, then the page's data-orientation, then ORIENTATION.
     var param = (window.location.search.match(/[?&]darypath=(vertical|horizontal)/) || [])[1];
-    var saved = null;
-    try { saved = window.localStorage.getItem(VIEW_KEY); } catch (e) { /* storage blocked */ }
-    orient = param || (LAYOUT[saved] ? saved : null) || root.getAttribute('data-orientation') || ORIENTATION;
+    fixedOrient = param || root.getAttribute('data-orientation') || (ORIENTATION !== 'auto' ? ORIENTATION : null);
+    orient = fixedOrient || autoOrientation();
     if (!LAYOUT[orient]) orient = 'vertical';
 
     var frame = scroller.parentElement; // .dary-frame, position: relative
-    createViewToggle(frame);
 
     backBtn = el('button', 'dary-back', frame);
     backBtn.type = 'button';
@@ -450,36 +453,21 @@
     return true;
   }
 
-  // ---- Vertical / horizontal toggle ------------------------------------------------
-  var VIEW_KEY = 'svatba-dary-view';
-  var VIEW_ICONS = {
-    vertical: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20 C7 17 17 13 12 9 V4"/><path d="M8.5 7 L12 3.5 L15.5 7"/></svg>',
-    horizontal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12 C7 7 11 17 15 12 H20"/><path d="M17 8.5 L20.5 12 L17 15.5"/></svg>'
-  };
-  var viewBtns = {};
-  function createViewToggle(frame) {
-    var wrap = document.createElement('div');
-    wrap.className = 'dary-view';
-    wrap.setAttribute('role', 'group');
-    frame.parentElement.insertBefore(wrap, frame);
-    ['vertical', 'horizontal'].forEach(function (o) {
-      var b = el('button', 'dary-view-btn', wrap);
-      b.type = 'button';
-      b.innerHTML = VIEW_ICONS[o] + '<span></span>';
-      b.addEventListener('click', function () { setOrientation(o); });
-      viewBtns[o] = b;
-    });
+  // ---- Orientation ------------------------------------------------------------------
+  var fixedOrient = null;
+  function autoOrientation() {
+    return window.matchMedia && window.matchMedia(PHONE_QUERY).matches ? 'horizontal' : 'vertical';
   }
-  function renderViewToggle() {
-    viewBtns.vertical.parentElement.setAttribute('aria-label', t('dary.view.label'));
-    ['vertical', 'horizontal'].forEach(function (o) {
-      viewBtns[o].querySelector('span').textContent = t('dary.view.' + o);
-      viewBtns[o].setAttribute('aria-pressed', String(o === orient));
-    });
+  // Turning a phone or resizing a window across the breakpoint rebuilds the map.
+  function initAutoOrientation() {
+    if (fixedOrient || !window.matchMedia) return;
+    var mq = window.matchMedia(PHONE_QUERY);
+    var onChange = function () { setOrientation(autoOrientation()); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
   }
   function setOrientation(o) {
     if (!LAYOUT[o] || o === orient) return;
-    try { window.localStorage.setItem(VIEW_KEY, o); } catch (e) { /* only this visit then */ }
     cancelRealAnim(); // a walk in progress jumps to its end
     shownAmount = realAmount;
     orient = o;
@@ -497,37 +485,28 @@
     root.setAttribute('data-orientation', orient);
     geo = makeGeometry();
     map = el('div', 'dary-map', scroller);
-    if (orient === 'vertical') map.style.height = geo.length + 'px';
-    else map.style.width = geo.length + 'px';
 
     svgEl = document.createElementNS(SVG_NS, 'svg');
     svgEl.setAttribute('class', 'dary-trail');
     svgEl.setAttribute('aria-hidden', 'true');
     svgEl.setAttribute('preserveAspectRatio', 'none');
-    svgEl.setAttribute('viewBox', orient === 'vertical' ? '0 0 100 ' + geo.length : '0 0 ' + geo.length + ' 100');
     trailEl = document.createElementNS(SVG_NS, 'path');
     trailEl.setAttribute('class', 'dary-trail-todo');
-    trailEl.setAttribute('d', pathD(LEVEL_COUNT, 0));
     doneEl = document.createElementNS(SVG_NS, 'path');
     doneEl.setAttribute('class', 'dary-trail-done');
     svgEl.appendChild(trailEl);
     svgEl.appendChild(doneEl);
     map.appendChild(svgEl);
 
-    var start = el('span', 'dary-start', map);
-    place(start, geo.pts[0].s, geo.pts[0].c);
-    start.setAttribute('aria-hidden', 'true');
+    el('span', 'dary-start', map).setAttribute('aria-hidden', 'true');
 
     levelsEl = el('ol', 'dary-levels', map);
-    LEVELS.forEach(function (lv, i) {
-      var p = geo.pts[i + 1];
+    LEVELS.forEach(function (lv) {
       var li = el('li', 'dary-level is-future', levelsEl);
       li.setAttribute('data-level', String(lv.n));
       var dot = el('span', 'dary-dot', li);
       dot.innerHTML = '<span class="dary-dot-icon">' + lv.icon + '</span><span class="dary-dot-check">' + CHECK + '</span>';
-      place(dot, p.s, p.c);
       var label = el('div', 'dary-label', li);
-      placeLabel(label, p.s, p.c);
       var kicker = el('span', 'dary-kicker', label);
       el('span', 'dary-kicker-level', kicker);
       el('span', 'dary-tag', kicker);
@@ -536,13 +515,55 @@
       el('span', 'dary-label-text', label);
     });
 
-    var endCap = el('p', 'dary-end', map);
-    var endPt = geo.pts[LEVEL_COUNT];
-    place(endCap, endPt.s + LAYOUT[orient].padEnd * 0.6, 50);
+    el('p', 'dary-end', map);
 
     avatarEl = el('span', 'dary-avatar', map);
     avatarEl.innerHTML = APRICOT;
     avatarEl.setAttribute('aria-hidden', 'true');
+    applyGeometry();
+  }
+
+  // Puts everything where `geo` says (the progress part is drawn by render()).
+  function applyGeometry() {
+    map.style.height = orient === 'vertical' ? geo.length + 'px' : '';
+    map.style.width = orient === 'vertical' ? '' : geo.length + 'px';
+    svgEl.setAttribute('viewBox', orient === 'vertical' ? '0 0 100 ' + geo.length : '0 0 ' + geo.length + ' 100');
+    trailEl.setAttribute('d', pathD(LEVEL_COUNT, 0));
+    place(map.querySelector('.dary-start'), geo.pts[0].s, geo.pts[0].c);
+    var items = levelsEl.children;
+    for (var i = 0; i < items.length; i++) {
+      var p = geo.pts[i + 1];
+      place(items[i].querySelector('.dary-dot'), p.s, p.c);
+      placeLabel(items[i].querySelector('.dary-label'), p.s, p.c);
+    }
+    place(map.querySelector('.dary-end'), geo.pts[LEVEL_COUNT].s + LAYOUT[orient].padEnd * 0.6, 50);
+  }
+
+  // Vertical labels wrap to whatever height their text needs, so the levels
+  // are spaced from the measured label heights: neighbours never overlap, at
+  // any width, in any language, and when the bigger "next stop" card moves on.
+  // The next level keeps its place on screen while the spacing changes.
+  var LABEL_GAP = 16;
+  function relayout() {
+    if (orient !== 'vertical' || !scroller.clientWidth) return;
+    var L = LAYOUT[orient];
+    var items = levelsEl.children, h = [];
+    for (var i = 0; i < items.length; i++) h.push(items[i].querySelector('.dary-label').offsetHeight);
+    var steps = [];
+    for (var k = 0; k < LEVEL_COUNT; k++) {
+      var need = k === 0 ? h[0] / 2 + 30 : (h[k - 1] + h[k]) / 2 + LABEL_GAP;
+      steps.push(Math.ceil(Math.max(L.minStep, need)));
+    }
+    var old = geo.steps, same = !!old;
+    for (k = 0; same && k < LEVEL_COUNT; k++) if (Math.abs(old[k] - steps[k]) > 1) same = false;
+    if (same) return;
+    var anchor = Math.min(LEVEL_COUNT, progressFor(shownAmount).done + 1);
+    var onScreen = geo.length - geo.pts[anchor].s - scroller.scrollTop;
+    geo = makeGeometry(steps);
+    applyGeometry();
+    scroller.scrollTop = geo.length - geo.pts[anchor].s - onScreen;
+    render({ silent: true });
+    updateBackButton();
   }
 
   // Texts that depend on the language.
@@ -557,7 +578,6 @@
     map.querySelector('.dary-end').textContent = t('dary.beyond');
     scroller.setAttribute('aria-label', t('dary.path.label'));
     backBtn.textContent = t('dary.backToNow');
-    renderViewToggle();
     shownDone = -1; // refresh the tags and the status line
     render({ silent: true });
   }
@@ -586,6 +606,7 @@
       if (state === 'done' && was && was !== 'done' && !opts.silent) playLightUp(li);
     }
     shownDone = prog.done;
+    relayout();
     statusEl.textContent = prog.done >= LEVEL_COUNT
       ? t('dary.statusAll', { total: LEVEL_COUNT })
       : t('dary.status', { done: prog.done, total: LEVEL_COUNT, title: t('dary.l' + (prog.done + 1) + '.title') });
@@ -682,6 +703,7 @@
   }
   function initResizeObserver() {
     var onSize = function () {
+      relayout();
       if (!hasScrolledToNow && hasLoadedTotal && scrollToNow(false)) hasScrolledToNow = true;
       updateBackButton();
     };
@@ -690,6 +712,70 @@
       return;
     }
     new ResizeObserver(onSize).observe(scroller);
+  }
+
+  // ---- Mouse: drag the path like a map --------------------------------------------------
+  // Touch already scrolls natively; this gives mouse users the same grab-and-fling,
+  // and in the horizontal layout the wheel scrolls sideways until an end is reached.
+  function initDrag() {
+    var drag = null, momentumRaf = null;
+    function mainPos(e) { return orient === 'vertical' ? e.clientY : e.clientX; }
+    function stopMomentum() {
+      if (momentumRaf) cancelAnimationFrame(momentumRaf);
+      momentumRaf = null;
+    }
+    scroller.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      stopMomentum();
+      if (scrollRaf) { cancelAnimationFrame(scrollRaf); scrollRaf = null; }
+      drag = { origin: mainPos(e), start: getScroll(), last: mainPos(e), lastT: e.timeStamp, v: 0, moved: false };
+    });
+    scroller.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var pos = mainPos(e);
+      if (!drag.moved) {
+        if (Math.abs(pos - drag.origin) < 4) return; // a plain click stays a click
+        drag.moved = true;
+        scroller.setPointerCapture(e.pointerId);
+        scroller.classList.add('is-dragging');
+      }
+      setScroll(drag.start - (pos - drag.origin));
+      var dt = Math.max(1, e.timeStamp - drag.lastT);
+      drag.v = 0.8 * ((pos - drag.last) / dt) + 0.2 * drag.v; // px per ms, smoothed
+      drag.last = pos;
+      drag.lastT = e.timeStamp;
+      e.preventDefault();
+    });
+    function endDrag(e) {
+      if (!drag) return;
+      var d = drag;
+      drag = null;
+      scroller.classList.remove('is-dragging');
+      if (!d.moved || prefersReducedMotion()) return;
+      if (e && e.timeStamp - d.lastT > 80) return; // held still before letting go: no fling
+      var v = d.v, prevT = null;
+      function glide(ts) {
+        if (prevT !== null) {
+          var dt = Math.min(40, ts - prevT);
+          setScroll(getScroll() - v * dt);
+          v *= Math.pow(0.94, dt / 16);
+        }
+        prevT = ts;
+        momentumRaf = Math.abs(v) > 0.02 ? requestAnimationFrame(glide) : null;
+      }
+      momentumRaf = requestAnimationFrame(glide);
+    }
+    scroller.addEventListener('pointerup', endDrag);
+    scroller.addEventListener('pointercancel', function () { endDrag(null); });
+    scroller.addEventListener('lostpointercapture', function () { if (drag && drag.moved) endDrag(null); });
+    scroller.addEventListener('wheel', function (e) {
+      stopMomentum();
+      if (orient !== 'horizontal' || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      var cur = scroller.scrollLeft, max = scroller.scrollWidth - scroller.clientWidth;
+      if ((e.deltaY < 0 && cur <= 0) || (e.deltaY > 0 && cur >= max - 1)) return; // at an end: let the page scroll
+      e.preventDefault();
+      scroller.scrollLeft = cur + e.deltaY * (e.deltaMode === 1 ? 40 : 1);
+    }, { passive: false });
   }
 
   // ---- Live-increase toast ------------------------------------------------------------
@@ -908,6 +994,8 @@
     initQrBlock();
     renderTexts();
     initResizeObserver();
+    initDrag();
+    initAutoOrientation();
     initLangObserver();
     exposeTestHook();
     loadTotal().then(function (amount) {
