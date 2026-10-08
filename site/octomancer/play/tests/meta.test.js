@@ -8,7 +8,7 @@ import {
 import {
   insertBestRun, recordDive, getBestRuns, getMeta, getShortcut, setShortcut, loadBest, _resetForTests, BEST_RUNS_MAX,
 } from '../js/save.js';
-import { formatTime, depthLabel, summaryRows, summaryHeadline, bestRunLines, statsRows, causeText } from '../js/runstats.js';
+import { formatTime, formatClock, depthLabel, summaryRows, summaryHeadline, bestRunLines, statsRows, causeText } from '../js/runstats.js';
 import { createUI } from '../js/ui.js';
 import { createJournal } from '../js/journal.js';
 import { createJournalScreen } from '../js/journal-ui.js';
@@ -240,6 +240,21 @@ export async function runMetaTests(assert) {
     const icons = root.querySelectorAll('.octo-hud-item');
     assert('HUD: a stacked item is one icon (7 carried, 5 icons)', icons.length === 5 && root.querySelector('.octo-hud-items').parentElement === root.querySelector('.octo-hud-bar'));
     assert('HUD: the item row is not inside the stat row', !root.querySelector('.octo-hud-stats').contains(root.querySelector('.octo-hud-items')));
+    // the one-line strip (hud-strip.js): icon + number badges, the two clocks, the level, the Swift Current target
+    ui.updateHud({ hearts: 2, heartMax: 4, bombs: 5, stage: 'Shallows 1-3', shells: 14500, items: [], juice: 4, cap: 6, perCast: 2, levelTime: 5.43, runTime: 88.75, swift: { target: 45, earned: false } });
+    let hr = ui.hudRead();
+    assert('HUD strip: hearts, bombs, casts, shells and the level as numbers', hr.hearts === '2' && hr.bombs === '5' && hr.casts === '2' && hr.shells === '14500' && hr.stage === '1-3' && hr.items === 0);
+    assert('HUD strip: level and run clock in the Spelunky format, the Swift Current target by them', hr.level === '00:05.4' && hr.run === '01:28.7' && hr.swift === '0:45' && hr.swiftState === '');
+    const lvlNode = root.querySelector('.octo-hud-time-level').firstChild;
+    ui.updateHud({ hearts: 2, heartMax: 4, bombs: 5, stage: 'Shallows 1-3', shells: 14500, items: [], juice: 4, cap: 6, perCast: 2, levelTime: 5.49, runTime: 88.79, swift: { target: 45, earned: false } });
+    assert('HUD strip: the same tenth writes nothing (the text node is kept)', root.querySelector('.octo-hud-time-level').firstChild === lvlNode);
+    ui.updateHud({ hearts: 2, heartMax: 4, bombs: 5, stage: 'Shallows 1-3', shells: 14500, items: [], juice: 4, cap: 6, perCast: 2, levelTime: 50, runTime: 130, swift: { target: 45, earned: false } });
+    assert('HUD strip: a target past its time is marked missed', ui.hudRead().swiftState === 'missed');
+    ui.updateHud({ hearts: 3, heartMax: 4, bombs: 0, stage: 'Hub', shells: 0, items: [], juice: 0, cap: 6, perCast: 2, levelTime: null, runTime: 0, swift: null });
+    hr = ui.hudRead();
+    assert('HUD strip: no clocks outside a dive, the level reads Hub', hr.level === null && hr.swift === '' && hr.stage === 'Hub');
+    assert('runstats: formatClock', formatClock(5.43) === '00:05.4' && formatClock(88.75) === '01:28.7' && formatClock(0) === '00:00.0' && formatClock(3599.99) === '59:59.9' && formatClock(-1) === '00:00.0');
+    assert('runstats: with the level clock the time row reads level / run', summaryRows({ cleared: false, level: 2, depth: 2, time: 88.75, levelTime: 5.43, shells: 1, kills: 0, quests: 0, cause: 'crab', seed: 1 })[1].join() === 'Time (level / run),00:05.4 / 01:28.7');
     root.remove();
   }
 

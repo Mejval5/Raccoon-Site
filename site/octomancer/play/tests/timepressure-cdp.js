@@ -63,9 +63,9 @@ const VPS = [
       // ---- 1-1: banner, warning, arrival
       {
         const page = await open(vp, vn, '?at=1&seed=11');
-        const banner = await page.evaluate(() => { const el = document.querySelector('.octo-title-current'); return el && el.style.display !== 'none' ? el.textContent : ''; });
+        const banner = await page.evaluate(() => __octo.hud().swift); // the target sits by the clock on the HUD strip (hud-strip.js) since 2026-10-08
         const tp0 = await page.evaluate(() => __octo.timePressure());
-        check(`${vn} 1-1: the banner shows the Swift Current target (${banner})`, /^\d:\d\d$/.test(banner) && tp0.swift && banner === Math.floor(tp0.swift.target / 60) + ':' + String(tp0.swift.target % 60).padStart(2, '0'));
+        check(`${vn} 1-1: the HUD strip shows the Swift Current target by the clock (${banner})`, /^\d:\d\d$/.test(banner) && tp0.swift && banner === Math.floor(tp0.swift.target / 60) + ':' + String(tp0.swift.target % 60).padStart(2, '0'));
         if (SHOTS) { await page.evaluate(() => __octo.frames(1, 16, true)); await shot(page, 'tp-banner-' + vn); await page.evaluate(() => __octo.frames(0)); }
         await page.evaluate(() => { __octo.god(true); __octo.setLevelTime(119); });
         await sleep(400);

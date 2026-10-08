@@ -154,6 +154,9 @@
 .octo-hotbar.is-compact .octo-hb-jarcv { width: 18px; height: 24px; }
 .octo-hotbar.is-compact .octo-hb-casts { font-size: 12px; }
 
+/* the juice jar and its casts live on the HUD strip (hud-strip.js) now: the bar keeps the spells, the Ink Jet and the bomb slot */
+#hud > .octo-hotbar .octo-hb-jar { display: none; }
+
 /* hidden behind the settings / journal / inventory panels, like the HUD bar */
 #hud.octo-modal-open > .octo-hotbar { visibility: hidden; }
 
@@ -253,6 +256,13 @@
 /* Phones: the bar sits at the top, so the prompt banner moves a little lower; in portrait the touch buttons own the bottom right
    (two rows) and a centred toast would run under them, so toasts sit above them. */
 #hud:has(> .octo-hotbar.is-compact) > .octo-prompt { top: calc(112px + var(--safe-t)); }
+/* portrait phones with carried items: their row under the HUD strip's left end would run under the centred bar, so the bar
+   (and the title card and prompt under it) step down one row */
+@media (max-width: 600px) {
+  #hud:has(.octo-hud-items:not([style*="none"])) > .octo-hotbar.is-compact { top: calc(env(safe-area-inset-top, 0px) + 80px); }
+  #hud:has(.octo-hud-items:not([style*="none"])):has(> .octo-hotbar.is-compact) > .octo-prompt,
+  #hud:has(.octo-hud-items:not([style*="none"])) > .octo-title { top: calc(134px + var(--safe-t)); }
+}
 @media (max-width: 600px) {
   #hud:has(> .octo-hotbar.is-compact) > .octo-toast { bottom: calc(176px + var(--safe-b)); }
 }
