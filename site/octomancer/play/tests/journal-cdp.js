@@ -252,7 +252,14 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
       const jj = await ev(() => __octo.journal());
       check('Tab opens the book on the Carried tab and pauses the game', jj.open === true && jj.tab === 'carried' && (await paused()) === true, JSON.stringify(jj));
       const ids = await ev(() => [...document.querySelectorAll('.octo-bk-ccard')].map((c) => c.dataset.id));
-      check('the Carried grid lists slot:0, slot:1, jet, bomb, jar and item:flippers', ['slot:0', 'slot:1', 'jet', 'bomb', 'jar', 'item:flippers'].every((k) => ids.includes(k)), JSON.stringify(ids));
+      // the hotbar as the game holds it: which slot has the bombs (controls 2026-10-08: a hotbar stack), which the Heavy rune
+      const bar = await ev(() => __octo.juice().hotbar.slots);
+      const bombKey = bar.findIndex((sl) => sl[0] === 'bomb') >= 0 ? 'slot:' + bar.findIndex((sl) => sl[0] === 'bomb') : 'bomb';
+      const heavyKey = 'slot:' + bar.findIndex((sl) => sl.includes('heavy'));
+      const slotKeys = bar.map((_, i) => 'slot:' + i);
+      check('the Carried grid lists every hotbar slot, the Ink Jet, the jar and item:flippers, and the bombs exactly once', slotKeys.concat(['jet', 'jar', 'item:flippers']).every((k) => ids.includes(k)) && ids.filter((k) => k === 'bomb' || k === bombKey).length === 1 && ids.length === slotKeys.length + 3 + (bombKey === 'bomb' ? 1 : 0), JSON.stringify(ids));
+      const bombTxt = await ev((k) => { __octo.journalSelect(k); return document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; }, bombKey);
+      check('the bomb card shows its count, fuse, the sticky mine, blast radius and its keys', /Bombs/.test(bombTxt) && /Carried\s*\d+ of \d+/.test(bombTxt) && /Fuse/.test(bombTxt) && /Mine/.test(bombTxt) && /Blast/.test(bombTxt) && /right click or C/i.test(bombTxt) && /B \/ X/.test(bombTxt), bombTxt.slice(0, 300));
 
       // 2. highlight shows details
       await pg.hover('.octo-bk-ccard[data-id="jet"]'); await sleep(200);
@@ -264,8 +271,8 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
       check('ArrowRight moves the highlight to the next card', (await selId()) === ids[before + 1], (await selId()) + ' vs ' + ids[before + 1]);
       await ev(() => __octo.journalSelect('item:flippers')); await sleep(150);
       check('selecting item:flippers shows +20%', /\+20%/.test(await rightTxt()), (await rightTxt()).slice(0, 160));
-      const slotInfo = await ev(() => { __octo.journalSelect('slot:0'); const a = document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; __octo.journalSelect('slot:1'); const b = document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; return { a, b }; });
-      check('a spell slot shows Cost with casts, and a Heavy rune row', [slotInfo.a, slotInfo.b].some((x) => /Cost/.test(x) && /casts/.test(x)) && /Heavy/i.test(slotInfo.a + slotInfo.b), JSON.stringify(slotInfo).slice(0, 300));
+      const slotInfo = await ev((k) => { __octo.journalSelect(k); return document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; }, heavyKey);
+      check('the spell slot with the Heavy rune shows Cost in casts, a Heavy rune row and the right click / C key', /Cost/.test(slotInfo) && /casts/.test(slotInfo) && /Heavy rune/.test(slotInfo) && /Right click or C/.test(slotInfo), heavyKey + ' ' + slotInfo.slice(0, 300));
 
       // 3. hotbar swap
       const s0 = await hbSlots(); const sel0 = await ev(() => __octo.juice().hotbar.sel);
