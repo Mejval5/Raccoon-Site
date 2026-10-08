@@ -29,7 +29,9 @@ import { inCameraView } from './cull.js';
 import { hurtOctopus, stunOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
-import { beholderTiming, beholderSpeed, planBeholderEntry, driftBeholder, beholderTouch } from './beholder.js';
+import { beholderTiming, beholderSpeed, planBeholderEntry, driftBeholder } from './beholder.js';
+import { resolveHit, rowOf, dashKillable, SOURCES, PH_ANCHORED, PH_WALK } from './creature-rules.js';
+import { octoHit } from './damage.js';
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -314,7 +316,9 @@ let nextId = 1;
 // M1-0 combat spike (?auto=1 only, V2-PLAN section 4): hit points per kind.
 // Urchin and horns are hazards (Daniel's Q7): no hp, so Ink Jet ignores them.
 let hpMode = false;
-const ENEMY_HP = { piranha: 6, crab: 10, cannon: 14, manta: 16 };
+// 2026-10-08: hp, dash-killable and immune come from the creature table (creature-rules.js); urchin and horns still carry no
+// hp field, so the Ink Jet's targeting (hp present) leaves them alone (the table makes them immune to ink as well).
+const ENEMY_HP = { piranha: rowOf('piranha').hp, crab: rowOf('crab').hp, cannon: rowOf('cannon').hp, manta: rowOf('manta').hp };
 export function setHpMode(on) { hpMode = !!on; }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -381,35 +385,35 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   base.ph = rnd(base) * TAU;
   if (hpMode && ENEMY_HP[kind]) { base.hp = ENEMY_HP[kind]; base.maxHp = base.hp; }
   if (kind === 'urchin') {
-    return { ...base, radius: URCHIN_RADIUS, r0: URCHIN_RADIUS, contactDamage: true, dashKillable: false, pulse: 0.5 };
+    return { ...base, radius: URCHIN_RADIUS, r0: URCHIN_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), pulse: 0.5 };
   }
   if (kind === 'piranha') {
     const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
-      ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
+      ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), moving: true,
       dir, face: dir, chasing: false, baseX: x, baseY: y, flipCd: 0, stuck: 0, st: PS_PATROL, t: 0.3 + rnd(base) * 0.7,
       lx: 0, ly: 0, ltrav: 0, lmax: 0, rvx: 0, rvy: 0,
     };
   }
   if (kind === 'cannon') {
     const out = cannonOut(placement, wallDir);
-    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: false, st: CN_RELOAD, t: 1 + rnd(base), out, aim: out };
+    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: dashKillable(kind), st: CN_RELOAD, t: 1 + rnd(base), out, aim: out };
   }
   if (kind === 'crab') {
     const fast = rnd(base) < 0.4;
     const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
-      ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: true, moving: true,
+      ...base, radius: CRAB_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), moving: true,
       dir, face: dir, speed: fast ? CRAB_SPEED_FAST : CRAB_SPEED_SLOW, variant: fast ? 'fast' : 'slow', cool: 0, snapHit: false, st: CS_WALK, stuck: 0, flipCd: 0,
     };
   }
   if (kind === 'horns') {
-    return { ...base, radius: HORNS_RADIUS, r0: HORNS_RADIUS, contactDamage: true, dashKillable: false, immune: true, pulse: 0.5 };
+    return { ...base, radius: HORNS_RADIUS, r0: HORNS_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), immune: !!rowOf(kind).invulnerable, pulse: 0.5 };
   }
   if (kind === 'manta') {
     const dir = rnd(base) < 0.5 ? -1 : 1;
     return {
-      ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: true, moving: true,
+      ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), moving: true,
       dir, face: dir, baseX: x, baseY: y, st: MA_GLIDE, cool: 1.5, stuck: 0, flipCd: 0, tx: 0, ty: 1, dived: 0,
     };
   }
@@ -487,6 +491,7 @@ export function createEnemies() {
     return out;
   }
 
+  const KILL_REASON = { boulder: 'crush', block: 'crush' };
   function killEnemy(e, reason, kx = 0, ky = 0) {
     if (e.dead) return;
     e.dead = true;
@@ -510,6 +515,65 @@ export function createEnemies() {
     if (e.moving) collideWithWalls(e, world);
     if (e.stun <= 0) resetPattern(e);
   }
+  /**
+   * 2026-10-08, the one way an enemy takes a hit: creature-rules.js resolveHit for its kind and `src`, then the outcome on the
+   * record. dmg < 0: the source's own damage; knockScale: a blast's falloff; (kx, ky): the corpse's shove when it dies (NaN: the
+   * knock). Kills go through killEnemy (a corpse like any kill). A survivor flashes, loses hp and is knocked out (stun) and
+   * thrown by the table's knock (a walker only sideways, an anchored kind stunned in place). Returns the damage dealt (0: ignored).
+   */
+  function applyHit(e, src, fx, fy, dmg = -1, knockScale = 1, kx = NaN, ky = NaN) {
+    if (!e || e.dead || e.ghost) return 0;
+    const o = resolveHit(e.kind, src, dmg);
+    if (o.ignore) return 0;
+    const row = rowOf(e.kind);
+    let dx = e.x - fx, dy = e.y - fy;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
+    const knock = o.knock * Math.max(0, knockScale), stun = o.stun, dealt = o.dmg, kill = o.kill;
+    const hp = e.hp !== undefined ? e.hp : row.hp;
+    if (kill || (dealt > 0 && dealt >= hp)) {
+      killEnemy(e, KILL_REASON[src] || src, Number.isFinite(kx) ? kx : dx * knock, Number.isFinite(ky) ? ky : dy * knock);
+      return Math.max(dealt, hp, 1e-3);
+    }
+    if (dealt > 0) { if (e.hp !== undefined) e.hp -= dealt; e.hitFlash = 0.25; }
+    if (stun > 0 || knock > 0) {
+      const fixed = row.physics === PH_ANCHORED;
+      e.kvx = fixed ? 0 : dx * knock; e.kvy = fixed || row.physics === PH_WALK ? 0 : dy * knock;
+      if (row.physics === PH_WALK && Math.abs(e.kvx) < 0.5) e.kvx = (dx >= 0 ? 1 : -1) * knock * 0.7;
+      if (stun > 0) { e.stun = Math.max(e.stun || 0, stun); e.path = null; e.tell = 0; }
+      e.hitFlash = Math.max(e.hitFlash || 0, 0.3);
+    }
+    return dealt;
+  }
+  function pruneDead() {
+    for (const [ci, list] of byChunk) {
+      const filtered = list.filter((e) => !e.dead);
+      if (filtered.length !== list.length) byChunk.set(ci, filtered);
+    }
+  }
+  // the damage.js family adapter: this step's live enemies (the Beholder is invulnerable and not listed)
+  const famList = [];
+  const family = {
+    name: 'enemy',
+    begin() { famList.length = 0; for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) if (!list[i].dead) famList.push(list[i]); },
+    count() { return famList.length; },
+    view(i, V) {
+      const e = famList[i];
+      if (!e || e.dead || e.ghost) return false;
+      V.kind = e.kind; V.x = e.x; V.y = e.y; V.r = e.radius || 0.4; V.vx = e.vx || 0; V.vy = e.vy || 0; V.stun = e.stun || 0;
+      V.shut = false; V.cool = e.hzCool || 0; V.blame = e.blame || 0;
+      return true;
+    },
+    apply(i, src, fx, fy, dmg, knockScale) { return applyHit(famList[i], src, fx, fy, dmg, knockScale); },
+    push(i, ax, ay, mode) {
+      const e = famList[i];
+      if (mode === 'knock') { e.kvx += ax; e.kvy += ay; } else { e.x += ax; e.y += ay; }
+    },
+    setTimers(i, cool, blame) { const e = famList[i]; if (cool >= 0) e.hzCool = cool; if (blame >= 0) e.blame = blame; },
+    /** The record behind slot i (tests). */
+    record(i) { return famList[i]; },
+  };
+
   function resetPattern(e) {
     e.tell = 0;
     if (e.kind === 'piranha') { e.st = PS_PATROL; e.t = 0.5; e.flipCd = 0; }
@@ -701,7 +765,7 @@ export function createEnemies() {
         e.vx = 0; e.t -= dt;
         if (!e.snapHit && !lost(e, octo) && dist(e.x + e.dir * 0.2, e.y, octo.x, octo.y) < e.radius + octo.radius + CRAB_SNAP_REACH) {
           e.snapHit = true;
-          hurtOctopus(octo, e.x, e.y, 'crab');
+          octoHit(octo, 'bite', e.x, e.y, 'crab');
         }
         if (e.t <= 0) { e.st = CS_COOL; e.t = CRAB_COOL; }
         break;
@@ -786,7 +850,7 @@ export function createEnemies() {
       s.y += s.vy * dt;
       if (world.isSolid(s.x, s.y)) { s.dead = true; continue; }
       if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
-        hurtFn(octo, s.x, s.y, "shot");
+        octoHit(octo, 'shot', s.x, s.y, 'shot');
         s.dead = true;
       }
     }
@@ -819,8 +883,10 @@ export function createEnemies() {
     if (!beholder) return;
     beholder.prevX = beholder.x; beholder.prevY = beholder.y;
     if (Number.isNaN(beholder.spawnedAt)) beholder.spawnedAt = time;
-    driftBeholder(beholder, octo.x, octo.y, beholderSpeed(timing, time - beholder.spawnedAt), dt);
-    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) beholderTouch(octo); // dead: it keeps knocking the body about (octopus.js hitBody)
+    driftBeholder(beholder, octo.x, octo.y, beholderSpeed(timing, time - beholder.spawnedAt), dt); // time pressure: drifts through rock like Spelunky's ghost
+    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) { // the shared damage entry (CREATURES.md); dead: it keeps knocking the body about
+      octoHit(octo, 'beholder', beholder.x, beholder.y, 'beholder');
+    }
   }
 
   return {
@@ -892,10 +958,10 @@ export function createEnemies() {
         // (a corpse wedged in a gap narrower than the enemy is still in reach of its nose: +0.25)
         if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
           if (e.dashKillable && !octo.dead && octoSpeed >= DASH_KILL_SPEED) {
-            killEnemy(e, 'dash', octo.vx * 0.4, octo.vy * 0.4);
+            applyHit(e, 'dash', octo.x, octo.y, -1, 1, octo.vx * 0.4, octo.vy * 0.4); // the table: a body hit splats a oneHitSplat kind
           } else {
-            if (e.kind === 'manta' && e.st === MA_DIVE) stunOctopus(octo, e.x, e.y, 'manta', STUN_S); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
-            else hurtOctopus(octo, e.x, e.y, e.kind);
+            if (e.kind === 'manta' && e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
+            else octoHit(octo, 'bite', e.x, e.y, e.kind);
             if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
           }
         }
@@ -910,10 +976,7 @@ export function createEnemies() {
         if (world.isSolid(e.x, e.y)) ejectFromRock(e, world);
       }
       // Prune dead enemies out of their chunk lists (dash/bomb kills).
-      for (const [ci, list] of byChunk) {
-        const filtered = list.filter((e) => !e.dead);
-        if (filtered.length !== list.length) byChunk.set(ci, filtered);
-      }
+      pruneDead();
 
       updateShots(dt, octo, world, hurtOctopus);
       updateBeholder(dt, octo, time, world);
@@ -928,11 +991,13 @@ export function createEnemies() {
     /** Spike: apply weapon damage to an enemy that has hp; kills via the normal death event. */
     hurt(e, dmg) {
       if (e.dead || e.hp === undefined) return false;
-      e.hp -= dmg;
-      e.hitFlash = 0.25;
-      if (e.hp <= 0) killEnemy(e, 'ink');
+      applyHit(e, 'ink', e.x, e.y + 1e-3, dmg); // the Ink Jet's own damage, through the table
       return true;
     },
+    /** 2026-10-08: the one way an enemy takes a hit (creature-rules.js); see applyHit. Returns the damage dealt (0: ignored). */
+    applyHit,
+    /** The damage.js family adapter (register it with damage.register). */
+    family,
 
     /** Kill one enemy record by the regular path (corpse, journal, score events); materials: a pushable block crushing it. */
     kill(e, reason = 'crush') { killEnemy(e, reason); },
@@ -945,13 +1010,10 @@ export function createEnemies() {
       for (const e of allEnemies()) {
         if (e.dead) continue;
         if (dist(e.x, e.y, x, y) > radius) continue;
-        if (e.immune) continue;
-        killEnemy(e, 'bomb'); n++;
+        applyHit(e, 'bomb', x, y, -1, 0); // the table: a bomb kills every ordinary kind (horns are invulnerable)
+        if (e.dead) n++;
       }
-      for (const [ci, list] of byChunk) {
-        const filtered = list.filter((e) => !e.dead);
-        if (filtered.length !== list.length) byChunk.set(ci, filtered);
-      }
+      pruneDead();
       return n;
     },
 
@@ -959,18 +1021,14 @@ export function createEnemies() {
      * flashes and is stunned for `stun` s. Returns the count. (Kills are bomb.js's killInRadius; this moves what survived.) */
     knockInRadius(x, y, reach, power, stun) {
       let n = 0;
+      const base = SOURCES.bomb.knock || 1;
       for (const e of allEnemies()) {
-        if (e.dead || !(e.moving || e.kind === 'cannon')) continue;
-        let dx = e.x - x, dy = e.y - y;
-        const d = Math.hypot(dx, dy);
+        if (e.dead) continue;
+        const d = dist(e.x, e.y, x, y);
         if (d > reach) continue;
-        if (d < 1e-4) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
-        const f = (1 - d / reach) * power;
-        const fixed = !e.moving; // a cannon is bolted down: stunned, not thrown
-        e.kvx = fixed ? 0 : dx * f; e.kvy = fixed || e.kind === 'crab' ? 0 : dy * f;
-        if (e.kind === 'crab' && Math.abs(e.kvx) < 0.5) e.kvx = (dx >= 0 ? 1 : -1) * f * 0.7;
-        e.stun = stun; e.path = null; e.tell = 0; e.hitFlash = 0.3;
-        n++;
+        const s0 = e.stun;
+        applyHit(e, 'bomb', x, y, 0, (1 - d / reach) * power / base); // a shove: no damage; the table says who is thrown or stunned
+        if (e.stun !== s0 || e.hitFlash >= 0.3) n++;
       }
       return n;
     },

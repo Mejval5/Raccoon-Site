@@ -1,6 +1,7 @@
 // Pushable blocks (props.js PK_BLOCK): axis-aligned squares that rest on tile tops, stack, are shoved along a floor by a
 // swimming octopus, fall when their floor goes, crush what they land on, and are placed by buildLevelSpawns without ever
 // making a level unsolvable.
+import { createDamage } from '../js/damage.js';
 import { createRoomBank } from '../js/rooms.js';
 import { setDefaultBank, generateLevel, finalPathOk, LEVEL_W, LEVEL_H } from '../js/level.js';
 import { buildLevelSpawns, blockCanMove } from '../js/level-spawns.js';
@@ -151,7 +152,8 @@ export async function runBlocksTests(assert) {
     const world = room(30, 26, (x, y) => y >= 20);
     const props = createProps();
     const octo = createOctopus(10.5, 19.4);
-    const en = createEnemies();
+    const en = createEnemies(), dm = createDamage();
+    dm.register(en.family); props.setDamage(dm); // 2026-10-08: blocks crush creature bodies through the shared damage entry
     const crab = en.spawnAt('crab', 20.5, 19.5, 'floor');
     props.add(PK_BLOCK, 10.5, 3);
     props.add(PK_BLOCK, 20.5, 3);

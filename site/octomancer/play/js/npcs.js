@@ -17,6 +17,8 @@ import { hurtOctopus, heavyHitOctopus } from './octopus.js';
 import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
 import { shopAggro } from './shop-aggro.js';
 import { createTalk, say, talkStep } from './speech.js';
+import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
+import { octoHit, BLAST_REACH } from './damage.js';
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
 export const NPC_IDS = ['', 'marlo', 'pip', 'quill', 'host'];
@@ -24,8 +26,10 @@ export const NPC_KINDS = ['', 'npc-marlo', 'npc-pip', 'npc-quill', 'npc-host'];
 export const NPC_CAP = 8;
 export const HARPOON_CAP = 4;
 /** Health pools (hearts of damage taken before they die). A bomb does ~6 at its centre, a dash 2. */
-export const NPC_HP = [0, 6, 2, 4, 5];
-export const BLAST_DMG = 6, DASH_DMG = 2;
+export const NPC_HP = [0, rowOf('marlo').hp, rowOf('pip').hp, rowOf('quill').hp, rowOf('host').hp]; // creature-rules.js: 6, 2, 4, 5
+// 2026-10-08: a bomb is the table's bomb now (30 inside its radius: it kills any NPC it reaches, like any fish; out to twice the
+// radius only a shove); a dash is the table's dash (2)
+export const BLAST_DMG = SOURCES.bomb.dmg, DASH_DMG = SOURCES.dash.dmg;
 /** Body radius, and the body centre relative to the anchor (Marlo, Quill and the host are placed by their feet, Pip by his centre). */
 export const NPC_RADIUS = [0, 0.5, 0.3, 0.6, 0.55];
 export const NPC_CENTER_DY = [0, -0.55, 0, -0.65, -0.45];
@@ -76,6 +80,7 @@ export function createNpcs(world, opts = {}) {
     flash: new Float32Array(N), immune: new Float32Array(N), flags: new Uint8Array(N), prot: new Uint8Array(N), placed: new Uint8Array(N),
     fixed: new Uint8Array(N), dashHit: new Int32Array(N), attacks: new Uint8Array(N), lastX: new Float32Array(N), lastY: new Float32Array(N),
     blocked: new Float32Array(N), lungeX: new Float32Array(N), lungeY: new Float32Array(N), biteDone: new Uint8Array(N),
+    hzCool: new Float64Array(N), blame: new Float64Array(N), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
   };
   const talks = []; for (let i = 0; i < N; i++) talks.push(createTalk());
   const hp = { // harpoons in flight
@@ -121,7 +126,7 @@ export function createNpcs(world, opts = {}) {
     d.hp[i] = moods.hp[who] >= 0 ? moods.hp[who] : NPC_HP[who];
     d.hostile[i] = 0; d.state[i] = ST_CALM; d.t[i] = 0; d.reload[i] = 0.6; d.aimT[i] = 0; d.aimAng[i] = 0; d.aimLen[i] = 0; d.face[i] = 1;
     d.flash[i] = 0; d.immune[i] = 0; d.flags[i] = 0; d.prot[i] = 0; d.placed[i] = 1; d.fixed[i] = fixed ? 1 : 0; d.dashHit[i] = -1; d.attacks[i] = 0;
-    d.blocked[i] = 0; d.biteDone[i] = 0; angrySaid[i] = 0;
+    d.blocked[i] = 0; d.biteDone[i] = 0; angrySaid[i] = 0; d.hzCool[i] = 0; d.blame[i] = 0;
     const tk = talks[i]; tk.q.length = 0; tk.left = 0; tk.text = ''; tk.total = 0;
     if (hostile || moods.hostile[who]) setHostile(i, false);
     return i;
@@ -146,17 +151,32 @@ export function createNpcs(world, opts = {}) {
   /** Is this NPC shielded from every hit right now (still sealed in rock, caged, or just freed)? */
   const shielded = (i) => d.immune[i] > 0 || (d.flags[i] & (FL_SEALED | FL_CAGED)) !== 0;
 
-  /** Damage slot i. Returns true when it took the hit. */
-  function damage(i, dmg, src, fx, fy) {
+  /**
+   * 2026-10-08, the one way an NPC takes a hit: creature-rules.js resolveHit for its row and `src` (an unknown src, a test hook,
+   * counts as raw damage). Nothing reaches a shielded NPC (sealed, caged, just freed). Only a hit the octopus is to blame for
+   * (byOcto) turns a calm NPC hostile; a boulder an enemy set off, an eel's shock or spikes hurt quietly. A shove (no damage)
+   * only moves it. Returns the damage dealt.
+   */
+  function applyNpcHit(i, src, fx, fy, dmg = -1, knockScale = 1, byOcto = true) {
+    if (!d.used[i] || shielded(i)) return 0;
+    const o = resolveHit(NPC_IDS[d.who[i]], SOURCES[src] ? src : 'ink', SOURCES[src] ? dmg : Math.max(0, dmg));
+    if (o.ignore) return 0;
+    let dx = d.x[i] - fx, dy = cyOf(i) - fy, L = Math.hypot(dx, dy);
+    if (L < 1e-3) { dx = 0; dy = -1; L = 1; }
+    const kick = Math.max(o.knock * Math.max(0, knockScale), o.dmg > 0 ? KNOCK * 0.5 : 0);
+    d.vx[i] += dx / L * kick; d.vy[i] += dy / L * kick;
+    if (o.dmg <= 0) return 0;
+    damage(i, o.dmg, src, byOcto);
+    return o.dmg;
+  }
+  /** Apply `dmg` (already through the table) to slot i. Returns true when it took the hit. */
+  function damage(i, dmg, src, byOcto = true) {
     if (!d.used[i] || shielded(i) || dmg <= 0) return false;
     d.hp[i] -= dmg; moods.hp[d.who[i]] = d.hp[i];
     d.flash[i] = 0.22;
-    let dx = d.x[i] - fx, dy = cyOf(i) - fy, L = Math.hypot(dx, dy);
-    if (L < 1e-3) { dx = 0; dy = -1; L = 1; }
-    d.vx[i] += dx / L * KNOCK; d.vy[i] += dy / L * KNOCK;
     const wasHostile = d.hostile[i] === 1;
-    if (!wasHostile) setHostile(i, true);
-    events.push({ type: 'hurt', who: d.who[i], x: d.x[i], y: cyOf(i), dmg, src });
+    if (!wasHostile && byOcto) setHostile(i, true);
+    events.push({ type: 'hurt', who: d.who[i], x: d.x[i], y: cyOf(i), dmg, src, quiet: !byOcto });
     if (d.hp[i] <= 0) { kill(i); return true; }
     // hurt line; a hub resident that is already angry keeps refusing instead
     say1(i, pickLine(i, hub && wasHostile ? 'angry' : 'hurt'));
@@ -258,7 +278,7 @@ export function createNpcs(world, opts = {}) {
         d.t[i] -= dt; d.vx[i] = d.lungeX[i] * LUNGE_SPEED; d.vy[i] = d.lungeY[i] * LUNGE_SPEED; advance(i, dt);
         if (!d.biteDone[i] && !octo.dead && Math.hypot(octo.x - d.x[i], octo.y - cyOf(i)) < reach) {
           d.biteDone[i] = 1;
-          if (hurtOctopus(octo, d.x[i], cyOf(i), NPC_CAUSE[w])) events.push({ type: 'bite', who: w, x: d.x[i], y: cyOf(i) });
+          if (octoHit(octo, 'bite', d.x[i], cyOf(i), NPC_CAUSE[w])) events.push({ type: 'bite', who: w, x: d.x[i], y: cyOf(i) });
         }
         if (d.t[i] <= 0) { d.state[i] = ST_RECOVER; d.t[i] = RECOVER_S; }
         break;
@@ -294,7 +314,7 @@ export function createNpcs(world, opts = {}) {
       for (let k = 1; k <= n && !ended; k++) {
         const px = hp.x[h] + (nx - hp.x[h]) * k / n, py = hp.y[h] + (ny - hp.y[h]) * k / n;
         if (world.isSolid(px + c * 0.15, py + s * 0.15)) { events.push({ type: 'harpoonHit', x: px, y: py, rock: true }); ended = true; break; }
-        if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && heavyHitOctopus(octo, px - c, py - s, 'harpoon')) {
+        if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && octoHit(octo, 'harpoon', px - c, py - s, 'harpoon')) {
           events.push({ type: 'harpoonHit', x: px, y: py, rock: false }); ended = true;
         }
       }
@@ -332,15 +352,16 @@ export function createNpcs(world, opts = {}) {
     find,
     setKeeper(x, y) { keeperX = x; keeperY = y; },
 
-    /** A bomb blast at (x, y) with radius R: damage falls off linearly from BLAST_DMG; rock between shields. Returns slots hurt. */
+    /** A bomb blast at (x, y) with radius R, by the table's rule (damage.js blast): inside R the bomb, out to 2R a shove; rock between shields. Returns slots hurt. */
     blast(x, y, R) {
       let n = 0;
+      const reach = R * BLAST_REACH;
       for (let i = 0; i < N; i++) {
         if (!d.used[i]) continue;
-        const dist = Math.hypot(d.x[i] - x, cyOf(i) - y);
-        if (dist > R) continue;
+        const dist = Math.max(0, Math.hypot(d.x[i] - x, cyOf(i) - y) - NPC_RADIUS[d.who[i]] * 0.5);
+        if (dist > reach) continue;
         if (!clear(x, y, d.x[i], cyOf(i))) continue;
-        if (damage(i, BLAST_DMG * (1 - dist / R), 'bomb', x, y)) n++;
+        if (applyNpcHit(i, 'bomb', x, y, dist <= R ? -1 : 0, 1 - dist / reach, true) > 0) n++;
       }
       if (keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= R && clear(x, y, keeperX, keeperY)) onKeeper('bomb');
       return n;
@@ -352,13 +373,29 @@ export function createNpcs(world, opts = {}) {
         if (!d.used[i]) continue;
         if (Math.hypot(d.x[i] - x, cyOf(i) - y) > r + NPC_RADIUS[d.who[i]]) continue;
         if (!clear(x, y, d.x[i], cyOf(i))) continue;
-        if (damage(i, dmg, src, x, y)) n++;
+        if (applyNpcHit(i, src, x, y, dmg, 1, true) > 0) n++;
       }
       if (keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= r + 0.6 && clear(x, y, keeperX, keeperY)) { onKeeper(src); n++; }
       return n;
     },
     /** Test hook: hurt one NPC directly. */
-    hurt(who, dmg, src = 'test', idx = 0) { const i = find(who, idx); return i >= 0 ? damage(i, dmg, src, d.x[i], cyOf(i) + 1) : false; },
+    hurt(who, dmg, src = 'test', idx = 0) { const i = find(who, idx); return i >= 0 ? applyNpcHit(i, src, d.x[i], cyOf(i) + 1, dmg, 1, true) > 0 : false; },
+    /** 2026-10-08: the one way an NPC slot takes a hit (creature-rules.js); see applyNpcHit. */
+    applyHit: applyNpcHit,
+    /** The damage.js family adapter (register it with damage.register). */
+    family: {
+      name: 'npc',
+      count() { return N; },
+      view(i, V) {
+        if (!d.used[i]) return false;
+        V.kind = NPC_IDS[d.who[i]]; V.x = d.x[i]; V.y = cyOf(i); V.r = NPC_RADIUS[d.who[i]]; V.vx = d.vx[i]; V.vy = d.vy[i]; V.stun = 0;
+        V.shut = false; V.cool = d.hzCool[i]; V.blame = d.blame[i];
+        return true;
+      },
+      apply(i, src, fx, fy, dmg, knockScale, byOcto) { return applyNpcHit(i, src, fx, fy, dmg, knockScale, byOcto); },
+      push(i, ax, ay, mode) { if (mode === 'knock') { d.vx[i] += ax; d.vy[i] += ay; } else { d.x[i] += ax; d.y[i] += ay; } },
+      setTimers(i, cool, blame) { if (cool >= 0) d.hzCool[i] = cool; if (blame >= 0) d.blame[i] = blame; },
+    },
 
     /** One fixed step after the octopus moved. */
     step(octo, dt) {
@@ -378,7 +415,7 @@ export function createNpcs(world, opts = {}) {
         // dash contact at speed, once per dash; not while sealed / caged, not Pip at your side, not a hub resident who is talking
         if (fast && d.dashHit[i] !== dashId && Math.hypot(octo.x - d.x[i], octo.y - cyOf(i)) < OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) {
           const safe = (d.flags[i] & FL_FOLLOWING) || (hub && (d.flags[i] & FL_TALKING) && !d.hostile[i]);
-          if (!safe && !shielded(i)) { d.dashHit[i] = dashId; damage(i, DASH_DMG, 'dash', octo.x, octo.y); if (!d.used[i]) continue; }
+          if (!safe && !shielded(i)) { d.dashHit[i] = dashId; applyNpcHit(i, 'dash', octo.x, octo.y); if (!d.used[i]) continue; }
         }
         if (!d.hostile[i]) continue;
         if (hub) { if (d.state[i] === ST_FLEE) flee(i, octo, dt); else drift(i, dt); continue; }

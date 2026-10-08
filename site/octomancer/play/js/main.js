@@ -64,7 +64,9 @@ import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
-import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
+import { createDamage, proxyFamily } from './damage.js';
+import { CREATURES, SOURCES, resolveHit } from './creature-rules.js';
+import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
@@ -250,13 +252,19 @@ let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
 const blockChunks = new Set(); // chunks whose 'block' spawns are already props
 let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubble); idle in endless mode
-props.setEnemyKiller((e) => enemies.kill(e, 'crush'));
 let corpses = createCorpses(); // v2: what dead enemies and NPCs leave behind (sinks, settles, fades; no item drops)
 let hazards = createHazards(V2 ? props : null);
-if (V2) { enemies.setHazardData(hazards.data); wireHazardVictims(); }
+if (V2) enemies.setHazardData(hazards.data);
 let creatures = createCreatures(); // v2: the giant clam and the tentacle (creatures.js)
 let loot = createLoot(V2 ? props : null);
 let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
+// 2026-10-08: the shared damage entry (damage.js, creature-rules.js); see wireDamage
+const damage = createDamage();
+damage.register(proxyFamily('enemy', () => enemies.family));
+damage.register(proxyFamily('creature', () => creatures.dmgFam || (creatures.dmgFam = creatures.family(() => octo))));
+damage.register(proxyFamily('npc', () => (npcs ? npcs.family : null)));
+damage.register(proxyFamily('keeper', () => (V2 && run && run.state === S_BIOME ? keepers.dmgFam || (keepers.dmgFam = keeperFamily(keepers)) : null)));
+if (V2) wireDamage();
 // materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
 if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
 let embedBaked = null; // the embedded set whose tiles were last marked for a re-bake
@@ -660,10 +668,11 @@ function step(dt) {
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) damage.tick(dt);
   if (V2) corpses.update(dt, world, hazards.data);
   if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
   if (V2 && !isSafeState(run)) {
-    hazards.update(dt, sim.time, octo, world, resident, enemyAll);
+    hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
@@ -675,7 +684,7 @@ function step(dt) {
       }
     }
   }
-  if (V2 && !isSafeState(run)) { creatures.update(dt, octo, world, resident); handleCreatureEvents(); }
+  if (V2 && !isSafeState(run)) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
   if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
@@ -686,7 +695,7 @@ function step(dt) {
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
     audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
-  bombs.update(dt, world, octo, enemies);
+  bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
@@ -705,12 +714,14 @@ function step(dt) {
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
     if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props);
-    if (V2 && run.state === S_BIOME) {
-      if (keepers.n) bombKeepers(keepers, ev.x, ev.y, BOMB_RADIUS);
-      if (world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
+    // 2026-10-08: the creatures, NPCs and keepers already took the blast inside bombs.update (damage.js blast, by the creature table)
+    if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
+    if (V2 && npcs) npcs.drain(onNpcEvent);
+    if (V2 && !isSafeState(run)) {
+      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2);
+      for (let i = 0; i < creatures.data.n; i++) creatures.releaseNear(i, ev.x, ev.y, BOMB_RADIUS, octo); // a tentacle lets a held octopus go
+      handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS);
     }
-    if (V2 && npcs) { npcs.blast(ev.x, ev.y, BOMB_RADIUS); npcs.drain(onNpcEvent); } // V2-PLAN 16: friendly NPCs are hurt by blasts (rock shields them)
-    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); creatures.blast(ev.x, ev.y, BOMB_RADIUS, octo); handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS); }
   }
   for (const ev of enemies.events) {
     if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
@@ -1012,13 +1023,13 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     decor = createDecor(world.width, world.chunkHeight);
     enemies = createEnemies();
     props = createProps();
-    props.setEnemyKiller((e) => enemies.kill(e, 'crush')); // materials: a falling block's victim leaves a corpse
     blockChunks.clear();
     corpses = createCorpses();
     hazards = createHazards(V2 ? props : null);
-    if (V2) { enemies.setHazardData(hazards.data); wireHazardVictims(); }
+    if (V2) enemies.setHazardData(hazards.data);
     creatures = createCreatures();
     loot = createLoot(V2 ? props : null);
+    if (V2) wireDamage();
     embedded = createEmbedded(V2 ? props : null);
     if (AUTO) autofire = createAutofire();
     bombs = createBombs(V2 ? props : null);
@@ -1497,6 +1508,9 @@ function handleCreatureEvents() {
       default: break;
     }
   }
+  // handled once: a creature can now be hit between its own updates (a boulder, a block, a shock, a bomb, ink: damage.js), and
+  // this runs after each of those; without the clear a pearl or a corpse could be taken twice in one step
+  creatures.events.length = 0;
 }
 
 // --- round 31: loot and secrets (js/loot.js) ---
@@ -1750,40 +1764,12 @@ function setupKeepers(spec) {
  * Registered for other modules as shop-aggro.js shopAggro(reason). Returns true when this call angered them.
  */
 /**
- * Hazards that crush (hazards.js crushUnder): hurt every NPC and shopkeeper the falling boulder touches, once per victim (`mask` holds
- * the bits already hit: NPC list position k, keeper i as bit 8 + i). Returns the new mask.
- * SHOPKEEPER RULE: he takes the damage always, but turns on the octopus only when she caused the fall (octoCaused: she stood under
- * the boulder or her bomb released it). The keeper's 'hurt' / 'killed' events of an enemy-triggered boulder are marked quiet and
- * handleKeeperEvents skips shopAggro for them. (A keeper killed that way still leaves his shells.)
+ * 2026-10-08, unified creature rules: one shared damage entry (damage.js) for every creature body. Its families forward to this
+ * level's systems (proxyFamily), so they are registered once; the hazards, props, loot traps and bombs reach the bodies through it.
  */
-function boulderBodies(x, y, r, octoCaused, mask) {
-  const BOULDER_NPC_DMG = 4, BOULDER_KEEPER_DMG = 10;
-  if (npcs) {
-    const list = npcs.list();
-    for (let k = 0; k < list.length && k < 8; k++) {
-      const n = list[k];
-      if (n.dead || (mask & (1 << k)) || Math.hypot(n.x - x, n.cy - y) > r + 0.5) continue;
-      mask |= 1 << k;
-      npcs.hurt(n.who, BOULDER_NPC_DMG, 'rock', n.idx);
-    }
-  }
-  if (V2 && run && run.state === S_BIOME) {
-    for (let i = 0; i < keepers.n && i < 8; i++) {
-      if (keepers.mode[i] === KM_DEAD || (mask & (1 << (8 + i))) || Math.hypot(keepers.x[i] - x, keepers.y[i] - y) > r + KEEPER_R) continue;
-      mask |= 1 << (8 + i);
-      const before = keepers.events.length, mode0 = keepers.mode[i];
-      hitKeeper(keepers, i, HIT_HEAVY, BOULDER_KEEPER_DMG, x, y - 1);
-      if (!octoCaused) {
-        for (let e = keepers.events.length - 1; e >= before; e--) { if (keepers.events[e].type === 'roused') keepers.events.splice(e, 1); else keepers.events[e].quiet = true; }
-        if (keepers.mode[i] === KM_ANGRY && mode0 !== KM_ANGRY) { keepers.mode[i] = mode0; keepers.roused[i] = 0; } // not roused: the octopus did not do it
-      }
-    }
-  }
-  return mask;
+function wireDamage() {
+  hazards.setDamage(damage); props.setDamage(damage); loot.setDamage(damage);
 }
-/** Hand a fresh hazards instance the ways to kill enemies by the regular path and to hurt NPCs and shopkeepers. */
-function wireHazardVictims() { hazards.setVictims({ kill: (e, reason) => enemies.kill(e, reason), bodies: boulderBodies }); }
-
 function shopAggro(reason) {
   if (!V2 || !run || run.state !== S_BIOME) return false;
   const first = !run.shopAggro;
@@ -1878,7 +1864,7 @@ function handleKeeperEvents() {
       case 'hurt':
         if (ev.kind === HIT_BOMB || ev.kind === HIT_HEAVY) particles.deathPoof(ev.x, ev.y, '#f2a66a');
         else particles.bouncePuff(ev.x, ev.y - 0.3, 0, -1); // it glanced off his shell
-        if (!ev.quiet) shopAggro('hurt'); // quiet: an enemy's boulder hit him (boulderBodies)
+        if (!ev.quiet) shopAggro('hurt'); // quiet: the octopus is not to blame (a boulder a creature set off, spikes he ran onto: creature-rules.js)
         break;
       case 'killed':
         particles.deathPoof(ev.x, ev.y, '#e8622a'); particles.bombDebris(ev.x, ev.y);
@@ -2309,6 +2295,24 @@ window.__octo = {
   shopAggro(reason) { return shopAggro(reason || 'test'); },
   /** Test hook: hit keeper i ('ink' | 'dash' | 'bomb' | 'heavy', damage before his resistance); returns the damage dealt. */
   hitKeeper(i, kind, dmg) { return hitKeeper(keepers, i, { ink: HIT_INK, dash: HIT_DASH, bomb: HIT_BOMB, heavy: HIT_HEAVY }[kind] || HIT_INK, dmg, octo.x, octo.y); },
+  /** 2026-10-08, unified creature rules: the creature and source tables (creature-rules.js), read-only. */
+  creatureRules() { return { creatures: CREATURES, sources: SOURCES }; },
+  /** What `src` would do to a body of `kind` (creature-rules.js resolveHit), as a plain object. */
+  resolveHit(kind, src, dmg = -1, shut = false) { return { ...resolveHit(kind, src, dmg, shut) }; },
+  /** Test / debug hook: hit body i of a damage family ('enemy' | 'creature' | 'npc' | 'keeper') with `src` through the shared
+   * entry, from just under it (byOcto: undefined = the source's own blame). Returns the damage dealt. */
+  damageHit(family, i, src, dmg = -1, byOcto = undefined) {
+    const f = damage.family(family);
+    if (!f) return 0;
+    if (f.begin) f.begin();
+    if (!f.view(i, damage.view)) return 0;
+    const r = damage.hit(f, i, src, damage.view.x, damage.view.y + 0.5, dmg, 1, byOcto);
+    if (npcs) npcs.drain(onNpcEvent);
+    handleCreatureEvents();
+    return r;
+  },
+  /** Test / debug hook: every live body the shared damage entry sees (family, index, kind, position). */
+  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r })); return out; },
   /** Test hook: stop / restart the real-time loop without the pause overlay (frame-by-frame captures with stepDraw). */
   freeze(on) { loop.setPaused(!!on); return loop.paused; },
   /** Test hook: n fixed steps, then draw one frame (works while frozen). */

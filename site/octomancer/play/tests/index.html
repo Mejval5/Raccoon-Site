@@ -246,6 +246,10 @@ await runDamageTests(assert);
 import { runNpcTests } from './npcs.test.js';
 await runNpcTests(assert);
 
+// --- 2026-10-08: unified creature rules (one creature table, one damage entry) ---
+import { runCreatureRulesTests } from './creature-rules.test.js';
+await runCreatureRulesTests(assert);
+
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
