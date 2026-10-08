@@ -15,6 +15,7 @@
 // (`CrabFlatten`/`CrabFlatten2`), spike horns (`NPC6`), manta (`NPC10` +
 // `NPC10Ball`). OVERNIGHT.md §4 M6.
 
+import { crumbleAt, CR_SHOT } from './fragile.js';
 import {
   URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_CHASE_SPEED,
   PIRANHA_CHASE_RANGE, CANNON_RADIUS, CANNON_RANGE,
@@ -848,7 +849,7 @@ export function createEnemies() {
       if (s.dead) continue;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
-      if (world.isSolid(s.x, s.y)) { s.dead = true; continue; }
+      if (world.isSolid(s.x, s.y)) { crumbleAt(world, s.x, s.y, CR_SHOT); s.dead = true; continue; } // fish bone crumbles (fragile.js)
       if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
         octoHit(octo, 'shot', s.x, s.y, 'shot');
         s.dead = true;

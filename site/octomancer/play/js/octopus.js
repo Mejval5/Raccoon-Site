@@ -25,6 +25,7 @@ import {
   HEAVY_HIT_DMG, HEAVY_KNOCKBACK, STUN_S, STUN_KNOCKBACK, STUN_INVULN_EXTRA, STUN_SINK, STUN_DRAG, STUN_BOUNCE, STUN_SPIN, STUN_RECOVER,
 } from './config.js';
 import { applyImpulse, applyDrag, integrateWithCollision, len, clamp, contact } from './physics.js';
+import { dashCrumble } from './fragile.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -378,6 +379,7 @@ export function stepOctopus(o, input, dt, grid) {
   applyDrag(o, OCTO_LINEAR_DRAG, dt);
 
   if (!o.feel) { integrateWithCollision(o, dt, grid); return; }
+  if (o.dashT > 0) dashCrumble(o, dt, grid); else o.crunched = 0; // fish bone in front of a fast dash crumbles (fragile.js): the dash goes through
   const pvx = o.vx, pvy = o.vy, pspeed = len(pvx, pvy);
   contact.hit = 0;
   integrateWithCollision(o, dt, grid);

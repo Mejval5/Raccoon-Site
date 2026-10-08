@@ -215,6 +215,13 @@ import { runMaterialsTests } from './materials.test.js';
   const res = await fetch('../data/biome1-rooms.json');
   await runMaterialsTests(assert, createRoomBank(await res.json()));
 }
+// --- 2026-10-08: fragile fish-bone blocks (dash, projectiles, props, bombs, boulders; placement) ---
+import { runFragileTests } from './fragile.test.js';
+{
+  const { createRoomBank } = await import('../js/rooms.js');
+  const bank = createRoomBank(await (await fetch('../data/biome1-rooms.json')).json());
+  await runFragileTests(assert, bank);
+}
 
 // --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
 import { runShopTests } from './shop.test.js';

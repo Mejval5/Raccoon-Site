@@ -34,8 +34,8 @@ export async function runJournalTests(assert) {
 
   // --- round 38: tabs, art, counters ---
   assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
-  assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells and loot); scenery props (rune, fossil, bush, weed, boulder) sit in Places beside the places',
-    TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 5 &&
+  assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells and loot); scenery props (rune, fossil, bush, weed, boulder, fish-bone wall) sit in Places beside the places',
+    TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 6 &&
     ENTRIES.filter((e) => TABS.find((t) => t.id === 'items').cats.includes(e.cat)).every((e) => !e.id.startsWith('prop-')));
   assert('journal data (r39): descriptions match the game (no manta spit, no piranha chase, no ceiling-only horns, no score for shells)',
     !/spits/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) && /dives/.test(ENTRIES.find((e) => e.id === 'creature-manta').text) &&

@@ -148,6 +148,16 @@ export function createSfx(audio) {
         noiseBurst(audio, ctx, dest, { dur: 0.2, gain: 0.22, filterFreq: 4200 });
       });
     },
+    /** Fragile terrain: a fish-bone block crumbling: a dry, crackly crunch (a few high clicks over a short noise burst); a
+     *  dash through it adds a low knock. */
+    crunch(dash = false) {
+      play((ctx, dest) => {
+        noiseBurst(audio, ctx, dest, { dur: 0.12, gain: 0.26, filterFreq: 3400 });
+        tone(audio, ctx, dest, { freq: 1500 + Math.random() * 500, sweep: 700, dur: 0.035, type: 'square', gain: 0.05 });
+        if (dash) tone(audio, ctx, dest, { freq: 170, sweep: 80, dur: 0.1, type: 'triangle', gain: 0.18 });
+        for (let k = 1; k <= 3; k++) later(() => play((c, d) => noiseBurst(audio, c, d, { dur: 0.03, gain: 0.14, filterFreq: 4200 - k * 600 })), 22 * k + Math.random() * 18);
+      });
+    },
     bomb() {
       play((ctx, dest) => {
         noiseBurst(audio, ctx, dest, { dur: 0.35, gain: 0.35, filterFreq: 1200 });

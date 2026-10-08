@@ -17,9 +17,9 @@ import { getPatternTable, matchPatterns, selectSpawns } from './patterns.js';
 import { makeHazardRecord, hazardBlockers } from './hazards.js';
 import { makeCreatureRecord } from './creatures.js';
 import { makeLootRecord, RELIC_CHANCE, LK_POCKET } from './loot.js';
-import { planEmbedded } from './embed.js';
+import { planEmbedded, rollShellTier, rollItemCode, EK_SHELL, EK_ITEM, EMBED_GAP, EMBED_ITEMS_MAX, EMBED_MAX } from './embed.js';
 import { ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT, ROOM_W, ROOM_H } from './rooms.js';
-import { MAT_ROCK, MAT_BOMBABLE } from './materials.js';
+import { MAT_ROCK, MAT_BONE, MAT_BOMBABLE } from './materials.js';
 
 export const START_SAFE_RADIUS = 7;
 // Things that hurt from a distance stay out of reach of an idle octopus at the start: a cannon shot flies
@@ -203,6 +203,9 @@ function placeBlocks(level, t, runSeed, levelIndex, openCells, kept, spawns, inS
  * @param {{tiles:Uint8Array, startX:number, startY:number}} level from generateLevel
  * @returns {{spawns: any[], openCells: number}}
  */
+/** Fragile terrain: chance a fish-bone plug hides a find, and the share of those that are a carried item (the rest a nautilus or pearl). */
+export const BONE_FIND_CHANCE = 0.3, BONE_ITEM_SHARE = 0.15;
+
 export function buildLevelSpawns(level, runSeed, levelIndex) {
   const t = level.tiles;
   const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x5bd1e995));
@@ -521,6 +524,19 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       };
       for (const r of selectSpawns(table, hit, levelIndex, drng, buildDecor, occ, (p) => table.kind[p] === 'decor')) kept.push(r);
     }
+    // fragile terrain (fragile.js): nothing that sits on, hangs from or is carved into a surface may rest on fish bone
+    // (it would float once the bone crumbles): drop any enemy, trap, loot or decor with a fish-bone tile next to it
+    {
+      const boneNear = (x, y) => {
+        const tx = Math.floor(x), ty = Math.floor(y);
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          const xx = tx + ox, yy = ty + oy;
+          if (xx >= 0 && yy >= 0 && xx < W && yy < H && t[idx(xx, yy)] === MAT_BONE) return true;
+        }
+        return false;
+      };
+      kept = kept.filter((r) => r.type === 'plankton-swarm' || !boneNear(r.x, r.y));
+    }
     { // a jet and its strip stand or fall together (a filter above may have removed one of them)
       const cnt = new Map();
       for (const r of kept) if (r.pairId) cnt.set(r.pairId, (cnt.get(r.pairId) || 0) + 1);
@@ -545,6 +561,25 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
       else if (r.type === 'decor' && (r.dk === 'fossil' || r.dk === 'rune')) mark(tx - 1, ty - 1, tx + 1, ty + 1);
     }
     for (const r of planEmbedded(t, W, H, BORDER, reached, (x, y) => block[idx(x, y)] === 1, runSeed, levelIndex)) spawns.push(r);
+    // fragile terrain: now and then a fish-bone plug hides a valuable shell (nautilus or pearl: only the goggles see it) or,
+    // rarely, a carried item; it drops out when the bone crumbles (embed.js releases a find whose tile is gone)
+    // (the buried-treasure rules hold: finds EMBED_GAP apart, at most EMBED_MAX of them, at most the level's item cap)
+    const plugs = level.bonePlugs || [];
+    const brng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xb0e5));
+    const finds = spawns.filter((r) => r.type === 'embed');
+    let items = finds.filter((r) => r.ek === EK_ITEM).length;
+    const itemsMax = EMBED_ITEMS_MAX + (levelIndex >= 2 ? 1 : 0);
+    for (let k = 0; k < plugs.length; k += 2) {
+      const r = brng(), r2 = brng();
+      if (r >= BONE_FIND_CHANCE) continue;
+      const x = plugs[k], y = plugs[k + 1];
+      if (t[idx(x, y)] !== MAT_BONE || finds.length >= EMBED_MAX) continue; // the level's find count stays inside EMBED_MAX
+      if (finds.some((f) => Math.max(Math.abs(Math.floor(f.x) - x), Math.abs(Math.floor(f.y) - y)) < EMBED_GAP)) continue;
+      let rec;
+      if (r < BONE_FIND_CHANCE * BONE_ITEM_SHARE && items < itemsMax) { rec = { type: 'embed', x: x + 0.5, y: y + 0.5, ek: EK_ITEM, sub: rollItemCode(r2) }; items++; }
+      else rec = { type: 'embed', x: x + 0.5, y: y + 0.5, ek: EK_SHELL, sub: Math.max(3, rollShellTier(levelIndex + 2, r2)) };
+      spawns.push(rec); finds.push(rec);
+    }
   }
   return { spawns, openCells: openCells.length };
 }
