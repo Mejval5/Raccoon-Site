@@ -18,7 +18,7 @@ function pixels(img) {
 
 export async function runV2ArtTests(assert) {
   const keys = Object.keys(V2_ART_FILES);
-  assert('v2 art: 19 images are registered (12 generated + the whirlpool sheet; materials: 3 generated textures + 3 block sprites by Milan), all under img/v2 as webp', keys.length === 19 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
+  assert('v2 art: 18 images are registered (12 generated + the whirlpool sheet; materials: 4 generated textures incl. the fish bone + the push block by Milan), all under img/v2 as webp', keys.length === 18 && keys.every((k) => /^[a-z0-9-]+\.webp$/.test(V2_ART_FILES[k])));
   ensureV2Art();
   const rockEl = art.rock;
   ensureV2Art();
@@ -26,7 +26,7 @@ export async function runV2ArtTests(assert) {
   await Promise.all(keys.map((k) => new Promise((res) => { if (art[k].complete) res(); else { art[k].addEventListener('load', res, { once: true }); art[k].addEventListener('error', res, { once: true }); } })));
   assert('v2 art: every image loads', keys.every((k) => art[k] && art[k].naturalWidth > 16));
   // vibe fixes: the backdrop layers and the opaque material textures are drawn from ImageBitmaps decoded off the main thread
-  const bmKeys = ['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB'];
+  const bmKeys = ['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone'];
   for (let i = 0; i < 100 && !bmKeys.every((k) => artBitmap(k)); i++) await new Promise((r) => setTimeout(r, 20));
   assert('v2 art: the backdrop and material images become ImageBitmaps (decoded off the main thread; an <img> can be decoded again inside a frame)', typeof createImageBitmap !== 'function' || bmKeys.every((k) => artImg(k) instanceof ImageBitmap && artImg(k).width === art[k].naturalWidth));
 

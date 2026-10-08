@@ -17,6 +17,7 @@
 
 import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
+import { MAT_FRAGILE, CR_BOMB, CR_BOULDER } from './fragile.js';
 import { planPools } from './pool.js';
 import { createFresh } from './fresh.js';
 import {
@@ -208,6 +209,8 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
 
   const resident = [{ index: 0, yOffset: 0, chunk }];
   const fresh = createFresh(); // freshly broken edges and silt haze (fresh.js)
+  const crumbs = []; // fish-bone tiles broken this step: tx, ty, cause (fragile.js CR_*)
+  const logCrumb = (x, y, cause) => { if (crumbs.length < 600) crumbs.push(x, y, cause); }; // capped: nothing drains it in a bare test world
 
   return {
     v2: true,
@@ -239,8 +242,10 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     breakTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
       if (border(x, y)) return false;
-      if (!MAT_BOMBABLE[tiles[y * W + x]]) return false;
+      const m = tiles[y * W + x];
+      if (!MAT_BOMBABLE[m]) return false;
       setTile(x, y, 0);
+      if (MAT_FRAGILE[m]) logCrumb(x, y, CR_BOMB); // fish bone: shards and a crunch like any other break (main.js)
       fresh.add(x, y);
       if (inShop(x, y)) shopBroken++; // the stall breaks like any rock: its pedestals fall, the keeper is angered (main.js, shop.js)
       return true;
@@ -248,12 +253,26 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     /** A falling boulder smashes a wooden platform or a bone block it lands on. False for anything else. */
     smashTile(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
-      if (border(x, y) || !MAT_BOULDER_BREAKS[tileAt(x, y)]) return false;
+      const m = tileAt(x, y);
+      if (border(x, y) || !MAT_BOULDER_BREAKS[m]) return false;
       setTile(x, y, 0);
+      if (MAT_FRAGILE[m]) logCrumb(x, y, CR_BOULDER);
       fresh.add(x, y);
       if (inShop(x, y)) shopBroken++; // a smashed beam of the stall counts like a bombed one
       return true;
     },
+    /** Fragile terrain (fragile.js): a fish-bone tile crumbles from a dash, a projectile or a flung prop (`cause` CR_*).
+     *  False for anything that is not fish bone. Logged for main.js (takeCrumbles). */
+    crumbleTile(tx, ty, cause = 0) {
+      const x = Math.floor(tx), y = Math.floor(ty);
+      if (border(x, y) || !MAT_FRAGILE[tileAt(x, y)]) return false;
+      setTile(x, y, 0);
+      fresh.add(x, y);
+      logCrumb(x, y, cause);
+      return true;
+    },
+    /** Fish-bone tiles broken since the last call, as a flat [tx, ty, cause, ...] list (main.js: shards, silt, crunch). */
+    takeCrumbles() { const out = crumbs.slice(); crumbs.length = 0; return out; },
     /** Material id at a tile (0 water). */
     materialAt(tx, ty) { return tileAt(Math.floor(tx), Math.floor(ty)); },
     /** Something drawn on this tile changed (embedded treasure, ...): its wall cell is baked again. */

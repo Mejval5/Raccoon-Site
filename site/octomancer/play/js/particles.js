@@ -14,7 +14,7 @@ const GOO_COLORS = ['#c0485e', '#e0607a'];
 export function createParticles() {
   const pool = new Array(POOL_SIZE);
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1, sticky: false, stuck: false, damp: 0.92, soft: 0 };
+    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1, sticky: false, stuck: false, damp: 0.92, soft: 0, shard: false, rot: 0, spin: 0 };
   }
   let cursor = 0;
   let shake = 0; // current screen-shake magnitude, world units (endless)
@@ -25,7 +25,7 @@ export function createParticles() {
     const p = pool[cursor];
     cursor = (cursor + 1) % POOL_SIZE; // ring buffer: oldest slot is reused first
     p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
-    p.life = life; p.maxLife = life; p.size = size; p.color = color; p.sticky = false; p.stuck = false; p.damp = 0.92; p.soft = 0;
+    p.life = life; p.maxLife = life; p.size = size; p.color = color; p.sticky = false; p.stuck = false; p.damp = 0.92; p.soft = 0; p.shard = false;
     return p;
   }
 
@@ -68,6 +68,24 @@ export function createParticles() {
         if (p) { p.damp = 0.985; p.soft = 1; } // drawn as a soft cloud (enemy-draw.js drawParticles), not a disc
       }
       shakeScreen(0.1 + 0.3 * Math.max(0, 1 - fromOcto / 14)); // a bigger shake the nearer the blast is to the octopus
+    },
+    /** Fragile terrain (fragile.js): a fish-bone tile crumbling at (x, y): 7-9 bone shards (short slivers that tumble, sink
+     * and bounce off rock, gone in about a second), thrown along (dx, dy) when a dash broke it, else every way, plus a few
+     * grey-green silt puffs that hang a moment. Reduced motion: fewer shards, no spin, no silt. */
+    boneShards(x, y, dx = 0, dy = 0) {
+      const calm = prefersReducedMotion(), dir = dx !== 0 || dy !== 0, base = Math.atan2(dy, dx);
+      const n = calm ? 4 : 7 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const a = dir ? base + (Math.random() - 0.5) * 1.9 : Math.random() * Math.PI * 2, speed = (dir ? 2.2 : 1.4) + Math.random() * 2.4;
+        const p = spawnOne(x + (Math.random() - 0.5) * 0.6, y + (Math.random() - 0.5) * 0.6, Math.cos(a) * speed, Math.sin(a) * speed - 0.8, 0.8 + Math.random() * 0.5, 0.1 + Math.random() * 0.08, i % 3 ? '#c9c2a8' : '#a9a58e');
+        if (p) { p.shard = true; p.damp = 0.985; p.rot = Math.random() * Math.PI; p.spin = calm ? 0 : (Math.random() - 0.5) * 14; }
+      }
+      if (calm) return;
+      for (let i = 0; i < 3; i++) {
+        const a = Math.random() * Math.PI * 2, r = Math.random() * 0.5, sp = 0.2 + Math.random() * 0.4;
+        const p = spawnOne(x + Math.cos(a) * r, y + Math.sin(a) * r, Math.cos(a) * sp + dx * 0.6, Math.sin(a) * sp - 0.1 + dy * 0.6, 1.2 + Math.random() * 0.8, 0.35 + Math.random() * 0.2, i % 2 ? 'rgba(136,132,112,0.38)' : 'rgba(118,132,118,0.38)');
+        if (p) { p.damp = 0.975; p.soft = 1; }
+      }
     },
     /** M7-1: a small ink puff kicked out behind the octopus on dash, in the
      * direction it dashed from (opposite `angle`). Skipped under reduced
@@ -197,6 +215,15 @@ export function createParticles() {
         if (!p.active) continue;
         p.life -= dt;
         if (p.life <= 0) { p.active = false; continue; }
+        if (p.shard) { // a bone sliver: sinks, tumbles, bounces off rock (never sticks or sinks into it)
+          p.vy += 6 * dt; p.vx *= p.damp; p.vy *= p.damp; p.rot += p.spin * dt;
+          const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+          if (isSolid && isSolid(nx, ny)) {
+            if (isSolid(nx, p.y)) p.vx *= -0.35; else p.x = nx;
+            if (isSolid(p.x, ny)) { p.vy *= -0.3; p.vx *= 0.7; p.spin *= 0.5; } else p.y = ny;
+          } else { p.x = nx; p.y = ny; }
+          continue;
+        }
         if (p.sticky) {
           if (p.stuck) continue;
           const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
