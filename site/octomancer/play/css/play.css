@@ -611,7 +611,7 @@ body {
   --bx: 50%; --by: 50%; --hole: 90px;
   justify-content: flex-end; align-items: center;
   padding: calc(64px + var(--safe-t)) calc(14px + var(--safe-r)) calc(14px + var(--safe-b)) calc(14px + var(--safe-l));
-  background: radial-gradient(circle at var(--bx) var(--by), rgba(4, 12, 18, 0) 0, rgba(4, 12, 18, 0) var(--hole), rgba(4, 12, 18, 0.3) calc(var(--hole) * 2.6));
+  background: none; /* the tint and its hole are drawn on the game canvas (main.js render), not here: a moving CSS gradient repainted the whole screen every frame */
   transition: opacity .4s ease;
 }
 .octo-gameover-overlay.octo-death-ui.is-pending { opacity: 0; visibility: hidden; transition: none; }

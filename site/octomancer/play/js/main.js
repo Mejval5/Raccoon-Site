@@ -892,6 +892,7 @@ function checkPerfStepDown() {
   }
 }
 
+let deathTintA = 0; // fade-in of the death tint (0..1)
 function render(alpha, frameMs) {
   checkPerfStepDown();
   const w = canvas.width, h = canvas.height;
@@ -923,8 +924,18 @@ function render(alpha, frameMs) {
   if (V2 && octo.dead) { // the clear hole in the death tint follows the body
     const a = octo.prevX + (octo.x - octo.prevX) * alpha, b = octo.prevY + (octo.y - octo.prevY) * alpha;
     const p = worldToScreen(renderer.camera, w, h, a, b);
-    ui.setDeathFocus(p.x / dpr, p.y / dpr, renderer.camera.pxPerUnit * 1.6 / dpr);
-  }
+    // The light tint with a clear hole around the body is drawn here on the game canvas: as a CSS radial gradient
+    // moved every frame it forced a full-screen repaint per frame and dropped the death screen to ~8 fps.
+    if (ui.gameOverPanelRect()) {
+      deathTintA = Math.min(1, deathTintA + frameMs / 400);
+      const hole = renderer.camera.pxPerUnit * 1.6;
+      const g = ctx.createRadialGradient(p.x, p.y, hole, p.x, p.y, hole * 2.6);
+      g.addColorStop(0, 'rgba(4, 12, 18, 0)');
+      g.addColorStop(1, `rgba(4, 12, 18, ${(0.3 * deathTintA).toFixed(3)})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    } else deathTintA = 0;
+  } else deathTintA = 0;
   if (entry && !holdDark) { // r45: the black hole closes on the whirlpool, on the entry's clock (interpolated like the octopus)
     const c = worldToScreen(renderer.camera, w, h, entry.cx, entry.cy);
     if (!entry.far) entry.far = farCorner(w, h, c.x, c.y);
