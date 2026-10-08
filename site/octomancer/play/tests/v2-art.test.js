@@ -1,7 +1,7 @@
 // Round 24: generated Shallows art (js/v2-art.js, img/v2/*.webp): every file loads, sprites carry alpha,
 // the rock tile is seamless, the counter slices add up, the draw code runs with the art and without it,
 // the banner title card shows, and endless mode does not fetch any of it.
-import { V2_ART_FILES, ensureV2Art, artImg, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS, whirlpoolSheetKey } from '../js/v2-art.js';
+import { V2_ART_FILES, ensureV2Art, artImg, artBitmap, art, artUrl, COUNTER_SLICES, ROCK_TILE_UNITS, whirlpoolSheetKey } from '../js/v2-art.js';
 import { WHIRL_SHEETS } from '../js/whirlpool-meta.js';
 import { DIVER_SCALE, drawShop, drawDiver, drawCritter, drawWallCue, drawPocketCracks } from '../js/v2-props-draw.js';
 import { drawV2Marks } from '../js/v2-draw.js';
@@ -24,23 +24,27 @@ export async function runV2ArtTests(assert) {
   ensureV2Art();
   assert('v2 art: loading is lazy and idempotent (only a v2 renderer calls it; a second call keeps the same images)', art.rock === rockEl);
   await Promise.all(keys.map((k) => new Promise((res) => { if (art[k].complete) res(); else { art[k].addEventListener('load', res, { once: true }); art[k].addEventListener('error', res, { once: true }); } })));
-  assert('v2 art: every image loads', keys.every((k) => artImg(k) && artImg(k).naturalWidth > 16));
+  assert('v2 art: every image loads', keys.every((k) => art[k] && art[k].naturalWidth > 16));
+  // vibe fixes: the backdrop layers and the opaque material textures are drawn from ImageBitmaps decoded off the main thread
+  const bmKeys = ['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB'];
+  for (let i = 0; i < 100 && !bmKeys.every((k) => artBitmap(k)); i++) await new Promise((r) => setTimeout(r, 20));
+  assert('v2 art: the backdrop and material images become ImageBitmaps (decoded off the main thread; an <img> can be decoded again inside a frame)', typeof createImageBitmap !== 'function' || bmKeys.every((k) => artImg(k) instanceof ImageBitmap && artImg(k).width === art[k].naturalWidth));
 
   // alpha sprites have transparent corners and opaque centre pixels; the opaque layers have none
   const alphaKeys = ['near', 'keeper', 'sign', 'pedestal', 'counter', 'crackVault', 'crackWall', 'board', 'questSign', 'banner', 'whirlpool'];
-  const clearShare = (k) => { const d = pixels(artImg(k)).data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 8) c++; return c / (d.length / 4); };
+  const clearShare = (k) => { const d = pixels(art[k]).data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 8) c++; return c / (d.length / 4); };
   assert('v2 art: keyed sprites keep real transparency (between 5 and 98 percent of pixels clear, no opaque key box)', alphaKeys.every((k) => { const c = clearShare(k); return c > 0.05 && c < 0.98; }));
   let magenta = 0;
-  for (const k of alphaKeys) { const d = pixels(artImg(k)).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 2] > 200 && d[i + 1] < 90) magenta++; }
+  for (const k of alphaKeys) { const d = pixels(art[k]).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 2] > 200 && d[i + 1] < 90) magenta++; }
   assert('v2 art: no key-colour (magenta) pixels are left opaque in any sprite', magenta < 40);
   const wsh = WHIRL_SHEETS[whirlpoolSheetKey()];
-  assert('v2 art: the whirlpool sheet in use is 7 columns x 3 rows of the cells its meta says (r44: 208 px, or 380 px for the DPR 2 desktop sheet)', artImg('whirlpool').naturalWidth === 7 * wsh.cell && artImg('whirlpool').naturalHeight === 3 * wsh.cell);
-  const far = pixels(artImg('far')).data;
+  assert('v2 art: the whirlpool sheet in use is 7 columns x 3 rows of the cells its meta says (r44: 208 px, or 380 px for the DPR 2 desktop sheet)', art['whirlpool'].naturalWidth === 7 * wsh.cell && art['whirlpool'].naturalHeight === 3 * wsh.cell);
+  const far = pixels(art['far']).data;
   let opaque = true; for (let i = 3; i < far.length; i += 4 * 97) if (far[i] !== 255) { opaque = false; break; }
   assert('v2 art: the far backdrop is fully opaque', opaque);
 
   // rock tile: seamless (opposite edges match about as well as neighbouring columns) and the same mid-blue as the rock fill
-  const rock = artImg('rock'), rd = pixels(rock), W = rock.naturalWidth, H = rock.naturalHeight;
+  const rock = art['rock'], rd = pixels(rock), W = rock.naturalWidth, H = rock.naturalHeight;
   const col = (x, y) => { const i = (y * W + x) * 4; return rd.data[i] + rd.data[i + 1] + rd.data[i + 2]; };
   let seam = 0, inner = 0;
   for (let y = 0; y < H; y++) { seam += Math.abs(col(0, y) - col(W - 1, y)); inner += Math.abs(col(W >> 1, y) - col((W >> 1) + 1, y)); }
@@ -49,7 +53,7 @@ export async function runV2ArtTests(assert) {
   const n = rd.data.length / 4; mr /= n; mg /= n; mb /= n;
   assert('v2 art: the rock tile averages a slate blue near the wall fill (58,84,142)', Math.abs(mr - 58) < 30 && Math.abs(mg - 84) < 30 && Math.abs(mb - 142) < 35 && mb > mr + 40);
   assert('v2 art: the rock tile spans a whole number of world units', Number.isInteger(ROCK_TILE_UNITS) && ROCK_TILE_UNITS >= 6);
-  assert('v2 art: counter slices add up to the counter strip width', COUNTER_SLICES.reduce((a, b) => a + b, 0) === artImg('counter').naturalWidth);
+  assert('v2 art: counter slices add up to the counter strip width', COUNTER_SLICES.reduce((a, b) => a + b, 0) === art['counter'].naturalWidth);
   assert('v2 art: artUrl points into img/v2', artUrl('x.webp').endsWith('/img/v2/x.webp'));
 
   // draw code runs with art loaded, with a frame count of zero throws, and never paints outside its canvas

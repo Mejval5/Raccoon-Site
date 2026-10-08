@@ -18,6 +18,7 @@
 import { generateLevel, LEVEL_W, LEVEL_H, BORDER } from './level.js';
 import { buildLevelSpawns, START_SAFE_RADIUS } from './level-spawns.js';
 import { planPools } from './pool.js';
+import { createFresh } from './fresh.js';
 import {
   traceOutlineLoops, chaikinSmoothLoop, loopsToSegments,
   OUTLINE_PAD, OUTLINE_SMOOTH_ITERATIONS, OUTLINE_SMOOTH_RATIO,
@@ -206,6 +207,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
   }
 
   const resident = [{ index: 0, yOffset: 0, chunk }];
+  const fresh = createFresh(); // freshly broken edges and silt haze (fresh.js)
 
   return {
     v2: true,
@@ -223,6 +225,8 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
     tileAt,
     authored,
     isBedrock: bedrock,
+    /** Freshly broken rock edges and silt haze of this level (fresh.js; main.js ages and draws them). */
+    fresh,
     isBreakable(tx, ty) {
       const x = Math.floor(tx), y = Math.floor(ty);
       return !border(x, y) && MAT_BOMBABLE[tileAt(x, y)] === 1;
@@ -237,6 +241,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       if (border(x, y)) return false;
       if (!MAT_BOMBABLE[tiles[y * W + x]]) return false;
       setTile(x, y, 0);
+      fresh.add(x, y);
       if (inShop(x, y)) shopBroken++; // the stall breaks like any rock: its pedestals fall, the keeper is angered (main.js, shop.js)
       return true;
     },
@@ -245,6 +250,7 @@ export function createLevelWorld(runSeed, levelIndex = 0, opts = null) {
       const x = Math.floor(tx), y = Math.floor(ty);
       if (border(x, y) || !MAT_BOULDER_BREAKS[tileAt(x, y)]) return false;
       setTile(x, y, 0);
+      fresh.add(x, y);
       if (inShop(x, y)) shopBroken++; // a smashed beam of the stall counts like a bombed one
       return true;
     },

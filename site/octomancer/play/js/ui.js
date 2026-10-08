@@ -160,7 +160,7 @@ export function createUI(root, handlers) {
     }
   }
 
-  let helpV2 = false;
+  let helpV2 = false, helpRetired = false;
   let heartsKey = '';
   // r43: the HUD is updated every frame; a textContent write replaces the text node and invalidates layout even when the string is the
   // same (about 4 per frame, and the Layout showed up in the transition frames on a phone), so a write happens only on a change
@@ -285,7 +285,7 @@ export function createUI(root, handlers) {
       promptEl.style.display = '';
     },
     /** Level title card ("Shallows 1-2"), optional small line under it (e.g. the seed); fades away by itself. */
-    showTitle(text, sub = '', ms = 2600) {
+    showTitle(text, sub = '', ms = 1500) {
       clearTimeout(titleTimer); clearTimeout(titleTimer2);
       titleText.textContent = text; titleSub.textContent = sub;
       titleSub.style.display = sub ? '' : 'none';
@@ -328,7 +328,9 @@ export function createUI(root, handlers) {
     /** v2: the game-over button returns to the hub. */
     setGameOverLabels(title, button) { goTitle.textContent = title; restartBtn.textContent = button; },
     hideControlsHelp() { controlsHelp.style.display = 'none'; },
-    showControlsHelp() { controlsHelp.style.display = ''; },
+    showControlsHelp() { controlsHelp.style.display = helpRetired ? 'none' : ''; },
+    /** Retire the bottom-left controls line for good (the player knows the controls; Settings still lists them). */
+    retireControlsHelp() { helpRetired = true; controlsHelp.style.display = 'none'; },
     showPause() { pause.overlayEl.style.display = 'flex'; },
     hidePause() { pause.overlayEl.style.display = 'none'; },
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none' && !gameover.overlayEl.classList.contains('is-pending'); },

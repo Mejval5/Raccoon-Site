@@ -1,6 +1,11 @@
 // Ink Jet: the octopus's basic ranged attack (V2-PLAN 3.1). A short-range stream of ink blobs.
 // Data-oriented: one fixed pool of typed arrays, nothing is allocated per shot or per frame.
 // Hazards (urchin, horns) and the Beholder have no hp, so a blob only splats on them and does no damage.
+//
+// Feedback (VIBE-REVIEW 3.5): the drawn blob is DRAW_SCALE times its hit radius and trails a wobbling tail with droplets;
+// a hit splats (main.js -> particles.inkSplat with the flight direction); a splat on rock leaves a stain that stays
+// SPLAT_LIFE seconds (SPLAT_CAP at once, oldest recycled); a hit enemy gets an `inkStain` timer (STAIN_LIFE) that
+// enemy-draw.js paints as dark blotches over its sprite.
 import { hasLineOfSight } from './pathfind.js';
 import { cullView, cullFlags, visibleAt } from './cull.js';
 
@@ -16,6 +21,12 @@ const POOL = 32;
 const MAX_SPLAT = 32; // splat points per update (x,y pairs)
 const MAX_SUB = 0.08; // longest sub-step in tiles, so a blob cannot skip a wall or a small enemy
 const TAU = Math.PI * 2;
+const DRAW_SCALE = 1.5; // the drawn blob is this much bigger than its hit radius (a wetter, fatter squirt; the hitbox is unchanged)
+export const SPLAT_CAP = 24;  // ink stains on rock kept at once; a new one recycles the oldest
+export const SPLAT_LIFE = 8;  // s a stain stays on the rock (it fades over the last SPLAT_FADE)
+const SPLAT_FADE = 3;
+export const STAIN_LIFE = 4;  // s an enemy stays inked after a hit (enemy-draw.js fades it over the last 1.5)
+const MAX_STAINED = 16;
 
 export function createInkJet() {
   const data = {
@@ -24,14 +35,48 @@ export function createInkJet() {
     life: new Float32Array(POOL), // seconds of flight left
     alive: new Uint8Array(POOL),
   };
-  const events = { hits: 0, kills: 0, nSplat: 0, splat: new Float32Array(MAX_SPLAT * 2) };
+  // splat: x, y pairs; splatDir: the blob's flight direction (unit) at the hit; splatOn: 1 on a creature, 0 on rock
+  const events = {
+    hits: 0, kills: 0, nSplat: 0, splat: new Float32Array(MAX_SPLAT * 2),
+    splatDir: new Float32Array(MAX_SPLAT * 2), splatOn: new Uint8Array(MAX_SPLAT),
+  };
   const flags = cullFlags('inkjet', POOL);
+  // stains on rock (a fixed ring) and the enemies currently inked (their `inkStain` timer is counted down here)
+  const sx = new Float32Array(SPLAT_CAP), sy = new Float32Array(SPLAT_CAP);
+  const sdx = new Float32Array(SPLAT_CAP), sdy = new Float32Array(SPLAT_CAP);
+  const sage = new Float32Array(SPLAT_CAP), son = new Uint8Array(SPLAT_CAP);
+  let shead = 0, nStains = 0;
+  const stained = new Array(MAX_STAINED).fill(null);
+  let nStained = 0;
   let cd = 0;
   let n = 0;
 
-  function splat(x, y) {
-    if (events.nSplat >= MAX_SPLAT) return;
-    events.splat[events.nSplat * 2] = x; events.splat[events.nSplat * 2 + 1] = y; events.nSplat++;
+  function splat(x, y, dx, dy, onCreature) {
+    if (events.nSplat < MAX_SPLAT) {
+      const k = events.nSplat++;
+      events.splat[k * 2] = x; events.splat[k * 2 + 1] = y;
+      events.splatDir[k * 2] = dx; events.splatDir[k * 2 + 1] = dy; events.splatOn[k] = onCreature ? 1 : 0;
+    }
+    if (!onCreature) addStain(x, y, dx, dy);
+  }
+
+  /** A stain that stays on the rock for a while (SPLAT_LIFE); past SPLAT_CAP the oldest is recycled. */
+  function addStain(x, y, dx, dy) {
+    const i = shead; shead = (shead + 1) % SPLAT_CAP;
+    if (!son[i]) nStains++;
+    sx[i] = x; sy[i] = y; sdx[i] = dx; sdy[i] = dy; sage[i] = 0; son[i] = 1;
+  }
+
+  /** Ink on a creature: a timer painted as dark blotches over its sprite (enemy-draw.js reads inkStain and inkHits). */
+  function stain(e) {
+    if (typeof e.kind !== 'string') return; // not a drawn enemy (a stand-in for a shopkeeper, a creature)
+    if (!(e.inkStain > 0)) {
+      if (nStained >= MAX_STAINED) return;
+      stained[nStained++] = e;
+      e.inkHits = 0;
+    }
+    e.inkStain = STAIN_LIFE;
+    if (e.inkHits < 6) e.inkHits++;
   }
 
   function fire(ox, oy, dx, dy, ownerR = 0.5) {
@@ -54,6 +99,11 @@ export function createInkJet() {
     events.hits = 0; events.kills = 0; events.nSplat = 0;
     if (cd > 0) cd -= dt;
     n = 0;
+    if (nStains) for (let i = 0; i < SPLAT_CAP; i++) if (son[i] && (sage[i] += dt) >= SPLAT_LIFE) { son[i] = 0; nStains--; }
+    for (let k = 0; k < nStained;) { // count the inked enemies down; drop the faded and the dead
+      const e = stained[k];
+      if (e.dead || (e.inkStain -= dt) <= 0) { e.inkStain = 0; stained[k] = stained[--nStained]; stained[nStained] = null; } else k++;
+    }
     const R = INKJET.radius;
     for (let i = 0; i < POOL; i++) {
       if (!data.alive[i]) continue;
@@ -67,7 +117,8 @@ export function createInkJet() {
         const px = data.x[i], py = data.y[i];
         const x = px + data.vx[i] * sdt, y = py + data.vy[i] * sdt;
         if (world.isSolid(x, y)) { // splat at the last free spot, so it sits on the wall face
-          splat(px, py); data.alive[i] = 0; done = true; break;
+          const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
+          splat(px, py, data.vx[i] / sp, data.vy[i] / sp, false); data.alive[i] = 0; done = true; break;
         }
         data.x[i] = x; data.y[i] = y;
         for (let j = 0; j < list.length; j++) {
@@ -80,7 +131,9 @@ export function createInkJet() {
             events.hits++;
             if (e.dead) events.kills++;
           }
-          splat(x, y); data.alive[i] = 0; done = true; break;
+          if (!e.dead) stain(e);
+          const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
+          splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); data.alive[i] = 0; done = true; break;
         }
       }
       if (done) continue;
@@ -91,42 +144,81 @@ export function createInkJet() {
   }
 
   function draw(ctx, camera, canvasW, canvasH) {
-    if (n === 0) return;
+    if (n === 0 && nStains === 0) return;
     cullView(camera, canvasW, canvasH);
     const ppu = camera.pxPerUnit;
-    const r = Math.max(2.5, INKJET.radius * ppu);
+    const r = Math.max(3.5, INKJET.radius * DRAW_SCALE * ppu);
     const hw = canvasW / 2, hh = canvasH / 2;
-    ctx.lineWidth = Math.max(1, r * 0.22);
+    if (nStains) drawStains(ctx, camera, ppu, hw, hh, r);
+    ctx.lineWidth = Math.max(1, r * 0.2);
     for (let i = 0; i < POOL; i++) {
       if (!data.alive[i]) continue;
       if (!visibleAt(flags, i, data.x[i], data.y[i], 0.6)) continue;
-      const sx = hw + (data.x[i] - camera.x) * ppu, sy = hh + (data.y[i] - camera.y) * ppu;
+      const bx = hw + (data.x[i] - camera.x) * ppu, by = hh + (data.y[i] - camera.y) * ppu;
       const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
       const ux = data.vx[i] / sp, uy = data.vy[i] / sp; // flight direction
-      const tl = r * 3.2; // trail length in px
-      // Tapering trail: a thin wedge from the blob back along its path.
-      ctx.fillStyle = 'rgba(26,16,48,0.45)';
+      const ph = data.life[i] * 46; // wobble phase: tied to the blob's remaining flight, so it needs no clock
+      const tl = r * 3.6; // tail length in px
+      const w1 = Math.sin(ph) * r * 0.7;
+      // Tail: a wobbling tapered wedge from the blob back along its path (a squirt of ink, not a rigid dart).
+      ctx.fillStyle = 'rgba(26,16,48,0.55)';
       ctx.beginPath();
-      ctx.moveTo(sx - uy * r * 0.8, sy + ux * r * 0.8);
-      ctx.lineTo(sx - ux * tl, sy - uy * tl);
-      ctx.lineTo(sx + uy * r * 0.8, sy - ux * r * 0.8);
+      ctx.moveTo(bx - uy * r * 0.85, by + ux * r * 0.85);
+      ctx.quadraticCurveTo(bx - ux * tl * 0.55 - uy * (w1 + r * 0.4), by - uy * tl * 0.55 + ux * (w1 + r * 0.4), bx - ux * tl - uy * w1 * 1.3, by - uy * tl + ux * w1 * 1.3);
+      ctx.quadraticCurveTo(bx - ux * tl * 0.55 - uy * (w1 - r * 0.4), by - uy * tl * 0.55 + ux * (w1 - r * 0.4), bx + uy * r * 0.85, by - ux * r * 0.85);
       ctx.closePath(); ctx.fill();
+      // Droplets pinched off behind the tail, drifting side to side.
+      ctx.fillStyle = 'rgba(26,16,48,0.8)';
+      for (let k = 1; k <= 3; k++) {
+        const back = r * (3.3 + 1.35 * k), side = Math.sin(ph + k * 1.9) * r * (0.3 + 0.12 * k), dr = r * (0.46 - 0.09 * k);
+        ctx.beginPath(); ctx.arc(bx - ux * back - uy * side, by - uy * back + ux * side, dr, 0, TAU); ctx.fill();
+      }
       // Body: slightly stretched along the flight direction, with a small soft highlight.
       ctx.save();
-      ctx.translate(sx, sy); ctx.rotate(Math.atan2(uy, ux));
+      ctx.translate(bx, by); ctx.rotate(Math.atan2(uy, ux));
       ctx.fillStyle = '#1a1030'; ctx.strokeStyle = '#0b0618';
-      ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r * 0.9, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 1.2, r * 0.92, 0, 0, TAU); ctx.fill(); ctx.stroke();
       ctx.fillStyle = 'rgba(150,130,200,0.45)';
       ctx.beginPath(); ctx.ellipse(r * 0.2, -r * 0.3, r * 0.35, r * 0.2, 0, 0, TAU); ctx.fill();
       ctx.restore();
     }
   }
 
+  /** Ink stains on rock: a flat blotch spread across the surface the blob hit, two satellite dots, fading out. */
+  function drawStains(ctx, camera, ppu, hw, hh, r) {
+    const vx = hw / ppu + 1, vy = hh / ppu + 1;
+    ctx.fillStyle = '#1a1030';
+    for (let i = 0; i < SPLAT_CAP; i++) {
+      if (!son[i]) continue;
+      if (Math.abs(sx[i] - camera.x) > vx || Math.abs(sy[i] - camera.y) > vy) continue;
+      const left = SPLAT_LIFE - sage[i];
+      ctx.globalAlpha = 0.82 * (left >= SPLAT_FADE ? 1 : left / SPLAT_FADE);
+      const px = hw + (sx[i] - camera.x) * ppu, py = hh + (sy[i] - camera.y) * ppu;
+      const dx = sdx[i], dy = sdy[i]; // flight direction; the blotch is long across it
+      ctx.beginPath(); ctx.ellipse(px, py, r * 0.6, r * 1.15, Math.atan2(dy, dx), 0, TAU); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px - dy * r * 1.7, py + dx * r * 1.7, r * 0.3, 0, TAU);
+      ctx.moveTo(px + dy * r * 1.45 + dx * r * 0.4 + r * 0.22, py - dx * r * 1.45 + dy * r * 0.4);
+      ctx.arc(px + dy * r * 1.45 + dx * r * 0.4, py - dx * r * 1.45 + dy * r * 0.4, r * 0.22, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   return {
-    data, events, fire, update, draw,
+    data, events, fire, update, draw, addStain,
     cooldown() { return cd > 0 ? cd : 0; },
     count() { return n; },
-    clear() { data.alive.fill(0); n = 0; cd = 0; events.hits = events.kills = events.nSplat = 0; },
+    /** Ink stains on rock right now (tests, perf). */
+    stainCount() { return nStains; },
+    /** Enemies currently inked. */
+    stainedCount() { return nStained; },
+    clear() {
+      data.alive.fill(0); n = 0; cd = 0; events.hits = events.kills = events.nSplat = 0;
+      son.fill(0); nStains = 0; shead = 0;
+      for (let k = 0; k < nStained; k++) { stained[k].inkStain = 0; stained[k] = null; }
+      nStained = 0;
+    },
   };
 }
 

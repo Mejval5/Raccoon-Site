@@ -28,7 +28,7 @@ export const CAUSE_TEXT = {
   piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'horned growth', manta: 'a manta',
   shot: 'a stray shot', bomb: 'its own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
   eel: 'an electric eel', anemone: 'an anemone', clam: 'a giant clam', tentacle: 'a tentacle', jet: 'a current jet', chest: 'a trapped chest', shopkeeper: 'the Shopkeeper', unknown: 'the dark',
-  harpoon: "Marlo's harpoon", pip: "Pip's bite", quill: "Quill's bite", host: "the pool host's bite",
+  harpoon: "Marlo's harpoon", pip: "Pip's bite", quill: "Quill's bite", host: "the pool host's bite", block: 'a falling block',
 };
 
 /** The same causes as capitalised nouns, for list rows (the journal stats page: 'Piranha', 'Spike wall'). */
@@ -36,8 +36,18 @@ export const CAUSE_NAME = {
   piranha: 'Piranha', crab: 'Crab', urchin: 'Urchin', horns: 'Horned growth', manta: 'Manta',
   shot: 'Stray shot', bomb: 'Own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
   eel: 'Electric eel', anemone: 'Anemone', clam: 'Giant clam', tentacle: 'Tentacle', jet: 'Current jet', chest: 'Trapped chest', shopkeeper: 'Shopkeeper', unknown: 'The dark',
-  harpoon: 'Harpoon', pip: 'Pip', quill: 'Quill', host: 'Pool host',
+  harpoon: 'Harpoon', pip: 'Pip', quill: 'Quill', host: 'Pool host', block: 'Falling block',
 };
+
+/** The death screen's title per cause (Spelunky style). 'The dark took you' stays for the Beholder and for unknown causes. */
+export const DEATH_TITLE = {
+  piranha: 'Shredded by a piranha', crab: 'Pinched', urchin: 'Spined', horns: 'Gored', manta: 'Rammed by a manta',
+  shot: 'Shot', bomb: 'Blown up by your own bomb', beholder: 'The dark took you', spikes: 'Impaled', rock: 'Crushed',
+  eel: 'Shocked', anemone: 'Stung', clam: 'Clammed', tentacle: 'Swallowed', jet: 'Swept away', chest: 'A trapped chest',
+  shopkeeper: "Shopkeeper's justice", unknown: 'The dark took you',
+  harpoon: 'Harpooned', pip: 'Bitten', quill: 'Bitten', host: 'Bitten', block: 'Crushed',
+};
+export function deathTitle(cause) { return DEATH_TITLE[cause] || DEATH_TITLE.unknown; }
 
 /** The per-dive stats the run summary reports (reset by every dive). */
 function newDive(level) {

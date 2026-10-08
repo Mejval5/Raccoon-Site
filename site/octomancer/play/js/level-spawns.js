@@ -36,6 +36,7 @@ const PATROL_REACH = { piranha: 5, crab: 99, manta: 5 }; // piranha: enemies.js 
 // a manta that dives), and the least gap between two enemies' spawn cells
 const PATROL_SHOP_CLEAR = { piranha: 6.5, crab: 3, manta: 6 };
 const PATROL_EXIT_CLEAR = { piranha: 5, crab: 2, manta: 5 };
+export const POOL_VENT_START_KEEP_OUT = 4.5; // vibefix: a pool room near the start still gets both vents (they only push, and blow at 0.2 until a wager runs)
 export const SET_START_KEEP_OUT = 7.5; // r37: set-piece jets and urchins (static: they only matter when swum into) keep this far from the start
 export const ENEMY_MIN_GAP = 2.5;
 export const DECOR_GAP = 1.4; // r36: tiles decor keeps from any other spawn
@@ -141,6 +142,21 @@ export const BLOCK_BLOCKER_R = 0.75; // the path check treats a block as a circl
 const BLOCK_EXIT_KEEP = 4;           // tiles a procedural block keeps from the exit
 
 /**
+ * Can a block resting in tile (x, y) be shoved at all? Some side d (-1 or +1) needs the pusher's tile (x - d, y) open and
+ * the tile it moves into (x + d, y) open, with either a second open tile beyond (x + 2d, y: it keeps sliding along its
+ * floor) or no floor under the first one (x + d, y + 1: it drops into the gap). A block in a dead-end notch fails.
+ * @param {Uint8Array} t level tiles (0 = water)
+ */
+export function blockCanMove(t, x, y) {
+  const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && t[idx(tx, ty)] === 0;
+  for (let d = -1; d <= 1; d += 2) {
+    if (!open(x - d, y) || !open(x + d, y)) continue;
+    if (open(x + 2 * d, y) || open(x + d, y + 1)) return true;
+  }
+  return false;
+}
+
+/**
  * Pushable blocks (props.js PK_BLOCK): {type:'block', x, y} spawns. (a) Room-authored: every 'O' prop cell of the placed
  * rooms, when the level carries its bank (level.bank). (b) 0-2 procedural ones on a reachable floor cell. Each placed block
  * must leave the level solvable: finalPathOk runs with it (and the hazards) as blocker circles, and it is dropped if not.
@@ -154,7 +170,7 @@ function placeBlocks(level, t, runSeed, levelIndex, openCells, kept, spawns, inS
   for (const s of spawns) if (s.type === 'shell') taken.push(s.x, s.y);
   const free = (x, y) => { for (let i = 0; i < taken.length; i += 2) if (Math.hypot(taken[i] - x, taken[i + 1] - y) < 1.3) return false; return true; };
   const solvable = () => finalPathOk(t, level.startX, level.startY, level.exitX, level.exitY, level.shop, blockers);
-  const add = (x, y) => { blockers.push({ x, y, r: BLOCK_BLOCKER_R }); if (solvable()) { spawns.push({ type: 'block', x, y }); taken.push(x, y); return true; } blockers.pop(); return false; };
+  const add = (x, y) => { if (!blockCanMove(t, Math.floor(x), Math.floor(y))) return false; blockers.push({ x, y, r: BLOCK_BLOCKER_R }); if (solvable()) { spawns.push({ type: 'block', x, y }); taken.push(x, y); return true; } blockers.pop(); return false; };
 
   const sh = level.shop;
   const nearShop = (x, y) => !!sh && x >= sh.x0 - 4.5 && x < sh.x1 + 4.5 && y >= sh.y0 - 4.5 && y < sh.y1 + 4.5; // the shop stays calm (quests.test.js)
@@ -169,7 +185,7 @@ function placeBlocks(level, t, runSeed, levelIndex, openCells, kept, spawns, inS
   // the exit, the shop, hidden pockets and everything else already placed
   const brng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0xb10c4));
   const want = Math.floor(brng() * 3);
-  const cands = openCells.filter(([x, y]) => t[idx(x, y + 1)] !== 0 && y > 0 && t[idx(x, y - 1)] === 0 && !nearShop(x + 0.5, y + 0.5));
+  const cands = openCells.filter(([x, y]) => t[idx(x, y + 1)] !== 0 && y > 0 && t[idx(x, y - 1)] === 0 && !nearShop(x + 0.5, y + 0.5) && blockCanMove(t, x, y));
   let tries = 0, got = 0;
   while (got < want && cands.length && tries++ < 14) {
     const c = cands.splice(Math.floor(brng() * cands.length), 1)[0];
@@ -359,9 +375,11 @@ export function buildLevelSpawns(level, runSeed, levelIndex) {
             const tx = x0 + lx + off;
             let ty = -1;
             for (let y = y0 + 5; y <= y0 + ROOM_H - 3; y++) if (open(tx, y) && !open(tx, y + 1)) { ty = y; break; }
-            if (ty < 0 || !usableH(tx, ty) || !clearOfStart(tx, ty, SET_START_KEEP_OUT)) continue;
+            // vibefix: a pool room cut off from the start by rock (reached is the 4-connected swim region) still gets its vents,
+            // since a bomb opens it; only the shop room and the exit ring are off limits
+            if (ty < 0 || nearExit(tx, ty) || (shop && tx >= shop.x0 - 1 && tx <= shop.x1 && ty >= shop.y0 - 1 && ty <= shop.y1) || !clearOfStart(tx, ty, POOL_VENT_START_KEEP_OUT)) continue;
             const rec = makeHazardRecord('jet', tx + 0.5, ty + 0.5, 0, -1, t, W, H);
-            if (rec) { rec.set = 'pool'; forced.push(rec); occupied.push(rec.x, rec.y, 2); break; }
+            if (rec) { rec.set = 'pool';forced.push(rec); occupied.push(rec.x, rec.y, 2); break; }
           }
         }
       } else if (kind === SET_WRECK) {

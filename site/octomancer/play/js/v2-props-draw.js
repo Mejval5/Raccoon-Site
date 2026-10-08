@@ -30,7 +30,7 @@ function label(ctx, text, x, y, px, fill, stroke = 'rgba(4,20,34,0.85)') {
   ctx.fillStyle = fill; ctx.fillText(text, x, y);
 }
 
-/** Rubble props (props.js): small grey-brown chips that tumble down and fade out over their last 0.8 s. */
+/** Rubble props (props.js): small grey-brown chips that tumble down, settle and stay for the level (at most RUBBLE_CAP, culled). */
 export function drawRubble(ctx, camera, cw, ch, d) {
   const { ppu, sx, sy } = view(camera, cw, ch);
   cullView(camera, cw, ch);
@@ -39,10 +39,8 @@ export function drawRubble(ctx, camera, cw, ch, d) {
     if (!d.alive[i] || d.kind[i] !== 7) continue;
     if (!visibleAt(fl, i, d.x[i], d.y[i], 2)) continue; // r43
     const x = sx(d.x[i]), y = sy(d.y[i]);
-    const a = Math.min(1, d.timer[i] / 0.8);
     const r = Math.max(1.5, d.radius[i] * ppu * 1.25);
     const rot = d.x[i] * 3 + i;
-    ctx.globalAlpha = a;
     ctx.fillStyle = i % 3 === 0 ? '#8d7c6a' : i % 3 === 1 ? '#6f6153' : '#a08e79';
     ctx.strokeStyle = 'rgba(30,22,16,0.8)'; ctx.lineWidth = Math.max(1, r * 0.2);
     ctx.beginPath();
@@ -52,7 +50,6 @@ export function drawRubble(ctx, camera, cw, ch, d) {
     }
     ctx.closePath(); ctx.fill(); ctx.stroke();
   }
-  ctx.globalAlpha = 1;
 }
 
 function bombGlyph(ctx, x, y, r, time) {

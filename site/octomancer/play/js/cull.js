@@ -30,6 +30,25 @@ export function cullFrame(camera, canvasW, canvasH) {
   cullView(camera, canvasW, canvasH);
 }
 
+const gview = { cx: 0, cy: 0, hw: Infinity, hh: Infinity }; // the gameplay view (see inCameraView): separate from the drawing view, which draw tests also set
+
+/** main.js, every drawn frame: the camera rectangle gameplay checks against (setGameView), so a threat never starts from off-screen. */
+export function setGameView(camera, canvasW, canvasH) {
+  gview.cx = camera.x; gview.cy = camera.y;
+  gview.hw = canvasW / camera.pxPerUnit / 2; gview.hh = canvasH / camera.pxPerUnit / 2;
+}
+/** Back to "everything is in view" (tests, a level before its first frame). */
+export function resetGameView() { gview.hw = gview.hh = Infinity; }
+
+/**
+ * Is (x, y) inside the gameplay camera view (setGameView)? Item 6 of the vibe review: a falling boulder, a tentacle's wake and a
+ * cannon's charge only start while their body is on screen (on a phone the view is narrower, so this matters most there).
+ * No hysteresis, no stats; it says "yes" until a view was set (tests, the first frame). `margin` (tiles) widens the rectangle.
+ */
+export function inCameraView(x, y, margin = 0) {
+  return Math.abs(x - gview.cx) <= gview.hw + margin && Math.abs(y - gview.cy) <= gview.hh + margin;
+}
+
 /** End of the frame's drawing: draw functions called outside the renderer (tests, tools) see everything as on screen. */
 export function cullEnd() { view.on = false; }
 

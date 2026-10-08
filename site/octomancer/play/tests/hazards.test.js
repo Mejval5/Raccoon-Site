@@ -6,6 +6,10 @@ import {
   JET_ACC, ROCK_SHAKE, EEL_PERIOD, EEL_FIRE_AT, EEL_RING_MAX, EEL_HALF_BODY,
 } from '../js/hazards.js';
 import { createOctopus } from '../js/octopus.js';
+import { createEnemies, CN_CHARGE, CN_RELOAD } from '../js/enemies.js';
+import { createProps, PK_BOMB, PS_FREE } from '../js/props.js';
+import { createCreatures, CR_TENTACLE, TN_DORMANT } from '../js/creatures.js';
+import { setGameView, resetGameView } from '../js/cull.js';
 import { applyDrag } from '../js/physics.js';
 import { OCTO_LINEAR_DRAG } from '../js/config.js';
 import { ENTRIES, CATEGORIES, CAT_HAZARD } from '../js/journal.js';
@@ -274,5 +278,136 @@ export async function runHazardTests(assert) {
     const seen = hz.seen(2.5, 1.5, 9, (x, y) => w.isSolid(x, y));
     assert('hazards: seen() reports the kinds in view for the journal', seen.length === 1 && seen[0] === HZ_ANEMONE);
   }
+  await runHazardEnemyTests(assert);
   assert('hazards: kind codes are stable (jet 1, spikes 2, rock 3, eel 4, anemone 5)', HZ_JET === 1 && HZ_SPIKES === 2 && HZ_ROCK === 3 && HZ_EEL === 4 && HZ_ANEMONE === 5);
+}
+
+// ---------------------------------------------------------------- hazards x enemies (vibe review items 1 and 6)
+const roomRows = (w, h) => Array.from({ length: h }, (_, y) => (y === 0 || y === h - 1 ? '#'.repeat(w) : '#' + '.'.repeat(w - 2) + '#'));
+const calm = (o) => { o.invulnTimer = 1e9; return o; };
+const view = (cx, cy) => setGameView({ x: cx, y: cy, pxPerUnit: 32 }, 320, 320); // a 10 x 10 tile view
+
+async function runHazardEnemyTests(assert) {
+  let W; // floor at row 13; a landed boulder turns into rock, so every scenario gets a fresh room
+  const fresh = () => { W = fake(roomRows(8, 14)); };
+  const STEPS = (s) => Math.round(s / DT);
+  try {
+    // ---- a falling boulder crushes the enemy under it (scripted fall and prop fall) ----
+    for (const useProps of [false, true]) {
+      fresh();
+      const tag = useProps ? 'prop boulder' : 'scripted boulder';
+      const props = useProps ? createProps() : null;
+      const hz = createHazards(props), en = createEnemies();
+      const bodyCalls = [];
+      hz.setVictims({ kill: (e, r) => en.kill(e, r), bodies: (x, y, r, caused, mask) => { bodyCalls.push(caused); return mask | 1; } });
+      view(4, 6);
+      const crab = en.spawnAt('crab', 4.5, 12.55, 'floor');
+      hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
+      const octo = calm(createOctopus(1.5, 3.5)); // far from the boulder's line: only the crab triggers it
+      let shook = false;
+      for (let i = 0; i < STEPS(3); i++) {
+        if (props) props.step(DT, W, octo, en.all());
+        hz.update(DT, i * DT, octo, W, null, en.all());
+        if (hz.data.state[0] === 1) shook = true;
+      }
+      const ev = en.events.filter((e) => e.type === 'enemyKilled');
+      assert(`${tag}: an enemy under it sets it off (cause 0, not the octopus) and is crushed`, shook && crab.dead && hz.data.cause[0] === 0 && ev.length === 1);
+      assert(`${tag}: the crush goes through enemies.kill, so a corpse event follows (kind crab, reason crush)`, ev[0] && ev[0].kind === 'crab' && ev[0].reason === 'crush');
+      assert(`${tag}: a boulder an enemy set off is not the octopus's doing (bodies called with octoCaused false)`, bodyCalls.length > 0 && bodyCalls.every((c) => c === false));
+    }
+    {
+      fresh(); // the octopus under it: octoCaused true; the bomb-released boulder too
+      const hz = createHazards(createProps());
+      hz.setVictims({ kill: () => {}, bodies: (x, y, r, caused, mask) => mask });
+      view(4, 6);
+      hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
+      const octo = calm(createOctopus(4.5, 6.5));
+      for (let i = 0; i < STEPS(0.2); i++) hz.update(DT, i * DT, octo, W, null, []);
+      assert('boulder: the octopus standing under it makes it hers (cause 1)', hz.data.state[0] === 1 && hz.data.cause[0] === 1);
+      const props2 = createProps(), hz2 = createHazards(props2);
+      view(4, 6);
+      hz2.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
+      hz2.blast(4.5, 2.5, 3);
+      assert('boulder: a bomb that shakes it loose makes it hers (cause 1)', hz2.data.cause[0] === 1);
+    }
+    {
+      fresh(); // once per victim: the callback owns the mask, the hazard keeps it between frames
+      const props = createProps(), hz = createHazards(props), seen = [];
+      hz.setVictims({ kill: () => {}, bodies: (x, y, r, caused, mask) => { seen.push(mask); return mask | 4; } });
+      view(4, 6);
+      hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
+      const octo = calm(createOctopus(4.5, 8.5));
+      for (let i = 0; i < STEPS(2); i++) { props.step(DT, W, octo, []); hz.update(DT, i * DT, octo, W, null, []); }
+      assert('boulder: the victim mask is kept between frames (a victim is hurt once per drop)', seen.length > 1 && seen[0] === 0 && seen.slice(1).every((m) => m === 4));
+    }
+    // ---- item 6: nothing drops from off-screen ----
+    {
+      fresh(); const hz = createHazards(), octo = calm(createOctopus(4.5, 8.5));
+      hz.add(rec(W, 'rock', 4.5, 1.5, 0, 1));
+      view(60, 60); // looking elsewhere
+      for (let i = 0; i < STEPS(1); i++) hz.update(DT, i * DT, octo, W, null, []);
+      const off = hz.data.state[0];
+      view(4, 6);
+      for (let i = 0; i < STEPS(0.1); i++) hz.update(DT, i * DT, octo, W, null, []);
+      assert('boulder: octopus below but the boulder off-screen does not trigger; it does the moment it is in view', off === 0 && hz.data.state[0] === 1);
+      const hz3 = createHazards(); hz3.add(rec(W, 'rock', 4.5, 1.5, 0, 1)); resetGameView();
+      for (let i = 0; i < STEPS(0.1); i++) hz3.update(DT, i * DT, octo, W, null, []);
+      assert('boulder: with no camera view set (tests, first frame) it triggers as before', hz3.data.state[0] === 1);
+    }
+    {
+      // the cannon never starts a shot from off-screen
+      const O = fake(roomRows(20, 20)), en = createEnemies(), c = en.spawnAt('cannon', 10.5, 18.5, 'floor');
+      const o = calm(createOctopus(10.5, 12.5));
+      c.st = CN_RELOAD; c.t = 0.1;
+      view(100, 100); let charged = false, fired = 0;
+      for (let i = 0; i < STEPS(4); i++) { en.update(DT, i * DT, o, O, []); if (c.st === CN_CHARGE) charged = true; fired += en.events.filter((e) => e.type === 'shotFired').length; }
+      assert('cannon: off-screen it tracks but never charges or fires', !charged && fired === 0);
+      view(10, 15); let fired2 = 0;
+      for (let i = 0; i < STEPS(4); i++) { en.update(DT, i * DT, o, O, []); fired2 += en.events.filter((e) => e.type === 'shotFired').length; }
+      assert('cannon: the same cannon fires once it is on screen', fired2 > 0);
+    }
+    {
+      // the tentacle does not wake off-screen
+      const T = fake(roomRows(14, 12)), cr = createCreatures(), o = calm(createOctopus(6.5, 8.2));
+      cr.add({ type: 'creature', ck: CR_TENTACLE, x: 6.5, y: 10.5, dx: 0, dy: -1, side: 1, tilt: 0 });
+      view(80, 80);
+      for (let i = 0; i < STEPS(1.5); i++) cr.update(DT, o, T, null);
+      const off = cr.data.state[0];
+      view(6.5, 8);
+      for (let i = 0; i < STEPS(0.3); i++) cr.update(DT, o, T, null);
+      assert('tentacle: no wake while its mouth is off-screen, wakes when it is on screen', off === TN_DORMANT && cr.data.state[0] !== TN_DORMANT);
+    }
+    // ---- spikes ----
+    {
+      fresh(); const mk = () => { const hz = createHazards(), en = createEnemies(); hz.setVictims({ kill: (e, r) => en.kill(e, r), bodies: null }); hz.add(rec(W, 'spikes', 4.5, 12.5, 0, -1)); return { hz, en }; };
+      const octo = calm(createOctopus(1.5, 2.5));
+      const calmCrab = mk(); const cc = calmCrab.en.spawnAt('crab', 4.5, 12.6, 'floor'); cc.vx = 1.2;
+      for (let i = 0; i < STEPS(1); i++) calmCrab.hz.update(DT, i * DT, octo, W, null, calmCrab.en.all());
+      assert('spikes: a calm crab patrolling over the strip is not killed', !cc.dead);
+      const knocked = mk(); const kc = knocked.en.spawnAt('crab', 4.5, 12.6, 'floor'); kc.stun = 0.6; kc.kvx = 1;
+      knocked.hz.update(DT, 0, octo, W, null, knocked.en.all());
+      assert('spikes: a knocked (stunned) crab whose centre is in the strip dies on them, with a corpse event', kc.dead && knocked.en.events.some((e) => e.type === 'enemyKilled' && e.kind === 'crab' && e.reason === 'spikes'));
+      const fast = mk(); const pf = fast.en.spawnAt('piranha', 4.5, 12.6); pf.vx = 7;
+      fast.hz.update(DT, 0, octo, W, null, fast.en.all());
+      const slow = mk(); const ps = slow.en.spawnAt('piranha', 4.5, 12.6); ps.vx = 1.5;
+      slow.hz.update(DT, 0, octo, W, null, slow.en.all());
+      const beside = mk(); const pb = beside.en.spawnAt('piranha', 7, 12.6); pb.stun = 1;
+      beside.hz.update(DT, 0, octo, W, null, beside.en.all());
+      assert('spikes: a piranha hurtling into them dies; a slow one or a knocked one beside the strip does not', pf.dead && !ps.dead && !pb.dead);
+    }
+    // ---- current jets ----
+    {
+      fresh(); const props = createProps(), hz = createHazards(props), en = createEnemies();
+      hz.add({ type: 'hazard', hk: HZ_JET, x: 4.5, y: 13, dx: 0, dy: -1, len: 7 });
+      const bomb = props.add(PK_BOMB, 4.5, 9, 0, 0, { timer: 99 });
+      const pir = en.spawnAt('piranha', 4.2, 9); const stunned = en.spawnAt('manta', 4.8, 9); stunned.stun = 1;
+      const crab = en.spawnAt('crab', 4.5, 12.6, 'floor'); const urchin = en.spawnAt('urchin', 4.5, 9.5, 'floor');
+      const y0 = { pir: pir.y, crab: crab.y, urchin: urchin.y };
+      const octo = calm(createOctopus(1.5, 2.5));
+      for (let i = 0; i < STEPS(0.5); i++) { props.step(DT, W, octo, []); hz.update(DT, i * DT, octo, W, null, en.all()); }
+      assert('jet: a bomb in the stream is pushed up', props.data.vy[bomb] < -1 && props.data.y[bomb] < 9);
+      assert('jet: a free-swimming piranha drifts up and a stunned manta is knocked up', pir.y < y0.pir - 0.3 && stunned.kvy < -1);
+      assert('jet: a crab on the floor and a bolted-down urchin stay put', crab.y === y0.crab && urchin.y === y0.urchin);
+    }
+  } finally { resetGameView(); }
 }

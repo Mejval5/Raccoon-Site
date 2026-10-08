@@ -1,7 +1,8 @@
 // Ink Jet: aim, cooldown, range, rock stop, hits and kills, hazard / Beholder immunity, auto-aim. Sync.
-import { INKJET, createInkJet, autoAim, drawReticle } from '../js/inkjet.js';
+import { INKJET, createInkJet, autoAim, drawReticle, SPLAT_CAP, SPLAT_LIFE, STAIN_LIFE } from '../js/inkjet.js';
 import { createEnemies, setHpMode } from '../js/enemies.js';
 import { createAutofire } from '../js/autofire.js';
+import { cullReset } from '../js/cull.js';
 
 const STEP = 0.02;
 const open = { isSolid: () => false };
@@ -193,8 +194,51 @@ export function runInkJetTests(assert) {
       calls = 0;
       jet.draw(ctx, { x: 500, y: 500, pxPerUnit: 40 }, 800, 600, 1);
       assert('draw paints a visible blob and culls one far off screen', onScreen > 0 && calls === 0);
+      cullReset();
       calls = 0; drawReticle(ctx, 100, 100, 40, 1.5);
       assert('drawReticle draws', calls > 0);
+    }
+
+    // ---- feedback: stains on rock are capped and fade, an inked enemy keeps a timer, the splat carries its direction ----
+    {
+      const jet = createInkJet();
+      const wall = { isSolid: (x) => x >= 10 };
+      let dirOk = true, onRock = true;
+      for (let k = 0; k < 4; k++) { // real shots at the wall, one every cooldown: each leaves a stain
+        jet.fire(5, 5 + k * 0.1, 1, 0, 0);
+        for (let t = 0; t < INKJET.cooldown + 1e-9; t += STEP) {
+          jet.update(STEP, wall, [], noHurt);
+          if (jet.events.nSplat) { dirOk = dirOk && Math.abs(jet.events.splatDir[0] - 1) < 1e-4 && Math.abs(jet.events.splatDir[1]) < 1e-4; onRock = onRock && jet.events.splatOn[0] === 0; }
+        }
+      }
+      assert('every shot that hits rock leaves a stain (' + jet.stainCount() + ')', jet.stainCount() === 4);
+      assert('a splat reports the flight direction and that it hit rock', dirOk && onRock);
+      for (let k = 0; k < 60; k++) jet.addStain(6 + (k % 7) * 0.1, 5, 1, 0); // faster fire than the default cooldown could ever give
+      assert(`ink stains on rock are capped at ${SPLAT_CAP} (${jet.stainCount()}), the oldest recycled`, jet.stainCount() === SPLAT_CAP);
+      for (let t = 0; t < SPLAT_LIFE + 0.5; t += STEP) jet.update(STEP, wall, [], noHurt);
+      assert('ink stains on rock are gone after ' + SPLAT_LIFE + ' s', jet.stainCount() === 0);
+      // drawing the stains culls off-screen ones and paints visible ones
+      let calls = 0;
+      const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (...a) => { calls++; }), set: (t, k, v) => { t[k] = v; return true; } });
+      jet.fire(5, 5, 1, 0, 0); for (let t = 0; t < 1; t += STEP) jet.update(STEP, wall, [], noHurt);
+      jet.draw(ctx, { x: 8, y: 5, pxPerUnit: 40 }, 800, 600, 1);
+      const seen = calls; calls = 0;
+      jet.draw(ctx, { x: 400, y: 400, pxPerUnit: 40 }, 800, 600, 1);
+      assert('a stain on screen is drawn, one far off screen is culled', seen > 0 && calls === 0);
+      cullReset(); // the far-off view must not leak into later tests (hazards read inCameraView)
+    }
+    {
+      const crab = { kind: 'crab', x: 10, y: 0, radius: 0.4, hp: 99, dead: false };
+      const hurt = (e, d) => { e.hp -= d; };
+      const jet = createInkJet();
+      jet.fire(5, 0, 1, 0, 0);
+      const r = run(jet, open, [crab], hurt, 0.5);
+      assert('an ink hit on an enemy sets its stain timer and leaves no stain on rock', r.hits === 1 && crab.inkStain > 3.5 && crab.inkHits === 1 && jet.stainedCount() === 1 && jet.stainCount() === 0);
+      jet.fire(5, 0, 1, 0, 0);
+      run(jet, open, [crab], hurt, 0.5);
+      assert('a second hit adds a blotch and renews the timer', crab.inkHits === 2 && crab.inkStain > 3.5);
+      run(jet, open, [crab], noHurt, STAIN_LIFE + 0.3);
+      assert('the enemy stain fades after ' + STAIN_LIFE + ' s', crab.inkStain === 0 && jet.stainedCount() === 0);
     }
   } finally {
     setHpMode(false); // module-level global: do not leak into the other test files

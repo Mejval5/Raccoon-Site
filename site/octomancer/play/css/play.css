@@ -293,6 +293,12 @@ body {
 }
 .octo-prompt-title { font-size: 15px; font-weight: 700; color: #7cf0d0; margin-bottom: 2px; }
 .octo-prompt-text { font-size: 14px; font-weight: 600; line-height: 1.35; }
+/* phones: a compact hint (the hotbar sits at the top, the buttons at the right), well clear of both */
+@media (max-width: 600px) {
+  #hud > .octo-prompt { top: calc(112px + var(--safe-t)); width: min(76vw, 300px); padding: 6px 10px 7px; border-radius: 10px; }
+  .octo-prompt-title { font-size: 12px; margin-bottom: 1px; }
+  .octo-prompt-text { font-size: 11.5px; line-height: 1.3; }
+}
 #hud > .octo-toast {
   position: absolute;
   left: 50%;
@@ -312,9 +318,9 @@ body {
 #hud > .octo-title {
   position: absolute;
   left: 50%;
-  top: calc(18% + var(--safe-t));
+  top: calc(9% + var(--safe-t)); /* a small ribbon high up, clear of the octopus and the hint panels */
   transform: translateX(-50%);
-  width: min(86vw, 520px);
+  width: min(56vw, 300px);
   aspect-ratio: 725 / 176;
   background-size: 100% 100%;
   background-repeat: no-repeat;
@@ -322,15 +328,16 @@ body {
   padding: 0 12%;
   box-sizing: border-box;
   opacity: 0;
-  transition: opacity 500ms ease;
+  transition: opacity 350ms ease;
   pointer-events: none;
   z-index: 5;
   font-family: 'Quicksand', sans-serif;
   text-align: center;
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,.35));
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.3));
 }
-.octo-title-text { white-space: nowrap; font-size: clamp(18px, 5vw, 28px); font-weight: 700; color: #eafffa; text-shadow: 0 2px 3px rgba(0,0,0,.6); line-height: 1.1; }
-.octo-title-sub { font-size: clamp(11px, 2.6vw, 13px); font-weight: 600; color: #a8f0d8; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-top: 3px; }
+.octo-title-text { white-space: nowrap; font-size: clamp(14px, 4vw, 19px); font-weight: 700; color: #eafffa; text-shadow: 0 2px 3px rgba(0,0,0,.6); line-height: 1.1; }
+.octo-title-sub { font-size: clamp(9px, 2.2vw, 10px); font-weight: 600; color: #a8f0d8; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-top: 3px; }
+@media (max-width: 600px) { #hud > .octo-title { top: calc(112px + var(--safe-t)); } } /* phones: below the top hotbar */
 
 /* v2 run summary (round 33): death and biome-clear screens. The panel scrolls on a short phone. */
 .octo-end-overlay .octo-overlay-panel, .octo-gameover-overlay .octo-overlay-panel { max-height: 94dvh; overflow-y: auto; touch-action: pan-y; }

@@ -41,6 +41,8 @@ export function kindId(name) {
   return id;
 }
 export function kindName(id) { return kindNames[id] || ''; }
+/** An NPC corpse ('npc-*', a standing figure) comes to rest lying on its side, not upright. */
+function isNpcKind(id) { return (kindNames[id] || '').startsWith('npc-'); }
 
 let hook = null;
 /** fn(x, y, kind, index) is called once for every corpse that is added (null clears it). */
@@ -243,8 +245,10 @@ export function createCorpses(cap = CAP) {
             }
           }
           // it ends up lying flat (belly up for fish), not at whatever angle it stopped rolling
-          const target = Math.round(d.rot[i] / (2 * Math.PI)) * 2 * Math.PI;
-          d.rot[i] += (target - d.rot[i]) * Math.min(1, 4 * dt);
+          // (an NPC is not a fish: it tips over onto its side, to whichever side is nearer, instead of lying upright)
+          const lying = isNpcKind(d.kind[i]);
+          const target = lying ? Math.round(d.rot[i] / Math.PI - 0.5) * Math.PI + Math.PI / 2 : Math.round(d.rot[i] / (2 * Math.PI)) * 2 * Math.PI;
+          d.rot[i] += (target - d.rot[i]) * Math.min(1, (lying ? 2.5 : 4) * dt);
         }
         if (d.age[i] > MAX_AGE) { remove(i); continue; }
         if (d.state[i] !== CS_FREE && world.isSolid(d.x[i], d.y[i])) eject(i, world);

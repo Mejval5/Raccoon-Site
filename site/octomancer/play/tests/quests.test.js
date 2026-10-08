@@ -1,7 +1,7 @@
 // Round 22: quests (quests.js), shops (shop.js), the shell currency (run.js, pickups.js) and their
 // journal persistence (journal.js + save.js).
 import {
-  parseQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, eligibleRows, nextStage, hubResidents, hubVisit, collectorArrives,
+  parseQuests, planQuest, questPathFor, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, eligibleRows, nextStage, hubResidents, hubVisit, collectorArrives,
   RELICS_NEEDED, DIVER_RUNS, Q_RESCUE, Q_VAULT, ST_ACTIVE, ST_DONE,
 } from '../js/quests.js';
 import { createTalk, say, talking, talkStep, talkAlpha, lineDuration, wrapLines } from '../js/speech.js';
@@ -67,6 +67,12 @@ export async function runQuestTests(assert) {
       const lv = generateLevel(seed, idx, bank);
       const avoid = []; for (const s of buildLevelSpawns(lv, seed, idx).spawns) if (s.type !== 'shell' && (s.type !== 'decor' || s.dk === 'boulder')) avoid.push(s.x, s.y);
       const a = planQuest(lv, table, seed, idx, story, avoid), b = planQuest(lv, table, seed, idx, story, avoid);
+      if (i < 60) { // vibe fixes: the worker's precomputed path data (gen-worker.js level.questPath) plans the same; a copy for other tiles is ignored
+        const withPath = { ...lv, questPath: questPathFor(lv) }, stale = { ...lv, questPath: { ...questPathFor(lv), sum: 1, reached: new Uint8Array(1) } };
+        const c = planQuest(withPath, table, seed, idx, story, avoid), d = planQuest(stale, table, seed, idx, story, avoid);
+        const eq = (p, q) => (!p && !q) || (p && q && p.id === q.id && p.pos[0] === q.pos[0] && p.pos[1] === q.pos[1]);
+        if (!eq(a, c) || !eq(a, d)) bad.push('questPath ' + i);
+      }
       n++;
       if (eligibleRows(table, story, idx).length) eligible++;
       if (!a) { if (b) bad.push('flaky ' + i); continue; }

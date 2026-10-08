@@ -53,6 +53,17 @@ export async function runCorpseTests(assert) {
     assert('corpses: dropShell is not used for kills (a new pickups system holds no shell)', pk.totals.shells === 0 && pk.visible([]).length === 0);
   }
 
+  // ---- vibefix: an NPC corpse tips over onto its side when it settles; a creature corpse keeps its belly-up rule ----
+  {
+    const c = createCorpses(), d = c.data;
+    const marlo = c.add('npc-marlo', 30, 9.4, 0, 0, 1), fish = c.add('piranha', 40, 9.4, 0, 0, 1);
+    run(c, 600);
+    const side = (r) => Math.abs(Math.abs(Math.sin(r)) - 1) < 0.05; // |sin| = 1: lying on a side
+    const flat = (r) => Math.abs(Math.sin(r)) < 0.05;               // a whole turn: the fish's belly-up pose
+    assert(`corpses: an NPC corpse comes to rest lying on its side, not standing (rot ${d.rot[marlo].toFixed(2)})`, d.state[marlo] === CS_REST && side(d.rot[marlo]));
+    assert(`corpses: a creature corpse still settles on a whole turn (rot ${d.rot[fish].toFixed(2)})`, d.state[fish] === CS_REST && flat(d.rot[fish]));
+  }
+
   // ---- sink, bounce, settle, fade ----
   {
     const c = createCorpses();

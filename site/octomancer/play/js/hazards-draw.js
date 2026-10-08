@@ -218,7 +218,7 @@ export function drawSplatRock(ctx, camera, cw, ch, d, t, octo = null) {
       for (const side of [-1, 1]) {
         ctx.fillStyle = INK;
         ctx.beginPath(); ctx.ellipse(sx + side * reach * 0.7, floorY - 0.03 * ppu, reach * 0.42, 0.05 * ppu, 0, 0, TAU); ctx.fill();
-        ctx.fillStyle = '#c0485e';
+        ctx.fillStyle = '#2b1c3d'; // vibefix: bruised ink-violet, not gore red
         ctx.beginPath(); ctx.ellipse(sx + side * reach * 0.62, floorY - 0.05 * ppu, reach * 0.26, 0.032 * ppu, 0, 0, TAU); ctx.fill();
       }
     }

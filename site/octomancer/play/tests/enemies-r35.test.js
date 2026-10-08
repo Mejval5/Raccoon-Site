@@ -2,6 +2,7 @@
 // from octomancer-web/QA-ENEMIES.md as regressions, the round-34 review fixes (idle toss, bomb on the head, bombs
 // stick to ceilings, blast reaches hanging rocks, rubble spread, enemies push bombs, one hit per falling rock,
 // touch controls on the canvas, blast and stun drawing), and spawn rules over generated levels.
+import { BOMB_RADIUS } from '../js/config.js';
 import {
   createEnemies, PS_PATROL, PS_WINDUP, PS_LUNGE, PS_RECOVER, CS_WALK, CS_PAUSE, CS_SNAP, CS_COOL,
   CN_TRACK, CN_CHARGE, CN_RELOAD, MA_GLIDE, MA_TELL, MA_DIVE, MA_RISE,
@@ -251,7 +252,10 @@ export async function runEnemyR35Tests(assert) {
     assert('blast: after the stun it takes its pattern up again (and the cannon reloads first)', p.stun === 0 && c.stun === 0 && c.st === CN_RELOAD);
     const ctx = recCtx(); p.stun = 0.5; cr.stun = 0.5;
     drawEnemies(ctx, CAM, w2s, 800, 600, en.all(), [], 1.2, 1);
-    assert('blast: a stunned enemy is drawn with orbiting stars', ctx.calls.filter((k) => k === 'closePath').length >= 6);
+    // vibe fix: no stars, three small bubbles circle above each stunned enemy (3 arcs + 3 highlights each)
+    const calm = recCtx(); p.stun = 0; cr.stun = 0; drawEnemies(calm, CAM, w2s, 800, 600, en.all(), [], 1.2, 1);
+    const arcsOf = (c) => c.calls.filter((k) => k === 'arc').length;
+    assert('blast: a stunned enemy is drawn with circling bubbles, not stars', arcsOf(ctx) - arcsOf(calm) >= 12 && ctx.calls.filter((k) => k === 'closePath').length <= calm.calls.filter((k) => k === 'closePath').length);
   }
   {
     // F4: nothing consults Math.random: the same spawn always replays the same way
@@ -431,7 +435,14 @@ export async function runEnemyR35Tests(assert) {
     const b = { x: 0, y: 0, exploded: true, age: 0.05 };
     drawBombs(ctx, CAM, w2s, 800, 600, [b], 1);
     const early = ctx.calls.filter((k) => k === 'stroke').length, arcs = ctx.calls.filter((k) => k === 'arc').length, grads = ctx.calls.filter((k) => k === 'createRadialGradient').length;
-    assert(`review 3: the blast draws a flash disc, a fireball, 26 spark lines and a ring (${early} strokes, ${arcs} arcs, ${grads} gradient)`, early >= 27 && arcs >= 3 && grads >= 1);
+    assert(`review 3 (vibe fix): the blast draws a core, a pale ring with an ink outline and a flash, no gradients (${early} strokes, ${arcs} arcs, ${grads} gradients)`, early >= 2 && arcs >= 4 && grads === 0);
+    // the picture is the rule: nothing the blast draws reaches past BOMB_RADIUS (125 px at 50 px/unit)
+    for (const age of [0.02, 0.1, 0.2, 0.3, 0.39]) {
+      let lw = 1, maxEdge = 0;
+      const rc = new Proxy({}, { get(t, k) { if (k === 'arc') return (x, y, r) => { maxEdge = Math.max(maxEdge, r + lw / 2); }; return t[k] || (() => {}); }, set(t, k, v) { if (k === 'lineWidth') lw = v; t[k] = v; return true; } });
+      lw = 0; drawBombs(rc, CAM, w2s, 800, 600, [{ x: 0, y: 0, exploded: true, age }], 1);
+      assert(`blast: at age ${age} s the drawn edge is within BOMB_RADIUS (${maxEdge.toFixed(1)} of ${(50 * BOMB_RADIUS).toFixed(1)} px)`, maxEdge <= 50 * BOMB_RADIUS + 0.01 && maxEdge > 0);
+    }
     const ctx2 = recCtx(); b.age = 0.39; drawBombs(ctx2, CAM, w2s, 800, 600, [b], 1);
     assert('review 3: the blast is drawn through to the end of its 0.4 s window', ctx2.calls.length > 5);
   }

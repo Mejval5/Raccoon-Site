@@ -14,7 +14,7 @@ const GOO_COLORS = ['#c0485e', '#e0607a'];
 export function createParticles() {
   const pool = new Array(POOL_SIZE);
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1, sticky: false, stuck: false };
+    pool[i] = { active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0.1, color: '#fff', cv: 1, sticky: false, stuck: false, damp: 0.92, soft: 0 };
   }
   let cursor = 0;
   let shake = 0; // current screen-shake magnitude, world units (endless)
@@ -25,7 +25,7 @@ export function createParticles() {
     const p = pool[cursor];
     cursor = (cursor + 1) % POOL_SIZE; // ring buffer: oldest slot is reused first
     p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
-    p.life = life; p.maxLife = life; p.size = size; p.color = color; p.sticky = false; p.stuck = false;
+    p.life = life; p.maxLife = life; p.size = size; p.color = color; p.sticky = false; p.stuck = false; p.damp = 0.92; p.soft = 0;
     return p;
   }
 
@@ -55,11 +55,17 @@ export function createParticles() {
         const speed = 2 + Math.random() * 3;
         spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.4 + Math.random() * 0.3, 0.05, '#8a7a6a');
       }
-      // a few bright sparks with the chips (the blast itself is drawn by enemy-draw.js drawBlast)
+      // white-blue bubbles thrown out with the chips (the shock ring and the ink core are drawn by enemy-draw.js drawBlast)
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2, speed = 2.5 + Math.random() * 3.5;
+        const p = spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed - 0.6, 0.5 + Math.random() * 0.5, 0.05 + Math.random() * 0.04, i % 3 ? 'rgba(222,242,255,0.8)' : 'rgba(190,225,245,0.8)');
+        if (p) p.damp = 0.95;
+      }
+      // a brown / grey-green silt puff stirred up inside the blast: it drifts and lingers 2-3 s (kept inside BOMB_RADIUS at first: spawned within 1.0 tile, radius under 0.7)
       for (let i = 0; i < 10; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = 3 + Math.random() * 4;
-        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.25 + Math.random() * 0.2, 0.07, i % 2 ? '#ffe46a' : '#fff6c0');
+        const a = Math.random() * Math.PI * 2, r = Math.random() * 1.0, sp = 0.3 + Math.random() * 0.6;
+        const p = spawnOne(x + Math.cos(a) * r, y + Math.sin(a) * r, Math.cos(a) * sp, Math.sin(a) * sp - 0.15, 2 + Math.random() * 1, 0.45 + Math.random() * 0.25, i % 2 ? 'rgba(136,128,106,0.6)' : 'rgba(112,134,110,0.6)');
+        if (p) { p.damp = 0.985; p.soft = 1; } // drawn as a soft cloud (enemy-draw.js drawParticles), not a disc
       }
       shakeScreen(0.1 + 0.3 * Math.max(0, 1 - fromOcto / 14)); // a bigger shake the nearer the blast is to the octopus
     },
@@ -76,10 +82,16 @@ export function createParticles() {
       }
     },
     /** Section 14: an ink jet blob bursting on rock or a creature: a few dark droplets. */
-    inkSplat(x, y) {
-      for (let i = 0; i < 5; i++) {
-        const a = Math.random() * Math.PI * 2, speed = 0.6 + Math.random() * 1.3;
-        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.25 + Math.random() * 0.15, 0.05 + Math.random() * 0.03, i & 1 ? 'rgba(26,16,48,0.85)' : 'rgba(58,42,92,0.8)');
+    inkSplat(x, y, dx = 0, dy = 0, onCreature = false) {
+      // droplets spray BACK against the flight direction (a wider fan off a creature, a tight one off rock), then a small dark puff
+      const flying = dx !== 0 || dy !== 0, back = flying ? Math.atan2(-dy, -dx) : 0, fan = flying ? (onCreature ? 1.1 : 0.8) : Math.PI;
+      for (let i = 0; i < 8; i++) {
+        const a = back + (flying ? (Math.random() * 2 - 1) * fan : Math.random() * Math.PI * 2), speed = 1 + Math.random() * 2.4;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.3 + Math.random() * 0.25, 0.04 + Math.random() * 0.04, i & 1 ? 'rgba(26,16,48,0.88)' : 'rgba(58,42,92,0.8)');
+      }
+      for (let i = 0; i < 2; i++) { // the puff: two soft dark blobs that hang a moment
+        const a = back + (i ? 0.7 : -0.7) * (flying ? 1 : 3);
+        spawnOne(x, y, Math.cos(a) * 0.35, Math.sin(a) * 0.35, 0.5 + i * 0.12, 0.15 + i * 0.03, 'rgba(26,16,48,0.42)');
       }
     },
     /** M7-1: a bright sparkle on any pickup (plankton/shell), colour
@@ -195,7 +207,7 @@ export function createParticles() {
         }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.vx *= 0.92; p.vy *= 0.92;
+        p.vx *= p.damp; p.vy *= p.damp;
       }
     },
     pool,

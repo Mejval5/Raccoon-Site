@@ -26,9 +26,11 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
   const check = (name, ok, extra = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + name + (extra ? ' ' + extra : '')); if (!ok) fails.push(name); };
   const MB = 1048576;
   try {
-    // A task over 50 ms that is the game's own work comes back every time; a one-off (a major GC, the headless browser's scheduling at
-    // 4x) does not. So if the 12 transitions show one, they are played again in a fresh page (at most three runs) and the last run is judged (verification
-    // 2026-10-08: about one run in four had a single 52-79 ms task, in a different transition each time). Memory is judged on the same run.
+    // A task over 50 ms that is the game's own work comes back on most runs; a rare one-off (a major GC, the headless browser's
+    // scheduling at 4x) does not. The 12 transitions are played up to three times, each in a fresh page, and the long-task checks fail
+    // when 2 or more of the 3 runs have a task over 50 ms (vibe fixes 2026-10-08: a hitch in one run in four is the music stutter Daniel
+    // hears, so 'fails only if every run has one' was too loose). Two clean or two bad runs decide it without a third. Memory and the
+    // rest are judged on the last run played.
     const runTransitions = async (attempt) => {
       const page = await browser.newPage();
       page.on('pageerror', (e) => errs.push('' + e));
@@ -83,22 +85,28 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
       check('all 12 transitions ran', rows.length === 12);
       return { page, cdp, tracked, budget, rows, longTasks, lateTasks };
     };
-    let R = await runTransitions(1);
     const worstOf = (r) => Math.max(0, ...r.longTasks.map((x) => x[1]), ...r.lateTasks.map((x) => x[1]));
-    for (let attempt = 2; attempt <= 3 && worstOf(R) > 50; attempt++) { console.log(`  run ${attempt - 1} had a ${Math.round(worstOf(R))} ms task: the 12 transitions again in a fresh page`); await R.page.close(); R = await runTransitions(attempt); }
-    const { page, cdp, tracked, budget, rows, longTasks, lateTasks } = R;
+    let R = null;
+    const runWorst = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (R) await R.page.close();
+      R = await runTransitions(attempt);
+      runWorst.push(worstOf(R));
+      console.log(`  run ${attempt}: worst task ${Math.round(runWorst[attempt - 1])} ms`);
+      const bad = runWorst.filter((w) => w > 50).length, good = runWorst.length - bad;
+      if (bad >= 2 || good >= 2) break;
+    }
+    const badRuns = runWorst.filter((w) => w > 50).length;
+    const { page, cdp, tracked, budget, rows } = R;
     const peakReported = Math.max(...rows.map((r) => r.mem.canvasMB + r.mem.poolMB));
     const peakTracked = Math.max(...rows.map((r) => r.tracked.bytes / MB));
     const worstAlloc = Math.max(...rows.slice(1).map((r) => r.mem.allocatedMB));
-    const worstTask = Math.max(0, ...longTasks.map((x) => x[1]));
+
     check('live canvas memory (in use + pooled) stays under 30 MB through 12 transitions (as reported by __octo.memory())', peakReported < 30, `peak ${peakReported.toFixed(1)} MB`);
     check('... and counted from outside, over every canvas the page made, after a GC', peakTracked < 30, `peak ${peakTracked.toFixed(1)} MB`);
     check('a transition creates under 15 MB of new canvases (the pool hands the last level\'s back)', worstAlloc < 15, `worst ${worstAlloc} MB`);
     check('no canvas is bigger than the viewport at the capped pixel ratio', rows.every((r) => r.tracked.maxPx <= budget.w * budget.h), `biggest ${Math.max(...rows.map((r) => r.tracked.maxPx))} px vs ${budget.w * budget.h}`);
-    check('no main-thread task over 50 ms during a transition at 4x CPU throttle', worstTask <= 50, `worst ${Math.round(worstTask)} ms`);
-    const worstLate = Math.max(0, ...lateTasks.map((x) => x[1]));
-    console.log(`  tasks over 50 ms during the fade-in (until transitioning is false): ${lateTasks.length}, worst ${Math.round(worstLate)} ms`);
-    check('no main-thread task over 50 ms during the fade-in either (transition start until transitioning is false)', worstLate <= 50, `worst ${Math.round(worstLate)} ms`);
+    check('no main-thread task over 50 ms during a transition or its fade-in at 4x CPU throttle, in at least 2 of 3 runs', badRuns < 2, `worst per run: ${runWorst.map((w) => Math.round(w) + ' ms').join(', ')}`);
     check('the screen is dark for under 2.5 s per transition', rows.every((r) => r.ms < 2500), `worst ${Math.max(...rows.map((r) => r.ms))} ms`);
 
     // --- in a level: frame time and culling ---

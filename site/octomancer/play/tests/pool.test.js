@@ -63,6 +63,26 @@ export async function runPoolTests(assert) {
   assert('pool placement: no vent stands within 1.4 tiles of the host (his fin overlapped a vent at column 2)' + (hostVent.length ? ' [' + hostVent.slice(0, 4).join(', ') + ']' : ''), hostVent.length === 0);
   assert(`pool placement: its room holds its vents (${jets}) and nothing else: no enemy (${enemiesIn}), trap or loot (${loneChest})`, jets >= pools && jets <= pools * 2 && enemiesIn === 0 && loneChest === 0);
 
+  // vibefix: EVERY pool of every level (also a room cut off from the start by rock, or one near the start) holds both its vents,
+  // the left one in column 1 (a full tile clear of the host)
+  {
+    let all = 0; const lacking = [], hostNear = [];
+    for (let seed = 1; seed <= 150; seed++) for (let lv = 0; lv < 3; lv++) {
+      const L = generateLevel(seed, lv, bank);
+      const plans = planPools(L);
+      if (!plans.length) continue;
+      const sp = buildLevelSpawns(L, seed, lv).spawns;
+      for (const plan of plans) {
+        all++;
+        const vents = sp.filter((r) => r.type === 'hazard' && r.set === 'pool' && r.x >= plan.x0 && r.x < plan.x0 + ROOM_W && r.y >= plan.y0 && r.y < plan.y0 + ROOM_H);
+        if (vents.length !== 2) lacking.push(seed + '/' + lv + ':' + vents.length);
+        if (vents.some((r) => Math.abs(r.x - (plan.x - 1.7)) < 1.4)) hostNear.push(seed + '/' + lv);
+      }
+    }
+    assert(`pool placement: all ${all} pools over seeds 1-150 hold both vents, reachable or not` + (lacking.length ? ' [' + lacking.slice(0, 5).join(', ') + ']' : ''), all >= 50 && lacking.length === 0);
+    assert('pool placement: no vent of any pool (reachable or not) stands within 1.4 tiles of the host' + (hostNear.length ? ' [' + hostNear.slice(0, 5).join(', ') + ']' : ''), hostNear.length === 0);
+  }
+
   // ---- the state machine ----
   const plan = { x0: 10, y0: 10, x: 15, y: 20.5, floorY: 21 };
   const near = () => { const o = createOctopus(15, 20.5); return o; };

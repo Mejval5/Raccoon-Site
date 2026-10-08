@@ -26,6 +26,7 @@ import {
   STUN_S, MANTA_RADIUS, MANTA_SPEED, MANTA_PATROL_RANGE, MANTA_SINE_AMPLITUDE, MANTA_SINE_FREQ,
 } from './config.js';
 import { PK_BOMB } from './props.js';
+import { inCameraView } from './cull.js';
 import { hurtOctopus, stunOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
@@ -676,7 +677,7 @@ export function createEnemies() {
       e.t -= dt;
       if (e.t <= 0) { e.st = CN_TRACK; e.t = 0; }
     } else if (e.st === CN_TRACK) {
-      if (target && Math.abs(angDiff(want, e.aim)) < CANNON_AIM_OK) { e.st = CN_CHARGE; e.t = CANNON_WINDUP; e.tell = 0; }
+      if (target && Math.abs(angDiff(want, e.aim)) < CANNON_AIM_OK && inCameraView(e.x, e.y, e.radius)) { /* item 6: it never starts a shot from off-screen */ e.st = CN_CHARGE; e.t = CANNON_WINDUP; e.tell = 0; }
     } else { // CN_CHARGE
       e.t -= dt; e.tell = Math.min(1, 1 - e.t / CANNON_WINDUP);
       if (!target) { e.st = CN_TRACK; e.tell = 0; return; } // lost the line: stand down

@@ -126,8 +126,10 @@ const ENTRY_S = 1.5, STEP = 0.02;
     }
     // --- the entry on a phone at 4x CPU throttle (a Samsung S24 as in phone-cdp.js): three real entries, hub -> 1-1 -> 1-2 -> 1-3, with no
     // main-thread task over 50 ms from the touch until the new level is back (the black hole and the scripted octopus included) ---
-    // A task over 50 ms that is the game's own work comes back every time; a one-off (a major GC, the headless browser's own
-    // scheduling at 4x) does not. So a run with one is played again in a fresh page (at most three runs), and the check fails only if every run has one (verification 2026-10-08: this check failed about one run in three with a different entry each time).
+    // A task over 50 ms that is the game's own work comes back on most runs; a rare one-off (a major GC, the headless browser's own
+    // scheduling at 4x) does not. The three entries are played up to three times, each in a fresh page, and the check fails when 2 or more
+    // of the 3 runs have a task over 50 ms (vibe fixes 2026-10-08: a hitch in one run in four is the music stutter Daniel hears). Two clean
+    // or two bad runs decide it without a third.
     const phoneRun = async (attempt) => {
       const page = await browser.newPage();
       page.on('pageerror', (e) => errs.push('' + e));
@@ -162,9 +164,14 @@ const ENTRY_S = 1.5, STEP = 0.02;
       await page.close();
       return { worst, n };
     };
-    let pr = await phoneRun(1), first = null;
-    for (let attempt = 2; attempt <= 3 && pr.worst > 50; attempt++) { first = first || pr; console.log(`  run ${attempt - 1} had a ${Math.round(pr.worst)} ms task: the three entries again in a fresh page`); pr = await phoneRun(attempt); }
-    check(`phone 4x CPU: ${pr.n} entries, no main-thread task over 50 ms from the touch until the next level is back (worst ${Math.round(pr.worst)} ms${first ? ', a first run had ' + Math.round(first.worst) : ''})`, pr.n === 3 && pr.worst <= 50);
+    const prs = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      prs.push(await phoneRun(attempt));
+      const bad = prs.filter((r) => r.n !== 3 || r.worst > 50).length, good = prs.length - bad;
+      if (bad >= 2 || good >= 2) break;
+    }
+    const badEntryRuns = prs.filter((r) => r.n !== 3 || r.worst > 50).length;
+    check(`phone 4x CPU: 3 entries per run, no main-thread task over 50 ms from the touch until the next level is back, in at least 2 of 3 runs (worst per run: ${prs.map((r) => Math.round(r.worst) + ' ms').join(', ')})`, badEntryRuns < 2);
     check('0 console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   } catch (e) { console.log('FAIL script error', String(e).slice(0, 400)); fails.push('script'); }
   await browser.close();

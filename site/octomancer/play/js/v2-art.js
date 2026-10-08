@@ -47,7 +47,19 @@ export const art = {};
 /** r44: decoded copies (ImageBitmap) of the images that are drawn every frame at a scale. Drawing the <img> itself decodes it at the first real draw (at the scale
  *  asked for: the 1 x 1 warm-up draw only decoded a thumbnail), which was a 17-47 ms drawImage when the hub's whirlpool first showed on a phone at 4x. */
 const bitmaps = {};
-const BITMAP_KEYS = new Set(['whirlpool']);
+// vibe fixes: the two backdrop layers (drawn scaled every frame) and the opaque material textures (patterns in every band bake) too:
+// an opaque <img> was decoded again (as YUV) inside a frame after a level change
+const BITMAP_KEYS = new Set(['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB']);
+
+/** vibe fixes: decode an image's file into an ImageBitmap OFF the main thread: the bytes are fetched again (from the HTTP cache) and
+ *  createImageBitmap(blob) decodes them on a worker. createImageBitmap(img) decodes on the main thread (an 84 ms task for the sprite
+ *  atlas on a phone at 4x, Chrome trace), and a plain <img> can be dropped from the browser's decode cache and decoded again inside a
+ *  frame (50-80 ms 'Decode Image' tasks during level changes, the music stutter). A bitmap keeps its pixels. */
+export function decodeBitmap(img) {
+  if (typeof createImageBitmap !== 'function') return Promise.reject(new Error('no createImageBitmap'));
+  const url = img.currentSrc || img.src;
+  return fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status))))).then((b) => createImageBitmap(b)).catch(() => createImageBitmap(img));
+}
 const listeners = [];
 let started = false;
 
@@ -76,7 +88,7 @@ export function ensureV2Art(cb) {
     // r44: decode once, when it arrives (off the main thread), not at the first drawImage of a frame during play
     img.addEventListener('load', () => {
       if (BITMAP_KEYS.has(key) && typeof createImageBitmap === 'function') {
-        createImageBitmap(img).then((b) => { bitmaps[key] = b; for (const f of listeners) f(key); }, () => { for (const f of listeners) f(key); });
+        decodeBitmap(img).then((b) => { bitmaps[key] = b; for (const f of listeners) f(key); }, () => { for (const f of listeners) f(key); });
       } else { for (const f of listeners) f(key); warmImage(img); }
     }, { once: true });
     img.src = key === 'whirlpool' && whirlpoolSheetKey() === 'hi' ? artUrl(WHIRLPOOL_HI_FILE) : artUrl(FILES[key]);
@@ -90,6 +102,7 @@ export function offV2Art(cb) { const i = listeners.indexOf(cb); if (i >= 0) list
 
 /** The image for `key`, or null until it has loaded (draw code falls back to its code-drawn look). */
 export function artImg(key) {
+  if (BITMAP_KEYS.has(key)) return artBitmap(key); // decoded once off the main thread (an ImageBitmap: use .width, not .naturalWidth)
   const im = art[key];
   return im && im.complete && im.naturalWidth ? im : null;
 }

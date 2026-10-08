@@ -63,44 +63,52 @@ function drawEmbedded(ctx, camera, worldToScreen, canvasW, canvasH, c) {
 }
 
 /**
- * r37: a fossil pressed into the rock, in the pale carving colour with a dark engraved edge: a spiral shell, a fish
- * skeleton or a bone. Drawn flat on the face (no animation). Size in screen px; rot in radians.
+ * A fossil in the rock: thin, slightly wobbly dark-teal lines at low alpha that sink into the rock, like a faint pencil
+ * drawing of an ammonite, a fish skeleton or a bone (no pale fill, no stamped edge). Drawn flat on the face, no
+ * animation. Size in screen px; rot in radians; `seed` (the critter's phase) fixes the wobble so it never shimmers.
  */
-function drawFossil(ctx, x, y, size, kind, rot, flip, alpha) {
+function drawFossil(ctx, x, y, size, kind, rot, flip, alpha, seed = 0) {
   ctx.save();
   ctx.translate(x, y); ctx.rotate(rot); if (flip) ctx.scale(-1, 1);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const trace = () => {
-    ctx.beginPath();
-    if (kind === 'fossil-shell') { // an ammonite: a spiral with growth ribs
-      for (let t = 0; t <= 11; t += 0.25) {
-        const r = size * (0.03 + 0.036 * t), a = t * 0.62;
-        if (t === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-      }
-      for (let t = 3.5; t <= 11; t += 1.5) {
-        const a = t * 0.62, r0 = size * (0.03 + 0.036 * t), r1 = size * (0.03 + 0.036 * (t - 2.4));
-        ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
-      }
-    } else if (kind === 'fossil-fish') { // a fish skeleton: skull, spine, ribs and a forked tail
-      const L = size * 0.9;
-      ctx.ellipse(-L * 0.42, 0, L * 0.12, L * 0.08, 0, 0, Math.PI * 2);
-      ctx.moveTo(-L * 0.3, 0); ctx.lineTo(L * 0.34, 0);
-      for (let k = 0; k < 5; k++) { const rx = -L * 0.2 + k * L * 0.1, rh = L * (0.1 - Math.abs(k - 1.6) * 0.012); ctx.moveTo(rx, 0); ctx.lineTo(rx + L * 0.03, -rh); ctx.moveTo(rx, 0); ctx.lineTo(rx + L * 0.03, rh); }
-      ctx.moveTo(L * 0.34, 0); ctx.lineTo(L * 0.5, -L * 0.1); ctx.moveTo(L * 0.34, 0); ctx.lineTo(L * 0.5, L * 0.1);
-    } else { // a bone: a shaft with a knob at each end
-      const L = size * 0.78;
-      ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0);
-      for (const sx of [-1, 1]) {
-        ctx.moveTo(sx * L / 2 + size * 0.07, -size * 0.07); ctx.arc(sx * L / 2, -size * 0.07, size * 0.07, 0, Math.PI * 2);
-        ctx.moveTo(sx * L / 2 + size * 0.07, size * 0.07); ctx.arc(sx * L / 2, size * 0.07, size * 0.07, 0, Math.PI * 2);
-      }
+  let n = 0;
+  const wob = () => Math.sin((n++) * 12.9898 + seed * 78.233) * 0.5; // deterministic -0.5..0.5
+  // a hand-drawn stroke: a slightly bowed curve instead of a ruler line
+  const seg = (x0, y0, x1, y1) => {
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, b = wob() * size * 0.05;
+    ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx - dy / len * b, my + dx / len * b, x1 + wob() * size * 0.012, y1 + wob() * size * 0.012);
+  };
+  const blob = (cx, cy, rx, ry) => { // a wobbly loop
+    for (let k = 0; k <= 10; k++) {
+      const a = k / 10 * Math.PI * 2, j = 1 + wob() * 0.14, px = cx + Math.cos(a) * rx * j, py = cy + Math.sin(a) * ry * j;
+      if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
   };
+  ctx.beginPath();
+  if (kind === 'fossil-shell') { // an ammonite: a spiral with growth ribs
+    for (let t = 0; t <= 11; t += 0.3) {
+      const r = size * (0.03 + 0.036 * t) * (1 + wob() * 0.05), a = t * 0.62;
+      if (t === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    for (let t = 3.5; t <= 11; t += 1.5) {
+      const a = t * 0.62, r0 = size * (0.03 + 0.036 * t), r1 = size * (0.03 + 0.036 * (t - 2.4));
+      seg(Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+    }
+  } else if (kind === 'fossil-fish') { // a fish skeleton: skull, spine, ribs and a forked tail
+    const L = size * 0.9;
+    blob(-L * 0.42, 0, L * 0.12, L * 0.08);
+    seg(-L * 0.3, 0, L * 0.34, 0);
+    for (let k = 0; k < 5; k++) { const rx = -L * 0.2 + k * L * 0.1, rh = L * (0.1 - Math.abs(k - 1.6) * 0.012); seg(rx, 0, rx + L * 0.03, -rh); seg(rx, 0, rx + L * 0.03, rh); }
+    seg(L * 0.34, 0, L * 0.5, -L * 0.1); seg(L * 0.34, 0, L * 0.5, L * 0.1);
+  } else { // a bone: a shaft with a knob at each end
+    const L = size * 0.78, k = size * 0.07;
+    seg(-L / 2, 0, L / 2, 0);
+    for (const sx of [-1, 1]) { blob(sx * L / 2, -k, k, k); blob(sx * L / 2, k, k, k); }
+  }
   ctx.globalAlpha = alpha;
-  ctx.translate(size * 0.02, size * 0.025); // the engraved shadow edge, down-right of the carving
-  ctx.strokeStyle = 'rgba(16,28,40,0.75)'; ctx.lineWidth = Math.max(1.5, size * 0.07); trace(); ctx.stroke();
-  ctx.translate(-size * 0.02, -size * 0.025);
-  ctx.strokeStyle = 'rgba(222,232,226,0.95)'; ctx.lineWidth = Math.max(1.4, size * 0.06); trace(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(8,44,52,0.9)'; ctx.lineWidth = Math.max(1.2, size * 0.04); ctx.stroke(); // thin dark-teal line
+  ctx.translate(size * 0.012, size * 0.016);
+  ctx.globalAlpha = alpha * 0.28; ctx.strokeStyle = 'rgba(150,200,205,1)'; ctx.lineWidth = Math.max(0.8, size * 0.02); ctx.stroke(); // the faintest light edge below it
   ctx.restore();
 }
 
@@ -135,7 +143,7 @@ function getTintedRune(kind) {
     cctx.drawImage(img, T.sx[k], T.sy[k], T.sw[k], T.sh[k], 0, 0, c.width, c.height);
   }
   cctx.globalCompositeOperation = 'source-atop';
-  cctx.fillStyle = 'rgba(170,222,255,0.9)';
+  cctx.fillStyle = 'rgba(10,48,58,0.95)'; // vibefix: a dark-teal scratch in the rock like the fossils, not a bright pale-blue stamp
   cctx.fillRect(0, 0, c.width, c.height);
   tintedRuneCache[kind] = c;
   return c;
@@ -148,7 +156,7 @@ function getTintedRune(kind) {
 function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced) {
   if (c.kind.startsWith('fossil')) {
     const s = worldToScreen(camera, canvasW, canvasH, c.x, c.y);
-    drawFossil(ctx, s.x, s.y, camera.pxPerUnit * 0.85, c.kind, (c.phase - Math.PI) * 0.5, c.flip, 0.5);
+    drawFossil(ctx, s.x, s.y, camera.pxPerUnit * 0.85, c.kind, (c.phase - Math.PI) * 0.5, c.flip, 0.85, c.phase);
     return;
   }
   if (c.kind === 'embed') { drawEmbedded(ctx, camera, worldToScreen, canvasW, canvasH, c); return; }
@@ -200,7 +208,7 @@ function drawOne(ctx, camera, worldToScreen, canvasW, canvasH, c, time, reduced)
     // mark on the rock rather than a floating bright glyph, and the pale-
     // blue tint below (drawn after the sprite, `source-atop`) replaces the
     // source art's white with the video's pale-blue rune colour.
-    alpha = 0.5 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase)); // r37: was 0.3-0.5, too faint to read as a carving
+    alpha = 0.62 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.4 + c.phase)); // vibefix: dark teal, so a lower alpha still reads and sinks into the rock
   } else if (c.kind === 'bush2') {
     worldSize = 0.55;
     rot = Math.sin(t * 0.8 + c.phase) * 0.1;

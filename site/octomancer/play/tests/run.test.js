@@ -1,7 +1,7 @@
 // B1-1 run flow tests (run.js): the hub -> tutorial -> Shallows 1-1..1-3 -> end -> hub state machine.
 import {
   createRun, runEvent, levelSpec, stageLabel, isSafeState,
-  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, BIOME_LEVELS,
+  S_HUB, S_TUTORIAL, S_BIOME, S_END, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, BIOME_LEVELS, CAUSE_TEXT, CAUSE_NAME, DEATH_TITLE, deathTitle,
 } from '../js/run.js';
 
 export function runRunTests(assert) {
@@ -52,4 +52,12 @@ export function runRunTests(assert) {
   assert('run: level seeds are deterministic per (run seed, dive)', levelSpec(a).seed === levelSpec(b).seed);
   runEvent(a, EV_DEATH); runEvent(a, EV_ENTER_DIVE);
   assert('run: the second dive of a run differs from the first', levelSpec(a).seed !== levelSpec(b).seed);
+
+  // death screen titles: one per cause; only the Beholder and unknown keep 'The dark took you'
+  const missing = Object.keys(CAUSE_TEXT).filter((k) => !DEATH_TITLE[k]);
+  assert('run: every CAUSE_TEXT key has a death title' + (missing.length ? ' (missing ' + missing.join() + ')' : ''), missing.length === 0);
+  assert('run: every CAUSE_NAME key has a death title', Object.keys(CAUSE_NAME).every((k) => DEATH_TITLE[k]));
+  const dark = Object.keys(DEATH_TITLE).filter((k) => DEATH_TITLE[k] === 'The dark took you').sort().join();
+  assert('run: only the Beholder and unknown keep "The dark took you"', dark === 'beholder,unknown');
+  assert('run: death titles are cause specific', deathTitle('spikes') === 'Impaled' && deathTitle('rock') === 'Crushed' && deathTitle('shopkeeper') === "Shopkeeper's justice" && deathTitle('nonsense') === 'The dark took you' && deathTitle(undefined) === 'The dark took you');
 }

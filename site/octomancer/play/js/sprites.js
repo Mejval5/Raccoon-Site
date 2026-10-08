@@ -6,6 +6,7 @@
 // Corpses and other owners: drawSprite takes a rotation and a flip, so a sprite can be laid down limp (rot = +-PI/2) as is.
 
 import { ATLAS_RECTS } from './sprite-atlas.js';
+import { decodeBitmap } from './v2-art.js';
 
 let img = null, ready = false;
 const listeners = [];
@@ -19,7 +20,10 @@ function load() {
       ready = true;
       for (const f of listeners) f();
     };
-    if (img.decode) img.decode().then(done, done); else done();
+    // vibe fixes: the atlas is drawn from a decoded ImageBitmap (an <img> can be dropped from the browser's decode cache and decoded
+    // again inside a frame, a 50-80 ms task on a phone at 4x), decoded off the main thread (v2-art.js decodeBitmap); the <img> is the fallback
+    const src = img;
+    decodeBitmap(src).then((b) => { img = b; done(); }, () => { if (src.decode) src.decode().then(done, done); else done(); });
   }, { once: true });
   img.src = new URL('../img/v2/sprites.webp', import.meta.url).href;
 }

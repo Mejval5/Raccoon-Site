@@ -83,6 +83,20 @@ export function eligibleRows(table, story, levelIndex) {
  * @param {Record<string, number>} story the stage of every person (save.js getStory)
  * @param {ArrayLike<number>} [avoid] x, y pairs of the level's other spawns
  */
+function tileSum(t) { let s = 0; for (let i = 0; i < t.length; i++) s = (s * 31 + t[i] + i) >>> 0; return s; }
+/**
+ * vibe fixes: the path data planQuest needs (the lattice reachable from the start, the start -> exit route) as plain typed arrays.
+ * gen-worker.js computes it next to the level (level.questPath) so the main thread does not: planQuest was a 5-50 ms piece of one
+ * warm frame at 4x on a phone (a task over 50 ms during the transition, a music stutter). `sum` identifies the tiles it was made for.
+ */
+export function questPathFor(level) {
+  const w = level.w, h = level.h, t = level.tiles;
+  const grid = createPathGrid(w, h, (x, y) => t[y * w + x] !== 0);
+  const reached = reachableNodes(grid, level.startX + 0.5, level.startY + 0.5);
+  const route = findPath(grid, level.startX + 0.5, level.startY + 0.5, level.exitX + 0.5, level.exitY + 0.5);
+  return { nx: grid.nx, ny: grid.ny, reached, route: route ? route.points : null, sum: tileSum(t) };
+}
+
 export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid = null) {
   if (!table || !table.rows.length) return null;
   const rng = mulberry32(hashSeed2(hashSeed2(runSeed >>> 0, levelIndex >>> 0), 0x9e57));
@@ -90,9 +104,8 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
   let grid = null, reached = null, route = null;
   const ensure = () => {
     if (grid) return;
-    grid = createPathGrid(w, h, (x, y) => t[y * w + x] !== 0);
-    reached = reachableNodes(grid, level.startX + 0.5, level.startY + 0.5);
-    route = findPath(grid, level.startX + 0.5, level.startY + 0.5, level.exitX + 0.5, level.exitY + 0.5);
+    const qp = level.questPath && level.questPath.sum === tileSum(t) ? level.questPath : questPathFor(level); // the worker's copy, when the tiles still match
+    grid = { nx: qp.nx, ny: qp.ny }; reached = qp.reached; route = qp.route ? { points: qp.route } : null;
   };
   const distToRoute = (x, y) => {
     let best = 1e9;
@@ -112,9 +125,11 @@ export function planQuest(level, table, runSeed, levelIndex, story = {}, avoid =
    * above it (a cage 1.3 tiles wide never touches a wall), reachable, out of the shop, the set pieces and the start / exit.
    * @param {number} clearH rows of open water needed above the floor tile (including its own)
    */
+  const spotCache = [];
   const floorSpots = (clearH) => {
+    if (spotCache[clearH]) return spotCache[clearH]; // the same for every row tried (vibe fixes: it was recomputed per row)
     ensure();
-    const out = [];
+    const out = spotCache[clearH] = [];
     for (let y = 4; y < h - 4; y++) for (let x = 4; x < w - 4; x++) {
       if (rock(x, y) || !rock(x, y + 1) || !rock(x - 1, y + 1) || !rock(x + 1, y + 1)) continue;
       let open = true;

@@ -183,24 +183,39 @@ function drawBang(ctx, sx, sy, ppu, tell) {
   ctx.restore();
 }
 
-/** Three little stars circling above a stunned enemy. */
+/** Three small bubbles circling and rising above a stunned enemy (a woozy head): pale fill, soft ink outline. */
 function drawStunStars(ctx, sx, sy, ppu, time) {
   ctx.save();
-  ctx.fillStyle = '#fff29a'; ctx.strokeStyle = '#8a5a10'; ctx.lineWidth = Math.max(1, ppu * 0.025);
+  ctx.fillStyle = 'rgba(220,242,255,0.55)'; ctx.strokeStyle = 'rgba(30,50,70,0.7)'; ctx.lineWidth = Math.max(1, ppu * 0.02);
   for (let k = 0; k < 3; k++) {
-    const a = time * 7 + k * 2.094;
-    const x = sx + Math.cos(a) * ppu * 0.45, y = sy - ppu * 0.62 + Math.sin(a) * ppu * 0.13, r = ppu * (0.1 + 0.025 * Math.sin(a * 2));
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const rr = i % 2 ? r * 0.42 : r, ang = i * Math.PI / 4 + time * 3;
-      if (i === 0) ctx.moveTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr); else ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
-    }
-    ctx.closePath(); ctx.stroke(); ctx.fill();
+    const a = time * 5 + k * 2.094, rise = ((time * 0.9 + k / 3) % 1);
+    const x = sx + Math.cos(a) * ppu * 0.32, y = sy - ppu * (0.45 + 0.35 * rise) + Math.sin(a) * ppu * 0.08, r = ppu * (0.045 + 0.03 * (1 - rise));
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(220,242,255,0.55)';
   }
   ctx.restore();
 }
 
 /** The cannon's barrel along its aim (e.aim, radians) with a muzzle glow while it charges. */
+/** Ink Jet hits leave dark blotches on the creature (inkjet.js sets inkStain = seconds left, inkHits = how many hits): one more blotch per hit,
+ * fading over the last 1.5 s. Flat dark fills, no outline, laid out by golden angle so the same enemy always looks the same. */
+function drawInkStain(ctx, sx, sy, ppu, e) {
+  const hits = e.inkHits || 1, rad = (e.radius || 0.4) * ppu;
+  ctx.globalAlpha = 0.85 * Math.min(1, e.inkStain / 1.5);
+  ctx.fillStyle = '#1a1030';
+  ctx.beginPath();
+  for (let k = 0; k < hits + 1; k++) {
+    const a = k * 2.399 + 0.6, d = rad * (0.15 + 0.5 * ((k * 5) % 7) / 7), r = ppu * (0.028 + 0.022 * ((k * 3) % 4) / 3);
+    const px = sx + Math.cos(a) * d, py = sy + Math.sin(a) * d * 0.8;
+    ctx.moveTo(px + r, py); ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.moveTo(px + Math.cos(a) * d * 0.35 + r * 0.5, py + r); // a smaller drip beside it
+    ctx.arc(px + Math.cos(a) * d * 0.35, py + r, r * 0.5, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
 function drawBarrel(ctx, sx, sy, ppu, e, time) {
   const a = e.aim;
   ctx.save();
@@ -291,6 +306,7 @@ export function drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemie
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, ex, py, 0.9, face < 0, false, fl, tilt);
       if (tell > 0) drawBang(ctx, sc.x, sc.y - ppu * 0.6, ppu, tell);
     }
+    if (e.inkStain > 0 && sc) drawInkStain(ctx, sc.x, sc.y, ppu, e);
     if (e.stun > 0 && sc) drawStunStars(ctx, sc.x, sc.y, ppu, time);
   }
   for (const s of shots) {
@@ -362,25 +378,20 @@ export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, t
       ctx.beginPath(); ctx.arc(-r * 0.35, -r * 0.35, r * 0.24, 0, Math.PI * 2); ctx.fill();
       ctx.rotate(rot);
       const len = r * (0.75 - 0.35 * burn); // the fuse shortens as it burns
-      ctx.strokeStyle = '#c9a25a'; ctx.lineWidth = Math.max(2, r * 0.2); ctx.lineCap = 'round';
+      ctx.strokeStyle = '#8f8366'; ctx.lineWidth = Math.max(2, r * 0.2); ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(0, -r * 0.85); ctx.quadraticCurveTo(r * 0.3, -r * 0.85 - len * 0.7, r * 0.15, -r * 0.9 - len); ctx.stroke();
       const lit = Math.sin(time * (6 + burn * 22) * Math.PI) > -0.3;
       const sx = r * 0.15, sy = -r * 0.9 - len;
       ctx.restore();
-      // spark (screen space): glow plus a few short rays that flicker
+      // fuse fizz (screen space): the lit tip is a pale bubbling point, three tiny bubbles rise off it
       const cs = Math.cos(rot), sn = Math.sin(rot);
       const spx = s.x + sx * cs - sy * sn, spy = s.y + sx * sn + sy * cs;
-      const g = ctx.createRadialGradient(spx, spy, 0, spx, spy, r * 0.9);
-      g.addColorStop(0, lit ? 'rgba(255,230,120,0.95)' : 'rgba(255,150,50,0.6)');
-      g.addColorStop(1, 'rgba(255,150,50,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(spx, spy, r * 0.9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = lit ? '#fff3a8' : '#ff9a3a';
-      ctx.beginPath(); ctx.arc(spx, spy, r * 0.2, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,220,120,0.8)'; ctx.lineWidth = 1.5;
-      for (let k = 0; k < 4; k++) {
-        const a = time * 9 + k * 1.7, l = r * (0.3 + 0.25 * ((time * 13 + k * 0.37) % 1));
-        ctx.beginPath(); ctx.moveTo(spx + Math.cos(a) * r * 0.2, spy + Math.sin(a) * r * 0.2); ctx.lineTo(spx + Math.cos(a) * l, spy + Math.sin(a) * l); ctx.stroke();
+      ctx.fillStyle = lit ? 'rgba(235,248,255,0.95)' : 'rgba(170,205,225,0.8)';
+      ctx.beginPath(); ctx.arc(spx, spy, r * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(210,238,255,0.8)'; ctx.lineWidth = 1;
+      for (let k = 0; k < 3; k++) {
+        const ph = (time * (1.6 + burn * 2.4) + k / 3) % 1;
+        ctx.beginPath(); ctx.arc(spx + Math.sin(ph * 9 + k * 2) * r * 0.18, spy - ph * r * 1.1, r * (0.07 + 0.05 * ph), 0, Math.PI * 2); ctx.stroke();
       }
     } else {
       drawBlast(ctx, s.x, s.y, camera.pxPerUnit * BOMB_RADIUS, b.age / 0.4);
@@ -388,52 +399,52 @@ export function drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, t
   }
 }
 
-// The blast (round 35, after the promo video): a white-yellow flash disc for the first frames, a fireball, 26 thin bright
-// yellow spark lines flying out radially with a bead at the tip (the video's burst), and a thick ring that fades.
-// `t` runs 0..1 over the 0.4 s the bomb lingers. Plain source-over: additive light washes out to white on the light water.
-const SPARKS = 26;
-const sparkJitter = new Float32Array(SPARKS * 2);
-for (let k = 0; k < SPARKS * 2; k++) { const v = Math.sin((k + 1) * 12.9898) * 43758.5453; sparkJitter[k] = v - Math.floor(v); }
+// The blast: a silt-and-bubble burst. An ink-dark core that swells and fades, a pale shock ring that races out to exactly
+// BLAST_DRAW_RADIUS (= BOMB_RADIUS, the lethal radius) and fades there, and a very short pale flash. Nothing is drawn
+// beyond R; the bubbles and the lingering silt are pooled particles (particles.js blastBurst). `t` runs 0..1 over the
+// 0.4 s the bomb lingers. No gradients, no shadow blur: a few arcs.
+export const BLAST_DRAW_RADIUS = BOMB_RADIUS;
 function drawBlast(ctx, x, y, R, t) {
   t = Math.max(0, Math.min(1, t));
-  const ease = 1 - (1 - t) * (1 - t) * (1 - t);
+  const q = Math.min(1, t / 0.3), ease = 1 - (1 - q) * (1 - q) * (1 - q); // the ring arrives at R by t = 0.3 and then holds, fading
   ctx.save();
-  // fireball
-  const fr = R * (0.4 + 0.5 * ease), fa = Math.max(0, 1 - t * 1.2);
-  if (fa > 0) {
-    const g = ctx.createRadialGradient(x, y, 0, x, y, fr);
-    g.addColorStop(0, `rgba(255,250,215,${(fa * 0.95).toFixed(3)})`);
-    g.addColorStop(0.4, `rgba(255,214,60,${(fa * 0.7).toFixed(3)})`);
-    g.addColorStop(0.8, `rgba(255,150,30,${(fa * 0.3).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(255,110,20,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(x, y, fr, 0, Math.PI * 2); ctx.fill();
+  const fade = 1 - t * t;
+  // faint cold water tint inside the ring
+  ctx.fillStyle = `rgba(200,225,235,${(0.22 * fade).toFixed(3)})`;
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1, R * ease), 0, Math.PI * 2); ctx.fill();
+  // ink-dark core
+  const ca = 0.85 * Math.max(0, 1 - t * 1.25);
+  if (ca > 0) {
+    ctx.fillStyle = `rgba(21,13,28,${ca.toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(x, y, R * (0.18 + 0.4 * ease), 0, Math.PI * 2); ctx.fill();
   }
-  // flash disc: the first quarter of the window
-  if (t < 0.28) {
-    const k = 1 - t / 0.28;
-    ctx.fillStyle = `rgba(255,255,230,${(0.95 * k).toFixed(3)})`;
-    ctx.beginPath(); ctx.arc(x, y, R * (0.34 + 0.3 * (1 - k)), 0, Math.PI * 2); ctx.fill();
+  // very short pale flash
+  if (t < 0.12) {
+    ctx.fillStyle = `rgba(235,247,255,${(0.7 * (1 - t / 0.12)).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(x, y, R * (0.2 + 0.3 * ease), 0, Math.PI * 2); ctx.fill();
   }
-  // radial sparks: thin lines with a bead at the tip
-  ctx.lineCap = 'round';
-  const sa = Math.max(0, 1 - t * t).toFixed(3);
-  for (let k = 0; k < SPARKS; k++) {
-    const a = (k / SPARKS) * Math.PI * 2 + (sparkJitter[k] - 0.5) * 0.4;
-    const reach = (0.65 + 0.55 * sparkJitter[SPARKS + k]) * R * (0.3 + 1.0 * ease);
-    const r0 = Math.min(reach * 0.8, R * (0.1 + 0.6 * ease * ease));
-    const ca = Math.cos(a), sa2 = Math.sin(a);
-    ctx.strokeStyle = k % 4 === 0 ? `rgba(255,248,160,${sa})` : `rgba(255,208,10,${sa})`;
-    ctx.lineWidth = Math.max(1.5, R * 0.03 * (1 - t) + 0.8) * (k % 5 === 0 ? 1.8 : 1);
-    ctx.beginPath(); ctx.moveTo(x + ca * r0, y + sa2 * r0); ctx.lineTo(x + ca * reach, y + sa2 * reach); ctx.stroke();
-    if (k % 2 === 0) { ctx.fillStyle = `rgba(255,236,90,${sa})`; ctx.beginPath(); ctx.arc(x + ca * (reach + R * 0.04), y + sa2 * (reach + R * 0.04), Math.max(1.5, R * 0.02 * (1 - t) + 0.8), 0, Math.PI * 2); ctx.fill(); }
-  }
-  // ring
-  ctx.globalAlpha = Math.max(0, 1 - t * 1.1);
-  ctx.strokeStyle = '#ffc040';
-  ctx.lineWidth = Math.max(2, R * 0.08 * (1 - t) + 2);
-  ctx.beginPath(); ctx.arc(x, y, R * Math.min(1, 0.2 + ease * 0.85), 0, Math.PI * 2); ctx.stroke();
+  // pale shock ring with a soft ink outline; the outer edge of the outline sits on R
+  const lw = Math.max(2, R * 0.045), ringR = Math.max(1, R * ease - (lw + 2) / 2);
+  ctx.strokeStyle = `rgba(25,40,55,${(0.55 * fade).toFixed(3)})`; ctx.lineWidth = lw + 2;
+  ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = `rgba(226,244,255,${(0.95 * fade).toFixed(3)})`; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
+}
+
+/** vibe fixes: one soft round cloud (white, alpha falling to 0 at the rim), baked once; silt particles draw it tinted by their colour. */
+let siltSprites = null;
+function siltSprite(color) {
+  if (!siltSprites) siltSprites = new Map();
+  let c = siltSprites.get(color);
+  if (c || typeof document === 'undefined') return c || null;
+  c = document.createElement('canvas'); c.width = c.height = 48;
+  const g = c.getContext('2d'), m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color) || [0, 130, 128, 108];
+  const grad = g.createRadialGradient(24, 24, 1, 24, 24, 24);
+  grad.addColorStop(0, `rgba(${m[1]},${m[2]},${m[3]},0.75)`); grad.addColorStop(0.5, `rgba(${m[1]},${m[2]},${m[3]},0.4)`); grad.addColorStop(1, `rgba(${m[1]},${m[2]},${m[3]},0)`);
+  g.fillStyle = grad; g.fillRect(0, 0, 48, 48);
+  siltSprites.set(color, c);
+  return c;
 }
 
 export function drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particlePool) {
@@ -442,6 +453,16 @@ export function drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, part
     if (!p.active) continue;
     if (!visibleObj(p, p.x, p.y, 0.5)) continue; // r43
     const s = worldToScreen(camera, canvasW, canvasH, p.x, p.y);
+    if (p.soft) { // silt: a soft cloud that swells and thins out as it settles (no hard disc edge)
+      const img = siltSprite(p.color);
+      if (img) {
+        const t = Math.max(0, p.life / p.maxLife), r = p.size * camera.pxPerUnit * (1.5 + (1 - t) * 0.8);
+        const ga = ctx.globalAlpha; ctx.globalAlpha = Math.min(1, t * 1.6) * 0.8;
+        ctx.drawImage(img, s.x - r, s.y - r, r * 2, r * 2);
+        ctx.globalAlpha = ga;
+      }
+      continue;
+    }
     // V2-PLAN 16: a sticky chunk (a splat's gore) keeps its size and only fades in its last second
     const alpha = p.sticky ? Math.min(1, p.life) : Math.max(0, p.life / p.maxLife);
     ctx.save();

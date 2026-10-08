@@ -23,7 +23,7 @@ const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'reli
   'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
-  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
+  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };
 }
 
 /** @type {ReturnType<typeof freshMemory>} */
@@ -62,6 +62,7 @@ export function loadBest() {
         runs: Number(obj.runs) || 0,
         muted: !!obj.muted,
         tutorialDone: !!obj.tutorialDone,
+        helpDone: !!obj.helpDone || !!obj.shortcut, // a player who cleared the biome once does not need the bottom-left controls line
         journal: Array.isArray(obj.journal) ? obj.journal.filter((id) => typeof id === 'string').slice(0, 1000) : [],
         bestRuns: cleanBestRuns(obj.bestRuns),
         shortcut: !!obj.shortcut,
@@ -115,6 +116,15 @@ export function getTutorialDone() {
 export function setTutorialDone(done) {
   loadBest();
   memory.tutorialDone = !!done;
+  writeToStorage();
+}
+
+/** The bottom-left controls line is retired once the player has finished two levels (Settings > Help keeps the list). */
+export function getHelpDone() { return loadBest().helpDone; }
+export function setHelpDone(done) {
+  loadBest();
+  if (memory.helpDone === !!done) return;
+  memory.helpDone = !!done;
   writeToStorage();
 }
 

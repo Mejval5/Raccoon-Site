@@ -5,14 +5,16 @@
 import { createRoomBank } from '../js/rooms.js';
 import { setDefaultBank, LEVEL_W, LEVEL_H } from '../js/level.js';
 import { createLevelWorld } from '../js/world-v2.js';
-import { createProps, PK_BOMB, PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PK_RUBBLE, PS_REST, PS_HELD } from '../js/props.js';
+import { createProps, PK_BOMB, PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PK_RUBBLE, PS_REST, PS_HELD, RUBBLE_CAP } from '../js/props.js';
 import { createBombs, BOMB_FUSE_V2, spawnRubble } from '../js/bomb.js';
+import { FRESH_CAP } from '../js/fresh.js';
 import { createLoot, makeLootRecord } from '../js/loot.js';
 import { createHazards, makeHazardRecord } from '../js/hazards.js';
 import { createEnemies } from '../js/enemies.js';
 import { createOctopus } from '../js/octopus.js';
 import { mulberry32 } from '../js/rng.js';
 import { BOMB_RADIUS } from '../js/config.js';
+import { BLAST_DRAW_RADIUS } from '../js/enemy-draw.js';
 import { loadRoomsJson } from './rooms.test.js';
 
 const DT = 0.02;
@@ -42,16 +44,17 @@ export async function runPropsTests(assert) {
     const i = props.add(PK_BOMB, 5, 3, 0, 0);
     const d = props.data;
     run(props, world, 150);
-    const landedY = d.y[i];
+    const landedY = d.y[i], landedX = d.x[i];
     run(props, world, 1000);
-    assert(`props: a bomb dropped on a slope ends lower (y ${d.y[i].toFixed(2)} vs ${landedY.toFixed(2)} where it landed) and to the downhill side (x ${d.x[i].toFixed(2)} vs 5)`, d.y[i] > landedY + 1.5 && d.x[i] > 11);
-    assert('props: ... and comes to rest (asleep) at the bottom, not inside rock', d.state[i] === PS_REST && !world.isSolid(d.x[i], d.y[i]));
+    // settling drag (vibe fix): a bomb creeps downhill slowly (was: rolled all the way to the flat at the bottom, x > 11)
+    assert(`props: a bomb dropped on a slope still creeps downhill (y ${d.y[i].toFixed(2)} vs ${landedY.toFixed(2)} where it landed, x ${d.x[i].toFixed(2)} vs ${landedX.toFixed(2)})`, d.y[i] > landedY + 0.5 && d.x[i] > landedX + 1);
+    assert('props: ... and is never inside rock', !world.isSolid(d.x[i], d.y[i]));
     // on the tile-built slope of a generated cave it also ends up lower or equal, never higher
     const stairs = room(30, 22, (x, y) => y >= Math.min(16, 8 + Math.max(0, x - 6)));
     const p2 = createProps();
     const j = p2.add(PK_BOMB, 8.95, 4, 0, 0);
     run(p2, stairs, 500);
-    assert(`props: on a stair-step slope it ends lower and downhill too (x ${p2.data.x[j].toFixed(2)}, y ${p2.data.y[j].toFixed(2)})`, p2.data.y[j] > 9.7 && p2.data.x[j] > 9.2);
+    assert(`props: on a stair-step slope it ends lower and downhill too (x ${p2.data.x[j].toFixed(2)}, y ${p2.data.y[j].toFixed(2)})`, p2.data.y[j] > 9.7 && p2.data.x[j] > 8.95);
   }
 
   // ---- a bomb thrown at a wall bounces back ----
@@ -89,7 +92,30 @@ export async function runPropsTests(assert) {
     }
     assert(`bomb: explodes on a ${BOMB_FUSE_V2} s fuse (went off at ${boomAt.toFixed(2)} s)`, Math.abs(boomAt - BOMB_FUSE_V2) < 0.06);
     const b = bombs.list()[0];
-    assert('bomb: it sank before it went off (gravity)', b.y > y0 + 1.5);
+    assert('bomb: it sank a little before it went off (gravity, now with a settling drag; was > 1.5 tiles)', b.y > y0 + 0.3);
+  }
+
+  // ---- vibe fix: a bomb dropped at rest in open water barely sinks, one on a floor barely rolls ----
+  {
+    const world = room(30, 30, (x, y) => y >= 24);
+    const props = createProps(), bombs = createBombs(props);
+    const octo = createOctopus(25, 5); // out of the way, at rest
+    const y0 = 8.5;
+    const i = props.add(PK_BOMB, 10.5, y0, 0, 0, { timer: BOMB_FUSE_V2 });
+    for (let n = 0; n < Math.round(BOMB_FUSE_V2 / DT); n++) props.step(DT, world, octo);
+    assert(`bomb: dropped at rest in open water it sinks under 1.5 tiles in the ${BOMB_FUSE_V2} s fuse (sank ${(props.data.y[i] - y0).toFixed(2)})`, props.data.y[i] - y0 < 1.5 && props.data.y[i] - y0 > 0.3);
+    const j = props.add(PK_BOMB, 20.5, 22.2, 0, 0, { timer: BOMB_FUSE_V2 }); // lands on the floor (rock from y 24)
+    for (let n = 0; n < 40; n++) props.step(DT, world, octo);
+    const xl = props.data.x[j];
+    props.data.vx[j] = 2; // a nudge along the floor
+    for (let n = 0; n < Math.round(BOMB_FUSE_V2 / DT); n++) props.step(DT, world, octo);
+    assert(`bomb: on a floor a nudge rolls it under 1 tile (rolled ${(props.data.x[j] - xl).toFixed(2)})`, props.data.x[j] - xl < 1 && props.data.x[j] - xl > 0);
+    // the throw still carries: about the same distance in the first 0.3 s as the old physics (grav 3.6, drag 1.6 gave ~1.9 tiles)
+    const k = props.add(PK_BOMB, 5.5, 8.5, 9, 0, { timer: BOMB_FUSE_V2, grace: 0.35 });
+    const x0 = props.data.x[k];
+    for (let n = 0; n < 15; n++) props.step(DT, world, octo);
+    assert(`bomb: a throw (9 u/s) still travels about 2 tiles in 0.3 s (${(props.data.x[k] - x0).toFixed(2)})`, props.data.x[k] - x0 > 1.7 && props.data.x[k] - x0 < 2.3);
+    assert('blast: the drawn blast radius is the lethal BOMB_RADIUS', BLAST_DRAW_RADIUS === BOMB_RADIUS && BOMB_RADIUS === 2.5);
   }
 
   // ---- bombs get pushed by the octopus while rolling ----
@@ -187,7 +213,7 @@ export async function runPropsTests(assert) {
     assert('enemies: a stunned enemy does not hurt the octopus', o3.hearts === 3);
   }
 
-  // ---- rubble: 4-8 chips per blast, sink, settle, fade after 3 s; the octopus ignores them ----
+  // ---- rubble: 4-8 chips per blast, sink, settle, sleep and stay (capped, oldest recycled); the octopus ignores them ----
   {
     const world = room(30, 22, (x, y) => y >= 12);
     const props = createProps(), bombs = createBombs(props);
@@ -206,9 +232,49 @@ export async function runPropsTests(assert) {
     const vx0 = o2.vx;
     props.step(DT, world, o2);
     assert('rubble: no collision with the octopus (its velocity is untouched)', o2.vx === vx0);
-    run(props, world, 160);
-    assert('rubble: all of it fades away after about 3 s', props.ofKind(PK_RUBBLE).length === 0);
-    assert('rubble: none when no rock was removed', spawnRubble(props, [], 0, 0, 0) === 0 && props.ofKind(PK_RUBBLE).length === 0);
+    // (was: "all of it fades away after about 3 s"; since the destruction-traces pass rubble settles, sleeps and stays)
+    const nRu = ru.length;
+    run(props, world, 500); // 10 s
+    const ru2 = props.ofKind(PK_RUBBLE);
+    assert(`rubble: still all there after 10 s (${ru2.length}/${nRu})`, ru2.length === nRu);
+    assert('rubble: every resting chip is asleep (PS_REST costs nothing per step)', ru2.every((i) => props.data.state[i] === PS_REST));
+    // the cap: 60 live chips; the 61st recycles the oldest, and rubble never takes the last slots from a bomb
+    const p3 = createProps();
+    for (let k = 0; k < 70; k++) p3.add(PK_RUBBLE, 5 + k * 0.01, 5, 0, 0);
+    assert(`rubble: capped at ${RUBBLE_CAP} live chips (${p3.ofKind(PK_RUBBLE).length})`, p3.ofKind(PK_RUBBLE).length === RUBBLE_CAP && p3.count() === RUBBLE_CAP);
+    assert('rubble: the oldest chips were recycled (the first 10 are gone, the newest is there)', p3.data.x[p3.ofKind(PK_RUBBLE).reduce((a, b) => (p3.data.born[a] < p3.data.born[b] ? a : b))] > 5.095);
+    const p4 = createProps(24);
+    for (let k = 0; k < 24; k++) p4.add(PK_RUBBLE, 5, 5, 0, 0);
+    assert('rubble: a bomb still gets a slot when every slot is rubble (the oldest chip is recycled)', p4.add(PK_BOMB, 6, 6) >= 0 && p4.ofKind(PK_BOMB).length === 1 && p4.ofKind(PK_RUBBLE).length === 23);
+    assert('rubble: none when no rock was removed', spawnRubble(props, [], 0, 0, 0) === 0 && props.ofKind(PK_RUBBLE).length === nRu);
+  }
+
+  // ---- fresh edges: a broken tile is remembered, fades after FRESH_LIFE, capped; the haze hangs a few seconds ----
+  {
+    const world = room(30, 22, (x, y) => y >= 12);
+    const fr = world.fresh;
+    assert('fresh: nothing before a break', fr.count() === 0);
+    assert('fresh: breaking rock records the tile', world.breakTile(10, 14) && fr.count() === 1 && fr.ageAt(10, 14) === 0);
+    assert('fresh: bedrock / air breaks record nothing', !world.breakTile(10, 2) && !world.breakTile(10, 5) && fr.count() === 1);
+    for (let i = 0; i < 500; i++) fr.update(DT); // 10 s
+    assert(`fresh: still raw after 10 s (age ${fr.ageAt(10, 14).toFixed(1)})`, fr.count() === 1 && Math.abs(fr.ageAt(10, 14) - 10) < 0.1);
+    for (let i = 0; i < 750; i++) fr.update(DT); // 25 s in all
+    assert('fresh: faded back to the normal rim after ~24 s', fr.count() === 0);
+    for (let k = 0; k < FRESH_CAP + 40; k++) fr.add(k % 20, 14 + (k >> 5)); // cap: the oldest are recycled
+    assert(`fresh: capped at ${FRESH_CAP} entries (${fr.count()})`, fr.count() === FRESH_CAP);
+    fr.haze(10, 10, 12);
+    assert('haze: a crater gets 3-5 blobs', fr.hazeCount() >= 3 && fr.hazeCount() <= 5);
+    for (let i = 0; i < 300; i++) fr.update(DT); // 6 s
+    assert('haze: gone after a few seconds', fr.hazeCount() === 0);
+    for (let k = 0; k < 10; k++) fr.haze(1, 1, 30);
+    assert('haze: capped', fr.hazeCount() <= 16);
+    // drawing culls and runs
+    let calls = 0;
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (...a) => { calls++; }), set: (t, k, v) => { t[k] = v; return true; } });
+    fr.add(10, 14); fr.draw(ctx, { x: 10, y: 14, pxPerUnit: 40 }, 800, 600, world.tileAt);
+    const near = calls; calls = 0;
+    fr.draw(ctx, { x: 900, y: 900, pxPerUnit: 40 }, 800, 600, world.tileAt);
+    assert(`fresh: draw paints edges near the camera and culls far ones (${near} vs ${calls} calls)`, near > 5 && calls < near / 4);
   }
 
   // ---- a falling rock (hazard) is a body hanging from its ceiling tile: bomb the ceiling and it drops ----

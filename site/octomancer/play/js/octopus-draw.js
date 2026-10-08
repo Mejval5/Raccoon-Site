@@ -11,6 +11,7 @@
 // and the placeholder is also what renders until the bake has loaded.
 
 import { sharedCanvas } from './canvas-pool.js';
+import { decodeBitmap } from './v2-art.js';
 
 const TENTACLE_COUNT = 8;
 const BODY = '#c05060';
@@ -71,6 +72,10 @@ if (!FORCE_CODE) {
       right: idle0 && idle0.right ? idle0.right.angle : 0,
     };
     bake = { data, img, eyeBaseAngle };
+    // vibe fixes: draw from a decoded ImageBitmap. The <img> is decoded lazily by the browser's image cache, which drops it under memory
+    // pressure (a level change frees a lot) and decodes the whole 7076 px sheet again inside a frame: a 50-80 ms task on a phone at 4x
+    // (Chrome trace: 'Decode Image' webp inside CanvasRenderingContext2D::FinalizeFrame), heard as a music stutter.
+    decodeBitmap(img).then((b) => { if (bake) bake.img = b; }, () => { /* keep the <img> */ });
   }).catch((err) => {
     bakeFailed = true;
     // eslint-disable-next-line no-console
@@ -152,6 +157,16 @@ function drawBaked(ctx, o, bakeData) {
   ctx.scale(1 / squash, squash);
   ctx.drawImage(img, frameIndex * cell, 0, cell, cell, -half, -half, worldSize, worldSize);
   ctx.restore();
+  // a crushed body (resting as well as flattening) is dark: a bruised ink-violet over the body's own pixels only (drawOctopus
+  // gives a splat its own offscreen canvas, so source-atop cannot touch anything but the octopus), before the eyes go on
+  const bruise = o.dead && o.deathStyle === 'splat' && o.flat > 0 ? 0.8 * Math.min(1, o.flat) : 0;
+  if (bruise > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = 'rgba(18,10,34,' + bruise.toFixed(3) + ')';
+    ctx.fillRect(-3, -3, 6, 6);
+    ctx.restore();
+  }
 
   const anchors = data.eyeAnchors[clipKey] && data.eyeAnchors[clipKey][localIndex];
   if (!anchors) return;
@@ -165,7 +180,7 @@ function drawBaked(ctx, o, bakeData) {
   for (const side of ['left', 'right']) {
     const a = anchors[side];
     const rect = sprites[side];
-    if (!a || !rect || !img.complete) continue;
+    if (!a || !rect || img.complete === false) continue; // (an ImageBitmap, which decodeBitmap swaps in, has no .complete: it is always ready)
     const restSize = data.eyeRestSize[side];
     // Round-2 fix (Daniel's screenshot review: "the octopus looks wrong and
     // too big" -- the eyes were drawn at 2x their correct size). This used
@@ -231,14 +246,15 @@ function drawBaked(ctx, o, bakeData) {
     // body-coloured ellipse over the full open-eye footprint first erases
     // the socket before the (smaller) actual eye state draws on top.
     if (eyeState !== 'open') {
-      ctx.fillStyle = BODY;
+      // (a bruised body: the socket patch takes the same dark tint as the body around it, and the X goes pale so it still reads)
+      ctx.fillStyle = bruise > 0 ? 'rgb(' + Math.round(192 - 174 * bruise) + ',' + Math.round(80 - 70 * bruise) + ',' + Math.round(96 - 62 * bruise) + ')' : BODY;
       ctx.beginPath();
       ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     if (crossed) { // an X over each eye (dark outline colour, rounded caps)
       const k = openWorldW * 0.3;
-      ctx.strokeStyle = OUTLINE; ctx.lineWidth = openWorldW * 0.15; ctx.lineCap = 'round';
+      ctx.strokeStyle = bruise > 0 ? '#c4b8c8' : OUTLINE; ctx.lineWidth = openWorldW * 0.15; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(-k, -k); ctx.lineTo(k, k); ctx.moveTo(k, -k); ctx.lineTo(-k, k); ctx.stroke();
     } else {
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -eyeWorldW / 2, -eyeWorldH / 2, eyeWorldW, eyeWorldH);
@@ -361,7 +377,35 @@ function drawOctopusPlain(ctx, o) {
 }
 const IMPALE_SCALE = 1.3; // verification pass 2026-10-08: the skewered body looked small on the tips
 const SPLAT_WIDE = 1.1;   // 2.1x as wide when fully flat (the sprite cell has empty margins, so it reads about 1.6 tiles)...
-const SPLAT_THIN_K = 0.7;  // ...and 0.3x as tall (hazards.js SPLAT_THIN is the matching height in tiles)
+const SPLAT_THIN_K = 0.76; // ...and 0.24x as tall (hazards.js SPLAT_THIN, 0.29 tiles, is the pin height: the body sits a hair above the floor and the ink fills the gap)
+
+/**
+ * The ink a crushed octopus spills: a dark pool on the floor under the pancake that grows with `o.flat`, thinner pools
+ * and a few drops along the floor on both sides, and a short splash up the sides of the body. Local space (1 unit = 1 tile,
+ * origin = the body centre, the floor 0.145 below it). Flat dark ink with a faint violet edge; no red, no gloss.
+ */
+function drawSplatInk(ctx, o) {
+  const f = Math.max(0, Math.min(1, o.flat || 0));
+  if (f <= 0.05) return;
+  const fy = 0.15, a = Math.min(1, f * 1.25);
+  ctx.save();
+  ctx.globalAlpha = 0.9 * a;
+  ctx.fillStyle = '#070b17';
+  ctx.beginPath(); ctx.ellipse(0, fy - 0.02, 0.55 + 0.75 * f, 0.07 + 0.03 * f, 0, 0, Math.PI * 2); ctx.fill();
+  // thin spreading tongues of ink along the floor, uneven left and right
+  for (let s = -1; s <= 1; s += 2) {
+    ctx.beginPath(); ctx.ellipse(s * (0.95 + 0.55 * f), fy - 0.01, 0.34 + 0.26 * f, 0.032, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(s * (1.42 + 0.9 * f), fy - 0.005, 0.12 + 0.12 * f, 0.02, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // drops spattered beside and just above the pool (fixed offsets, so nothing shimmers)
+  const drops = [[-0.78, -0.02, 0.05], [0.7, -0.05, 0.045], [-1.15, 0.04, 0.03], [1.2, 0.03, 0.035], [-0.42, -0.1, 0.03], [0.34, -0.12, 0.025]];
+  for (const [dx, dy, r] of drops) { ctx.beginPath(); ctx.arc(dx * (0.6 + 0.4 * f), fy + dy, r, 0, Math.PI * 2); ctx.fill(); }
+  // a faint cold sheen on the pool's upper rim, so it reads wet and teal-black rather than a flat hole
+  ctx.globalAlpha = 0.22 * a;
+  ctx.strokeStyle = '#4a6a8a'; ctx.lineWidth = 0.012;
+  ctx.beginPath(); ctx.ellipse(0, fy - 0.03, 0.5 + 0.7 * f, 0.055 + 0.03 * f, 0, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  ctx.restore();
+}
 
 // Round-5 fix (Daniel's screenshot review round 4, issue 5): a reused
 // offscreen canvas for the alpha < 1 (invulnerability flicker) path below,
@@ -407,15 +451,11 @@ export function drawOctopus(ctx, o, alpha = 1) {
   }
   const w = ctx.canvas.width, h = ctx.canvas.height;
   if (!w || !h) { drawOctopusUnclipped(ctx, o); return; } // e.g. headless/test canvases with no size
+  if (splat) drawSplatInk(ctx, o); // the ink spilled under and beside the pancake, behind the body
   const cctx = getCompositeCtx(w, h);
   cctx.setTransform(ctx.getTransform());
   drawOctopusUnclipped(cctx, o);
-  if (splat) { // the flattened body is darker, a bruised ink-red, painted only over the body's own pixels
-    cctx.globalCompositeOperation = 'source-atop';
-    cctx.fillStyle = 'rgba(40,10,24,' + (0.5 * Math.min(1, o.flat)).toFixed(3) + ')';
-    cctx.fillRect(-3, -3, 6, 6);
-    cctx.globalCompositeOperation = 'source-over';
-  }
+  // (the flattened body's bruised ink tint is applied inside drawBaked, between the body and the crossed-out eyes)
   cctx.setTransform(1, 0, 0, 1, 0, 0);
   if (flash) {
     cctx.save();

@@ -12,6 +12,7 @@
 import { killOctopus } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
 import { PEARL_VALUE } from './shells.js';
+import { inCameraView } from './cull.js';
 
 export const CR_NONE = 0, CR_GCLAM = 1, CR_TENTACLE = 2;
 export const CREATURE_NAMES = ['', 'gclam', 'tentacle'];
@@ -267,7 +268,7 @@ export function createCreatures() {
     switch (st) {
       case TN_DORMANT:
         d.tipx[i] = mx; d.tipy[i] = my;
-        if (!octo.dead && d.cd[i] <= 0 && dist < TENT_WAKE_R && aware) { d.state[i] = TN_WAKE; d.t[i] = 0; events.push({ type: 'wake', x: mx, y: my }); }
+        if (!octo.dead && d.cd[i] <= 0 && dist < TENT_WAKE_R && aware && inCameraView(mx, my)) { /* item 6: it never wakes from off-screen */ d.state[i] = TN_WAKE; d.t[i] = 0; events.push({ type: 'wake', x: mx, y: my }); }
         break;
       case TN_WAKE: {
         d.t[i] += dt;

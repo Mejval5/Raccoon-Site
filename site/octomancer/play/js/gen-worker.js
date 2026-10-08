@@ -7,6 +7,7 @@ import { setDefaultBank, generateLevel } from './level.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { fetchPatterns, setPatternTable } from './patterns.js';
 import { buildLevelSpawns } from './level-spawns.js';
+import { questPathFor } from './quests.js';
 
 let ready = null;
 function init(dataBase) {
@@ -24,6 +25,7 @@ self.onmessage = async (e) => {
     if (seed === undefined) { postMessage({ id, warm: true }); return; }
     const level = generateLevel(seed, levelIndex);
     const spawnInfo = buildLevelSpawns(level, seed, levelIndex);
+    level.questPath = questPathFor(level); // vibe fixes: the quest planner's path data (planQuest uses it while the tiles match), not on the main thread
     postMessage({ id, level, spawnInfo });
   } catch (err) {
     postMessage({ id, error: String((err && err.message) || err) });

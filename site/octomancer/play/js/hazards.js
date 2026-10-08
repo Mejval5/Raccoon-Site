@@ -10,7 +10,8 @@
 import { hurtOctopus, stunOctopus, killOctopus, hitBody } from './octopus.js';
 import { hasLineOfSight } from './pathfind.js';
 import { IMPALE_DEPTH } from './config.js';
-import { PK_ROCK, PS_FREE, PS_HELD } from './props.js';
+import { PK_ROCK, PK_BOMB, PK_POT, PK_RELIC, PK_RUBBLE, PK_FIND, PS_FREE, PS_HELD } from './props.js';
+import { inCameraView } from './cull.js';
 
 export const HZ_NONE = 0, HZ_JET = 1, HZ_SPIKES = 2, HZ_ROCK = 3, HZ_EEL = 4, HZ_ANEMONE = 5;
 export const HAZARD_NAMES = ['', 'jet', 'spikes', 'rock', 'eel', 'anemone'];
@@ -29,6 +30,9 @@ export const ROCK_MAX_FALL = 11;
 export const ROCK_RADIUS = 0.5;
 export const ROCK_SMASH_SPEED = 4;  // u/s downward at which a falling rock smashes timber or bone under it
 export const ROCK_TRIGGER_HALF = 1.0; // the octopus is "under it" within this sideways distance
+export const ROCK_CRUSH_SPEED = 1.5;  // u/s: a falling boulder at least this fast crushes enemies and hurts NPCs and shopkeepers it touches
+export const SPIKE_KILL_SPEED = 5;    // u/s: an enemy this fast (a lunging piranha), or one that is stunned / knocked about, dies on spikes; a calm patrol (crab 2, piranha 4 chase) does not
+export const JET_DRIFT = 0.15;        // a free-swimming enemy drifts along a stream at JET_ACC * this (u/s): its own AI still steers
 export const EEL_SPEED = 1.5;
 export const EEL_PERIOD = 3.6;      // s between shocks
 export const EEL_CHARGE_AT = 1.4;   // the body crackles from here (0.5 s)...
@@ -194,10 +198,16 @@ export function createHazards(props = null) {
     pid: new Int32Array(CAP).fill(-1), // prop index (rock, v2)
     hit: new Uint8Array(CAP), // rock: it has already hurt the octopus this drop (one hit per rock)
     gain: 1, // the pool vents' current push scale (setPoolGain), read by jetForceAt
+    cause: new Uint8Array(CAP), // rock: 1 = the octopus caused the fall (stood under it, or bombed it loose); 0 = an enemy or nothing did
+    vic: new Uint16Array(CAP),  // rock: bits of the NPCs / shopkeepers this drop has already hurt (one hit per victim; bits are chosen by the injected bodyHit)
     pool: new Uint8Array(CAP), // jet: one of the Challenge Pool's vents (its push is scaled by poolGain, weak until a wager runs)
   };
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
+  // Injected by main.js (kept out of this module so it stays free of enemies.js / npcs.js / shopkeeper.js):
+  let killEnemy = null;   // (enemyRecord, reason) kills by the regular path, so a corpse is made like for any kill
+  let bodyHit = null;     // (x, y, r, octoCaused, mask) -> mask: hurts NPCs and shopkeepers in the circle that are not in `mask` yet
+  let enemyList = null;   // this step's enemy records (update() param), null when the caller has none
 
   function add(rec) {
     if (d.n >= CAP) return -1;
@@ -209,7 +219,7 @@ export function createHazards(props = null) {
     d.t[i] = rec.hk === HZ_EEL ? (i * 0.7) % EEL_PERIOD : 0;
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
-    d.pid[i] = -1; d.hit[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
+    d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.vic[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -264,6 +274,96 @@ export function createHazards(props = null) {
     if (hurt(octo, i, octo.x - side, octo.y)) d.hit[i] = 1;
   }
 
+  const crushable = (e) => !e.dead && !e.ghost && !e.immune && e.kind !== 'beholder';
+  const lineClear = (world, tx, y0, y1) => { for (let ty = y0; ty <= y1; ty++) if (world.tileAt(tx, ty) !== 0) return false; return true; };
+
+  /**
+   * Does something stand under rock i, in line, close enough to set it off? The octopus does (cause 1), and so does an enemy
+   * (cause 0: a boulder an enemy triggered never angers a shopkeeper). Item 6: only while the boulder is inside the camera
+   * view, so nothing drops from off-screen. True when it was triggered (the shake starts).
+   */
+  function underRock(i, octo, world) {
+    const x = d.x[i], y = d.y[i];
+    if (!inCameraView(x, y)) return false;
+    const tx = Math.floor(x), ya = Math.floor(y) + 1, bottom = d.a[i] + 1.5;
+    let who = 0;
+    if (Math.abs(octo.x - x) < ROCK_TRIGGER_HALF && octo.y > y + 0.8 && octo.y < bottom && lineClear(world, tx, ya, Math.floor(octo.y))) who = 1;
+    else if (enemyList) {
+      for (let k = 0; k < enemyList.length; k++) {
+        const e = enemyList[k];
+        if (!e.moving || !crushable(e) || Math.abs(e.x - x) >= ROCK_TRIGGER_HALF || e.y <= y + 0.8 || e.y >= bottom) continue;
+        if (lineClear(world, tx, ya, Math.floor(e.y))) { who = 2; break; }
+      }
+    }
+    if (!who) return false;
+    d.state[i] = 1; d.t[i] = ROCK_SHAKE; d.cause[i] = who === 1 ? 1 : 0;
+    events.push({ type: 'rockFall', x, y });
+    return true;
+  }
+
+  /**
+   * A boulder falling faster than ROCK_CRUSH_SPEED crushes what it touches, once per victim: enemies by the regular kill path
+   * (a corpse, like crushEnemies in props.js), NPCs and the shopkeeper through the injected bodyHit.
+   * SHOPKEEPER RULE: a boulder (or spikes) may hurt him, but it only angers him when the octopus caused it (d.cause: she
+   * stood under it, or her bomb released it). A boulder an enemy set off hurts him quietly (main.js boulderBodies).
+   */
+  function crushUnder(i, x, y, speed) {
+    if (speed <= ROCK_CRUSH_SPEED) return;
+    if (enemyList && killEnemy) {
+      for (let k = 0; k < enemyList.length; k++) {
+        const e = enemyList[k];
+        if (!crushable(e)) continue;
+        if (Math.hypot(e.x - x, e.y - y) < ROCK_RADIUS + (e.radius || 0.4) * 0.8) killEnemy(e, 'crush');
+      }
+    }
+    if (bodyHit) d.vic[i] = bodyHit(x, y, ROCK_RADIUS, d.cause[i] === 1, d.vic[i]);
+  }
+
+  /** Spikes kill an enemy that is knocked / stunned onto them or hurtling into them; one that merely walks or swims by does not. */
+  function spikeEnemies(i, world) {
+    const dx = d.dx[i], dy = d.dy[i], tx = -dy, ty = dx;
+    const fx = d.x[i] - dx * 0.5, fy = d.y[i] - dy * 0.5;
+    spanWorld = world; const sp = spikeSpan(dx, dy, d.x[i], d.y[i], world && world.isSolid ? spanSolid : null, span);
+    for (let k = 0; k < enemyList.length; k++) {
+      const e = enemyList[k];
+      if (!e.moving || !crushable(e)) continue;
+      const rx = e.x - fx, ry = e.y - fy;
+      if (rx > 3 || rx < -3 || ry > 3 || ry < -3) continue;
+      const n = rx * dx + ry * dy, tt = rx * tx + ry * ty;
+      if (n > SPIKE_REACH || n < -0.2 || tt > sp.hi || tt < sp.lo) continue; // the enemy's centre must be in the strip
+      if (e.stun > 0 || Math.hypot(e.vx || 0, e.vy || 0) >= SPIKE_KILL_SPEED) killEnemy(e, 'spikes');
+    }
+  }
+
+  /** Current jets also carry what is loose: knocked / free-swimming enemies and the light props (bombs, rubble, finds, pots, relics). */
+  function jetsPush(dt) {
+    const pd = props ? props.data : null;
+    for (let i = 0; i < d.n; i++) {
+      if (d.kind[i] !== HZ_JET) continue;
+      if (enemyList) {
+        for (let k = 0; k < enemyList.length; k++) {
+          const e = enemyList[k];
+          if (!e.moving || e.dead || e.ghost || e.kind === 'beholder') continue;
+          const stunned = e.stun > 0;
+          if (!stunned && e.kind !== 'piranha' && e.kind !== 'manta') continue; // a crab walks the floor; urchins and cannons are bolted down
+          const f = jetForceAt(d, i, e.x, e.y);
+          if (!f) continue;
+          if (stunned) { e.kvx += f.fx * dt; e.kvy += f.fy * dt; } else { e.x += f.fx * JET_DRIFT * dt; e.y += f.fy * JET_DRIFT * dt; }
+        }
+      }
+      if (pd) {
+        for (let k = 0; k < pd.n; k++) {
+          if (!pd.alive[k] || pd.state[k] !== PS_FREE) continue;
+          const pk = pd.kind[k];
+          if (pk !== PK_BOMB && pk !== PK_RUBBLE && pk !== PK_FIND && pk !== PK_POT && pk !== PK_RELIC) continue;
+          const f = jetForceAt(d, i, pd.x[k], pd.y[k]);
+          if (!f) continue;
+          pd.vx[k] += f.fx * dt; pd.vy[k] += f.fy * dt;
+        }
+      }
+    }
+  }
+
   function updateJet(i, dt, octo) {
     const f = jetForceAt(d, i, octo.x, octo.y);
     if (!f) return;
@@ -297,7 +397,7 @@ export function createHazards(props = null) {
     const pid = d.pid[i], pd = props.data, st = d.state[i];
     if (st === 0 || st === 1) {
       if (pd.state[pid] !== PS_HELD) { // its ceiling was bombed away: it comes loose now, no warning
-        d.state[i] = 2; pd.state[pid] = PS_FREE;
+        d.state[i] = 2; pd.state[pid] = PS_FREE; d.cause[i] = 1; // only the octopus's bombs dig the ceiling out
         events.push({ type: 'rockFall', x: d.x[i], y: d.y[i] });
         return;
       }
@@ -306,12 +406,7 @@ export function createHazards(props = null) {
         if (d.t[i] <= 0) { d.state[i] = 2; props.release(pid); pd.vy[pid] = 0.5; }
         return;
       }
-      const x = d.x[i], y = d.y[i];
-      if (Math.abs(octo.x - x) >= ROCK_TRIGGER_HALF || octo.y <= y + 0.8 || octo.y >= d.a[i] + 1.5) return;
-      const tx = Math.floor(x);
-      for (let ty = Math.floor(y) + 1; ty <= Math.floor(octo.y); ty++) if (world.tileAt(tx, ty) !== 0) return; // not in line
-      d.state[i] = 1; d.t[i] = ROCK_SHAKE;
-      events.push({ type: 'rockFall', x, y });
+      underRock(i, octo, world);
       return;
     }
     if (st !== 2 && st !== 4 && st !== 5 && st !== 6) return;
@@ -321,6 +416,7 @@ export function createHazards(props = null) {
     if (st === 2 && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
       if (octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
     }
+    if (st === 2) crushUnder(i, d.x[i], d.y[i], sp);
     // materials: a falling boulder smashes through a wooden platform or a bone block it hits (and keeps falling)
     if (st === 2 && world.smashTile && pd.vy[pid] > ROCK_SMASH_SPEED) {
       const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i] + ROCK_RADIUS + 0.05 + pd.vy[pid] * 0.04); // looks one or two steps ahead: the wall resolver stops it at contact
@@ -353,12 +449,7 @@ export function createHazards(props = null) {
     if (props && d.pid[i] >= 0) { updateRockProp(i, dt, octo, world); return; }
     const st = d.state[i];
     if (st === 0) {
-      const x = d.x[i], y = d.y[i];
-      if (Math.abs(octo.x - x) >= ROCK_TRIGGER_HALF || octo.y <= y + 0.8 || octo.y >= d.a[i] + 1.5) return;
-      const tx = Math.floor(x);
-      for (let ty = Math.floor(y) + 1; ty <= Math.floor(octo.y); ty++) if (world.tileAt(tx, ty) !== 0) return; // not in line
-      d.state[i] = 1; d.t[i] = ROCK_SHAKE;
-      events.push({ type: 'rockFall', x, y });
+      underRock(i, octo, world);
     } else if (st === 1) {
       d.t[i] -= dt;
       if (d.t[i] <= 0) { d.state[i] = 2; d.v[i] = 0; }
@@ -371,6 +462,7 @@ export function createHazards(props = null) {
         if (st === 2 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
           if (octo.dead || !trySplat(i, octo, world, d.v[i])) hurtByRock(octo, i, world);
         }
+        if (st === 2) crushUnder(i, d.x[i], d.y[i], d.v[i]);
       }
       if (d.state[i] === 5) { // splatting: the boulder carries the body down and stays where it lands (no rock tile)
         stepSplat(i, dt, octo);
@@ -424,8 +516,9 @@ export function createHazards(props = null) {
     /** r40: the Challenge Pool's vents push with this fraction of a jet's force (weak while the pool is idle, full during a wager). */
     setPoolGain(g) { d.gain = g; },
     /** One fixed step (after the octopus moved). Picks up the hazard records of every resident chunk once. */
-    update(dt, time, octo, world, resident) {
+    update(dt, time, octo, world, resident, enemies = null) {
       events.length = 0;
+      enemyList = enemies;
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -436,14 +529,20 @@ export function createHazards(props = null) {
       for (let i = 0; i < d.n; i++) {
         switch (d.kind[i]) {
           case HZ_JET: updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
-          case HZ_SPIKES: updateSpikes(i, octo, world); break;
+          case HZ_SPIKES: updateSpikes(i, octo, world); if (enemyList && killEnemy) spikeEnemies(i, world); break;
           case HZ_ROCK: updateRock(i, dt, octo, world); break;
           case HZ_EEL: updateEel(i, dt, octo, world); break;
           case HZ_ANEMONE: updateAnemone(i, octo); break;
           default: break;
         }
       }
+      if (enemyList || props) jetsPush(dt);
     },
+    /**
+     * main.js wires the victims in: kill(e, reason) = enemies.kill (a corpse like any kill); bodies(x, y, r, octoCaused, mask) hurts
+     * NPCs and shopkeepers in the circle and returns the updated mask of who it has hit (one hit per boulder per victim).
+     */
+    setVictims(v) { killEnemy = v && v.kill || null; bodyHit = v && v.bodies || null; },
     /** A blast at (x, y): hanging rocks within `reach` (main.js passes the blast's knock reach, 2 radii: the shock, not only
      * their ceiling tile going) come loose. */
     blast(x, y, reach) {
@@ -452,7 +551,7 @@ export function createHazards(props = null) {
       for (let i = 0; i < d.n; i++) {
         if (d.kind[i] !== HZ_ROCK || d.pid[i] < 0 || d.state[i] > 1) continue;
         if (Math.hypot(d.x[i] - x, d.y[i] - y) > reach) continue;
-        if (props.data.state[d.pid[i]] === PS_HELD) { props.release(d.pid[i]); n++; }
+        if (props.data.state[d.pid[i]] === PS_HELD) { props.release(d.pid[i]); d.cause[i] = 1; n++; } // her bomb
       }
       return n;
     },

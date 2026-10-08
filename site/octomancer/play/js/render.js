@@ -70,7 +70,7 @@ import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall cri
 import { prefersReducedMotion } from './config.js';
 import { SHELL_SIZE } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
-import { ensureV2Art, offV2Art, artImg, ROCK_TILE_UNITS } from './v2-art.js';
+import { ensureV2Art, offV2Art, artImg, artBitmap, ROCK_TILE_UNITS } from './v2-art.js';
 import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY, MAT_DRAW_ORDER, getTileDrawHook } from './materials.js';
 
 // ---- Materials (Spelunky-style layering, materials.js). Per material id: flat fill, texture (v2-art key, world units per
@@ -497,7 +497,7 @@ export function createRenderer(ctx, world) {
     if (rockImg) {
       const pat = bctx.createPattern(rockImg, 'repeat');
       if (pat && pat.setTransform) {
-        const k = (ROCK_TILE_UNITS * s) / rockImg.naturalWidth;
+        const k = (ROCK_TILE_UNITS * s) / (rockImg.naturalWidth || rockImg.width);
         pat.setTransform(new DOMMatrix([k, 0, 0, k, -xOffsetTiles * s, -yOffsetTiles * s]));
         bctx.save();
         bctx.globalAlpha = ROCK_TEX_ALPHA;
@@ -562,7 +562,7 @@ export function createRenderer(ctx, world) {
       const img = MAT_TEX[m] ? artImg(MAT_TEX[m]) : null;
       const pat = img ? bctx.createPattern(img, 'repeat') : null;
       if (pat && pat.setTransform) {
-        const kk = (MAT_TEX_UNITS[m] * s) / img.naturalWidth;
+        const kk = (MAT_TEX_UNITS[m] * s) / (img.naturalWidth || img.width);
         pat.setTransform(new DOMMatrix([kk, 0, 0, kk, -x0 * s, -y0 * s]));
         bctx.globalAlpha = MAT_TEX_ALPHA[m];
         bctx.fillStyle = pat;
@@ -787,7 +787,7 @@ export function createRenderer(ctx, world) {
   const V2_FAR_PARALLAX = 0.12, V2_NEAR_PARALLAX = 0.3;
   function drawV2Layer(img, parallax, canvasW, canvasH, alpha, mode, heightUnits) {
     const ppu = camera.pxPerUnit;
-    const h = Math.max(canvasH * 1.05, heightUnits * ppu), w = h * (img.naturalWidth / img.naturalHeight);
+    const h = Math.max(canvasH * 1.05, heightUnits * ppu), w = h * ((img.naturalWidth || img.width) / (img.naturalHeight || img.height)); // an <img> or an ImageBitmap
     const ox = -((camera.x * ppu * parallax) % (w * 2));
     const oy = -((camera.y * ppu * parallax) % (h * 2));
     ctx.save();
@@ -811,7 +811,7 @@ export function createRenderer(ctx, world) {
     ctx.restore();
   }
   function drawV2Backdrop(canvasW, canvasH, depth) {
-    const far = artImg('far'), near = artImg('near');
+    const far = artBitmap('far'), near = artBitmap('near'); // vibe fixes: decoded bitmaps (an <img> was decoded again inside a frame after a level change)
     const fade = 1 - Math.min(0.5, depth / 240);
     if (far) drawV2Layer(far, V2_FAR_PARALLAX, canvasW, canvasH, 0.3 * fade, 'multiply', 40);
     if (near) drawV2Layer(near, V2_NEAR_PARALLAX, canvasW, canvasH, 0.2 * fade, 'multiply', 30);
@@ -1474,7 +1474,7 @@ export function createRenderer(ctx, world) {
       const o = worldToScreen(camera, canvasW, canvasH, 0, 0), k = camera.pxPerUnit;
       const fills = [MAT_FILL[MAT_BEDROCK]];
       const pat = img ? ctx.createPattern(img, 'repeat') : null;
-      if (pat && pat.setTransform) { const kk = (4 * k) / img.naturalWidth; pat.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); fills.push(pat); }
+      if (pat && pat.setTransform) { const kk = (4 * k) / (img.naturalWidth || img.width); pat.setTransform(new DOMMatrix([kk, 0, 0, kk, o.x, o.y])); fills.push(pat); }
       fills.push(MAT_TINT[MAT_BEDROCK]);
       for (const f of fills) {
         ctx.fillStyle = f;

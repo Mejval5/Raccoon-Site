@@ -179,10 +179,10 @@ export function drawPoolHost(ctx, camera, cw, ch, st, time, lookX) {
   // bow tie
   ctx.fillStyle = '#7b3fa0'; ctx.strokeStyle = '#2a1808'; ctx.lineWidth = Math.max(1, lw * 0.8);
   ctx.beginPath(); ctx.moveTo(0, -k * 0.16); ctx.lineTo(-k * 0.13, -k * 0.23); ctx.lineTo(-k * 0.13, -k * 0.09); ctx.closePath(); ctx.moveTo(0, -k * 0.16); ctx.lineTo(k * 0.13, -k * 0.23); ctx.lineTo(k * 0.13, -k * 0.09); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // top hat with a gold band
+  // top hat with a sea-glass band
   ctx.fillStyle = '#2b2146'; ctx.strokeStyle = '#120c20'; ctx.lineWidth = lw;
   ctx.beginPath(); ctx.roundRect(-k * 0.2, -k * 1.02, k * 0.4, k * 0.34, k * 0.04); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.roundRect(-k * 0.3, -k * 0.73, k * 0.6, k * 0.08, k * 0.03); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#e7b94a'; ctx.fillRect(-k * 0.2, -k * 0.8, k * 0.4, k * 0.07);
+  ctx.fillStyle = '#7fcfb4'; ctx.fillRect(-k * 0.2, -k * 0.8, k * 0.4, k * 0.07);
   ctx.restore();
 }

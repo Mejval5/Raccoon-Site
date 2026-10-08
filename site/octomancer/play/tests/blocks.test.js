@@ -3,7 +3,7 @@
 // making a level unsolvable.
 import { createRoomBank } from '../js/rooms.js';
 import { setDefaultBank, generateLevel, finalPathOk, LEVEL_W, LEVEL_H } from '../js/level.js';
-import { buildLevelSpawns } from '../js/level-spawns.js';
+import { buildLevelSpawns, blockCanMove } from '../js/level-spawns.js';
 import { hazardBlockers } from '../js/hazards.js';
 import { createLevelWorld } from '../js/world-v2.js';
 import { createProps, PK_BLOCK, PK_BOMB, PS_REST } from '../js/props.js';
@@ -167,7 +167,7 @@ export async function runBlocksTests(assert) {
     const props = createProps(), d = props.data;
     const blk = props.add(PK_BLOCK, 10.5, 13.5);
     const bomb = props.add(PK_BOMB, 10.5, 8);
-    run(props, world, 200);
+    run(props, world, 700); // the bomb now sinks slowly (settling drag), so give it time
     assert(`blocks: a bomb dropped on a block rests on top of it (bomb y ${d.y[bomb].toFixed(2)}, block top ${(d.y[blk] - R).toFixed(2)})`, d.y[bomb] < d.y[blk] - R && d.y[bomb] > d.y[blk] - R - 0.5 && !inRock(world, d.x[blk], d.y[blk]));
   }
 
@@ -228,5 +228,30 @@ export async function runBlocksTests(assert) {
     }
     assert(`blocks: ${nBlocks} blocks over ${levels} seeds are all on reachable floor water (${bad} bad), none within 9 of the start or 4 of the exit (${near}), at most 2 a level (${tooMany})`, nBlocks >= 15 && bad === 0 && near === 0 && tooMany === 0);
     assert(`blocks: the exit and shop stay reachable with every block as a blocker circle (${unsolvable} unsolvable of ${levels})`, unsolvable === 0);
+  }
+
+  // ---- r-vibefix: no block is wedged: every one has a push side (open pusher tile, open target tile, and room to slide or a drop) ----
+  {
+    const T = new Uint8Array(LEVEL_W * LEVEL_H); // a unit check of the rule on a hand-made strip
+    for (let x = 0; x < LEVEL_W; x++) T[(10) * LEVEL_W + x] = 1;       // floor at y = 10
+    for (let y = 0; y < LEVEL_H; y++) { T[y * LEVEL_W + 3] = 1; T[y * LEVEL_W + 8] = 1; } // walls at x = 3 and 8
+    T[10 * LEVEL_W + 3] = 1;
+    assert('blocks: blockCanMove: a block in a 4-wide dead end (x 4..7) can slide, one jammed in a corner cannot',
+      blockCanMove(T, 5, 9) === true && blockCanMove(T, 4, 9) === false && blockCanMove(T, 7, 9) === false);
+    T[9 * LEVEL_W + 7] = 1; // a 3-wide pocket (x 4..6): a block in the middle has only one free tile each side
+    const cramped = blockCanMove(T, 5, 9);
+    T[10 * LEVEL_W + 6] = 0; // a hole in the floor beside it: it can be pushed into the drop
+    assert('blocks: blockCanMove: a block in a 3-wide pocket cannot slide, but can once there is a drop beside it', cramped === false && blockCanMove(T, 5, 9) === true);
+    let n = 0, wedged = [], levels = 0;
+    for (let seed = 1; seed <= 150; seed++) for (let lv = 0; lv < 3; lv++) {
+      const level = generateLevel(seed, lv);
+      levels++;
+      for (const s of buildLevelSpawns(level, seed, lv).spawns) {
+        if (s.type !== 'block') continue;
+        n++;
+        if (!blockCanMove(level.tiles, Math.floor(s.x), Math.floor(s.y))) wedged.push(seed + '/' + lv);
+      }
+    }
+    assert(`blocks: all ${n} blocks over ${levels} levels (seeds 1-150) have a free push side` + (wedged.length ? ' [' + wedged.slice(0, 5).join(', ') + ']' : ''), n >= 40 && wedged.length === 0);
   }
 }

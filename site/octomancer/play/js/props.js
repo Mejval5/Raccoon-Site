@@ -4,7 +4,7 @@
 //   bombs, pots, clams, chests, the relic and falling rocks sink (water gravity, scaled per kind), are slowed by
 //   drag, bounce (restitution) and roll (friction) off the SAME traced wall segments the octopus collides with
 //   (world.wallSegmentsNear, physics.js), and push each other apart (circle separation). Rubble from bombed rock
-//   is the cheap kind: it sinks, settles and fades, collides with walls only (never the octopus, never props).
+//   is the cheap kind: it sinks, settles, falls asleep and stays for the level (RUBBLE_CAP chips, the oldest recycled), collides with walls only (never the octopus, never props).
 //
 //   state: PS_FREE  simulating
 //          PS_REST  settled, asleep (skipped until something wakes it: a blast, a tile change, a hit)
@@ -29,7 +29,7 @@ export const PROP_NAMES = ['', 'bomb', 'pot', 'clam', 'chest', 'relic', 'rock', 
 
 // per kind (index = PK_*): sink acceleration u/s^2, linear drag 1/s (terminal sink speed = grav / drag),
 // restitution, rolling friction 1/s (tangential damping while touching), mass, default radius, no-roll slope
-const GRAV = new Float32Array([0, 3.6, 4.5, 5, 8, 7, 16, 6, 4.2, 4.2, 9]);
+const GRAV = new Float32Array([0, 3.0, 4.5, 5, 8, 7, 16, 6, 4.2, 4.2, 9]);
 const DRAG = new Float32Array([0, 1.6, 2.4, 2.4, 2.0, 2.0, 1.45, 2.5, 2.6, 1.4, 2]);
 const REST = new Float32Array([0, 0.5, 0.25, 0.3, 0.1, 0.25, 0.12, 0.35, 0.3, 0.45, 0.05]);
 const ROLL = new Float32Array([0, 0.2, 1.5, 2.2, 3.5, 2.5, 3.0, 2.0, 2.4, 0.4, 8]);
@@ -42,7 +42,10 @@ const BOUNCE_MIN = 0.9;        // u/s of impact speed below which nothing bounce
 const BOUNCE_FULL = 3;         // ... and above which (BOUNCE_MIN + this) the full restitution applies
 const SLEEP_SPEED = 0.12, SLEEP_TIME = 0.45, STICK_SPEED = 0.3;
 const STICK_CEIL_SPEED = 0.5; // u/s of impact speed up into a ceiling at which a bomb sticks to it
-export const RUBBLE_LIFE = 3, RUBBLE_FADE = 0.8;
+export const RUBBLE_CAP = 60; // live rubble chips per level: a new chip recycles the oldest one past this (rubble settles, sleeps and stays; it never expires)
+// a bomb keeps its throw (DRAG[PK_BOMB]) while `grace` runs, then the water grabs it: it settles near where it was thrown
+// (terminal sink speed GRAV/BOMB_SETTLE_DRAG = 0.6 u/s, so about 1.3 tiles over the 2.5 s fuse) and a rolling bomb stops within a tile
+export const BOMB_SETTLE_DRAG = 5, BOMB_ROLL_DRAG = 2.5; // free in the water / touching a floor (a slope still lets it creep downhill)
 export const THROW_SPEED = 9; // bombs: u/s added to the octopus's velocity in the aim direction
 export const BLAST_POWER = 11;  // u/s of velocity change for a unit-mass prop at the centre of a blast
 const DEFAULT_CAP = 160;
@@ -63,7 +66,8 @@ export function createProps(cap = DEFAULT_CAP) {
     alive: new Uint8Array(cap), kind: new Uint8Array(cap), state: new Uint8Array(cap),
     x: new Float32Array(cap), y: new Float32Array(cap), vx: new Float32Array(cap), vy: new Float32Array(cap),
     radius: new Float32Array(cap),
-    timer: new Float32Array(cap),   // bomb: fuse left; rubble: life left; other: unused
+    timer: new Float32Array(cap),   // bomb: fuse left; other: unused (rubble lives until it is recycled, see RUBBLE_CAP)
+    born: new Uint32Array(cap),     // rubble: spawn serial, the smallest is the oldest
     rest: new Float32Array(cap),    // time spent nearly still
     grace: new Float32Array(cap),   // bombs: the octopus cannot push it yet (just thrown)
     grounded: new Uint8Array(cap),  // touched a floor-ish surface this step
@@ -75,15 +79,28 @@ export function createProps(cap = DEFAULT_CAP) {
   let lastVersion = -1;
   let awake = new Int32Array(cap), nAwake = 0;
 
+  let serial = 0, rubbleLive = 0;
+  /** Remove the oldest live rubble chip (the cap is full, or a solid prop needs the slot). False when there is none. */
+  function recycleRubble() {
+    let best = -1;
+    for (let j = 0; j < d.n; j++) if (d.alive[j] && d.kind[j] === PK_RUBBLE && (best < 0 || d.born[j] < d.born[best])) best = j;
+    if (best < 0) return false;
+    remove(best);
+    return true;
+  }
+
   function add(kind, x, y, vx = 0, vy = 0, opts = null) {
     let i;
+    if (kind === PK_RUBBLE && rubbleLive >= RUBBLE_CAP) recycleRubble();
     if (freeList.length) i = freeList.pop();
     else if (d.n < cap) i = d.n++;
+    else if (kind !== PK_RUBBLE && recycleRubble()) i = freeList.pop(); // rubble never starves a bomb, block or body of a slot
     else return -1;
+    if (kind === PK_RUBBLE) { rubbleLive++; d.born[i] = ++serial; }
     d.alive[i] = 1; d.kind[i] = kind; d.state[i] = PS_FREE;
     d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy;
     d.radius[i] = opts && opts.radius ? opts.radius : PROP_RADIUS[kind];
-    d.timer[i] = opts && opts.timer !== undefined ? opts.timer : kind === PK_RUBBLE ? RUBBLE_LIFE : 0;
+    d.timer[i] = opts && opts.timer !== undefined ? opts.timer : 0;
     d.rest[i] = 0; d.grace[i] = opts && opts.grace ? opts.grace : 0; d.grounded[i] = 0; d.sup[i] = 0;
     d.sx[i] = 0; d.sy[i] = 0; d.ref[i] = opts && opts.ref !== undefined ? opts.ref : -1;
     d.live++;
@@ -92,6 +109,7 @@ export function createProps(cap = DEFAULT_CAP) {
 
   function remove(i) {
     if (i < 0 || i >= d.n || !d.alive[i]) return;
+    if (d.kind[i] === PK_RUBBLE) rubbleLive--;
     d.alive[i] = 0; d.live--;
     freeList.push(i);
   }
@@ -334,7 +352,7 @@ export function createProps(cap = DEFAULT_CAP) {
     const k = d.kind[i];
     if (k === PK_BLOCK) { stepBlock(i, dt, world); return; }
     d.vy[i] += GRAV[k] * dt;
-    const f = 1 / (1 + dt * DRAG[k]);
+    const f = 1 / (1 + dt * (k === PK_BOMB && d.grace[i] <= 0 ? (d.grounded[i] ? BOMB_ROLL_DRAG : BOMB_SETTLE_DRAG) : DRAG[k]));
     d.vx[i] *= f; d.vy[i] *= f;
     clampSpeed(i);
     d.grounded[i] = 0;
@@ -496,10 +514,6 @@ export function createProps(cap = DEFAULT_CAP) {
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
         if (d.grace[i] > 0) d.grace[i] = Math.max(0, d.grace[i] - dt);
-        if (d.kind[i] === PK_RUBBLE) {
-          d.timer[i] -= dt;
-          if (d.timer[i] <= 0) { remove(i); continue; }
-        }
         if (d.state[i] !== PS_FREE) continue;
         awake[nAwake++] = i;
         if (d.kind[i] === PK_BLOCK) blocksAwake = true;
@@ -512,7 +526,7 @@ export function createProps(cap = DEFAULT_CAP) {
       if (enemies) { pushByEnemies(enemies); crushEnemies(enemies); }
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in
       for (let i = 0; i < d.n; i++) {
-        if (!d.alive[i] || d.state[i] === PS_HELD) continue;
+        if (!d.alive[i] || d.state[i] === PS_HELD || (d.state[i] === PS_REST && d.kind[i] === PK_RUBBLE)) continue; // a sleeping chip costs nothing (a tile change wakes it first)
         if (d.kind[i] === PK_BLOCK ? boxHitsTiles(world, d.x[i], d.y[i], d.radius[i]) : solidAt(world, d.x[i], d.y[i])) eject(i, world);
       }
     },
