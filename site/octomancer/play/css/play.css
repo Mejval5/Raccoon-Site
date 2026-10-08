@@ -89,7 +89,7 @@ body {
 
 /* --- the HUD (2026-10-08, Daniel's Spelunky / Noita references). Top left: the usable hotbar row (hotbar.css). Top right, next
    to the pause / mute / settings column, one right-aligned column (hud-strip.js): the run line (level / run clocks, Swift
-   Current, level), the vitals as icon + integer (hearts, bombs, juice casts, shells), thin cooldown bars (Ink Jet, dash), the
+   Current, level), the vitals as icon + integer (hearts, bombs, juice casts, shells), the dash cooldown slider, the
    perks (carried items, hover / tap for a tooltip) and the timed effects. No panels; ink-outlined text reads over bright water. --- */
 #hud { --hud-ink: #10202c; --hb-max-w: calc(100vw - 500px); }
 .octo-hud-bar {
@@ -152,7 +152,6 @@ body {
 .octo-hud-timer { display: flex; align-items: center; gap: 5px; }
 .octo-hud-track { position: relative; width: 90px; height: 5px; border-radius: 3px; overflow: hidden; background: rgba(8, 18, 26, 0.62); box-shadow: 0 0 0 1px rgba(16, 32, 44, 0.9); }
 .octo-hud-fill { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(1); border-radius: 3px; }
-.octo-hud-jetbar .octo-hud-fill { background: #8f74c9; }
 .octo-hud-dashbar .octo-hud-fill { background: #6fc7aa; }
 .octo-hud-timer.is-ready .octo-hud-fill { filter: brightness(1.18); }
 .octo-hud-timer-icon { width: 13px; height: 13px; flex: none; filter: drop-shadow(0 0 1px var(--hud-ink)); }

@@ -206,7 +206,7 @@ async function setStage(page) {
     await tap(btn.attack.cx, btn.attack.cy); await sleep(100);
     check('touch: the Jet button fires the ink jet', (await J(ph)).shots === pj0.shots + 1);
     const pb0 = await ph.evaluate(() => __octo.state().octopus.bombs);
-    await ph.evaluate(() => { __octo.input({ select: 1 }); __octo.step(1); __octo.input(null); }); // the bomb stack picked on the hotbar
+    await ph.evaluate(() => { __octo.input({ select: 0 }); __octo.step(1); __octo.input(null); }); // the bomb stack (slot 1) picked on the hotbar
     await tap(btn.use.cx, btn.use.cy); await sleep(100);
     check('touch: the Use button with the bomb picked drops a bomb', (await ph.evaluate(() => __octo.state().octopus.bombs)) === pb0 - 1);
     await sleep(2600);

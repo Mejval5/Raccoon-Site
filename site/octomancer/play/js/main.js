@@ -107,7 +107,7 @@ import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
 import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { CR_DASH } from './fragile.js';
-import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, swapSlots, castableSpell, castableIndex, isItemId, BOMB_SLOT } from './hotbar.js';
+import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, swapSlots, castableSpell, castableIndex, isItemId, BOMB_SLOT, bombFirst } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawSpring, springReach } from './spring-draw.js';
@@ -1001,7 +1001,11 @@ function throwAim(snap) {
 }
 // --- section 14: the ink jet, spells, the hotbar and fish juice ---
 /** The run's hotbar (a new dive or a death starts a fresh one with the starting spell). */
-function hotbar() { if (!run.hotbar) run.hotbar = createHotbar([START_SPELL, BOMB_SLOT]); return run.hotbar; } // controls 2026-10-08: bombs are a hotbar stack
+function hotbar() { // controls 2026-10-08: bombs are a hotbar stack; Daniel: slot 1 = bombs, then the spells (Ink Cloud selected)
+  if (!run.hotbar) { run.hotbar = createHotbar([BOMB_SLOT, START_SPELL]); selectIndex(run.hotbar, 1); run.hotbar.bombFirst = true; }
+  else if (!run.hotbar.bombFirst) { bombFirst(run.hotbar); run.hotbar.bombFirst = true; } // a bar made before the change: the bomb moves to slot 1 once
+  return run.hotbar;
+}
 /** The cursor as a world point, or null when the mouse has not been seen. */
 function cursorWorld() {
   if (!input.mouse.seen) return null;
@@ -1320,8 +1324,8 @@ function render(alpha, frameMs) {
     levelTime: V2 && (run.state === S_BIOME || run.state === S_REST) ? levelClock : null, // the clocks show in a dive only
     runTime: V2 ? run.dive.time : 0,
     swift: V2 && run.state === S_BIOME && swift ? swift : null,
-    jet: V2 ? inkJet.charge() : undefined, // the two cooldowns as thin bars (hud-strip.js), 0..1, 1 = ready
-    dash: V2 ? (octo.dashCooldown > 0 ? Math.max(0, 1 - octo.dashCooldown / DASH_COOLDOWN) : 1) : undefined,
+    dash: // the dash cooldown as a thin slider (hud-strip.js), 0..1, 1 = ready; the Ink Jet's fills its hotbar tile
+      V2 ? (octo.dashCooldown > 0 ? Math.max(0, 1 - octo.dashCooldown / DASH_COOLDOWN) : 1) : undefined,
     effects: V2 ? hudEffects() : null,
   });
   if (V2) {

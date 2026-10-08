@@ -45,7 +45,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     check('the octopus swims right along the stick', b.x - a.x > 0.5, `x ${a.x.toFixed(2)} -> ${b.x.toFixed(2)}`);
     // the Bomb button with a second finger while the stick is held right: the bomb flies right
     // controls 2026-10-08: the Bomb button is the Use button now; with the bomb picked on the hotbar it throws one (a sticky mine along the stick)
-    await page.evaluate(() => { __octo.input({ select: 1 }); __octo.step(1); __octo.input(null); });
+    await page.evaluate(() => { __octo.input({ select: 0 }); __octo.step(1); __octo.input(null); }); // slot 1: the bomb stack
     const bb = await page.evaluate(() => { const r = document.querySelector('#octo-use-btn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     const bombsBefore = (await st()).bombs;
     const o0 = await st();

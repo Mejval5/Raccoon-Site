@@ -4,7 +4,7 @@
 // Checks: hearts / bombs / jar / shells / items / level on the strip follow the game's values; the strip writes only on a change
 // (no DOM mutation in a quiet second but the clock, at most ~10 clock writes a second, few layouts a second); the level and run
 // clocks run, stop on pause and on death, the level clock resets per level and the run clock per run; the death screen shows
-// both clocks; the Swift Current target sits by the clock (not under the banner); the Ink Jet / dash cooldown bars; timed effects
+// both clocks; the Swift Current target sits by the clock (not under the banner); the hotbar row (Ink Jet tile, then slot 1 bombs, slot 2 Ink Cloud) and the Ink Jet / dash cooldowns; timed effects
 // (an Anchor) appear, count down at most ~10 writes a second and go; the layout at 1440x900, 412x915, 915x412 and 375x812: the
 // hotbar row top left, the HUD column top right left of the 44 px corner buttons, the bottom free, nothing overlapping the touch
 // controls, the buttons, the hotbar or each other; a perk's tooltip on a tap.
@@ -106,18 +106,35 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       check('new run: both clocks start from zero', h.stage === '1-1' && h.runClock < 3 && h.levelClock < 3, `${h.level} / ${h.run}`);
       await page.close();
     }
-    // ---------------------------------------------------------------- cooldown bars and timed effects (desktop)
+    // ---------------------------------------------------------------- the hotbar row, the cooldowns and timed effects (desktop)
     {
       const page = await open(1440, 900, false, '?at=1&seed=5');
       await page.evaluate(() => __octo.god(true));
       let h = await H(page);
-      check('timers: the Ink Jet and dash bars show full (ready) at rest', h.jet === 1 && h.dash === 1, JSON.stringify({ jet: h.jet, dash: h.dash }));
+      const jetShade = () => page.evaluate(() => parseFloat(document.querySelector('.octo-hb-jetshade').style.height) || 0);
+      check('timers: the dash slider is full (ready) at rest, the Ink Jet tile is clear', h.dash === 1 && h.jet === undefined && (await jetShade()) === 0, JSON.stringify({ dash: h.dash }));
+      // the hotbar row: the Ink Jet tile first (no number, not a button), a divider, then slot 1 = bombs, slot 2 = Ink Cloud (selected)
+      const row = await page.evaluate(() => {
+        const vis = (e) => e && getComputedStyle(e).display !== 'none';
+        const jet = document.querySelector('.octo-hb-jet'), sep = document.querySelector('.octo-hb-sep');
+        const slots = [...document.querySelectorAll('.octo-hb-slots > .octo-hb-slot')].filter(vis);
+        const r = (e) => e.getBoundingClientRect();
+        return { jetVis: vis(jet), jetKey: vis(jet.querySelector('.octo-hb-key')), jetBtn: jet.tagName, jetLeft: r(jet).right <= r(sep).left + 0.5 && r(sep).right <= r(slots[0]).left + 0.5,
+          keys: slots.map((sl) => sl.querySelector('.octo-hb-key').textContent), sel: slots.findIndex((sl) => sl.classList.contains('is-selected')),
+          first: __octo.juice().hotbar.slots.map((sl) => sl[0]) };
+      });
+      check('hotbar: the Ink Jet tile sits first, left of a divider, with no key number and not a button', row.jetVis && !row.jetKey && row.jetBtn !== 'BUTTON' && row.jetLeft, JSON.stringify(row));
+      check('hotbar: slot 1 is the bomb stack, slot 2 Ink Cloud (selected), numbered 1, 2', row.first[0] === 'bomb' && row.first[1] === 'ink-cloud' && row.keys.join() === '1,2' && row.sel === 1, JSON.stringify(row));
       await page.evaluate(() => __octo.fireInk(1, 0)); await sleep(250);
-      h = await H(page);
-      check('timers: the Ink Jet bar drops after a shot and refills', h.jet < 0.5, String(h.jet));
+      check('timers: the Ink Jet tile darkens after a shot', (await jetShade()) > 40, String(await jetShade()));
       await sleep(1700);
+      check('timers: ... and is clear again after its cooldown', (await jetShade()) === 0, String(await jetShade()));
+      await page.evaluate(() => __octo.input({ move: { x: 1, y: 0 }, dash: { pressed: true, held: true } })); await sleep(80);
+      await page.evaluate(() => __octo.input(null)); await sleep(80);
+      const d1 = (await H(page)).dash;
+      await sleep(900);
       h = await H(page);
-      check('timers: ... and is full again after its cooldown', h.jet === 1, String(h.jet));
+      check('timers: the dash slider drops on a dash and is full again after its cooldown', d1 < 1 && h.dash === 1, `${d1} -> ${h.dash}`);
       check('effects: none at rest', h.effects.length === 0, h.effects.join());
       await page.evaluate(() => { __octo.setSlots([['anchor'], ['ink-cloud']], 0); __octo.setJuice(99); });
       await sleep(150);
@@ -148,7 +165,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
     // ---------------------------------------------------------------- layout at four viewports
     for (const [w, ht, mobile, tag] of [[1440, 900, false, 'desktop'], [412, 915, true, 'portrait'], [915, 412, true, 'landscape'], [375, 812, true, 'small-portrait']]) {
       const page = await open(w, ht, mobile, '?at=2&seed=5');
-      await page.evaluate(() => { __octo.god(true); __octo.giveShells(14500); for (const id of ['lantern', 'flippers', 'magnet', 'goggles', 'urchincap']) __octo.giveItem(id); __octo.setClocks(65.4, 3599.5); __octo.setSlots([['ink-cloud'], ['anchor'], ['riptide']], 0); });
+      await page.evaluate(() => { __octo.god(true); __octo.giveShells(14500); for (const id of ['lantern', 'flippers', 'magnet', 'goggles', 'urchincap']) __octo.giveItem(id); __octo.setClocks(65.4, 3599.5); __octo.setSlots([['bomb'], ['ink-cloud'], ['anchor'], ['riptide']], 1); });
       await sleep(400);
       const r = await page.evaluate(() => {
         const R = (sel) => { const e = document.querySelector(sel); if (!e || getComputedStyle(e).display === 'none') return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };

@@ -2,7 +2,8 @@
 // (hotbar-ui.js); everything else sits here, right-aligned next to the pause / mute / settings column, top to bottom:
 //   1. the run line:  hourglass + level time / run time ('00:05.4 / 01:28.7'), the Swift Current target, the level (place + '1-2')
 //   2. the vitals:    heart, bomb, juice jar (casts) and shell, each a chunky icon with an integer on its lower right (Spelunky)
-//   3. the timers:    thin bars for the Ink Jet and the dash cooldowns (the only real timers), a soft brighten when ready
+//   3. the timer:     a thin slider for the dash cooldown, a soft brighten when ready (the Ink Jet's cooldown fills its tile
+//                     next to the hotbar, hotbar-ui.js)
 //   4. the perks:     the carried passive items as small icons (wraps), hover / tap for a tooltip
 //   5. the effects:   timed effects, one per line, right-aligned: a small icon and the seconds left (Anchor, Coral Wall, ...)
 // DOM only, and update(state) is called every frame, so every write is keyed: text and canvases change only when their value
@@ -33,7 +34,6 @@ const HOURGLASS = '<svg viewBox="0 0 20 28" aria-hidden="true"><path d="M5 4h10c
 const CURRENT = '<svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 4c3-3 5 3 8 0s5 3 8 0 4 1 6-1M1 10c3-3 5 3 8 0s5 3 8 0 4 1 6-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 // small marks for the timer bars and the effects that have no spell icon
 const SVG = {
-  jet: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5C10 5 13 7.5 12.6 10.6 12.2 13.6 3.8 13.6 3.4 10.6 3 7.5 6 5 8 1.5z" fill="#2a1d40" stroke="#c9b8ec" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   dash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 5h7M1 8h9.5M1.5 11h7" stroke="#bfe6dc" stroke-width="1.6" stroke-linecap="round"/><path d="M10 3.5l4.5 4.5-4.5 4.5" fill="none" stroke="#bfe6dc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   stun: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 8.2c0-1 1.6-1 1.6.2 0 1.6-2.6 2-3.4.4-1-2 1.4-4 3.6-3.2 2.6 1 2.6 4.8.2 6-2.6 1.4-6-.2-6.2-3" fill="none" stroke="#f0d9a8" stroke-width="1.4" stroke-linecap="round"/></svg>',
   dashsafe: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l5 2v3.6c0 3.2-2.2 5.4-5 6.8-2.8-1.4-5-3.6-5-6.8V3.8z" fill="#2f5d58" fill-opacity=".7" stroke="#bfe6dc" stroke-width="1.3" stroke-linejoin="round"/></svg>',
@@ -93,7 +93,7 @@ function badge(cls, icon, title) {
   return { el: b, num };
 }
 
-/** A thin cooldown bar (Ink Jet, dash): an icon and a track whose fill moves by transform, in 5% steps. */
+/** A thin cooldown slider (the dash): an icon and a track whose fill moves by transform, in 5% steps. */
 function timerBar(cls, svg, title) {
   const row = el('div', 'octo-hud-timer ' + cls);
   row.title = title;
@@ -168,9 +168,8 @@ export function createHudStrip() {
 
   // 3. the timers: Ink Jet and dash cooldowns
   const timers = el('div', 'octo-hud-timers');
-  const jetBar = timerBar('octo-hud-jetbar', SVG.jet, 'Ink Jet: refills after each shot');
   const dashBar = timerBar('octo-hud-dashbar', SVG.dash, 'Dash: ready when full');
-  timers.append(jetBar.el, dashBar.el);
+  timers.append(dashBar.el);
   timers.style.display = 'none';
 
   // 4. the perks: carried passive items, with a tooltip on hover / tap
@@ -228,8 +227,8 @@ export function createHudStrip() {
     /**
      * @param {{hearts:number, heartMax:number, bombs:number, stage?:string, shells?:number, items?:string[], juice?:number,
      *   cap?:number, perCast?:number, levelTime?:number|null, runTime?:number|null, swift?:{target:number, earned:boolean}|null,
-     *   jet?:number, dash?:number, effects?:{id:string, left?:number}[], depth?:number, score?:number, best?:number}} s
-     *   jet / dash: cooldown charge 0..1 (1 = ready); effects: the active timed effects, `left` in s (omitted: no timer)
+     *   dash?:number, effects?:{id:string, left?:number}[], depth?:number, score?:number, best?:number}} s
+     *   dash: the dash cooldown's charge 0..1 (1 = ready); effects: the active timed effects, `left` in s (omitted: no timer)
      */
     update(s) {
       const v2 = s.stage !== undefined;
@@ -283,9 +282,9 @@ export function createHudStrip() {
       setShown(endless, !v2);
       if (!v2) setText(endless, `Depth ${s.depth}m  Score ${s.score}  Best ${s.best}`);
       // timers
-      const hasTimers = v2 && (s.jet !== undefined || s.dash !== undefined);
+      const hasTimers = v2 && s.dash !== undefined;
       setShown(timers, hasTimers);
-      if (hasTimers) { jetBar.set(s.jet); dashBar.set(s.dash); }
+      if (hasTimers) dashBar.set(s.dash);
       // perks: a stacked item is drawn once with an 'x2' badge
       const key = v2 && s.items && s.items.length ? s.items.join() + '/' + itemArtVersion() : '';
       if (key !== itemsKey) {
@@ -337,7 +336,7 @@ export function createHudStrip() {
         swift: vis(swiftEl) ? swiftText.textContent : '',
         swiftState: swiftEl.classList.contains('is-earned') ? 'earned' : swiftEl.classList.contains('is-missed') ? 'missed' : '',
         stage: vis(levelEl) ? levelText.textContent : '', items: itemsEl.children.length,
-        jet: vis(timers) ? jetBar.value() : null, dash: vis(timers) ? dashBar.value() : null,
+        dash: vis(timers) ? dashBar.value() : null,
         effects: [...effectRows.entries()].filter(([, r]) => r.on).map(([id, r]) => id + (r.text ? ' ' + r.text : '')) };
     },
   };

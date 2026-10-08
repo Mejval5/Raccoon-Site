@@ -120,7 +120,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
 
     // ================================================================== hotbar: Q / E / wheel / 1-9 and right click / C
     let hb = await page.evaluate(() => __octo.juice().hotbar);
-    check('hotbar: a dive starts with the spell and the bomb stack', hb.slots.length === 2 && hb.slots[1][0] === 'bomb' && hb.sel === 0);
+    check('hotbar: a dive starts with the bomb stack in slot 1 and the spell in slot 2 (selected)', hb.slots.length === 2 && hb.slots[0][0] === 'bomb' && hb.slots[1][0] === 'ink-cloud' && hb.sel === 1);
     await page.keyboard.press('KeyE'); await step(page, 1);
     const afterE = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await page.keyboard.press('KeyQ'); await step(page, 1);
@@ -130,7 +130,8 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     const afterWheel = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await page.keyboard.press('Digit1'); await step(page, 1);
     const after1 = (await page.evaluate(() => __octo.juice().hotbar)).sel;
-    check(`hotbar: E next (${afterE}), Q back (${afterQ}), the wheel (${afterWheel}), 1 (${after1})`, afterE === 1 && afterQ === 0 && afterWheel === 1 && after1 === 0);
+    check(`hotbar: E next (${afterE}), Q back (${afterQ}), the wheel (${afterWheel}), 1 (${after1})`, afterE === 0 && afterQ === 1 && afterWheel === 0 && after1 === 0);
+    await page.keyboard.press('Digit2'); await step(page, 1); // back on the spell (slot 2)
     // right click with the spell selected: casts
     const j0 = await page.evaluate(() => __octo.juice());
     o = await octoAt(page);
@@ -146,7 +147,7 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     // ================================================================== bombs: dropped and aimed
     const pb = await open(browser, 'desktop', '?at=1&seed=5');
     await pb.evaluate(() => __octo.giveBombs(5));
-    await pb.keyboard.press('Digit2'); await step(pb, 1);
+    await pb.keyboard.press('Digit1'); await step(pb, 1); // slot 1: the bomb stack
     o = await octoAt(pb);
     // right click on the octopus: a drop
     at = await toScreen(pb, o.x + 0.3, o.y);

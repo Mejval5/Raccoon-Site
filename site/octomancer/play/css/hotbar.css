@@ -1,7 +1,8 @@
 /* Spell hotbar + inventory (hotbar-ui.js, inventory-ui.js). 2026-10-08 (Daniel's Noita reference): the usable hotbar is one row
    of small square slots at the top left, no panel behind it: dark translucent squares with a thin sea-glass border, the
-   selected one outlined bright, key numbers 1-9, counts and prices on the slots. The Ink Jet cooldown and the juice jar live
-   in the HUD's top-right column (hud-strip.js), so their hotbar cells are hidden here. No gold, no glow, no gloss. */
+   selected one outlined bright, key numbers 1-9, counts and prices on the slots. The Ink Jet (the basic attack) is a round
+   tile at the left end with its cooldown fill; the juice jar lives in the HUD's top-right column (hud-strip.js), so its cell
+   is hidden here. No gold, no gloss. */
 
 .octo-hotbar,
 #hud > .octo-hotbar {
@@ -28,7 +29,7 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.octo-hb-slots { display: flex; flex-wrap: wrap; gap: 5px; }
+.octo-hb-slots { display: contents; } /* the slots are tiles of the row itself, so a long bar wraps tile by tile */
 
 .octo-hb-slot {
   position: relative;
@@ -73,18 +74,24 @@
   pointer-events: none;
 }
 
-/* selected: outlined bright sea glass (Noita), no tie, no glow */
+/* selected: the slot's own border, thick and pale sea glass with a soft inner glow (Daniel: the border, not a tab on top);
+   unselected slots keep the thin dim border */
 .octo-hb-slot.is-selected {
-  border: 2px solid #a8f2cc;
-  background: rgba(14, 34, 40, 0.7);
-  box-shadow: 0 0 0 1px var(--ink), 0 1px 3px rgba(0, 0, 0, 0.35);
+  border: 3px solid #d2fbe6;
+  background: rgba(16, 40, 44, 0.74);
+  box-shadow: 0 0 0 1px var(--ink), inset 0 0 6px rgba(190, 255, 224, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-.octo-hb-sep { width: 4px; align-self: stretch; } /* a small gap between the spells and the items (bombs) */
+/* Daniel: the basic attack on the left, the selectable slots on the right. The Ink Jet tile comes first (flex order), then a
+   divider, then the slots [1 bombs][2.. spells]. The tile is round with a dashed rim and no number: a fixed attack, not a slot. */
+.octo-hb-jet { order: -2; }
+.octo-hb-sep { order: -1; width: 2px; align-self: stretch; margin: 4px 3px; border-radius: 1px; background: rgba(186, 222, 206, 0.35); }
 
 .octo-hb-bomb { cursor: default; }
 /* the Ink Jet slot: a dark veil over the ink sac that shrinks to nothing as the jet refills (hotbar-ui.js jetShade) */
-.octo-hb-jet { cursor: default; overflow: hidden; }
+#hud .octo-hotbar .octo-hb-slot.octo-hb-jet { border-radius: 50%; } /* also in the compact bar */
+.octo-hb-jet { cursor: default; overflow: hidden; border: 1.5px dashed rgba(201, 184, 236, 0.55); background: rgba(20, 12, 34, 0.55); }
+.octo-hb-key-jet { display: none; } /* no J: it is not a slot to pick */
 .octo-hb-jetshade { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(8, 14, 22, 0.62); pointer-events: none; }
 .octo-hb-jet:not(.is-ready) .octo-hb-icon { opacity: 0.6; }
 .octo-hb-bomb .octo-hb-icon { top: -4px; height: calc(100% - 8px); }
@@ -125,8 +132,8 @@
 .octo-hotbar.is-compact .octo-hb-key-jet { display: none; }
 .octo-hotbar.is-compact .octo-hb-count { font-size: 9px; }
 
-/* the Ink Jet cooldown and the juice jar are in the HUD's top-right column (hud-strip.js): the row keeps what right click uses */
-#hud > .octo-hotbar .octo-hb-jar, #hud > .octo-hotbar .octo-hb-jet { display: none; }
+/* the juice jar is in the HUD's top-right column (hud-strip.js) */
+#hud > .octo-hotbar .octo-hb-jar { display: none; }
 
 /* hidden behind the settings / journal / inventory panels, like the HUD bar */
 #hud.octo-modal-open > .octo-hotbar { visibility: hidden; }
