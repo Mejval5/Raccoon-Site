@@ -321,6 +321,9 @@ function drawWrap(c, d, i, ox, oy, t) {
         const a = a0 + 4.1 * j / WRAP_N, ex = Math.cos(a) * r2, ey = Math.sin(a) * r2 * 0.62;
         wx[j] = ex * cr - ey * sr; wy[j] = ecy + ex * sr + ey * cr; wwid[j] = 0.22;
       }
+      // the strip's base end is a straight cut: a round pink cap under it so the coil's start end reads rounded
+      c.beginPath(); c.arc(wx[0], wy[0], 0.11, 0, TAU);
+      c.fillStyle = PINK; c.fill(); c.lineWidth = 0.03; c.strokeStyle = '#34302f'; c.stroke();
       drawStripAlong(c, wx, wy, wwid, WRAP_N);
       continue;
     }
