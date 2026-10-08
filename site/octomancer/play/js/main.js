@@ -56,7 +56,11 @@ import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey,
 import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
-import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, ST_ACTIVE } from './quests.js';
+import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_MEET, ST_ACTIVE, ST_DONE, ST_FAILED as ST_FAILED_Q, questReact } from './quests.js';
+import { createPeople, G_ANGRY, G_DEAD } from './people.js';
+import { pickOutcome, beatSeed, DUE_REST } from './visitors.js';
+import { createIdle, idleStep, idleReact, idleLift } from './idle.js';
+import { drawPerson } from './people-draw.js';
 import { planPools, createPoolState, poolStep, inPoolRoom, POOL_IDLE_VENT, POOL_COST, POOL_SECONDS, PL_IDLE, PL_ACTIVE, PL_WON } from './pool.js';
 import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
@@ -70,7 +74,7 @@ import { drawContactShadows } from './feel-draw.js';
 import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, SPLAT_SHAKE_PX, SPLAT_HITSTOP, prefersReducedMotion, setMotionSettings, osPrefersReducedMotion } from './config.js';
 import { createSettingsPanel } from './settings-ui.js';
 import { seedFromText } from './settings.js';
-import { HEART_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
+import { HEART_MAX, BOMB_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
 import { canvasPoolStats, markAllocation, pixelRatioCap, drainCanvasPool } from './canvas-pool.js';
@@ -265,7 +269,7 @@ const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
-let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed after the level's first enemy update
+let questClear = null; // [x, y, ...]: enemies within QUEST_CLEAR_R of these are removed after the level's first enemy update (the encounter, r3: the visitors)
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
 let keepers = createKeepers(); // 2026-10-07: this level's shopkeepers (the stall's, a guard at the exit), shopkeeper.js
@@ -276,6 +280,8 @@ let tutState = createTutorialState();
 let story = getStory(); // the stage of Marlo, Pip and Quill, relics handed over, pool wagers (save.js): who waits in the hub
 let diveStory = { ...story }; // the story as the dive began: people move on between dives, never within one
 const diveDone = new Set(); // people whose scene was finished in this dive (nobody appears twice in a dive)
+// owners round 3 (quests rework, people.js): meetings owed further down the dive, grudges, and this level's visitors with a reward
+const people = createPeople();
 let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
 const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [] }; // what a hub resident is saying now
 // V2-PLAN 16 point 5 (npcs.js): the friendly NPCs can be hurt, killed and turned against you. npcMoods is the per-dive record of who
@@ -637,7 +643,7 @@ function step(dt) {
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
   enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null);
   if (questClear) { // enemies spawn on the first update: keep the quest objective clear of them (silently)
-    enemies.despawnNear(questClear.x, questClear.y, QUEST_CLEAR_R);
+    for (let k = 0; k < questClear.length; k += 2) enemies.despawnNear(questClear[k], questClear[k + 1], QUEST_CLEAR_R);
     questClear = null;
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
@@ -692,7 +698,8 @@ function step(dt) {
       if (world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
     }
     if (V2 && npcs) { npcs.blast(ev.x, ev.y, BOMB_RADIUS); npcs.drain(onNpcEvent); } // V2-PLAN 16: friendly NPCs are hurt by blasts (rock shields them)
-    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); creatures.blast(ev.x, ev.y, BOMB_RADIUS, octo); handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS); }
+    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); creatures.blast(ev.x, ev.y, BOMB_RADIUS, octo); handleCreatureEvents(); if (quest) { questBlast(quest, ev.x, ev.y, BOMB_RADIUS); if (quest.status === ST_DONE && !quest.paid) payQuest(); } }
+    if (V2 && (run.state === S_BIOME || run.state === S_REST)) peopleReact(ev.x, ev.y); // r3: the people about jump and shout
   }
   for (const ev of enemies.events) {
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
@@ -1099,12 +1106,13 @@ function v2Event(ev) {
   setTimeout(() => { if (transitioning) makeWorldSteps((w) => { nextWorld = w; }); }, GENERATE_AT_MS);
   const proceed = () => {
     if (!nextWorld) { setTimeout(proceed, 10); return; } // the generation is still running in its own tasks
-    if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); } // a new dive: the story as it stands now
+    if (run.state === S_BIOME && prevState !== S_BIOME) { diveStory = { ...story }; diveDone.clear(); people.newDive(); } // a new dive: the story as it stands now
     timed('arrive', () => { if (run.state === S_HUB) arriveInHub(); });
     timed('reset', () => resetWorld(0, nextWorld, true));
     if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     timed('discover', () => discoverStatePlace());
     if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
+    if (run.state === S_BIOME && prevState !== S_BIOME) applyBoons(); // gifts handed over in the hub (people of the last runs)
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
     holdDark = true;
@@ -1198,12 +1206,15 @@ let npcTick = 0;
 /** Each step after the octopus moved: tell npcs.js where the calm NPCs are, step it, apply what happened. */
 function stepNpcs() {
   if (!npcs) return;
+  if (run.state === S_REST) people.place(npcs); // r3: someone waiting in the grotto with a reward (or a grudge)
   if (run.state === S_BIOME) {
     const q = quest;
-    if (q) {
-      if (q.plan.kindId === Q_VAULT && (q.status === ST_ACTIVE || (q.collected && q.leave > 0)) && !npcGone('marlo')) npcs.place(NPC_MARLO, q.cx, q.cy + 0.22, 0, q.collected ? 0 : FL_SEALED); // feet; sealed until freed
-      else if (q.plan.kindId === Q_RESCUE && q.status === ST_ACTIVE && !npcGone('pip')) npcs.place(NPC_PIP, q.cx, q.cy, 0, q.following ? FL_FOLLOWING : FL_CAGED);
+    if (q && q.status !== ST_FAILED_Q) { // r3: after you help them they stay in the level (and can still be hurt)
+      if (q.plan.kindId === Q_VAULT && !npcGone('marlo')) npcs.place(NPC_MARLO, q.cx, q.cy + 0.22, 0, q.collected ? 0 : FL_SEALED); // feet; sealed until freed
+      else if (q.plan.kindId === Q_RESCUE && !npcGone('pip')) npcs.place(NPC_PIP, q.cx, q.cy, 0, q.following ? FL_FOLLOWING : q.staying ? 0 : FL_CAGED);
+      else if (q.plan.kindId === Q_MEET && !npcGone(q.plan.npc)) npcs.place(npcByName(q.plan.npc), q.cx, q.plan.npc === 'pip' ? q.cy : q.plan.floorY, 0, 0);
     }
+    people.place(npcs);
     const hostGone = npcGone('host');
     for (let k = 0; k < poolSts.length; k++) {
       const ps = poolSts[k];
@@ -1231,6 +1242,7 @@ function onNpcEvent(ev) {
       discover(id); journal.bump(id, STAT_ANGERED);
       addStory('angered' + capName(ev.name)); story = getStory();
       if (quest && quest.plan.npc === ev.name) questFail(quest); // the encounter is over: no reward, no stage up
+      if (!ev.hub) people.noteGrudge(ev.who, false); // r3: angry for the rest of the dive (owed meetings come back hostile)
       if (hubTalk.who === ev.name) { hubTalk.talk.q.length = 0; hubTalk.talk.left = 0; hubTalk.talk.text = ''; hubTalk.who = ''; hubTalk.undo = []; }
       break;
     }
@@ -1243,6 +1255,7 @@ function onNpcEvent(ev) {
       story = getStory();
       if (ev.name === 'marlo') run.shortcut3 = false; // his ring to Shallows 1-3 closes for the run
       if (quest && quest.plan.npc === ev.name) questFail(quest);
+      if (!ev.hub) people.noteGrudge(ev.who, true); // r3: dead for the rest of the dive (owed meetings never come)
       break;
     }
     case 'harpoon': sfx.bomb(); break;
@@ -1261,7 +1274,8 @@ function stepV2(snap) {
   const lv = world.level;
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
-    if (questUpdate(quest, octo, world, STEP)) payQuest();
+    questUpdate(quest, octo, world, STEP);
+    if (quest && quest.status === ST_DONE && !quest.paid) payQuest(); // r3: freed, cage broken (and staying), or met: the outcome now
     if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     if (shopSt) shopSt.keeperCalm = shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n && keepers.mode[shopSt.keeperIdx] === KM_CALM;
@@ -1282,6 +1296,7 @@ function stepV2(snap) {
     }
   }
   if (run.state === S_REST) stepRest();
+  if (run.state === S_BIOME || run.state === S_REST) stepPeople();
   if (world.reachedExit(octo.x, octo.y)) {
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
@@ -1435,6 +1450,7 @@ function v2People(c, camera, w2s, cw, ch) {
   }
   if (run.state === S_BIOME) drawCreaturesFront(c, camera, cw, ch, creatures.data, t, octo);
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
+  if (run.state === S_BIOME || run.state === S_REST) drawPeopleExtras(c, camera, cw, ch, t);
 }
 
 // --- V2-PLAN 16: ambush creatures (js/creatures.js) ---
@@ -1623,24 +1639,31 @@ function stepRest() {
 function setupLevelExtras() {
   quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null;
   npcs = makeNpcs();
+  if (run.state === S_BIOME || run.state === S_REST) for (let w = 1; w < 5; w++) { // r3: a grudge lasts the whole dive (the grotto too)
+    if (people.grudge[w] === G_ANGRY) npcMoods.hostile[w] = 1;
+    else if (people.grudge[w] === G_DEAD) { npcMoods.hostile[w] = 1; npcMoods.dead[w] = 1; }
+  }
   if (run.state === S_REST) {
     const lv = world.level;
     if (lv.springX >= 0) restSpring = { x: lv.springX, y: lv.springY, used: false };
     shopSt = createShopState(lv.shop, shopItems, run.diveSeed, 7, run.items);
+    setupPeople();
   }
   if (run.state === S_BIOME) {
     const spec = levelSpec(run);
     const eligible = { ...diveStory }; for (const id of diveDone) eligible[id] = -1;
-    for (const id of ['marlo', 'pip']) if ((diveStory['gone' + capName(id)] | 0) > 0) eligible[id] = -1; // killed in the last dive or this one: not found
+    for (const id of ['marlo', 'pip', 'quill']) if ((diveStory['gone' + capName(id)] | 0) > 0 || people.grudge[npcByName(id)]) eligible[id] = -1; // killed in the last dive or angered / killed in this one: not found
     const plan = planQuest(world.level, questTable, spec.seed, spec.levelIndex, eligible, otherSpawns());
     quest = createQuestState(plan);
     if (plan) {
-      questClear = { x: plan.pos[0], y: plan.pos[1] };
+      questClear = [plan.pos[0], plan.pos[1]];
       if (world.addPlantKeepOut) world.addPlantKeepOut(Math.floor(plan.pos[0]) - 2, Math.floor(plan.pos[1]) - 2, Math.floor(plan.pos[0]) + 3, Math.floor(plan.pos[1]) + 3); // r46: no foliage over the person or the cage
     }
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
     poolSts = planPools(world.level).map(createPoolState);
+    for (const ps of poolSts) { ps.talk = createTalk(); ps.idle = createIdle(ps.plan.x); ps.outcome = ''; } // r3: the host speaks after a won wager
     setupKeepers(spec);
+    setupPeople();
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
   }
 }
@@ -1814,20 +1837,114 @@ function handleKeeperEvents() {
   evs.length = 0;
 }
 
-/** An encounter ended well: shells, a quiet line, the People entry, and the person's story moves up one stage. */
+/**
+ * An encounter ended well (owners round 3: freed, the cage broken, met, or the follower brought to the exit): the outcome picked
+ * in planQuest happens. `now` is given at once (shells drop from the person, or straight into the wallet at the exit); `later`
+ * becomes a meeting further down the dive (people.js); `next` a gift waiting in the hub. The person's story moves up one stage
+ * (unless the row says `stage: false`), the People entry counts it. Called once per encounter (quest.paid).
+ */
 function payQuest() {
-  const p = quest.plan;
-  gainShells(run, p.reward);
+  if (!quest || quest.paid) return;
+  quest.paid = true;
+  const p = quest.plan, o = p.outcome;
   run.dive.quests++;
   sfx.chime();
-  particles.pickupSparkle(octo.x, octo.y, '#c8f5e6');
+  if (p.reward > 0) gainShells(run, p.reward); // an old row with a flat reward
+  if (o && o.now) giveReward(o.now, quest.cx, quest.cy - 0.3, p.kindId === Q_RESCUE && quest.following);
+  else particles.pickupSparkle(quest.cx, quest.cy - 0.5, '#c8f5e6');
+  if (o && o.later) people.owe(p.npc, p.name, o.later, run.level, beatSeed(run.diveSeed, run.level, p.npc, 7), BIOME_LEVELS, !!run.rest);
+  if (o && o.giftId) { setStoryExact('gift' + capName(p.npc), o.giftId); }
   if (p.journal) { discover(p.journal); journal.bump(p.journal, STAT_COLLECTED); }
-  setStory(p.npc, nextStage(diveStory[p.npc] | 0, p));
+  if (p.stage) setStory(p.npc, nextStage(diveStory[p.npc] | 0, p));
   diveDone.add(p.npc);
-  if (p.id === 'marlo-1') {
-    addStory('diverFreed');
-  } else if (p.id === 'pip-1') addStory('critterFreed');
+  if (p.id === 'marlo-1') addStory('diverFreed');
+  else if (p.id === 'pip-1') addStory('critterFreed');
+  else if (p.id === 'pip-2') addStory('explorePip');
+  else if (p.npc === 'quill') addStory('digQuill');
   story = getStory();
+}
+
+/**
+ * A person hands something over: {shells}, {bombs}, {hearts}, {juice} or {item}. Shells drop out of them as real shells to pick up
+ * (`direct`: straight into the wallet, e.g. at the exit); the rest goes to the octopus at once with a sparkle.
+ */
+function giveReward(r, x, y, direct = false) {
+  if (!r) return;
+  if (r.shells > 0) { if (direct) gainShells(run, r.shells | 0); else dropShells(r.shells | 0, x, y); }
+  if (r.bombs > 0) octo.bombs = Math.min(octo.bombMax || BOMB_MAX, octo.bombs + (r.bombs | 0));
+  if (r.hearts > 0) { octo.hearts = Math.min(octo.heartMax, octo.hearts + (r.hearts | 0)); prevHearts = octo.hearts; }
+  if (r.juice > 0) run.juice = Math.min(juiceCap(), run.juice + (r.juice | 0));
+  if (r.item) takeCarried(r.item, x, y);
+  particles.pickupSparkle(octo.x, octo.y, '#c8f5e6');
+  if (!r.shells) particles.pickupSparkle(x, y, '#bfe8d8');
+}
+
+/** Gifts handed over in the hub (save.js boonX): applied when a dive starts, then cleared. */
+function applyBoons() {
+  const b = story.boonBombs | 0, s = story.boonShells | 0, j = story.boonJuice | 0;
+  if (!b && !s && !j) return;
+  if (b) octo.bombs = Math.min(octo.bombMax || BOMB_MAX, octo.bombs + b);
+  if (s) gainShells(run, s);
+  if (j) run.juice = Math.min(juiceCap(), run.juice + j);
+  for (const k of ['boonBombs', 'boonShells', 'boonJuice']) setStoryExact(k, 0);
+  story = getStory();
+}
+
+/** Per step in a level or the grotto: the visitors greet you and hand over what they kept for you; the pool hosts talk. */
+function stepPeople() {
+  for (const g of people.step(octo, STEP, npcs)) {
+    giveReward(g.reward, g.x, g.y - 0.2);
+    sfx.chime();
+    const v = g.v;
+    addStory('later' + capName(v.owed.from));
+    if (v.variant === 'mama') addStory('mamaPip');
+    const ent = questTable.npcById.get(v.owed.from);
+    if (ent && ent.journal) { discover(ent.journal); journal.bump(ent.journal, STAT_COLLECTED); }
+    story = getStory();
+  }
+  for (const ps of poolSts) {
+    if (!ps.talk) continue;
+    talkStep(ps.talk, STEP);
+    idleStep(ps.idle, ps.plan.x - 1.7, ps.plan.floorY + 0.5, octo, STEP);
+  }
+}
+
+/** A blast at (x, y): the person of this level's encounter, the visitors and the pool hosts close by jump and shout. */
+function peopleReact(x, y) {
+  if (quest) questReact(quest, x, y);
+  const reactOf = (id) => { const n = questTable.npcById.get(id); return n ? n.react : []; };
+  people.react(x, y, reactOf, npcs);
+  if (npcs && !npcs.owns(NPC_HOST)) for (const ps of poolSts) if (ps.idle) idleReact(ps.idle, ps.talk, reactOf('host'), x, y, ps.plan.x - 1.7, ps.plan.floorY + 0.5);
+}
+
+/** The host after a won wager (owners round 3): his outcome (a tip now, a debt paid further down, nothing, or a gift in the hub). */
+function hostWin(ps) {
+  const host = questTable.npcById.get('host');
+  if (!host || !ps.talk || (npcs && npcs.owns(NPC_HOST))) return;
+  const o = pickOutcome(host.outcomes, beatSeed(run.diveSeed, run.level, 'host', (story.poolWon | 0) + 3));
+  if (!o) return;
+  ps.talk.q.length = 0; ps.talk.left = 0; ps.talk.text = '';
+  say(ps.talk, o.lines);
+  if (o.now) giveReward(o.now, ps.plan.x - 1.7, ps.plan.floorY + 0.3);
+  if (o.later) people.owe('host', host.name, o.later, run.level, beatSeed(run.diveSeed, run.level, 'host', 11), BIOME_LEVELS, !!run.rest);
+  if (o.giftId) setStoryExact('giftHost', o.giftId);
+  if ((story.host | 0) < 1) setStory('host', 1); // he moves into the hub after your first win
+  ps.outcome = o.id;
+  story = getStory();
+}
+
+/** This level's visitors: meetings owed for this level (or the grotto), placed near the exit (or the spring). */
+function setupPeople() {
+  const lv = world.level;
+  const due = run.state === S_REST ? DUE_REST : run.level;
+  const anchor = run.state === S_REST ? (restSpring ? { x: restSpring.x, y: restSpring.y - 1 } : { x: lv.startX + 0.5, y: lv.startY + 0.5 }) : (lv.exitX >= 0 ? { x: lv.exitX + 0.5, y: lv.exitY + 0.5 } : null);
+  const sh = lv.shop, qp = quest ? quest.plan.pos : null;
+  const bad = (x, y) => (sh && x >= sh.x0 - 2 && x < sh.x1 + 2 && y >= sh.y0 - 2 && y < sh.y1 + 2) || (qp && Math.hypot(qp[0] - x, qp[1] - y) < 3);
+  const chatOf = (id) => { const n = questTable.npcById.get(id); return n ? n.chat : []; };
+  for (const v of people.setupLevel(due, world, anchor, bad, chatOf)) {
+    if (world.addPlantKeepOut) world.addPlantKeepOut(Math.floor(v.x) - 2, Math.floor(v.floorY) - 3, Math.floor(v.x) + 3, Math.floor(v.floorY) + 1);
+    (questClear || (questClear = [])).push(v.x, v.cy);
+  }
 }
 
 /** The Challenge Pool: the wager starts the falling rocks, a won wager raises the chest, a lost one stops the rocks. */
@@ -1846,6 +1963,7 @@ function onPoolEvent(ev, poolSt) {
     case 'prize':
       dropShells(ev.shells, ev.x, ev.y);
       addStory('poolWon'); story = getStory();
+      hostWin(poolSt);
       journal.bump('place-pool', STAT_COLLECTED);
       particles.pickupSparkle(ev.x, ev.y, '#c8f5e6'); sfx.chime();
       break;
@@ -1895,23 +2013,44 @@ function discoverScenery() {
 function drawQuestThing(c, camera, cw, ch, t) {
   cullView(camera, cw, ch);
   const st = quest, p = st.plan;
-  const fade = st.status === ST_ACTIVE ? 1 : Math.max(0, Math.min(1, st.leave / 1.2));
+  const who = npcByName(p.npc), owned = !!(npcs && npcs.owns(who));
   const near = visibleAt(cullFlags('quest', 1), 0, st.cx, st.cy, 4); // r43: the diver / critter / cage far from the camera is not animated or drawn
+  const face = st.idle.face, lift = idleLift(st.idle);
   switch (near ? p.kindId : -1) {
-    case Q_VAULT:
-      if (fade > 0 && !(npcs && npcs.owns(NPC_MARLO))) { c.save(); c.globalAlpha = fade; drawDiver(c, camera, cw, ch, st.cx, st.cy + 0.22, t, st.collected, !st.collected); c.restore(); }
+    case Q_VAULT: // r3: once freed he stays (stands where he settled), faces you and waves while he talks
+      if (owned) break;
+      if (!st.collected) drawDiver(c, camera, cw, ch, st.cx, st.cy + 0.22, t, false, true);
+      else drawPerson(c, camera, cw, ch, 'marlo', '', st.cx, st.cy + 0.22, t, face, lift, { wave: !!st.talk.text });
       break;
     case Q_RESCUE:
-      if (!st.following) drawCritter(c, camera, cw, ch, st.cx, st.cy, false, t, p.floorY, p.variant);
+      if (!st.following && !st.staying) { if (!owned) drawCritter(c, camera, cw, ch, st.cx, st.cy, false, t, p.floorY, p.variant); }
       else {
         drawCage(c, camera, cw, ch, p.pos[0], p.floorY, 1.25, 1.15, true); // the broken cage stays behind, open
-        if (st.status === ST_ACTIVE) drawCritter(c, camera, cw, ch, st.cx, st.cy, true, t, 0, p.variant);
+        if (!owned) drawPerson(c, camera, cw, ch, 'pip', p.variant, st.cx, st.cy, t, face, lift);
       }
+      break;
+    case Q_MEET:
+      if (!owned) drawPerson(c, camera, cw, ch, p.npc, p.variant, st.cx, p.npc === 'pip' ? st.cy : p.floorY, t, face, lift, { lantern: p.npc === 'quill' && (story.quill | 0) >= 2 });
       break;
     default: break;
   }
+  if (owned) return; // npcs-draw.js draws an angry person and its words
   const sp = questSpeaker(st);
-  drawSpeech(c, camera, cw, ch, sp[0], sp[1], st.talk.text, talkAlpha(st.talk), p.name);
+  drawSpeech(c, camera, cw, ch, sp[0], sp[1] - lift, st.talk.text, talkAlpha(st.talk), p.name);
+}
+
+/** r3: the visitors waiting with a reward (near the exit, in the grotto) and the pool hosts' words after a won wager. */
+function drawPeopleExtras(c, camera, cw, ch, t) {
+  for (const v of people.visitors) {
+    if (v.hostile || (npcs && npcs.owns(v.who))) continue;
+    const lift = idleLift(v.idle);
+    drawPerson(c, camera, cw, ch, v.npc, v.variant, v.x, v.y, t, v.idle.face, lift, { wave: !!v.talk.text });
+    const head = v.npc === 'pip' ? (v.variant === 'mama' ? 0.95 : 0.7) : v.npc === 'marlo' ? 1.35 : 1.45;
+    if (v.talk.text) drawSpeech(c, camera, cw, ch, v.x, v.y - head - lift, v.talk.text, talkAlpha(v.talk), v.name);
+  }
+  if (run.state === S_BIOME && !(npcs && npcs.owns(NPC_HOST))) for (const ps of poolSts) {
+    if (ps.talk && ps.talk.text) drawSpeech(c, camera, cw, ch, ps.plan.x - 1.7, ps.plan.floorY + 1 - 1.3, ps.talk.text, talkAlpha(ps.talk), 'The Host');
+  }
 }
 
 // --- the hub residents: Marlo on the ledge, Pip swimming about, Quill on the ledge by the board; each speaks when you come near ---
@@ -1922,6 +2061,7 @@ function hubPlace(lv, id, t, which = 0) {
   switch (id) {
     case 'marlo': return { x: lv.signX + 0.5, y: lv.signY + 1, head: 1.35, fly: false };
     case 'quill': return { x: lv.boardX + 2.3, y: lv.boardY, head: 1.3, fly: false };
+    case 'host': return { x: lv.signX + 4.5, y: lv.signY + 1, head: 1.3, fly: false }; // r3: on the little ledge right of Marlo, after your first won wager
     default: return { x: lv.signX - 1.4 - which * 2.2 + Math.sin(t * 0.7 + which) * 0.8, y: lv.signY - 0.7 + Math.sin(t * 1.3 + which * 2) * 0.22, head: which ? 0.95 : 0.7, fly: true };
   }
 }
@@ -1966,7 +2106,8 @@ function hubStep(lv) {
     say(hubTalk.talk, v.lines);
     hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id;
     hubTalk.undo = v.set.filter(([k]) => k.startsWith('said')).map(([k]) => [k, story[k] | 0]);
-    for (const [k, n] of v.set) { setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
+    for (const [k, n] of v.set) { if (/^(gift|boon)/.test(k)) setStoryExact(k, n); else setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
+    if (v.gift) { sfx.chime(); particles.pickupSparkle(octo.x, octo.y, '#c8f5e6'); } // r3: a gift for the next dive
     story = getStory();
     for (const id of v.discover) discover(id);
   }
@@ -1981,6 +2122,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
     if (!visibleAt(fl, k++ & 7, pl.x, pl.y, 3)) continue; // r43: a resident far from the camera is not animated or drawn (its bubble below still is)
     if (r.id === 'marlo') drawDiver(c, camera, cw, ch, pl.x, pl.y, t, true, false);
     else if (r.id === 'quill') drawCollector(c, camera, cw, ch, pl.x, pl.y, t, r.stage >= 2);
+    else if (r.id === 'host') drawPerson(c, camera, cw, ch, 'host', '', pl.x, pl.y, t, octo.x >= pl.x ? 1 : -1, 0);
     else drawCritter(c, camera, cw, ch, pl.x, pl.y, true, t, 0, '');
   }
   if (hubTalk.who && hubTalk.talk.text) {
@@ -2148,7 +2290,7 @@ window.__octo = {
     const l = world.level;
     return {
       levelIndex: levelSpec(run).levelIndex, seed, startX: world.startX, startY: world.startY, exitX: world.exitX, exitY: world.exitY,
-      w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), boardX: world.level.boardX === undefined ? -1 : world.level.boardX, boardY: world.level.boardY === undefined ? -1 : world.level.boardY,
+      w: world.width, h: world.height, run: { ...run }, stage: stageLabel(run), boardX: world.level.boardX === undefined ? -1 : world.level.boardX, boardY: world.level.boardY === undefined ? -1 : world.level.boardY, signX: world.level.signX === undefined ? -1 : world.level.signX, signY: world.level.signY === undefined ? -1 : world.level.signY,
       prompts: world.level.prompts || [], walls: world.level.walls ? Array.from(world.level.walls) : [], transitioning,
       tiles: Array.from(l.tiles), setPieces: l.setPieces ? Array.from(l.setPieces.subarray(0, (l.nSetPieces || 0) * 4)) : [], fallback: l.fallback, bankFallback: l.bankFallback || 0,
       bands: renderer.wallBandStats(), bandRows: world.bandRows, bandCount: world.bandCount(), journalOpen: journalScreen.isOpen(), endShown: ui.isEndShown(),
@@ -2209,6 +2351,50 @@ window.__octo = {
   hitNpc(who, dmg = 1, src = 'test') { if (!npcs) return false; const r = npcs.hurt(npcByName(who), dmg, src); npcs.drain(onNpcEvent); return r; },
   /** Debug: put an NPC in the level; (x, y) is the anchor (feet for marlo / quill / host, the centre for pip). Hostile ones fight at once. */
   spawnNpc(who, x, y, hostile = false) { if (!npcs) return -1; return npcs.spawn(npcByName(who), x, y, !!hostile); },
+  /** r3 (quests rework): owed meetings, grudges, this level's visitors, and the encounter's person (where, facing, words, outcome). */
+  people() {
+    const q = quest;
+    return {
+      ...people.snapshot(npcs),
+      quest: q ? { id: q.plan.id, npc: q.plan.npc, kind: q.plan.kindId, status: q.status, paid: q.paid, outcome: q.plan.outcome ? q.plan.outcome.id : '', role: q.plan.role, following: q.following, staying: q.staying, collected: q.collected, settled: q.settled, helped: q.helped, cx: q.cx, cy: q.cy, floorY: q.plan.floorY, pos: Array.from(q.plan.pos), face: q.idle.face, hop: q.idle.hop, text: q.talk.text, queued: q.talk.q.slice() } : null,
+      hosts: poolSts.map((ps) => ({ x: ps.plan.x - 1.7, floorY: ps.plan.floorY + 1, text: ps.talk ? ps.talk.text : '', outcome: ps.outcome || '' })),
+      level: run.level, state: run.state,
+    };
+  },
+  /**
+   * Test hook (r3): put this level's encounter `rowId` (data/quests.json) in place now, with outcome `outcomeId` (default: the seeded one).
+   * Returns the plan's position or null when the level has no spot for it.
+   */
+  forceQuest(rowId, outcomeId) {
+    if (!questTable || run.state !== S_BIOME) return null;
+    const row = questTable.rows.find((r) => r.id === rowId);
+    if (!row) return null;
+    const one = { ...questTable, rows: [{ ...row, chance: 1, levels: [0, 1, 2, 3, 4], need: 0, max: 99 }] };
+    const plan = planQuest(world.level, one, levelSpec(run).seed, levelSpec(run).levelIndex, {}, otherSpawns());
+    if (!plan) return null;
+    plan.max = row.max; plan.need = row.need;
+    if (outcomeId) { const o = row.outcomes.find((x) => x.id === outcomeId); if (o) { plan.outcome = o; plan.role = o.role || 'follow'; } }
+    quest = createQuestState(plan);
+    if (npcs) npcs.remove(npcByName(plan.npc), 0);
+    return { x: plan.pos[0], y: plan.pos[1], floorY: plan.floorY, outcome: plan.outcome ? plan.outcome.id : '' };
+  },
+  /** Test hook (r3): owe a meeting as if `npc`'s outcome `outcomeId` (of row `rowId`, or the host's) had happened on this level. */
+  owe(rowId, outcomeId) {
+    const row = rowId === 'host' ? { npc: 'host', outcomes: questTable.npcById.get('host').outcomes } : questTable.rows.find((r) => r.id === rowId);
+    const o = row && row.outcomes.find((x) => x.id === outcomeId);
+    if (!o || !o.later) return null;
+    return people.owe(row.npc, questTable.npcById.get(row.npc).name, o.later, run.level, beatSeed(run.diveSeed, run.level, row.npc, 7), BIOME_LEVELS, !!run.rest);
+  },
+  /** Test hook (r3): the host's outcome after a won wager, as if the first pool of this level paid out. */
+  hostWin(outcomeId) {
+    const ps = poolSts[0];
+    if (!ps) return null;
+    if (outcomeId) { const host = questTable.npcById.get('host'), keep = host.outcomes; host.outcomes = keep.filter((o) => o.id === outcomeId); try { hostWin(ps); } finally { host.outcomes = keep; } }
+    else hostWin(ps);
+    return ps.outcome;
+  },
+  /** Test hook (r3): a blast's reactions only (no damage): the people about jump and shout. */
+  reactAt(x, y) { peopleReact(x, y); return true; },
   /** 2026-10-07: the level's shopkeepers (mode name, position, hp, tell, claws) for tests and review. */
   keepers() {
     const k = keepers, out = [];
