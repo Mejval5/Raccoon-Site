@@ -666,7 +666,7 @@ function step(dt) {
       }
     }
   }
-  if (V2 && !isSafeState(run)) { creatures.update(dt, octo, world, resident); handleCreatureEvents(); }
+  if (V2 && !isSafeState(run)) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
   if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
@@ -1476,6 +1476,9 @@ function handleCreatureEvents() {
       default: break;
     }
   }
+  // handled once: a creature can now be hit between its own updates (a boulder, a block, a shock, a bomb, ink: damage.js), and
+  // this runs after each of those; without the clear a pearl or a corpse could be taken twice in one step
+  creatures.events.length = 0;
 }
 
 // --- round 31: loot and secrets (js/loot.js) ---
