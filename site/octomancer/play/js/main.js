@@ -24,7 +24,7 @@ import { drawCreaturesBack, drawCreaturesFront } from './creatures-draw.js';
 import { drawBlocks } from './blocks-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES, LOOT_CODE as LOOT_CODE_ } from './loot.js';
 import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode } from './items.js';
-import { drawLoot } from './loot-draw.js';
+import { drawLoot, drawLootOne } from './loot-draw.js';
 import { createEmbedded, EK_SHELL, EK_BOMB, EK_ITEM, EMBED_SHELLS, shellValue } from './embed.js';
 import { drawEmbedded, drawPocketReveal, drawTreasureTile } from './embed-draw.js';
 import { MAT_ROCK, MAT_BONE, MAT_BOULDER_BREAKS, setTileDrawHook } from './materials.js';
@@ -34,11 +34,13 @@ import { createAutofire } from './autofire.js';
 import { createBombs, spawnRubble, DROP_BELOW } from './bomb.js';
 import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, HAND_REACH } from './hand.js';
 import { registerHandKinds } from './hand-kinds.js';
-import { drawHandTell, drawHeldArm, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
+import { drawHandTell, drawHeldArm, drawHeldGrip, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
+import { drawEnemyOne, drawBombOne } from './enemy-draw.js';
+import { drawTrace } from './draw-trace.js';
 import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
-import { drawCorpses } from './corpses-draw.js';
+import { drawCorpses, drawCorpseOne } from './corpses-draw.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
@@ -80,7 +82,7 @@ import { TRIGGERS, TRIGGER_TARGET_NAMES as TRIGGER_NAMES_, INFIGHT_KILL } from '
 import { createInfight } from './infight.js';
 import { CREATURES, SOURCES, resolveHit, HAZARD_COOL } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
-import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
+import { drawKeepers, drawLooseWares, drawWare } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
 import { drawContactShadows } from './feel-draw.js';
@@ -1264,7 +1266,9 @@ function render(alpha, frameMs) {
   const w = canvas.width, h = canvas.height;
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
+  const hv = heldViewFor(alpha), hh = hv ? hand.held : null;
   renderer.render(w, h, octo, alpha, sim.time, frameMs / 1000, {
+    skipEnemy: hh && hh.enemy ? hh.enemy : null, skipBomb: hh && hh.bomb ? hh.bomb : null, // the held thing is drawn after the octopus (drawHeld)
     warmOnly: holdDark, warmGroup: holdDark ? warmPhase() : 0, // behind the dark screen: a set-up frame, a frame of the simulation's first run, then one group of the scene, in turn
     resident,
     pickups: pickups.visible(resident),
@@ -1287,6 +1291,7 @@ function render(alpha, frameMs) {
     deathFocus: V2 && octo.dead ? deathFocus(w, h) : null,
     lightR: V2 && run.state === S_BIOME ? octo.lightR : 0,
   });
+  if (drawTrace.on) traceHeldFrame();
   setGameView(renderer.camera, w, h); // gameplay checks (a boulder falls, a tentacle wakes, a cannon charges) only while the threat is on screen
   if (V2 && octo.dead) { // the clear hole in the death tint follows the body
     const a = octo.prevX + (octo.x - octo.prevX) * alpha, b = octo.prevY + (octo.y - octo.prevY) * alpha;
@@ -1826,16 +1831,17 @@ function v2Extra(c, camera, w2s, cw, ch) {
   }
   drawRubble(c, camera, cw, ch, props.data);
   if (world.fresh) world.fresh.draw(c, camera, cw, ch, world.tileAt); // raw edges and silt haze over a fresh crater (fresh.js)
-  drawCorpses(c, camera, cw, ch, corpses.data, t);
+  const hh = heldView ? hand.held : null; // the held thing is skipped here and drawn after the octopus (drawHeld)
+  drawCorpses(c, camera, cw, ch, corpses.data, t, hh && hh.ci !== undefined ? hh.ci : -1);
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
     drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: !!octo.seeBuried, tileAt: world.tileAt, shown: false });
     if (octo.seeBuried) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
-    drawLoot(c, camera, cw, ch, loot.data, t);
+    drawLoot(c, camera, cw, ch, loot.data, t, hh && hh.li !== undefined ? hh.li : -1);
     drawCreaturesBack(c, camera, cw, ch, creatures.data, t); // (wall traps draw in v2PreWall, before the terrain)
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
-    if (shopSt) drawLooseWares(c, camera, cw, ch, shopSt, props, t);
+    if (shopSt) drawLooseWares(c, camera, cw, ch, shopSt, props, t, hh && hh.slot !== undefined ? hh.slot : -1);
     if (keepers.n) drawKeepers(c, camera, cw, ch, keepers, t); // hostile keepers and their claws (under the octopus, like the enemies)
     let pk = 0;
     for (const ps of poolSts) if (visibleAt(cullFlags('pools', 4), pk++ & 3, ps.plan.x, ps.plan.y, 7)) drawPool(c, camera, cw, ch, ps, run.shells, t);
@@ -1855,13 +1861,83 @@ function v2Extra(c, camera, w2s, cw, ch) {
   inkJet.draw(c, camera, cw, ch, t);
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
   if (!octo.dead && !octo.hidden && !entry) { // controls 2026-10-08: the tentacle curl toward what F would take, the arm round what it holds
-    const o = octo; // the step's position, as the held thing's (props are drawn at their step position too)
-    if (hand.held) { const hp = hand.held.pos ? hand.held.pos() : null; if (hp) drawHeldArm(c, camera, cw, ch, o.x, o.y, hp.x, hp.y, hand.held.r || 0.3, t); }
+    // the octopus's drawn (interpolated) position: the arm and the held thing move with the body, not with the 50 Hz steps
+    const hv = heldView;
+    if (hand.held) { if (hv && hv.rigid) drawHeldArm(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, hand.held.r || 0.3, t); }
     else if (hand.target) {
-      drawHandTell(c, camera, cw, ch, o.x, o.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
+      drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
       if (hand.target.kind === 'portal' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 1.45, 'F', t); // (phones: the Spell button reads Enter)
     }
   }
+}
+// --- controls 2026-10-08: what the hand holds is drawn ON TOP of the octopus (Daniel: "when you grab something ... it must be
+// on top"), and rigidly in its tentacles (Daniel: "the grabbed item jitters as we move"). Its own system skips it in the normal
+// pass (before the octopus) and v2People draws it once after the octopus through that system's draw-one function. It is drawn
+// where the hand point is for the octopus's DRAWN pose (interpolated position, its angle): the systems keep it at the hand
+// point of the 50 Hz step position, and some copy it a step late (loot, bombs), so drawing it there beat against the
+// interpolated body at 30 / 60 / 120 Hz. The draw call is shifted by (hand point - where the system would draw it).
+let heldView = null; // this frame's {ox, oy (the drawn octopus), x, y (the drawn hand point), rigid}, or null: nothing held
+const HV = { ox: 0, oy: 0, x: 0, y: 0, rigid: false, alpha: 1 };
+const HV_POSE = { x: 0, y: 0, angle: 0, radius: 0.45, throwDir: 1, handSide: 1 };
+const HV_SYS = { x: 0, y: 0 };
+let heldLast = null; // test hook: what drawHeld drew last frame
+function heldViewFor(alpha) {
+  heldView = null;
+  const h = hand && hand.held;
+  if (!V2 || !h) return null;
+  HV.alpha = alpha;
+  HV.ox = octo.prevX + (octo.x - octo.prevX) * alpha; HV.oy = octo.prevY + (octo.y - octo.prevY) * alpha;
+  HV.rigid = !octo.dead && !octo.hidden && !entry;
+  if (HV.rigid) {
+    HV_POSE.x = HV.ox; HV_POSE.y = HV.oy; HV_POSE.angle = octo.angle; HV_POSE.radius = octo.radius; HV_POSE.throwDir = octo.throwDir; HV_POSE.handSide = octo.handSide;
+    handPoint(HV_POSE, h.r || 0.3, handCtx.isSolid, HV);
+  }
+  return (heldView = HV);
+}
+/** Where the held thing's own system would draw it this frame (out), or null. */
+function heldSysPos(h, alpha, out) {
+  if (h.li !== undefined) { if (h.li < 0 || h.li >= loot.data.n) return null; out.x = loot.data.x[h.li]; out.y = loot.data.y[h.li]; }
+  else if (h.ci !== undefined) { out.x = corpses.data.x[h.ci]; out.y = corpses.data.y[h.ci]; }
+  else if (h.enemy) { const e = h.enemy, px = e.prevX === undefined ? e.x : e.prevX, py = e.prevY === undefined ? e.y : e.prevY; out.x = px + (e.x - px) * alpha; out.y = py + (e.y - py) * alpha; }
+  else if (h.bomb) { out.x = h.bomb.x; out.y = h.bomb.y; }
+  else if (h.slot !== undefined) { const p = shopSt ? shopSt.pid[h.slot] : -1; if (p < 0) return null; out.x = props.data.x[p]; out.y = props.data.y[p]; }
+  else return null;
+  return out;
+}
+function drawHeld(c, camera, w2s, cw, ch, t) {
+  heldLast = null;
+  const hv = heldView, h = hv ? hand.held : null;
+  if (!h) return;
+  const sys = heldSysPos(h, hv.alpha, HV_SYS);
+  if (!sys) return;
+  const dx = hv.rigid ? hv.x - sys.x : 0, dy = hv.rigid ? hv.y - sys.y : 0, ppu = camera.pxPerUnit;
+  c.save();
+  c.translate(dx * ppu, dy * ppu);
+  if (h.li !== undefined) drawLootOne(c, camera, cw, ch, loot.data, h.li, t);
+  else if (h.ci !== undefined) drawCorpseOne(c, camera, cw, ch, corpses.data, h.ci, t);
+  else if (h.enemy) drawEnemyOne(c, camera, w2s, cw, ch, h.enemy, t, hv.alpha);
+  else if (h.bomb) drawBombOne(c, camera, w2s, cw, ch, h.bomb, t);
+  else if (h.slot !== undefined && shopSt) drawWare(c, camera, cw, ch, shopSt, props, h.slot, t);
+  c.restore();
+  if (hv.rigid) drawHeldGrip(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, h.r || 0.3, t); // the arm's grip over the thing
+  heldLast = { x: sys.x + dx, y: sys.y + dy, sx: sys.x, sy: sys.y, ox: hv.ox, oy: hv.oy, wall: hv.rigid && handPoint(HV_POSE, h.r || 0.3, null, HV_SYS).x !== hv.x }; // wall: carried beside the body (the hand point is in rock)
+}
+/** Test hook (drawTrace on): did this frame draw the held thing once, after the octopus? */
+let heldTrace = null;
+function traceHeldFrame() {
+  const L = drawTrace.log, h = hand.held;
+  let kind = '', ref = null;
+  if (h) {
+    if (h.li !== undefined) { kind = 'loot'; ref = h.li; } else if (h.ci !== undefined) { kind = 'corpse'; ref = h.ci; }
+    else if (h.enemy) { kind = 'enemy'; ref = h.enemy; } else if (h.bomb) { kind = 'bomb'; ref = h.bomb; } else if (h.slot !== undefined) { kind = 'ware'; ref = h.slot; }
+  }
+  let octoAt = -1, before = 0, after = 0;
+  for (let k = 0; k < L.length; k += 2) {
+    if (L[k] === 'octo') { if (octoAt < 0) octoAt = k; continue; }
+    if (L[k] === kind && L[k + 1] === ref) { if (octoAt < 0) before++; else after++; }
+  }
+  heldTrace = { held: hand.heldKind || '', kind, octo: octoAt >= 0, before, after };
+  L.length = 0;
 }
 /** Pushable blocks: each resident chunk's 'block' spawns become PK_BLOCK props once. */
 function addBlocks(resident) {
@@ -1880,6 +1956,7 @@ function v2PreWall(c, camera, cw, ch) {
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
   drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
+  drawHeld(c, camera, w2s, cw, ch, t); // what the hand holds: over the body, gripped by its arm
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (run.state === S_BIOME) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
@@ -2808,6 +2885,26 @@ window.__octo = {
     const hp = hand.held && hand.held.pos ? hand.held.pos() : null;
     return { held: hand.heldKind || '', heldAt: hp ? { x: hp.x, y: hp.y } : null, target: t ? { kind: t.kind, x: t.x, y: t.y } : null, grabs: hand.grabs, throws: hand.throws, drops: hand.drops, uses: hand.uses,
       carryMul: octo.carryMul, shield: !!octo.shieldHit, phone: phoneHandMode(hand, octo), flying: hand.flying.length, reach: HAND_REACH, keeperNotice };
+  },
+  /** Test hook: draw one frame with the draw order traced; returns {held, kind, octo, before, after}: how often the held thing was
+   * drawn before and after the octopus (it must be 0 and 1). */
+  heldDrawOrder() { drawTrace.on = true; drawTrace.log.length = 0; heldTrace = null; try { render(1, 16); } finally { drawTrace.on = false; drawTrace.log.length = 0; } return heldTrace; },
+  /** Test hook: stop the loop and run n frames of dtMs each (a 1000/dtMs Hz display), recording per frame where the held thing
+   * was drawn {x, y}, where its system had it {sx, sy} and the drawn octopus {ox, oy}; then restart the loop. circleS > 0: the
+   * move stick turns a full circle every circleS seconds of frames (it swims in a circle). */
+  /** Test hook: keep a held stunned creature stunned for s more seconds (so a long capture does not end with it wriggling free). */
+  heldStun(s) { const e = hand.held && hand.held.enemy; if (e) e.stun = Math.max(e.stun, s); return !!e; },
+  heldFrames(n, dtMs, circleS = 0) {
+    loop.stop();
+    const rec = [];
+    try {
+      loop.manualFrames(n, dtMs, (i) => {
+        rec.push(heldLast ? { ...heldLast, angle: octo.angle, side: octo.handSide } : null);
+        if (circleS > 0) { const a = (i + 1) * dtMs / 1000 / circleS * Math.PI * 2; input.setOverride({ move: { x: Math.cos(a), y: Math.sin(a) } }); }
+        else if (circleS < 0) input.setOverride({ move: { x: 1, y: 0.25 } }); // straight on, slightly down
+      });
+    } finally { if (circleS) input.setOverride(null); loop.start(); }
+    return rec;
   },
   /** Test hook: stun every moving enemy within r of (x, y) for s seconds (as a blast does, without the push). */
   stunNear(x, y, r, s = 1) { return enemies.knockInRadius(x, y, r, 0, s); },
