@@ -8,7 +8,8 @@
 //             facing direction); C use the selected hotbar slot (cast a spell, drop a bomb); B or X drop a bomb;
 //             Q / E previous / next hotbar slot; 1-9 pick a hotbar slot; Tab or I the inventory; Esc pause.
 //   mouse     left button ink jet toward the cursor (held: auto-repeat), right button use the selected hotbar slot toward
-//             the cursor (a spell casts, a bomb is thrown), middle button a quick bomb at the cursor, wheel previous /
+//             the cursor (a spell casts, a bomb is thrown), middle button the hand (as F: grab / talk / buy, again to throw
+//             at the cursor, hold to drop; Daniel 2026-10-08: bombs only from their hotbar slot), wheel previous /
 //             next hotbar slot. No steering with the mouse.
 //   touch     stick on the left half; Jet (auto-aims), Dash, Use (the selected slot) and Spell (it turns into Grab /
 //             Throw when something is in reach) buttons bottom right (touch-ui.js).
@@ -61,7 +62,7 @@ export function createInput(canvas) {
   // `spell` casts the selected (or last) spell, `use` uses the selected hotbar slot, `hand` is the Spell button morphed into Grab / Throw.
   const touch = { x: 0, y: 0, active: false, dash: newButton(), bomb: newButton(), spell: newButton(), attack: newButton(), use: newButton(), hand: newButton() };
   // Mouse: `x`/`y` are the tracked cursor position in canvas BUFFER pixels (device px, what the camera works in).
-  const mouse = { x: 0, y: 0, seen: false, attack: newButton(), use: newButton(), bomb: newButton() };
+  const mouse = { x: 0, y: 0, seen: false, attack: newButton(), use: newButton(), hand: newButton() };
   let cycle = 0, wheelAcc = 0, select = -1;
   const src = { attack: 'key', spell: 'key', bomb: 'key', use: 'key' };
   let usingTouch = false, usingKeyboard = false, usingMouse = false;
@@ -125,7 +126,7 @@ export function createInput(canvas) {
     window.addEventListener('keydown', onKeyDown, { passive: false });
     window.addEventListener('keyup', onKeyUp);
     // a key held while the window loses focus never gets its keyup: drop everything
-    window.addEventListener('blur', () => { keys.clear(); for (const b of Object.values(kb)) releaseButton(b); releaseButton(mouse.attack); releaseButton(mouse.use); releaseButton(mouse.bomb); });
+    window.addEventListener('blur', () => { keys.clear(); for (const b of Object.values(kb)) releaseButton(b); releaseButton(mouse.attack); releaseButton(mouse.use); releaseButton(mouse.hand); });
   }
 
   // --- Mouse: buttons on the canvas (page chrome outside the game never takes a click), the cursor tracked on window.
@@ -140,13 +141,13 @@ export function createInput(canvas) {
     canvas.addEventListener('mousedown', (e) => {
       track(e);
       if (e.button === 0) { setMode('mouse'); pressButton(mouse.attack); src.attack = 'mouse'; e.preventDefault(); }
-      else if (e.button === 1) { setMode('mouse'); pressButton(mouse.bomb); src.bomb = 'mouse'; e.preventDefault(); }
+      else if (e.button === 1) { setMode('mouse'); pressButton(mouse.hand); e.preventDefault(); } // the hand, as F
       else if (e.button === 2) { setMode('mouse'); pressButton(mouse.use); src.use = 'mouse'; e.preventDefault(); }
     });
     window.addEventListener('mousemove', track);
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) releaseButton(mouse.attack);
-      else if (e.button === 1) releaseButton(mouse.bomb);
+      else if (e.button === 1) releaseButton(mouse.hand);
       else if (e.button === 2) releaseButton(mouse.use);
     });
     // the right button uses the selected slot: never the browser's context menu over the game
@@ -171,18 +172,18 @@ export function createInput(canvas) {
     const out = {
       move,
       dash: read(kb.dash, touch.dash),
-      bomb: read(kb.bomb, touch.bomb, mouse.bomb),
+      bomb: read(kb.bomb, touch.bomb),
       pause: read(kb.pause),
       attack: read(kb.attack, touch.attack, mouse.attack),
       spell: read(touch.spell),
       use: read(kb.use, touch.use, mouse.use),
-      hand: read(kb.hand, touch.hand),
+      hand: read(kb.hand, touch.hand, mouse.hand),
       inventory: read(kb.inventory),
       cycle, select,
       src: { attack: touch.attack.pressed || touch.attack.held ? 'touch' : src.attack, spell: 'touch', bomb: touch.bomb.pressed ? 'touch' : src.bomb, use: touch.use.pressed ? 'touch' : src.use },
       mode: usingTouch ? 'touch' : usingMouse ? 'mouse' : 'keyboard',
     };
-    for (const b of [kb.dash, kb.bomb, kb.pause, kb.attack, kb.use, kb.hand, kb.inventory, touch.dash, touch.bomb, touch.spell, touch.attack, touch.use, touch.hand, mouse.attack, mouse.use, mouse.bomb]) { b.pressed = false; b.released = false; }
+    for (const b of [kb.dash, kb.bomb, kb.pause, kb.attack, kb.use, kb.hand, kb.inventory, touch.dash, touch.bomb, touch.spell, touch.attack, touch.use, touch.hand, mouse.attack, mouse.use, mouse.hand]) { b.pressed = false; b.released = false; }
     cycle = 0; select = -1;
 
     if (override) {

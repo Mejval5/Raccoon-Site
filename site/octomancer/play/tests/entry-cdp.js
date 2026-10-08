@@ -47,13 +47,20 @@ const ENTRY_S = 1.5, STEP = 0.02;
       const seen = [...new Set(modes)];
       check(`[${tag}] a near miss: the Bounce once, then straight back to idle (modes seen: ${seen.join(' > ')})`, seen[0] === 'near' || seen[0] === 'idle' ? seen.every((m) => m === 'near' || m === 'idle') && !modes.slice(modes.lastIndexOf('near') + 1).includes('near') && modes[modes.length - 1] === 'idle' : false);
       check(`[${tag}] ... still in the hub (a near miss does not enter)`, (await page.evaluate(() => __octo.level().stage)) === 'Hub');
+      // Daniel 2026-10-08: floating in the whirlpool without pressing F does not enter either; the hand points at it
+      await page.evaluate((l) => { __octo.teleport(l.ex + 0.5, l.ey + 0.3); }, lv);
+      await sleep(900);
+      const hov = await page.evaluate(() => ({ e: !!__octo.entry(), stage: __octo.level().stage, t: __octo.hand().target }));
+      check(`[${tag}] hovering in the whirlpool without F does not enter; it is the hand's target (a portal)`, !hov.e && hov.stage === 'Hub' && hov.t && hov.t.kind === 'portal', JSON.stringify(hov));
 
       // --- the entry in real time, with the player pushing away, a teleport and a kill during it ---
       await page.evaluate(() => __octo.god(false));
-      await page.evaluate((l) => { __octo.input({ move: { x: -1, y: -1 }, dash: true }); __octo.teleport(l.ex - 0.5, l.ey + 0.5); }, lv);
+      // Daniel 2026-10-08: a whirlpool is entered with the hand (F): in it, one press; then the player pushes away during the entry
+      await page.evaluate((l) => { __octo.teleport(l.ex - 0.5, l.ey + 0.5); __octo.pressHand(); }, lv);
       await page.waitForFunction(() => !!__octo.entry(), { timeout: 5000 });
+      await page.evaluate(() => __octo.input({ move: { x: -1, y: -1 }, dash: true }));
       const e0 = await page.evaluate(() => __octo.entry());
-      check(`[${tag}] touching the whirlpool starts the entry; the octopus is sealed (cannot be hurt) and still`, !!e0 && e0.sealed && e0.vx === 0 && e0.vy === 0);
+      check(`[${tag}] F in the whirlpool starts the entry; the octopus is sealed (cannot be hurt) and still`, !!e0 && e0.sealed && e0.vx === 0 && e0.vy === 0);
       const samples = [];
       let poked = false;
       for (let i = 0; i < 200; i++) {
@@ -104,7 +111,7 @@ const ENTRY_S = 1.5, STEP = 0.02;
       for (const hz of [30, 60, 120]) {
         await sleep(600);
         const l = await page.evaluate(() => { const l = __octo.level(); return { ex: l.exitX, ey: l.exitY, stage: l.stage }; });
-        const rec = await page.evaluate((l, hz) => { __octo.god(true); __octo.teleport(l.ex - 0.5, l.ey + 0.5); __octo.god(false); return __octo.frames(90, 1000 / hz); }, l, hz);
+        const rec = await page.evaluate((l, hz) => { __octo.god(true); __octo.teleport(l.ex - 0.5, l.ey + 0.5); __octo.pressHand(); __octo.god(false); return __octo.frames(90, 1000 / hz); }, l, hz);
         const le2 = await page.evaluate(() => __octo.lastEntry());
         const fr = rec.filter((r) => r && r.t >= 0);
         let back = 0, rotBack = 0, scUp = 0, uneven = 0, moving = 0;
@@ -151,7 +158,7 @@ const ENTRY_S = 1.5, STEP = 0.02;
         await sleep(1500);
         await cdp.send('HeapProfiler.collectGarbage'); // start each entry from a collected heap (the harness and the last level leave garbage: a GC pause is not the entry's work)
         await sleep(200);
-        const t0 = await page.evaluate(() => { window.__lt.length = 0; const l = __octo.level(); __octo.god(true); __octo.teleport(l.exitX - 0.5, l.exitY + 0.5); return performance.now(); });
+        const t0 = await page.evaluate(() => { window.__lt.length = 0; const l = __octo.level(); __octo.god(true); __octo.teleport(l.exitX - 0.5, l.exitY + 0.5); __octo.pressHand(); return performance.now(); });
         await page.waitForFunction(() => !!__octo.entry(), { timeout: 10000 });
         await page.waitForFunction(() => !__octo.entry() && !__octo.transitioning(), { timeout: 30000, polling: 100 }); // the cheap hook: polling level() made garbage while the time was measured
         await sleep(150);

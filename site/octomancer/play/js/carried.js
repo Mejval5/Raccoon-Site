@@ -66,7 +66,7 @@ const casts = (n) => n + (n === 1 ? ' cast' : ' casts');
 const KEYS = (touch) => ({
   slot: touch ? 'Tap its slot on the bar, then Use (Spell casts your last spell)' : 'Right click or C casts it; pick the slot with 1-9, Q / E or the wheel',
   jet: touch ? 'The Jet button (hold to keep firing)' : 'Left click or J / K (hold to fire on each refill)',
-  bomb: touch ? 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick' : 'Right click or C on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. B / X drop one, the middle button throws one',
+  bomb: touch ? 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick' : 'Right click or C on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. Shortcut: B / X drop one',
   item: 'Nothing to press: it works while you carry it',
   jar: touch ? 'Spells drink from it when you cast' : 'Spells drink from it when you cast',
 });
