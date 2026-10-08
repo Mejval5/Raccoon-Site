@@ -125,8 +125,26 @@ async function setStage(page) {
     { const o = await p2.evaluate(() => __octo.state().octopus); const q = await toScreen(p2, o.x + 4, o.y - 1.5, 1);
       await p2.mouse.move(q.x, q.y); await p2.mouse.down({ button: 'left' }); await sleep(560); await p2.screenshot({ path: OUT + 'jet-1440.png' }); await p2.mouse.up({ button: 'left' }); await sleep(300); }
     check('a beaten piranha leaks juice droplets (no siphon: they stay and dissolve)', kill.drops >= 1 && kill.juice === kill.cap, JSON.stringify([kill.drops, kill.juice]));
-    const sip = await p2.evaluate(() => { __octo.giveItem('siphon'); __octo.setJuice(0); const o = __octo.state().octopus; __octo.spawn('piranha', o.x + 1.6, o.y); __octo.input({ attack: true, move: { x: 0.01, y: 0 }, src: { attack: 'key' } }); for (let n = 0; n < 200 && !__octo.juice().drops; n++) __octo.step(1); __octo.input(null); __octo.step(5); const d = __octo.juice().dropList[0]; /* the jet fires once per 1.5 s: wait for the kill's leak, however long two blobs take */ if (d) __octo.teleport(d[0] - 1.4, d[1]); __octo.step(100); return __octo.juice(); });
-    check('with the Siphon Shell the octopus drinks the leaked juice', sip.siphonR === 2 && sip.juice >= 1, JSON.stringify([sip.siphonR, sip.juice, sip.drops, sip.dropList, sip.octo]));
+    // All in one evaluate (no real frames in between). First let the earlier kill's juice run out: the screenshots above take real
+    // time, so how much of it is left varied run to run, and a droplet near the end of its life used to end the wait for this kill
+    // at once (no kill, the old droplet dissolved: juice 0). Then kill a fresh piranha, wait for its body to leak, swim close, drink.
+    const sip = await p2.evaluate(() => {
+      for (let n = 0; n < 600 && (__octo.juice().drops || __octo.juice().leaks); n++) __octo.step(1);
+      const clean = !__octo.juice().drops && !__octo.juice().leaks;
+      __octo.giveItem('siphon'); __octo.setJuice(0);
+      const o = __octo.state().octopus, id = __octo.spawn('piranha', o.x + 1.6, o.y).id;
+      const alive = () => __octo.enemies().some((e) => e.id === id && !e.dead);
+      __octo.input({ attack: true, move: { x: 0.01, y: 0 }, src: { attack: 'key' } });
+      let n = 0; for (; n < 600 && alive(); n++) __octo.step(1); // the jet fires once per 1.5 s: however long two blobs take
+      __octo.input(null);
+      const killed = !alive();
+      for (let k = 0; k < 60 && !__octo.juice().drops; k++) __octo.step(1); // its body starts leaking at once
+      const d = __octo.juice().dropList[0], leaked = !!d;
+      if (d) __octo.teleport(d[0] - 1.4, d[1]);
+      __octo.step(100);
+      return { ...__octo.juice(), clean, killed, leaked, steps: n };
+    });
+    check('with the Siphon Shell the octopus drinks the leaked juice (a fresh kill: it leaks, the jar fills)', sip.clean && sip.killed && sip.leaked && sip.siphonR === 2 && sip.juice >= 1, JSON.stringify([sip.clean, sip.killed, sip.leaked, sip.steps, sip.siphonR, sip.juice, sip.drops, sip.dropList, sip.octo]));
     // cloud with enemies around: piranhas lose track
     const lost = await p2.evaluate(() => {
       __octo.setJuice(12);
