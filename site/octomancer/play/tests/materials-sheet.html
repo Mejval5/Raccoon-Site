@@ -67,7 +67,7 @@ const ppu = Number(q.get('ppu')) || 48;
 view.width = Math.round(ppu * 18); view.height = Math.round(ppu * 24);
 const renderer = createRenderer(view.getContext('2d'), world);
 // wait for the material textures
-const keys = ['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB'];
+const keys = ['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone'];
 for (let i = 0; i < 200 && keys.some((k) => !artImg(k)); i++) await new Promise((r) => setTimeout(r, 50));
 const cell0 = renderer.debugCell(0, 0);
 const s = cell0.s, nb = world.bandCount(), nc = Math.ceil(W / cell0.cols);

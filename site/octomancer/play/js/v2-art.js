@@ -19,8 +19,7 @@ const FILES = {
   matCoral: 'mat-coral.webp',       // materials: coral wall (generated, Milan style)
   matTimber: 'mat-timber.webp',     // materials: sunken-ship planks (generated, Milan style)
   matMasonry: 'mat-masonry.webp',   // materials: shop frame stone (generated, Milan style)
-  matBoneA: 'mat-bone-a.webp',      // materials: bone block (Milan's PushableBlock02)
-  matBoneB: 'mat-bone-b.webp',      // materials: bone block (Milan's PushableBlock03)
+  matFishbone: 'mat-fishbone.webp', // materials: fragile packed fish bones, keyed (generated 2026-10-08, Milan style; 512 px = 3 world units)
   pushBlock: 'push-block.webp',     // pushable block prop (Milan's PushableBlock01)
   whirlpool: 'whirlpool-sheet.webp', // r42: Milan's Whirlpool animation (21 frames, 7 columns of 208 px)
 };
@@ -50,7 +49,7 @@ export const art = {};
 const bitmaps = {};
 // vibe fixes: the two backdrop layers (drawn scaled every frame) and the opaque material textures (patterns in every band bake) too:
 // an opaque <img> was decoded again (as YUV) inside a frame after a level change
-const BITMAP_KEYS = new Set(['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matCoral', 'matBoneA', 'matBoneB']);
+const BITMAP_KEYS = new Set(['whirlpool', 'far', 'near', 'rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone', 'matCoral']);
 
 /** vibe fixes: decode an image's file into an ImageBitmap OFF the main thread: the bytes are fetched again (from the HTTP cache) and
  *  createImageBitmap(blob) decodes them on a worker. createImageBitmap(img) decodes on the main thread (an 84 ms task for the sprite

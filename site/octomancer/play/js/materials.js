@@ -6,12 +6,12 @@
 //   bedrock   indestructible, on top of everything (dark basalt with a cold, darker rim)
 //   rock      main terrain (navy rock, mint rim)
 //   masonry   the shop's stone frame
-//   bone      destructible bone-and-skull blocks
+//   bone      fragile fish-bone blocks (2026-10-08): crumble from a dash, any projectile, a flung prop, a bomb or a boulder (fragile.js)
 //   timber    sunken-ship wooden platforms
 //   coral     grown by the Coral Wall spell (spells, coral.js): never in a generated level; crumbles after a while, lowest of all
 // Wall traps (hazards) draw before all terrain; pushable blocks are props (props.js PK_BLOCK), not tiles.
 //
-// Room / map ASCII: '#' rock, 'X' bedrock, 'B' bone block, '=' timber, 'M' masonry, 'O' a pushable block (water cell + prop).
+// Room / map ASCII: '#' rock, 'X' bedrock, 'B' fish-bone block, '=' timber, 'M' masonry, 'O' a pushable block (water cell + prop).
 
 export const MAT_WATER = 0, MAT_ROCK = 1, MAT_BEDROCK = 2, MAT_BONE = 3, MAT_TIMBER = 4, MAT_MASONRY = 5, MAT_CORAL = 6;
 export const MAT_COUNT = 7;

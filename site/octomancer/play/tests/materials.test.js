@@ -131,7 +131,7 @@ export async function runMaterialsTests(assert, bank) {
 
   // ---- rendering: draw order at every boundary pair, and no seams ----
   ensureV2Art();
-  for (let i = 0; i < 100 && ['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matBoneA', 'matBoneB'].some((k) => !artImg(k)); i++) await new Promise((r) => setTimeout(r, 30));
+  for (let i = 0; i < 100 && ['rock', 'matBedrock', 'matTimber', 'matMasonry', 'matFishbone'].some((k) => !artImg(k)); i++) await new Promise((r) => setTimeout(r, 30));
   const realFetch = window.fetch;
   window.fetch = (u, ...a) => (String(u).includes('octopus.json') ? new Promise(() => {}) : realFetch(u, ...a));
   const { createRenderer, MATERIAL_STYLE } = await import('../js/render.js');
