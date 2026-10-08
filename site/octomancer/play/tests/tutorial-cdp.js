@@ -170,12 +170,14 @@ async function toScreen(page, x, y) {
     t = await T(p);
     check('room 4b: the sticky mine breaks the wall', t.rooms[4].done, JSON.stringify(t.rooms[4]));
 
-    // 5 hotbar + Ink Cloud: pick slot 1 and use it; door 3
+    // 5 hotbar + Ink Cloud: pick its slot (2, after the bombs) and use it; door 3
     check('room 5: door 3 shut before a cast', (await T(p)).doors[3] > 0);
     r = await go(p, 44.5, 30.5, 0.5, 1500);
     t = await T(p);
     check('room 5: the spell prompt names Q / E and Ink Cloud', /Q, E/.test(t.prompt) && /Ink Cloud/.test(t.prompt), t.prompt.slice(0, 80));
-    await key(p, 'Digit1', 1);
+    const cloudI = await p.evaluate(() => __octo.juice().hotbar.slots.findIndex((x) => x[0] === 'ink-cloud')); // the HUD order: bombs slot 1, Ink Cloud slot 2
+    check('room 5: Ink Cloud is on the bar (slot 2, after the bombs)', cloudI === 1, String(cloudI));
+    await key(p, 'Digit' + (cloudI + 1), 1);
     await key(p, 'KeyC', 2);
     await shot(p, 'cloud-desktop');
     t = await T(p);
