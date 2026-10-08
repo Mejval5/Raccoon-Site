@@ -67,7 +67,8 @@ import { depthTint } from './decor.js';
 import { getFoliageTable, createFoliageCandidates, stepFoliageCandidates, placeFoliageCells, SURF_WALL, SURF_CEIL, SURF_HOVER, BASE_BOTTOM, BASE_TOP, BASE_RIGHT } from './foliage.js';
 import { drawEnemies, drawBombs, drawParticles } from './enemy-draw.js';
 import { drawCritters } from './decor-draw.js'; // Otter's "alive pass" wall critters, NIGHT-LOG.md
-import { prefersReducedMotion } from './config.js';
+import { isAmbientDead } from './ambient.js';
+import { prefersReducedMotion, DASH_IFRAMES } from './config.js';
 import { SHELL_SIZE, SK_MOON } from './shells.js';
 import { wallBandWindow } from './world-v2.js';
 import { ensureV2Art, offV2Art, artImg, artBitmap, ROCK_TILE_UNITS } from './v2-art.js';
@@ -1410,6 +1411,7 @@ export function createRenderer(ctx, world) {
       const F = e.F;
       for (let i = 0; i < F.n; i++) {
         if (chunk.tiles[F.support[i]] === 0) continue; // its rock was bombed away (the new placement follows in a few frames)
+        if (F.surf[i] === SURF_HOVER && isAmbientDead(F.x[i], F.y[i] + yOffset)) continue; // inked (ambient.js)
         if (!visibleAt(e.vis, i, F.x[i], F.y[i] + yOffset, 3)) continue; // r43: off-screen foliage is not swayed or drawn
         drawFoliageInstance(F, i, 0, yOffset, time, reduced);
       }
@@ -1613,6 +1615,22 @@ export function createRenderer(ctx, world) {
     const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
     const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
     o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
+    // Actions tuning: dash i-frames (octopus.js dashInvuln) read as a brief translucent smear: two faint after-images trailing
+    // back along the velocity (dark ink silhouettes), fading with the i-frames, and the body itself a touch see-through. No blink.
+    const phase = !o.dead && !e && o.dashInvuln > 0 ? Math.min(1, o.dashInvuln / DASH_IFRAMES) : 0;
+    if (phase > 0) {
+      const sp = Math.hypot(o.vx, o.vy) || 1, back = 0.22 * Math.min(sp, 20) * camera.pxPerUnit / 20 * 1.6;
+      for (let g = 2; g >= 1; g--) {
+        ctx.save();
+        ctx.translate(s.x - (o.vx / sp) * back * g, s.y - (o.vy / sp) * back * g);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.scale(camera.pxPerUnit * k, camera.pxPerUnit * k);
+        o.__t = time; o.__speed = sp;
+        if ('filter' in ctx) ctx.filter = 'brightness(0.15)'; // an ink-dark silhouette: no second pair of eyes in the smear
+        drawOctopus(ctx, o, (g === 1 ? 0.35 : 0.18) * phase);
+        ctx.restore();
+      }
+    }
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate((rot * Math.PI) / 180);
@@ -1634,7 +1652,7 @@ export function createRenderer(ctx, world) {
     // alpha into `drawOctopus` instead lets it draw fully opaque to an
     // offscreen buffer first and composite that flattened result once.
     const octoAlpha = o.invulnTimer > 0 && !o.dead && !o.noBlink && !e ? (Math.sin(time * 24) > 0 ? 1 : 0.35) : 1;
-    drawOctopus(ctx, o, octoAlpha);
+    drawOctopus(ctx, o, phase > 0 ? Math.min(octoAlpha, 1 - 0.15 * phase) : octoAlpha);
     ctx.restore();
   }
 
@@ -1648,6 +1666,24 @@ export function createRenderer(ctx, world) {
       releaseCanvases(wallCache); releaseCanvases(bandCache); releaseCanvases(capCache);
       resetDeepRock(); deepLevel = null;
       releaseCanvas(caveArtFeathered); caveArtFeathered = null;
+    },
+    /** Actions tuning: the live foliage hover fish (the little greenranha) of the resident chunks, as {x, y, phase} in world
+     *  tiles (their base: ambient.js ambientPos adds the drawn drift). Writes into `out` (reused objects) and returns the count. */
+    hoverFish(resident, out) {
+      let n = 0;
+      for (const { index, yOffset, chunk } of resident) {
+        const e = plantCache.get(chunk);
+        if (!e || !e.F) continue;
+        const F = e.F;
+        for (let i = 0; i < F.n; i++) {
+          if (F.surf[i] !== SURF_HOVER || chunk.tiles[F.support[i]] === 0) continue;
+          const y = F.y[i] + yOffset;
+          if (isAmbientDead(F.x[i], y)) continue;
+          const o = out[n] || (out[n] = { x: 0, y: 0, phase: 0 });
+          o.x = F.x[i]; o.y = y; o.phase = F.phase[i]; n++;
+        }
+      }
+      return n;
     },
     /** r43: the first screen of this level is baked (every wall cell on screen, the deep rock's blobs): the level may fade in. */
     ready() { return !world.v2 || (wallsReady && deepStage >= 2); },

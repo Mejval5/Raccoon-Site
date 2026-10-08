@@ -33,7 +33,7 @@
    "y": 12.5,
    "r": 7,
    "title": "Swim",
-   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at.",
+   "desktop": "Use WASD or the arrow keys to swim. Left-click (or J) squirts ink at what you point at; the ink takes a moment to refill.",
    "touch": "Touch and drag on the left of the screen to swim."
   },
   {
@@ -41,8 +41,8 @@
    "y": 12.5,
    "r": 7,
    "title": "Dash",
-   "desktop": "Press Space or Shift for a burst of speed.",
-   "touch": "Tap the Dash button for a burst of speed."
+   "desktop": "Press Space or Shift for a burst of speed. Creatures cannot touch you mid-dash.",
+   "touch": "Tap the Dash button for a burst of speed. Creatures cannot touch you mid-dash."
   },
   {
    "x": 38,

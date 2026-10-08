@@ -13,6 +13,7 @@
 // The per-run mood record (`createMoods`, owned by main.js) outlives the level: who was angered and how hurt they are.
 // Deterministic: no Math.random here.
 
+import { octoRams, RAM_DMG } from './strikes.js';
 import { hurtOctopus, heavyHitOctopus } from './octopus.js';
 import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
 import { shopAggro } from './shop-aggro.js';
@@ -422,7 +423,7 @@ export function createNpcs(world, opts = {}) {
     /** One fixed step after the octopus moved. */
     step(octo, dt) {
       if (octo.dashedThisStep) dashId++;
-      const fast = !octo.dead && Math.hypot(octo.vx, octo.vy) >= DASH_KILL_SPEED;
+      const fast = octoRams(octo); // only with the Urchin Cap: a bare dash hurts nobody (strikes.js)
       for (let i = 0; i < N; i++) {
         if (!d.used[i]) continue;
         if (!d.placed[i] && !d.hostile[i] && !d.fixed[i]) { d.used[i] = 0; continue; } // the owner no longer shows it
@@ -437,7 +438,7 @@ export function createNpcs(world, opts = {}) {
         // dash contact at speed, once per dash; not while sealed / caged, not Pip at your side, not a hub resident who is talking
         if (fast && d.dashHit[i] !== dashId && Math.hypot(octo.x - d.x[i], octo.y - cyOf(i)) < OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) {
           const safe = (d.flags[i] & FL_FOLLOWING) || (hub && (d.flags[i] & FL_TALKING) && !d.hostile[i]);
-          if (!safe && !shielded(i)) { d.dashHit[i] = dashId; applyNpcHit(i, 'dash', octo.x, octo.y); if (!d.used[i]) continue; }
+          if (!safe && !shielded(i)) { d.dashHit[i] = dashId; applyNpcHit(i, 'helmet', octo.x, octo.y); if (!d.used[i]) continue; } // the Urchin Cap's ram (creature-rules.js SOURCES.helmet)
         }
         if (!d.hostile[i]) continue;
         if (hub) { if (d.state[i] === ST_FLEE) flee(i, octo, dt); else drift(i, dt); continue; }

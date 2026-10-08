@@ -22,7 +22,7 @@ export async function runCorpseTests(assert) {
       for (const kind of kinds) {
         const en = createEnemies(), c = createCorpses();
         const e = en.spawnAt(kind, 5, 5, kind === 'crab' || kind === 'cannon' ? 'floor' : 'open');
-        const o = createOctopus(5, 5); o.invulnTimer = 1e9;
+        const o = createOctopus(5, 5); o.invulnTimer = 1e9; o.spikeHelmet = true; // a dash kills only with the Urchin Cap
         if (how === 'bomb') en.killInRadius(5, 5, 2);
         else {
           if (!e.dashKillable) continue; // urchin and cannon only die to bombs
