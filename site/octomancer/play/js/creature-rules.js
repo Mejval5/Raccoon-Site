@@ -44,7 +44,9 @@ export const SOURCES = {
   block:    { dmg: 20, crush: true,  knock: 3,  stun: 0.35, blame: 'cause', octo: { hearts: 1 } },
   jet:      { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'none',  push: true, octo: {} },
   ink:      { dmg: 4,  crush: false, knock: 0.5, stun: 0,   blame: 'octo',  octo: {} },
-  dash:     { dmg: 2,  crush: true,  knock: 1,  stun: 0,    blame: 'octo',  octo: {} },
+  // Actions tuning (2026-10-08): a bare dash hurts nothing (it only gives the octopus i-frames); the Urchin Cap's ram is 'helmet'
+  dash:     { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'octo',  octo: {} },
+  helmet:   { dmg: 2,  crush: true,  knock: 1,  stun: 0,    blame: 'octo',  octo: {} }, // the old dash, now only with the Urchin Cap (strikes.js)
   trap:     { dmg: 6,  crush: false, knock: 4,  stun: 0,    blame: 'cause', octo: { hearts: 1 } },
   shock:    { dmg: 2,  crush: false, knock: 2,  stun: 1.0,  blame: 'none',  octo: { hearts: 1, stun: 1.0, knock: STUN_KNOCKBACK } },
   anemone:  { dmg: 2,  crush: false, knock: 3,  stun: 0,    blame: 'none',  touch: true, octo: { hearts: 1 } },
@@ -72,7 +74,7 @@ export const HAZARD_COOL = 0.6;
 export const BLAME_S = 2;
 
 // the sources a shut shell (a giant clam, a tentacle curled in its shell) stops
-const SHELL = ['ink', 'dash', 'shock', 'anemone', 'shot', 'harpoon', 'thrown', 'claw', 'bite'];
+const SHELL = ['ink', 'dash', 'helmet', 'shock', 'anemone', 'shot', 'harpoon', 'thrown', 'claw', 'bite'];
 
 /**
  * The creature table. family: which system holds the body; hp: ink units; mass: knockback divisor; physics: PH_*;
@@ -85,7 +87,7 @@ export const CREATURES = {
   crab:     { family: 'enemy', hp: 10, mass: 1.2, physics: PH_WALK, oneHitSplat: true, touch: true },
   manta:    { family: 'enemy', hp: 16, mass: 1.5, physics: PH_SWIM, oneHitSplat: true, touch: true },
   cannon:   { family: 'enemy', hp: 14, mass: 3,   physics: PH_ANCHORED },
-  urchin:   { family: 'enemy', hp: 10, mass: 3,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, immune: ['ink', 'dash'],
+  urchin:   { family: 'enemy', hp: 10, mass: 3,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, immune: ['ink', 'dash', 'helmet'],
               why: 'all spines: an ink blob splats off it and a dash into it hurts the octopus instead (Daniel Q7: a hazard to avoid, not to shoot); it has no behaviour to knock out, it only pulses' },
   horns:    { family: 'enemy', hp: 0,  mass: 9,   physics: PH_ANCHORED, immuneKnockout: true, touch: true, invulnerable: true,
               why: 'a spike growth of the rock itself: part of the wall, it only goes when its rock is bombed away' },
@@ -101,7 +103,7 @@ export const CREATURES = {
   pip:      { family: 'npc', hp: 2, mass: 0.6, physics: PH_SWIM },
   quill:    { family: 'npc', hp: 4, mass: 1.2, physics: PH_SWIM },
   host:     { family: 'npc', hp: 5, mass: 1,   physics: PH_SWIM },
-  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25 },
+  keeper:   { family: 'keeper', hp: 40, mass: 1.2, physics: PH_SWIM, heavy: true, stunScale: 0.6, resist: { ink: 0.08, dash: 0.25, helmet: 0.25 },
               why: 'super buff (Spelunky shopkeeper): ink and dashes barely scratch him, bombs, boulders and spikes really hurt' },
   octopus:  { family: 'octo', hp: 3, mass: 1, physics: PH_SWIM },
 };
@@ -111,8 +113,8 @@ export const CREATURE_KINDS = Object.keys(CREATURES);
 const DEFAULT_ROW = { family: 'enemy', hp: 4, mass: 1, physics: PH_SWIM, oneHitSplat: true };
 export function rowOf(kind) { return CREATURES[kind] || DEFAULT_ROW; }
 
-/** Can this kind be killed by a dash (a body hit) at all: oneHitSplat and not immune to it. */
-export function dashKillable(kind) { const r = rowOf(kind); return !!r.oneHitSplat && !r.invulnerable && !(r.immune && r.immune.includes('dash')); }
+/** Can this kind be splatted by the octopus's body at all (a ram with the Urchin Cap, source 'helmet'): oneHitSplat and not immune to it. */
+export function dashKillable(kind) { const r = rowOf(kind); return !!r.oneHitSplat && !r.invulnerable && !(r.immune && r.immune.includes('helmet')); }
 
 /** The reusable outcome resolveHit fills (never keep a reference across calls). */
 export const OUTCOME = { ignore: false, dmg: 0, kill: false, knock: 0, stun: 0, why: '' };

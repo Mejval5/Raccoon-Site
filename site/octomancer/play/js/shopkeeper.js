@@ -15,6 +15,7 @@
 //
 // Data-oriented: one flat typed array per field, one record per keeper, two claws per keeper (index i * 2 + side).
 
+import { octoRams } from './strikes.js';
 import { hurtOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsSegments, resolveCircleVsGrid } from './physics.js';
 import { hasLineOfSight, findSmoothPath } from './pathfind.js';
@@ -290,9 +291,9 @@ export function stepKeepers(k, dt, octo, world, inf = null) { // inf: infight.js
     }
     // body contact: a dash glances off him; an angry keeper's body hurts
     if (!octo.dead && Math.hypot(octo.x - k.x[i], octo.y - k.y[i]) < KEEPER_R + (octo.radius || 0.45)) {
-      if (octoDashing(octo) && k.shrug[i] <= 0) { // once per dash (the shrug lasts longer than the overlap)
+      if (octoRams(octo) && octoDashing(octo) && k.shrug[i] <= 0) { // with the Urchin Cap only (strikes.js); once per dash (the shrug lasts longer than the overlap)
         const nx = (octo.x - k.x[i]) / (od || 1), ny = (octo.y - k.y[i]) / (od || 1);
-        hitKeeper(k, i, HIT_DASH, 1, octo.x, octo.y);
+        applyKeeperHit(k, i, 'helmet', octo.x, octo.y); // the Urchin Cap's ram (creature-rules.js SOURCES.helmet): a glance off his shell
         const vn = octo.vx * nx + octo.vy * ny;
         if (vn < 0) { octo.vx -= 1.6 * vn * nx; octo.vy -= 1.6 * vn * ny; } // bounced off his shell
       }

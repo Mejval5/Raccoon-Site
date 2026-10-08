@@ -388,7 +388,7 @@ export function createCreatures() {
           d.tg[i] = 0; startRetract(i, TENT_REGRAB_CD);
           break;
         }
-        if (!prey && !octo.dead && d.cd[i] <= 0 && Math.hypot(octo.x - d.tipx[i], octo.y - d.tipy[i]) < TENT_TIP_R + octo.radius * 0.8) {
+        if (!prey && !octo.dead && !(octo.dashInvuln > 0) && d.cd[i] <= 0 && Math.hypot(octo.x - d.tipx[i], octo.y - d.tipy[i]) < TENT_TIP_R + octo.radius * 0.8) { // dash i-frames: it cannot grab
           d.state[i] = TN_GRAB; d.t[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0;
           octo.held = 1; octo.struggles = 0; octo.stunT = 0; octo.spin = 0; octo.vx = octo.vy = 0;
           events.push({ type: 'grab', x: octo.x, y: octo.y });

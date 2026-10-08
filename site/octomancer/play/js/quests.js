@@ -407,6 +407,16 @@ export function questBlast(st, x, y, r = 0) {
   return true;
 }
 
+export const CAGE_INK_R = 0.9; // an Ink Jet blob that splats this close to the cage centre breaks it (Actions tuning)
+/** An Ink Jet blob splatted at (x, y): a shut cage it hit breaks, as a dash or a bomb would. Returns true when it did. */
+export function questInk(st, x, y) {
+  if (!st || st.status !== ST_ACTIVE || st.plan.kindId !== Q_RESCUE || st.following || st.staying) return false;
+  if (Math.hypot(st.cx - x, st.cy - y) > CAGE_INK_R) return false;
+  breakCage(st, 'ink');
+  talkStep(st.talk, 0);
+  return true;
+}
+
 /** Stage of a person after an encounter row completes: one up, never past the row's last eligible stage + 1, never back. */
 export function nextStage(current, row) { return Math.max(current | 0, Math.min((current | 0) + 1, (row.max | 0) + 1)); }
 

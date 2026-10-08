@@ -17,7 +17,7 @@ import {
   OCTO_MASS, OCTO_LINEAR_DRAG, OCTO_GRAVITY_SCALE, UNITY_GRAVITY, OCTO_RADIUS,
   SWIM_PUSH_FORCE, SWIM_MAX_SPEED, SWIM_TURN_DELAY, SWIM_TURN_SPEED,
   SWIM_REST_ROTATE_CONST, SWIM_JOYSTICK_POWER, SWIM_JOYSTICK_DIVISOR,
-  SWIM_ACCEL_CAP_EXP, DASH_IMPULSE, DASH_COOLDOWN,
+  SWIM_ACCEL_CAP_EXP, DASH_IMPULSE, DASH_COOLDOWN, DASH_IFRAMES,
   DASH_RECOIL, DASH_BOUNCE_MIN, DASH_BOUNCE_WINDOW, LAND_SQUASH_MIN,
   HEART_MAX, HURT_INVULN, HURT_KNOCKBACK, HURT_RAGDOLL, DEATH_DURATION,
   BODY_HIT_COOL, BODY_KNOCK, BODY_LIFT, BODY_SPIN,
@@ -44,6 +44,8 @@ export function createOctopus(x, y) {
     // --- M3: health, bombs (OVERNIGHT.md §4 M3-2) ---
     hearts: HEART_MAX,
     invulnTimer: 0,
+    dashInvuln: 0, // s of dash i-frames left (set on the dash's first step): no hurt, no grab; drawn as a faint smear, not a blink
+    spikeHelmet: false, // the Urchin Cap (items.js): a dash / ram at speed hurts what it hits (strikes.js)
     hurting: false, // read by octopus-draw.js (Idle4Swirl clip, angry eyes)
     hurtTimer: 0, // "ragdoll spin for 0.4s"
     dead: false,
@@ -98,7 +100,7 @@ export function createOctopus(x, y) {
  * V2-PLAN 16: `opts` {dmg (hearts, default 1), knock (u/s, default HURT_KNOCKBACK), stun (s of incapacitation, default 0)}. */
 export function hurtOctopus(o, fromX, fromY, cause, opts = null) {
   if (o.dead) return hitBody(o, fromX, fromY); // V2-PLAN 14: the dead body takes the hit (a knock and a flash)
-  if (o.invulnTimer > 0 || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
+  if (o.invulnTimer > 0 || o.dashInvuln > 0 || o.sealed) return false; // r45: sealed = going into a whirlpool (main.js beginEntry): nothing hurts it
   // controls 2026-10-08: a carried pot or clam takes the hit instead and breaks (hand.js sets o.shieldHit while it holds one)
   if (o.shieldHit && o.shieldHit(fromX, fromY, cause)) { o.invulnTimer = Math.max(o.invulnTimer, HURT_INVULN * 0.5); return false; }
   const dmg = opts && opts.dmg !== undefined ? opts.dmg : 1;
@@ -316,6 +318,7 @@ export function tryDash(o) {
   o.dashCooldown = DASH_COOLDOWN;
   o.dashedThisStep = true;
   o.dashT = DASH_BOUNCE_WINDOW;
+  o.dashInvuln = DASH_IFRAMES; // invincible from this very step
   return true;
 }
 
@@ -335,6 +338,7 @@ export function stepOctopus(o, input, dt, grid) {
   if (o.squash > 0) o.squash = Math.max(0, o.squash - dt * 5);
 
   if (o.invulnTimer > 0) o.invulnTimer = Math.max(0, o.invulnTimer - dt);
+  if (o.dashInvuln > 0) o.dashInvuln = Math.max(0, o.dashInvuln - dt); // counted down before tryDash below, so a fresh dash keeps all of it
   if (o.hurtTimer > 0) { o.hurtTimer = Math.max(0, o.hurtTimer - dt); if (o.hurtTimer === 0) o.hurting = false; }
   if (o.hitCool > 0) o.hitCool = Math.max(0, o.hitCool - dt);
   if (o.hitFlash > 0) o.hitFlash = Math.max(0, o.hitFlash - dt * 4);

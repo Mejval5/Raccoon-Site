@@ -283,6 +283,16 @@ export function createLoot(props = null) {
 
     /** Break clam / pot record i (thrown into something, or it took a hit for the octopus: how = 'throw' | 'shield'). */
     smash(i, how = 'throw') { if (i >= 0 && i < d.n && d.state[i] === ST_INTACT && (d.kind[i] === LK_CLAM || d.kind[i] === LK_POT)) { if (props && d.pid[i] >= 0) { d.x[i] = props.data.x[d.pid[i]]; d.y[i] = props.data.y[d.pid[i]]; } breakObject(i, how); return true; } return false; },
+    /** An Ink Jet blob hit prop `pid`: an intact clam or pot it belongs to breaks ('ink'). Returns true when one broke. */
+    hitProp(pid, how = 'ink') {
+      for (let i = 0; i < d.n; i++) {
+        if (d.pid[i] !== pid || d.state[i] !== ST_INTACT || (d.kind[i] !== LK_CLAM && d.kind[i] !== LK_POT)) continue;
+        breakObject(i, how);
+        return true;
+      }
+      return false;
+    },
+
     /** A bomb went off at (x, y): clams and pots in the blast break. (Pockets are rock tiles: bomb.js breaks them.) */
     explode(x, y, r = BOMB_RADIUS) {
       for (let i = 0; i < d.n; i++) {

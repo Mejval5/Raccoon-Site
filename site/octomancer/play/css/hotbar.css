@@ -57,7 +57,8 @@
   text-shadow: 0 1px 1px var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink);
   pointer-events: none;
 }
-.octo-hb-key-bomb { left: auto; right: 4px; font-size: 10px; opacity: 0.85; }
+.octo-hb-key-bomb, .octo-hb-key-jet { left: auto; right: 4px; font-size: 10px; opacity: 0.85; }
+.octo-hb-key-jet { z-index: 1; }
 
 /* selected: a paler carved rim plus a small kelp tie over the top edge */
 .octo-hb-slot.is-selected {
@@ -82,6 +83,10 @@
 .octo-hb-sep { width: 3px; align-self: stretch; margin: 2px 0; border-radius: 2px; background: var(--ink); opacity: 0.55; }
 
 .octo-hb-bomb { cursor: default; }
+/* the Ink Jet slot: a dark veil over the ink sac that shrinks to nothing as the jet refills (hotbar-ui.js jetShade) */
+.octo-hb-jet { cursor: default; overflow: hidden; }
+.octo-hb-jetshade { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(8, 14, 22, 0.62); pointer-events: none; }
+.octo-hb-jet:not(.is-ready) .octo-hb-icon { opacity: 0.6; }
 .octo-hb-bomb .octo-hb-icon { top: -4px; height: calc(100% - 8px); }
 .octo-hb-count {
   position: absolute;
@@ -127,7 +132,8 @@
 .octo-hotbar.is-compact .octo-hb-slots { gap: 4px; }
 .octo-hotbar.is-compact .octo-hb-slot { width: 34px; height: 34px; border-radius: 7px; border-width: 1.5px; }
 .octo-hotbar.is-compact .octo-hb-spell .octo-hb-key,
-.octo-hotbar.is-compact .octo-hb-key-bomb { display: none; }
+.octo-hotbar.is-compact .octo-hb-key-bomb,
+.octo-hotbar.is-compact .octo-hb-key-jet { display: none; }
 .octo-hotbar.is-compact .octo-hb-count { font-size: 9px; }
 .octo-hotbar.is-compact .octo-hb-slot.is-selected::after { top: -6px; width: 16px; height: 6px; margin-left: -8px; }
 .octo-hotbar.is-compact .octo-hb-jar { gap: 3px; }

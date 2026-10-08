@@ -171,6 +171,17 @@ export function createProps(cap = DEFAULT_CAP) {
     }
   }
 
+  /** A small hit (an ink blob): velocity change dv / mass along (ux, uy), and the prop wakes. A held prop (a clam on its
+   * wall) and a push block do not budge. Returns true when it moved. */
+  function nudge(i, ux, uy, dv) {
+    if (!d.alive[i] || d.state[i] === PS_HELD || d.kind[i] === PK_BLOCK) return false;
+    const k = dv / MASS[d.kind[i]];
+    d.vx[i] += ux * k; d.vy[i] += uy * k;
+    if (d.state[i] === PS_REST) { d.state[i] = PS_FREE; d.rest[i] = 0; }
+    clampSpeed(i);
+    return true;
+  }
+
   function clampSpeed(i) {
     const s = Math.hypot(d.vx[i], d.vy[i]);
     if (s > MAX_SPEED) { const m = MAX_SPEED / s; d.vx[i] *= m; d.vy[i] *= m; }
@@ -555,7 +566,7 @@ export function createProps(cap = DEFAULT_CAP) {
     data: d,
     /** The shared damage entry (damage.js) a falling block crushes creature bodies through; null: blocks crush nothing but the octopus. */
     setDamage(dm) { dmg = dm || null; },
-    add, remove, hold, wake, release, carry, place, stick, wakeAll, wakeNear, blast, checkSupports,
+    add, remove, hold, wake, release, carry, place, stick, wakeAll, wakeNear, blast, checkSupports, nudge,
     count() { return d.live; },
     /** Indices of live props of one kind (tests, drawing). */
     ofKind(k, out = []) { out.length = 0; for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === k) out.push(i); return out; },

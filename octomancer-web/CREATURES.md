@@ -124,7 +124,8 @@ body is thrown, a free swimmer drifts, a walker or an anchored body stays put).
 | block | 20 | yes | 3 | 0.35 | cause | 1 heart |
 | jet | 0 (push) | - | - | - | none | push |
 | ink | 4 | - | 0.5 | - | octo | (her own) |
-| dash | 2 | yes | 1 | - | octo | (her own) |
+| dash | 0 (Actions tuning: a bare dash only gives the octopus i-frames) | - | - | - | octo | (her own) |
+| helmet (the Urchin Cap's ram) | 2 | yes | 1 | - | octo | (her own) |
 | trap (chest burst) | 6 | - | 4 | - | cause | 1 heart |
 | shock (eel) | 2 | - | 2 | 1.0 | none | 1 heart + 1 s limp |
 | anemone | 2 | - | 3 | - | none | 1 heart |
@@ -180,10 +181,12 @@ through the INFIGHT rules. The anemone is a `touch` source: it never hurts a `to
   gets a plain one-hit swimmer row, so a new creature is never silently immune.
 - **Add or retune a source:** edit `SOURCES`. A hazard finds bodies with `damage.each / circle / blast` and hits them with
   `damage.hitFound / hit`. It never checks a kind.
-- **Actions tuning** (dash does no damage, spike helmet): set `SOURCES.dash.dmg = 0` and `crush: false` (dashKillable follows
-  from the table). Add a `helmet` source (for example `{ dmg: 20, crush: true, knock: 6, blame: 'octo' }`) and call
-  `damage.hit(fam, i, 'helmet', octo.x, octo.y)` from the contact check. The contact checks still live in each system's step
-  (`enemies.update`, `npcs.step`, `stepKeepers`).
+- **Actions tuning (done, 2026-10-08):** `SOURCES.dash` is `dmg 0, crush false`; the new `helmet` source (`dmg 2, crush
+  true, knock 1`, the old dash) is what the Urchin Cap's ram deals. The contact checks in `enemies.update`, `npcs.step` and
+  `stepKeepers` ask `strikes.js octoRams(octo)` (cap worn and at ram speed) and hit with `'helmet'` through each system's
+  `applyHit`; during the dash i-frames (`octoPhasing`) a contact does nothing to either side. `dashKillable(kind)` now reads
+  the `helmet` immunity (the urchin is immune to it, the keeper resists it x0.25). The Ink Jet is unchanged in the table
+  (`ink`); it also breaks pots, clams and cages and kills the ambient fish (`ambient.js`), which are not creatures.
 - **Time pressure (the Beholder):** its row is `invulnerable, boss`. Its touch goes through `octoHit(o, 'beholder', ...)`
   (a plain kill). If it should start hurting creatures it meets, drop `octoOnly` from `SOURCES.beholder` and call
   `damage.circle('beholder', x, y, r, false)` from its step.

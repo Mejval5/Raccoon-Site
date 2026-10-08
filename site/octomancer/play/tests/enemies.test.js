@@ -53,15 +53,30 @@ export function runEnemyTests(assert, approx) {
     assert('urchin: a dash-speed hit does not kill it (bombs only)', u.dead === false);
   }
 
-  // --- Piranha: dash-through at >=8 u/s kills it, no damage taken ---
+  // --- Piranha: with the Urchin Cap (strikes.js), dash-through at >=8 u/s kills it, no damage taken ---
   {
     const o = createOctopus(5, 5);
-    o.vx = 9; o.vy = 0;
+    o.vx = 9; o.vy = 0; o.spikeHelmet = true;
     const enemies = createEnemies();
     const p = enemies.spawnAt('piranha', 5.1, 5);
     enemies.update(0.02, 0, o, OPEN_GRID, []);
     assert('piranha: dash contact at >=8u/s kills it', p.dead === true);
     assert('piranha: a dash-kill does not also hurt the octopus', o.hearts === 3);
+  }
+
+  // --- Actions tuning: a bare dash (no cap) kills nothing, and its i-frames mean the contact does nothing to either side ---
+  {
+    const o = createOctopus(5, 5);
+    o.vx = 9; o.vy = 0; o.dashInvuln = 0.3;
+    const enemies = createEnemies();
+    const p = enemies.spawnAt('piranha', 5.1, 5);
+    const c = enemies.spawnAt('crab', 4.9, 5, 'floor');
+    enemies.update(0.02, 0, o, OPEN_GRID, []);
+    assert('dash without the Urchin Cap: piranha and crab live, the octopus is unhurt', !p.dead && !c.dead && o.hearts === 3);
+    const o2 = createOctopus(5, 5); o2.vx = 9; // fast but not dashing (no i-frames), no cap: the bite lands
+    const en2 = createEnemies(); const p2 = en2.spawnAt('piranha', 5.1, 5);
+    en2.update(0.02, 0, o2, OPEN_GRID, []);
+    assert('fast contact without a dash or the cap: the piranha lives and bites', !p2.dead && o2.hearts === 2);
   }
 
   // --- Piranha: ordinary (non-dash) contact hurts the octopus, does not kill it ---
@@ -171,7 +186,7 @@ export function runEnemyTests(assert, approx) {
     const world = { isSolid: () => false, breakTile() {} };
     const enemies = createEnemies();
     const o = createOctopus(5, 5);
-    o.vx = 9; o.vy = 0;
+    o.vx = 9; o.vy = 0; o.spikeHelmet = true;
     const c = enemies.spawnAt('crab', 5.1, 5, 'floor');
     enemies.update(0.02, 0, o, world, []);
     assert('crab: dash-speed contact kills it', c.dead === true);
@@ -198,7 +213,7 @@ export function runEnemyTests(assert, approx) {
     const world = { isSolid: () => false, breakTile() {} };
     const enemies = createEnemies();
     const o = createOctopus(5, 5);
-    o.vx = 9; o.vy = 0;
+    o.vx = 9; o.vy = 0; o.spikeHelmet = true;
     const m = enemies.spawnAt('manta', 5.1, 5, 'open');
     enemies.update(0.02, 0, o, world, []);
     assert('manta: dash-speed contact kills it', m.dead === true);

@@ -130,7 +130,7 @@ export async function runEnemyR36Tests(assert) {
   {
     const o = calm(createOctopus(0, 0)); const en = createEnemies();
     const p = en.spawnAt('piranha', 0.5, 0, 'open'); p.st = PS_WINDUP; p.tell = 0.8; p.t = 0.2;
-    o.vx = 20; o.vy = 0; // a dash
+    o.vx = 20; o.vy = 0; o.spikeHelmet = true; // a dash with the Urchin Cap
     en.update(DT, 0, o, OPEN, [], null);
     const ghost = en.all().find((e) => e.ghost);
     assert('r36 ghost: a dash kill leaves a ghost with no wind-up state', !!ghost && ghost.tell === 0 && ghost.st === PS_PATROL);

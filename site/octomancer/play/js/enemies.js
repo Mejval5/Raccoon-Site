@@ -15,6 +15,7 @@
 // (`CrabFlatten`/`CrabFlatten2`), spike horns (`NPC6`), manta (`NPC10` +
 // `NPC10Ball`). OVERNIGHT.md §4 M6.
 
+import { octoRams, octoPhasing } from './strikes.js';
 import { crumbleAt, CR_SHOT } from './fragile.js';
 import {
   URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_CHASE_SPEED,
@@ -499,7 +500,7 @@ export function createEnemies() {
     return out;
   }
 
-  const KILL_REASON = { boulder: 'crush', block: 'crush' };
+  const KILL_REASON = { boulder: 'crush', block: 'crush', helmet: 'dash' }; // an Urchin Cap ram is the old dash kill (ghost, hit-stop)
   function killEnemy(e, reason, kx = 0, ky = 0) {
     if (e.dead) return;
     e.dead = true;
@@ -1029,8 +1030,10 @@ export function createEnemies() {
         // the dead body (V2-PLAN 14) is still a target: contact hits it (octopus.js hitBody), but a flung corpse never kills
         // (a corpse wedged in a gap narrower than the enemy is still in reach of its nose: +0.25)
         if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
-          if (e.dashKillable && !octo.dead && octoSpeed >= DASH_KILL_SPEED) {
-            applyHit(e, 'dash', octo.x, octo.y, -1, 1, octo.vx * 0.4, octo.vy * 0.4); // the table: a body hit splats a oneHitSplat kind
+          if (e.dashKillable && octoRams(octo)) { // the Urchin Cap (strikes.js): a ram at speed splats it, through the table
+            applyHit(e, 'helmet', octo.x, octo.y, -1, 1, octo.vx * 0.4, octo.vy * 0.4);
+          } else if (octoPhasing(octo)) {
+            // dash i-frames: the contact does nothing to either side (no hurt, no bite recoil, no manta slam)
           } else {
             if (e.kind === 'manta' && e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
             else octoHit(octo, 'bite', e.x, e.y, e.kind);
