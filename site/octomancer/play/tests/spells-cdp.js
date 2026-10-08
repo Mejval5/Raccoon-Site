@@ -95,8 +95,8 @@ async function setStage(page) {
     const menu = await page.evaluate(() => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.getElementById('game').dispatchEvent(e); return e.defaultPrevented; });
     check('no context menu on the canvas', menu);
     await page.keyboard.press('Tab'); await sleep(200);
-    const inv = await page.evaluate(() => ({ open: __octo.juice().inventory, paused: __octo.state().paused, el: !!document.querySelector('.octo-inv-overlay') && getComputedStyle(document.querySelector('.octo-inv-overlay')).display !== 'none' }));
-    check('Tab opens the inventory and pauses the game', inv.open && inv.paused && inv.el);
+    const inv = await page.evaluate(() => ({ open: __octo.juice().inventory, paused: __octo.state().paused, tab: __octo.journal().tab, el: !!document.querySelector('.octo-journal-overlay') && getComputedStyle(document.querySelector('.octo-journal-overlay')).display !== 'none' }));
+    check('Tab opens the journal on its Carried page and pauses the game', inv.open && inv.paused && inv.el && inv.tab === 'carried');
     await page.screenshot({ path: OUT + 'inventory-1440.png' });
     await page.keyboard.press('Tab'); await sleep(200);
     check('Tab closes it again', !(await J(page)).inventory && !(await page.evaluate(() => __octo.state().paused)));

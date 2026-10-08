@@ -252,7 +252,7 @@ export async function runMetaTests(assert) {
     const meta = { dives: 6, clears: 1, bestDepth: 4, shells: 77, kills: 21, time: 754, deaths: { crab: 2, eel: 3 } };
     const scr = createJournalScreen(root, j, { getStats: () => ({ meta, bestRuns: [runOf(4, 30, 200)] }) });
     scr.show();
-    assert('journal book: bookmark tabs for Places, People, Bestiary, Items, Traps and Progress, Places open first', [...root.querySelectorAll('.octo-bk-tab')].map((b) => b.dataset.tab).join() === 'places,people,bestiary,items,traps,progress' && scr.tab() === 'places');
+    assert('journal book: bookmark tabs for Places, People, Bestiary, Items, Traps and Progress, Places open first', [...root.querySelectorAll('.octo-bk-tab')].filter((b) => b.style.display !== 'none').map((b) => b.dataset.tab).join() === 'places,people,bestiary,items,traps,progress' && scr.tab() === 'places');
     assert('journal book: two facing pages (a grid page and an entry page) with a spine between them', !!root.querySelector('.octo-bk-left') && !!root.querySelector('.octo-bk-right') && !!root.querySelector('.octo-bk-spine') && !!root.querySelector('.octo-bk-ribbon'));
     assert('journal book: the left page header counts found / total of the tab', /\d+ \/ \d+/.test(root.querySelector('.octo-bk-left .octo-bk-count').textContent));
     scr.setTab('bestiary');

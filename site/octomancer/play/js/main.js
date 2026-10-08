@@ -50,7 +50,8 @@ import {
   S_HUB, S_TUTORIAL, S_BIOME, S_END, S_REST, REST_NAME, EV_ENTER_DIVE, EV_EXIT, EV_DEATH, EV_CONTINUE, EV_ENTER_SHORTCUT, SHORTCUT_LEVEL, EV_ENTER_SHORTCUT3, SHORTCUT3_LEVEL,
 } from './run.js';
 import { parseAuthoredMap, fetchAuthoredMaps } from './authored.js';
-import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN } from './journal.js';
+import { createJournal, creatureId, itemId, causeEntryId, ENTRIES, STAT_KILLED, STAT_KILLED_BY, STAT_COLLECTED, STAT_SEEN, STAT_USED, STAT_CARRIED } from './journal.js';
+import { carriedJournalIds } from './carried.js';
 import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks, drawV2Labels } from './v2-draw.js';
@@ -101,9 +102,8 @@ import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
 import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { CR_DASH } from './fragile.js';
-import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot } from './hotbar.js';
+import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, swapSlots } from './hotbar.js';
 import { createHotbarUI } from './hotbar-ui.js';
-import { createInventoryUI } from './inventory-ui.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawSpring, springReach } from './spring-draw.js';
 
@@ -420,11 +420,15 @@ if (getHelpDone()) ui.retireControlsHelp(); // finished two levels in an earlier
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
 const seenDive = new Set(); // entry ids already counted as seen in this dive / hub visit
 const journalScreen = createJournalScreen(hudEl, journal, {
-  onClose() { boardCooldown = true; syncModal(); },
-  onOpen() { ui.setPrompt(null); journal.flush(); syncModal(); },
+  onClose() { boardCooldown = true; if (inventoryOpen) { inventoryOpen = false; applyPaused(); } syncModal(); },
+  onOpen() { ui.setPrompt(null); noteCarried(); journal.flush(); syncModal(); },
   getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; },
   getStory() { return getStory(); },
   reducedMotion: prefersReducedMotion,
+  // 2026-10-08: the Carried page (Tab / I): what the octopus carries now, and the hotbar order (drag or pick-and-swap there)
+  getCarried() { return V2 && run ? carriedState() : null; },
+  onSwap(a, b) { if (V2 && run) swapSlots(hotbar(), a, b); },
+  onSelectSlot(i) { if (V2 && run) selectIndex(hotbar(), i); },
 });
 /** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
 function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen); }
@@ -455,32 +459,43 @@ const settingsPanel = createSettingsPanel(hudEl, {
 const hotbarUI = createHotbarUI(hudEl, { onSelect(i) { if (V2) selectIndex(hotbar(), i); } });
 if (!V2) hotbarUI.setVisible(false);
 hotbarUI.setCompact(isCoarsePointer());
+// 2026-10-08: Tab / I open the journal on its Carried page (journal-ui.js) and pause the game; Tab, I, Esc or Close shut it.
+// `inventoryOpen` = the book was opened that way (it pauses; the hub board's book only freezes the step).
 let inventoryOpen = false;
-function inventoryState() {
-  return { ...hotbarState(), items: run.items.slice(), spellRow: spellById, touch: input.mode() === 'touch' };
+/** What the octopus carries, for the Carried page (carried.js). */
+function carriedState() {
+  const m = input.mode() || (matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
+  return { ...hotbarState(), items: run.items.slice(), touch: m === 'touch' };
 }
 function hotbarState() {
   const hb = hotbar();
   return { slots: hb.slots, sel: hb.sel, spellName: (id) => { const r = spellById(id); return r ? r.name : id; }, bombs: octo.bombs, bombMax: octo.bombMax, juice: run.juice, cap: juiceCap(), perCast: JUICE.perCast, jetCharge: inkJet.charge() };
 }
-const inventoryUI = createInventoryUI(hudEl, {
-  onClose() { closeInventory(); },
-  onMove(from, to) { moveSlot(hotbar(), from, to); inventoryUI.refresh(inventoryState()); },
-  onSelect(i) { selectIndex(hotbar(), i); inventoryUI.refresh(inventoryState()); },
-});
 function openInventory() {
-  if (!V2 || inventoryOpen || octo.dead || transitioning || settingsPanel.isOpen() || journalScreen.isOpen() || ui.isEndShown()) return false;
+  if (!V2 || inventoryOpen || octo.dead || transitioning || settingsPanel.isOpen() || ui.isEndShown()) return false;
+  if (journalScreen.isOpen()) journalScreen.setTab('carried'); else journalScreen.show('carried');
   inventoryOpen = true; ui.setPrompt(null);
-  inventoryUI.show(inventoryState());
   applyPaused(); syncModal();
   return true;
 }
 function closeInventory() {
-  if (!inventoryOpen) return false;
-  inventoryOpen = false;
-  inventoryUI.hide();
-  applyPaused(); syncModal();
+  if (!inventoryOpen && !journalScreen.isOpen()) return false;
+  journalScreen.hide(); // its onClose clears inventoryOpen and unpauses
+  inventoryOpen = false; applyPaused(); syncModal();
   return true;
+}
+// "Runs carried": every journal id carried in a dive counts once for that dive (and carrying a thing discovers it).
+let carriedDive = null;
+const carriedIds = new Set();
+let carriedTick = 0;
+function noteCarried() {
+  if (!V2 || !run || MOVETEST) return;
+  const inDive = run.state === S_BIOME || run.state === S_REST;
+  if (inDive && carriedDive !== run.dive) { carriedDive = run.dive; carriedIds.clear(); }
+  for (const id of carriedJournalIds(carriedState())) {
+    if (inDive && !carriedIds.has(id)) { carriedIds.add(id); journal.bump(id, STAT_CARRIED); }
+    if (journal.discover(id)) announceJournal();
+  }
 }
 let boardCooldown = false; // after closing the journal, swim away from the board before it can open again
 // Journal toasts are rare and small: only a genuinely new entry (journal.discover is true once per entry) and never a prop
@@ -540,7 +555,7 @@ window.addEventListener('keydown', (e) => {
   // Tab / I: the inventory (handled here, not in step(): the game is paused while it is open, so step() never runs then)
   if ((e.code === 'Tab' || e.code === 'KeyI') && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && V2) {
     const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
-    if (!typing) { e.preventDefault(); if (inventoryOpen) closeInventory(); else openInventory(); }
+    if (!typing) { e.preventDefault(); if (inventoryOpen || journalScreen.isOpen()) closeInventory(); else openInventory(); }
     return;
   }
   if (e.code === 'Escape' && V2 && journalScreen.isOpen()) { journalScreen.hide(); return; }
@@ -831,7 +846,7 @@ function step(dt) {
       const al = Math.hypot(aim.x, aim.y) || 1, ux = aim.x / al, uy = aim.y / al;
       if (!world.isSolid(octo.x + ux * 0.5, octo.y + uy * 0.5)) { bx += ux * 0.5; by += uy * 0.5; }
     }
-    if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); journal.bump('item-bomb', STAT_COLLECTED); tutorialActed(tutState); }
+    if (bombs.place(octo, bx, by, aim) && V2) { discover('item-bomb'); journal.bump('item-bomb', STAT_USED); tutorialActed(tutState); }
   }
 
   if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
@@ -946,8 +961,8 @@ function castSelected(snap, forceAt = null) {
     if (sp.effect === 'anchor') particles.shakeFx(1.2, 0.1);
     runStats.spellsCast++;
     runStats.byEffect[sp.effect] = (runStats.byEffect[sp.effect] | 0) + 1;
-    if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_COLLECTED); }
-    for (const m of p.mods) discover('rune-' + m);
+    if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_USED); }
+    for (const m of p.mods) { discover('rune-' + m); journal.bump('rune-' + m, STAT_USED); }
   } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
   else if (r === -1 && sp.effect === 'coral') runStats.refused++; // no cell could grow: nothing was paid
   return r;
@@ -985,7 +1000,7 @@ function stepCombat(snap, dt) {
     if (src === 'mouse') { const w = cursorWorld(); if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) dir = { x: w.x - octo.x, y: w.y - octo.y }; }
     else if (src === 'touch') dir = autoAim(octo, enemies.all(), solidForSight, lastAim.x >= 0 ? 1 : -1);
     if (src === 'touch' && dir.y === 0 && Math.abs(lastAim.y) > 0.5) dir = lastAim; // nothing to aim at: the facing direction, up or down too
-    if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; }
+    if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; if (V2) journal.bump('item-inkjet', STAT_USED); }
   }
   if (snap.spell.pressed) castSelected(snap);
 }
@@ -1136,6 +1151,7 @@ function render(alpha, frameMs) {
   });
   if (V2) {
     hotbarUI.update(hotbarState());
+    if (++carriedTick % 30 === 0 && !transitioning) noteCarried(); // about twice a second: a new carried thing is discovered and counted for this dive
     const price = slotPrice(selectedIds(hotbar()));
     touchUI.setSpell(price > 0 && run.juice >= price * JUICE.perCast);
   }
@@ -1302,7 +1318,7 @@ function v2Event(ev) {
     timed('reset', () => resetWorld(0, nextWorld, true));
     if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
     timed('discover', () => discoverStatePlace());
-    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) discover('item-lantern'); // Quill's lantern: no words
+    if (run.state === S_BIOME && prevState !== S_BIOME && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) { discover('item-lantern'); journal.bump('item-lantern', STAT_COLLECTED); } // Quill's lantern: no words
     if (run.state === S_BIOME && prevState !== S_BIOME) applyBoons(); // gifts handed over in the hub (people of the last runs)
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
@@ -1510,7 +1526,7 @@ function stepV2(snap) {
   if (lv.boardX >= 0) {
     const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
     if (d > 2.2) boardCooldown = false;
-    else if (d < 1.2 && !boardCooldown) { octo.vx = octo.vy = 0; journalScreen.show(); ui.setPrompt(null); return; }
+    else if (d < 1.2 && !boardCooldown) { octo.vx = octo.vy = 0; journalScreen.show('places'); ui.setPrompt(null); return; }
   }
   if (lv.prompts && lv.prompts.length) {
     let best = null, bd = 1e9;
@@ -1700,7 +1716,7 @@ function dropShells(n, x, y) {
 function takeCarried(id, x, y) {
   if (!id) return;
   if (giveItem(run.items, octo, id)) {
-    discover(itemJournalId(id));
+    discover(itemJournalId(id)); journal.bump(itemJournalId(id), STAT_COLLECTED);
     ui.showToast('Found ' + pickupText(id));
   } else {
     gainShells(run, 3);
@@ -1901,7 +1917,7 @@ function tryTakeRune(now = false) {
   }
   runeSpot.taken = true;
   const id = runeSpot.id, row = spellById(id);
-  if (row) discover(row.journal); else { discover('rune-' + id); journal.bump('rune-' + id, STAT_COLLECTED); }
+  if (row) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); } else { discover('rune-' + id); journal.bump('rune-' + id, STAT_COLLECTED); }
   ui.showToast(row ? 'A rune: ' + row.name + ' (right click / F)' : 'A rune: ' + runeName(id) + ', set into ' + runeName(hotbar().slots[slot].ids[0]), 2600, false, true);
   particles.pickupSparkle(runeSpot.x, runeSpot.y - 0.4, '#9dffd8'); sfx.chime();
   return true;
@@ -2621,6 +2637,10 @@ window.__octo = {
   openJournal(tab, entry) { journalScreen.show(tab); if (entry) journalScreen.showEntry(entry); return true; },
   journalSet(tab) { journalScreen.setTab(tab); return true; },
   journalPage() { return journalScreen.page(); },
+  /** The Carried page: select a card by key (slot:N, jet, bomb, jar, item:ID); the carried state as the page sees it; journal counters of an entry. */
+  journalSelect(id) { journalScreen.select(id); return journalScreen.entry(); },
+  carried() { return run ? carriedState() : null; },
+  journalStats(id) { return [0, 1, 2, 3, 4, 5, 6].map((k) => journal.stat(id, k)); },
   stat(id, k) { return journal.stat(id, k); },
   closeJournal() { journalScreen.hide(); return true; },
   /** v2: quest / shop / wallet snapshot for tests and review. */

@@ -48,7 +48,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
 
     // ---- fixed size: the book and its bookmark tabs never move between tabs
     const seen = [];
-    for (const tab of ['places', 'people', 'bestiary', 'items', 'traps', 'progress']) {
+    for (const tab of ['carried', 'places', 'people', 'bestiary', 'items', 'traps', 'progress']) {
       await page.click('.octo-bk-tab[data-tab="' + tab + '"]'); await sleep(450);
       const r = await rects();
       seen.push([tab, Math.round(r.book.t), Math.round(r.book.h), Math.round(r.prog.t), Math.round(r.places.t)]);
@@ -161,7 +161,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
             const t = document.querySelector('.octo-bk-entry .octo-bk-text');
             if (!t) { out.push(id + ' (no text)'); continue; }
             const lh = parseFloat(getComputedStyle(t).lineHeight) || 19;
-            const lines = Math.round(t.getBoundingClientRect().height / lh);
+            const lines = Math.round(t.offsetHeight / lh); // layout height: a page-turn animation scales getBoundingClientRect
             out.push([id, lines]);
           }
           __octo.closeJournal();
@@ -220,6 +220,147 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
         if (w === 375 || w === 1440) { await pg.evaluate(() => __octo.openJournal('people', 'person-diver')); await sleep(300); await pg.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-people-' + w + '.png') }); await pg.evaluate(() => __octo.closeJournal()); }
       }
       await pg.close();
+    }
+
+    // ---- r41: the Carried page, locked / found item pages, persistence, layouts
+    {
+      const SHOTS = process.env.OCTO_SHOT_DIR || process.env.TEMP || '.';
+      const jdata = require('../data/journal.json').entries;
+      const whereMagnet = (jdata.find((e) => e.id === 'item-magnet') || {}).where;
+      const SAVE2 = "try{if(!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1');localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:7,runs:2,muted:true,tutorialDone:true,journal:['place-hub','item-flippers']}))}}catch(e){}";
+      const pg = await browser.newPage();
+      pg.on('pageerror', (e) => errs.push('' + e));
+      pg.on('console', (m) => { if (m.type() === 'error' && !/favicon|ERR_CONNECTION_REFUSED|ERR_NO_BUFFER_SPACE/.test(m.text())) errs.push(m.text()); });
+      await pg.evaluateOnNewDocument(SAVE2);
+      const load2 = async (w, h, mobile) => {
+        await pg.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: !!mobile, hasTouch: !!mobile });
+        await pg.goto(BASE + '?at=1&seed=5', { waitUntil: 'networkidle0', timeout: 60000 });
+        await pg.waitForFunction(() => window.__octo, { timeout: 30000 });
+        await sleep(500);
+      };
+      const ev = (f, ...a) => pg.evaluate(f, ...a);
+      const txt = (sel) => ev((s) => { const e = document.querySelector(s); return e ? e.textContent : ''; }, sel);
+      const selId = () => ev(() => { const e = document.querySelector('.octo-bk-ccard.is-sel'); return e ? e.dataset.id : null; });
+      const paused = () => ev(() => __octo.state().paused);
+      const hbSlots = () => ev(() => JSON.stringify(__octo.juice().hotbar.slots));
+      const rightTxt = () => txt('.octo-bk-entry.octo-bk-carried');
+
+      // 1. Tab opens the Carried tab, paused
+      await load2(1440, 900, false);
+      await ev(() => { __octo.giveItem('flippers'); __octo.giveRune('riptide'); __octo.giveRune('heavy'); });
+      await pg.keyboard.press('Tab'); await sleep(450);
+      const jj = await ev(() => __octo.journal());
+      check('Tab opens the book on the Carried tab and pauses the game', jj.open === true && jj.tab === 'carried' && (await paused()) === true, JSON.stringify(jj));
+      const ids = await ev(() => [...document.querySelectorAll('.octo-bk-ccard')].map((c) => c.dataset.id));
+      check('the Carried grid lists slot:0, slot:1, jet, bomb, jar and item:flippers', ['slot:0', 'slot:1', 'jet', 'bomb', 'jar', 'item:flippers'].every((k) => ids.includes(k)), JSON.stringify(ids));
+
+      // 2. highlight shows details
+      await pg.hover('.octo-bk-ccard[data-id="jet"]'); await sleep(200);
+      const t = await rightTxt();
+      check('hovering the Ink Jet card highlights it and shows its name, fire rate and a How line', (await selId()) === 'jet' && /Ink Jet/.test(t) && /1 shot \/ 1\.5 s/.test(t) && /How:/.test(t), t.slice(0, 200));
+      const before = ids.indexOf('jet');
+      await pg.mouse.move(700, 880); // the pointer must not sit over a card: a re-render under it would re-highlight that card
+      await pg.keyboard.press('ArrowRight'); await sleep(150);
+      check('ArrowRight moves the highlight to the next card', (await selId()) === ids[before + 1], (await selId()) + ' vs ' + ids[before + 1]);
+      await ev(() => __octo.journalSelect('item:flippers')); await sleep(150);
+      check('selecting item:flippers shows +20%', /\+20%/.test(await rightTxt()), (await rightTxt()).slice(0, 160));
+      const slotInfo = await ev(() => { __octo.journalSelect('slot:0'); const a = document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; __octo.journalSelect('slot:1'); const b = document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; return { a, b }; });
+      check('a spell slot shows Cost with casts, and a Heavy rune row', [slotInfo.a, slotInfo.b].some((x) => /Cost/.test(x) && /casts/.test(x)) && /Heavy/i.test(slotInfo.a + slotInfo.b), JSON.stringify(slotInfo).slice(0, 300));
+
+      // 3. hotbar swap
+      const s0 = await hbSlots(); const sel0 = await ev(() => __octo.juice().hotbar.sel);
+      await ev(() => __octo.journalSelect('slot:0')); await sleep(100);
+      await pg.keyboard.press('Enter'); await sleep(100);
+      check('Enter on a slot picks it up (is-picked, pick mode)', (await ev(() => __octo.journalPage().pick)) === 0 && (await ev(() => !!document.querySelector('.octo-bk-ccard.is-picked'))));
+      await pg.keyboard.press('ArrowRight'); await sleep(100);
+      await pg.keyboard.press('Enter'); await sleep(200);
+      const s1 = await hbSlots(); const a0 = JSON.parse(s0), a1 = JSON.parse(s1);
+      check('Enter, ArrowRight, Enter swaps slots 0 and 1', a1[0].join() === a0[1].join() && a1[1].join() === a0[0].join() && s0 !== s1, s0 + ' -> ' + s1);
+      const sel1 = await ev(() => __octo.juice().hotbar.sel);
+      const expSel = sel0 === 0 ? 1 : sel0 === 1 ? 0 : sel0;
+      check('the selection stays on the same spell after the swap', sel1 === expSel, 'sel ' + sel0 + ' -> ' + sel1);
+      check('the highlight follows the moved slot (slot:1) and pick mode ends', (await selId()) === 'slot:1' && (await ev(() => __octo.journalPage().pick)) === -1);
+      const pts = await ev(() => { const c = (k) => { const b = document.querySelector('.octo-bk-ccard[data-id="' + k + '"]').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }; return { a: c('slot:1'), b: c('slot:0') }; });
+      await pg.mouse.move(pts.a.x, pts.a.y); await pg.mouse.down(); await pg.mouse.move(pts.a.x - 20, pts.a.y, { steps: 4 }); await pg.mouse.move(pts.b.x, pts.b.y, { steps: 8 }); await pg.mouse.up(); await sleep(250);
+      check('a mouse drag of slot:1 onto slot:0 swaps back', (await hbSlots()) === s0, await hbSlots());
+      await ev(() => __octo.journalSelect('slot:0')); await sleep(100);
+      await pg.click('.octo-bk-act-right'); await sleep(250);
+      check('the move-right button swaps again', (await hbSlots()) === s1, await hbSlots());
+      check('the game stays paused through the swaps', (await paused()) === true);
+      await pg.keyboard.press('Tab'); await sleep(300);
+      check('Tab closes the book and unpauses', (await ev(() => __octo.journal().open)) === false && (await paused()) === false);
+      await pg.keyboard.press('KeyI'); await sleep(300);
+      check('I opens the book (paused)', (await ev(() => __octo.journal().open)) === true && (await paused()) === true);
+      await pg.keyboard.press('Escape'); await sleep(300);
+      check('Esc closes it and unpauses', (await ev(() => __octo.journal().open)) === false && (await paused()) === false);
+
+      // 4. locked vs found item pages
+      await ev(() => __octo.openJournal('items', 'item-magnet')); await sleep(400);
+      const lk = await ev(() => { const e = document.querySelector('.octo-bk-entry'); const h = document.querySelector('.octo-bk-entry .octo-bk-hint'); return { locked: !!e && e.classList.contains('is-locked'), txt: e ? e.textContent : '', hint: h ? h.textContent : '' }; });
+      check('a locked item page shows ??? and the where hint', lk.locked && /\?\?\?/.test(lk.txt) && !!whereMagnet && lk.hint.includes(whereMagnet) && /Not found yet/.test(lk.hint), JSON.stringify(lk).slice(0, 300));
+      await ev(() => __octo.openJournal('items', 'item-flippers')); await sleep(400);
+      const fd = await ev(() => { const e = document.querySelector('.octo-bk-entry'); return { facts: !!e && e.classList.contains('has-facts'), txt: e ? e.textContent : '', ledger: !!document.querySelector('.octo-bk-entry .octo-bk-facts') }; });
+      check('a found item page shows name, ledger +20%, Found: and Runs carried', fd.facts && fd.ledger && /Flippers/.test(fd.txt) && /\+20%/.test(fd.txt) && /Found:/.test(fd.txt) && /Runs carried/.test(fd.txt), fd.txt.slice(0, 200));
+      await ev(() => __octo.openJournal('items', 'spell-riptide')); await sleep(400);
+      check("a spells page head says 'Spells and Runes'", /Spells and Runes/.test(await txt('.octo-bk-head .octo-bk-title')), await txt('.octo-bk-head .octo-bk-title'));
+      await ev(() => __octo.closeJournal());
+
+      // 6. layouts + screenshots
+      const rects2 = () => ev(() => {
+        const R = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+        return { book: R('.octo-book'), gear: R('.octo-gear-btn'), pause: R('.octo-pause-btn'), mute: R('.octo-mute-btn'), vw: innerWidth, vh: innerHeight };
+      });
+      const tabInfo = () => ev(() => { const a = [...document.querySelectorAll('.octo-bk-tab')]; return { n: a.length, ok: a.every((t) => { const b = t.getBoundingClientRect(), n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(); return b.left >= -0.5 && b.right <= innerWidth + 1 && b.top >= -0.5 && b.bottom <= innerHeight + 1 && n.top >= b.top - 0.5 && n.bottom <= b.bottom + 0.5 && n.left >= b.left - 0.5 && n.right <= b.right + 0.5; }), minH: Math.min(...a.map((t) => t.getBoundingClientRect().height)) }; });
+      const bookOk = (r) => r.book.l >= 0 && r.book.t >= 0 && r.book.b <= r.vh && r.book.r <= r.vw && r.book.r <= Math.min(r.pause.l, r.mute.l, r.gear.l) + 1;
+      const toGrid = () => ev(() => { const b = document.querySelector('.octo-book'); if (b && b.dataset.view === 'entry') { const p = document.querySelector('.octo-bk-plate-big'); if (p) p.click(); } });
+      for (const [w, h, mobile] of [[1440, 900, false], [412, 915, true], [915, 412, true]]) {
+        const tag = w + 'x' + h;
+        await load2(w, h, mobile);
+        await ev(() => { __octo.giveItem('flippers'); __octo.giveItem('goggles'); __octo.giveItem('lantern'); __octo.giveRune('riptide'); __octo.giveRune('heavy'); });
+        if (w === 915) await ev(() => { const hb = __octo.juice().hotbar; __octo.setSlots([['ink-cloud'], ['riptide', 'heavy'], ['lure']], 0); });
+        await ev(() => { __octo.openJournal('carried'); __octo.journalSelect('slot:1'); }); await sleep(500);
+        const rr = await rects2(), ti = await tabInfo();
+        check(tag + ': Carried page: book inside the viewport and clear of pause/mute/gear', bookOk(rr), JSON.stringify(rr.book));
+        check(tag + ': all 7 bookmark tabs on screen, names inside, at least 39.5 px tall', ti.n === 7 && ti.ok && ti.minH >= 39.5, JSON.stringify(ti));
+        if (w === 412) {
+          await toGrid(); await sleep(300);
+          await pg.tap('.octo-bk-ccard[data-id="slot:1"]'); await sleep(500);
+          const dv = await ev(() => { const bk = document.querySelector('.octo-book'); const pr = document.querySelector('.octo-bk-right').getBoundingClientRect(); const bs = [...document.querySelectorAll('.octo-bk-acts .octo-bk-act')].map((b) => { const r = b.getBoundingClientRect(); return { h: Math.round(r.height), ok: r.left >= pr.left - 0.5 && r.right <= pr.right + 0.5 && r.top >= pr.top - 0.5 && r.bottom <= pr.bottom + 0.5 }; }); return { view: bk.dataset.view, bs }; });
+          check(tag + ': a tap on a card turns to the detail page; action buttons >= 32 px and inside the page', dv.view === 'entry' && dv.bs.length === 4 && dv.bs.every((b) => b.h >= 32 && b.ok), JSON.stringify(dv));
+        }
+        if (w === 915) {
+          const nS = await ev(() => document.querySelectorAll('.octo-bk-ccard[data-slot]').length), nI = await ev(() => document.querySelectorAll('.octo-bk-ccard[data-id^="item:"]').length);
+          const sc = await ev(() => [...document.querySelectorAll('.octo-bk-page')].filter((p) => p.clientHeight).map((p) => p.scrollHeight - p.clientHeight));
+          check(tag + ': Carried with ' + nS + ' hotbar slots and ' + nI + ' items: no page scrolls', nS === 3 && nI >= 3 && sc.every((x) => x <= 1), JSON.stringify({ nS, nI, sc }));
+        }
+        await ev(() => { __octo.openJournal('carried'); __octo.journalSelect('item:flippers'); }); await sleep(400);
+        await pg.screenshot({ path: path.join(SHOTS, 'journal-carried-' + w + '.png') });
+        await ev(() => __octo.openJournal('items', 'item-magnet')); await sleep(400);
+        await pg.screenshot({ path: path.join(SHOTS, 'journal-items-locked-' + w + '.png') });
+        await ev(() => __octo.openJournal('items', 'item-flippers')); await sleep(400);
+        await pg.screenshot({ path: path.join(SHOTS, 'journal-items-found-' + w + '.png') });
+        await ev(() => __octo.closeJournal());
+      }
+      await pg.close();
+
+      // 5. persistence across a reload (the save is only seeded when storage is empty)
+      const pp = await browser.newPage();
+      pp.on('pageerror', (e) => errs.push('' + e));
+      await pp.evaluateOnNewDocument("try{if(!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1');localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:true,journal:['place-hub']}))}}catch(e){}");
+      await pp.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+      await pp.goto(BASE + '?at=1&seed=5', { waitUntil: 'networkidle0', timeout: 60000 });
+      await pp.waitForFunction(() => window.__octo, { timeout: 30000 });
+      await sleep(500);
+      await pp.evaluate(() => __octo.giveItem('flippers'));
+      await sleep(1500);
+      await pp.evaluate(() => __octo.openJournal('carried')); await sleep(300);
+      await pp.evaluate(() => __octo.closeJournal()); await sleep(300);
+      await pp.reload({ waitUntil: 'networkidle0' });
+      await pp.waitForFunction(() => window.__octo, { timeout: 30000 });
+      await sleep(500);
+      const per = await pp.evaluate(() => ({ found: __octo.journal().found, carried: __octo.journalStats('item-flippers')[6] }));
+      check('after a reload the journal still has item-flippers and item-inkjet, carried counter >= 1', per.found.includes('item-flippers') && per.found.includes('item-inkjet') && per.carried >= 1, JSON.stringify({ f: per.found.filter((x) => /item-/.test(x)), c: per.carried }));
+      await pp.close();
     }
   } catch (e) { check('script ran to the end', false, String(e && e.stack || e)); }
   check('no console errors', errs.length === 0, errs.join(' | '));
