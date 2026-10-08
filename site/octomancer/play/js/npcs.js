@@ -18,7 +18,8 @@ import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
 import { shopAggro } from './shop-aggro.js';
 import { createTalk, say, talkStep } from './speech.js';
 import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
-import { octoHit, BLAST_REACH } from './damage.js';
+import { octoHit, BLAST_REACH, npcId } from './damage.js';
+import { LURE_ARRIVE } from './infight.js';
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
 export const NPC_IDS = ['', 'marlo', 'pip', 'quill', 'host'];
@@ -86,7 +87,9 @@ export function createNpcs(world, opts = {}) {
   const hp = { // harpoons in flight
     n: HARPOON_CAP, on: new Uint8Array(HARPOON_CAP), x: new Float32Array(HARPOON_CAP), y: new Float32Array(HARPOON_CAP),
     vx: new Float32Array(HARPOON_CAP), vy: new Float32Array(HARPOON_CAP), life: new Float32Array(HARPOON_CAP), ang: new Float32Array(HARPOON_CAP),
+    owner: new Int32Array(HARPOON_CAP), // the shooter's body id (damage.js npcId): a harpoon never hits the one who fired it
   };
+  let inf = null; // infight.js (v2): harpoons hit any creature (INFIGHT.projectile); lures pull a hostile NPC that lost the octopus
   const events = [];
   const lineIx = new Uint16Array(5), angrySaid = new Uint8Array(N);
   let dashId = 0, keeperX = -999, keeperY = -999, keeperDash = -1;
@@ -140,9 +143,9 @@ export function createNpcs(world, opts = {}) {
     } else moods.hostile[w] = 1;
   }
 
-  function kill(i) {
+  function kill(i, src = '') {
     const w = d.who[i];
-    events.push({ type: 'killed', kind: NPC_KINDS[w], who: w, name: NPC_IDS[w], x: d.x[i], y: cyOf(i), vx: d.vx[i], vy: d.vy[i] - 0.5, face: d.face[i] || 1, hub });
+    events.push({ type: 'killed', kind: NPC_KINDS[w], who: w, name: NPC_IDS[w], x: d.x[i], y: cyOf(i), vx: d.vx[i], vy: d.vy[i] - 0.5, face: d.face[i] || 1, hub, src });
     moods.dead[w] = 1; moods.hostile[w] = 1; moods.hp[w] = 0;
     d.used[i] = 0;
     const tk = talks[i]; tk.q.length = 0; tk.left = 0; tk.text = '';
@@ -177,7 +180,7 @@ export function createNpcs(world, opts = {}) {
     const wasHostile = d.hostile[i] === 1;
     if (!wasHostile && byOcto) setHostile(i, true);
     events.push({ type: 'hurt', who: d.who[i], x: d.x[i], y: cyOf(i), dmg, src, quiet: !byOcto });
-    if (d.hp[i] <= 0) { kill(i); return true; }
+    if (d.hp[i] <= 0) { kill(i, src); return true; }
     // hurt line; a hub resident that is already angry keeps refusing instead
     say1(i, pickLine(i, hub && wasHostile ? 'angry' : 'hurt'));
     return true;
@@ -217,7 +220,7 @@ export function createNpcs(world, opts = {}) {
     for (let k = 0; k < HARPOON_CAP; k++) if (!hp.on[k]) { h = k; break; }
     if (h < 0) return;
     const sx = d.x[i] + d.face[i] * 0.22, sy = cyOf(i) + 0.09, c = Math.cos(ang), s = Math.sin(ang);
-    hp.on[h] = 1; hp.x[h] = sx + c * 0.7; hp.y[h] = sy + s * 0.7; hp.vx[h] = c * HARPOON_SPEED; hp.vy[h] = s * HARPOON_SPEED; hp.life[h] = HARPOON_LIFE; hp.ang[h] = ang;
+    hp.on[h] = 1; hp.owner[h] = npcId(i); hp.x[h] = sx + c * 0.7; hp.y[h] = sy + s * 0.7; hp.vx[h] = c * HARPOON_SPEED; hp.vy[h] = s * HARPOON_SPEED; hp.life[h] = HARPOON_LIFE; hp.ang[h] = ang;
     events.push({ type: 'harpoon', x: hp.x[h], y: hp.y[h], ang });
   }
 
@@ -243,6 +246,7 @@ export function createNpcs(world, opts = {}) {
     }
     d.face[i] = dx >= 0 ? 1 : -1;
     if (octo.dead) { drift(i, dt); return; }
+    if (!los && lured(i, cx, cy, dt)) return; // lost her: a lure (infight.setLure) draws him instead
     // keep 4-7 tiles away: back off when close, close in when far, hold in between
     let ux = 0, uy = 0, sp = 0;
     if (dist < KEEP_MIN) { ux = -dx / dist; uy = -dy / dist; sp = SPEED[NPC_MARLO] * (1 + (KEEP_MIN - dist) * 0.2); }
@@ -288,12 +292,22 @@ export function createNpcs(world, opts = {}) {
         break;
       default: // ST_MOVE: chase
         if (octo.dead) { drift(i, dt); break; }
+        if (!clear(cx, cy, octo.x, octo.y) && lured(i, cx, cy, dt)) break; // lost her: a lure (infight.setLure) draws it instead
         glide(i, dx / dist, dy / dist, SPEED[w], dt);
         if (dist < LUNGE_START_R && clear(cx, cy, octo.x, octo.y)) {
           d.state[i] = ST_WIND; d.t[i] = WIND_S; d.attacks[i]++;
           if ((d.attacks[i] & 3) === 1 && !talks[i].text) say1(i, pickLine(i, 'angry'));
         }
     }
+  }
+
+  /** The target override: a hostile NPC that cannot see the octopus swims to a lure that covers it (true), or hovers there. */
+  function lured(i, cx, cy, dt) {
+    if (!inf || !inf.lureAt(cx, cy)) return false;
+    const L = inf.lurePoint, lx = L.x - cx, ly = L.y - cy, l = Math.hypot(lx, ly);
+    if (l > LURE_ARRIVE) glide(i, lx / l, ly / l, SPEED[d.who[i]] * 0.8, dt); else drift(i, dt);
+    if (Math.abs(lx) > 0.2) d.face[i] = lx > 0 ? 1 : -1;
+    return true;
   }
 
   function flee(i, octo, dt) {
@@ -316,6 +330,10 @@ export function createNpcs(world, opts = {}) {
         if (world.isSolid(px + c * 0.15, py + s * 0.15)) { events.push({ type: 'harpoonHit', x: px, y: py, rock: true }); ended = true; break; }
         if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && octoHit(octo, 'harpoon', px - c, py - s, 'harpoon')) {
           events.push({ type: 'harpoonHit', x: px, y: py, rock: false }); ended = true;
+        }
+        // INFIGHT.projectile: the first other body the tip touches takes the harpoon (a fish, a crab, the keeper; never Marlo)
+        if (!ended && inf && inf.projectile('harpoon', px, py, 0.15, hp.owner[h]) >= 0) {
+          events.push({ type: 'harpoonHit', x: px, y: py, rock: false, creature: true }); ended = true;
         }
       }
       hp.x[h] = nx; hp.y[h] = ny; hp.life[h] -= dt;
@@ -351,6 +369,8 @@ export function createNpcs(world, opts = {}) {
     remove(who, idx = 0) { const i = find(who, idx); if (i >= 0) d.used[i] = 0; },
     find,
     setKeeper(x, y) { keeperX = x; keeperY = y; },
+    /** v2: the enemy-infighting runtime (infight.js): harpoons hit any creature; lures. null: none. */
+    setInfight(x) { inf = x; },
 
     /** A bomb blast at (x, y) with radius R, by the table's rule (damage.js blast): inside R the bomb, out to 2R a shove; rock between shields. Returns slots hurt. */
     blast(x, y, R) {
@@ -390,6 +410,7 @@ export function createNpcs(world, opts = {}) {
         if (!d.used[i]) return false;
         V.kind = NPC_IDS[d.who[i]]; V.x = d.x[i]; V.y = cyOf(i); V.r = NPC_RADIUS[d.who[i]]; V.vx = d.vx[i]; V.vy = d.vy[i]; V.stun = 0;
         V.shut = false; V.cool = d.hzCool[i]; V.blame = d.blame[i];
+        V.id = npcId(i); V.wound = d.hp[i] < NPC_HP[d.who[i]] ? 1 : 0;
         return true;
       },
       apply(i, src, fx, fy, dmg, knockScale, byOcto) { return applyNpcHit(i, src, fx, fy, dmg, knockScale, byOcto); },
