@@ -8,7 +8,8 @@ import { createRoomBank, TAG_SHOP, CELL_ROCK, ROOM_W, ROOM_H, RC } from '../js/r
 import { generateLevel, finalPathOk, setDefaultBank, LEVEL_W, LEVEL_H, fatWaterSolvable, BORDER } from '../js/level.js';
 import { createLevelWorld } from '../js/world-v2.js';
 import { createRun, runEvent, levelSpec, EV_ENTER_DIVE, EV_EXIT } from '../js/run.js';
-import { createTutorialState, tutorialStep, tutorialActed, IDLE_HINT_S, TUTORIAL_BOMBS_GUARANTEED } from '../js/tutorial.js';
+import { createTutorialState, tutorialStep, tutorialActed, tutorialRooms, IDLE_HINT_S, TUTORIAL_BOMBS_GUARANTEED, DOOR_WAIT_S } from '../js/tutorial.js';
+import { STEP } from '../js/loop.js';
 import { loadBiome1Json } from './biome1.test.js';
 import { loadRoomsJson } from './rooms.test.js';
 import { createBotSim, tick, follow, wait } from './bot.js';
@@ -64,8 +65,31 @@ export async function runPathcheckTests(assert) {
     return hub.signX >= 0 && reachedNear(grid, r, hub.signX + 0.5, hub.signY + 0.5, 0.75) && reachedNear(grid, r, hub.boardX + 0.5, hub.boardY + 0.5, 0.75);
   })());
   assert('A* authored: the tutorial exit is NOT reachable while the bomb wall stands', !authoredSolvable(tut, false));
-  assert('A* authored: the tutorial is solvable once the wall counts as passable, and the tutorial guarantees bombs for it',
-    TUTORIAL_BOMBS_GUARANTEED && authoredSolvable(tut, true) && tut.prompts.some((p) => p.refillBomb));
+  assert('A* authored: the tutorial is solvable once the walls count as passable and the doors are open, and the tutorial guarantees bombs for it',
+    TUTORIAL_BOMBS_GUARANTEED && authoredSolvable(tut, true, true) && tut.prompts.some((p) => p.refillBomb));
+  assert('A* authored: the tutorial exit is NOT reachable while the coral doors are shut (walls passable)', !authoredSolvable(tut, true, false));
+  {
+    // the rooms (pure): a goal opens its own door and no other; a door also opens after DOOR_WAIT_S in its room
+    const tiles = new Map();
+    const tileAt = (x, y) => (tiles.has(x + ',' + y) ? tiles.get(x + ',' + y) : tut.tiles[y * tut.w + x]);
+    const st = createTutorialState(tut), acts = { throws: 0, casts: 0, buys: 0 };
+    const at = (x, y, n = 1) => { const out = []; for (let i = 0; i < n; i++) out.push(...tutorialRooms(st, tut, { x, y, ...acts, tileAt }, STEP).open); return out; };
+    const o0 = at(10, 10, 5);
+    const o1 = at(30, 9, 5);
+    tiles.set('30,6', 0); // an ink blob crumbled a fish bone
+    const o2 = at(30, 9);
+    const o3 = at(43, 9, 5); acts.throws++; const o4 = at(43, 9);
+    const o5 = at(42, 29, 5); acts.casts++; const o6 = at(42, 29);
+    const o7 = at(26, 30, 5); acts.buys++; const o8 = at(26, 30);
+    const seq = [o0, o1, o2, o3, o4, o5, o6, o7, o8].map((a) => a.join()).join('|');
+    assert('tutorial rooms: nothing opens before a goal; the bone, a throw, a cast and a buy open doors 1, 2, 3 and 4 in turn (' + seq + ')', seq === '||1||2||3||4');
+    const sw = createTutorialState(tut);
+    const n = Math.round(DOOR_WAIT_S / STEP);
+    const early = [], late = [];
+    for (let i = 0; i < n - 5; i++) early.push(...tutorialRooms(sw, tut, { x: 43, y: 9, throws: 0, casts: 0, buys: 0, tileAt }, STEP).open);
+    for (let i = 0; i < 10; i++) late.push(...tutorialRooms(sw, tut, { x: 43, y: 9, throws: 0, casts: 0, buys: 0, tileAt }, STEP).open);
+    assert('tutorial rooms: a door opens after ' + DOOR_WAIT_S + ' s in its room without the goal, not before', !early.length && late.join() === '2');
+  }
 
   // ---- tutorial assists (pure) ----
   {
@@ -159,62 +183,84 @@ export async function runPathcheckTests(assert) {
     assert('bot hub: swims from the start to the dive ring using real input and physics', r.ok && w.reachedExit(sim.octo.x, sim.octo.y));
   }
   {
-    // the scripted tutorial: swim, dash, waste the bombs, bomb the wall, reach the exit
+    // the scripted tutorial through its rooms: swim, dash through the urchin gap, the room goals open the coral doors (the ink,
+    // the throw, the cast and the buy are stood in for here: tests/tutorial-cdp.js does them for real in the game), bomb the
+    // floor (with the bombs wasted first in two runs), throw a sticky mine at the wall, reach the exit
     const results = [];
     for (let rep = 0; rep < 3; rep++) {
       const w = createLevelWorld(1, 0, { level: parseAuthoredMap(tutJson) });
       const lv = w.level;
-      const wallIntact = () => { for (let i = 0; i < lv.walls.length; i += 2) if (w.tileAt(lv.walls[i], lv.walls[i + 1]) !== 0) return true; return false; };
-      const sim = createBotSim(w, { tutorial: true, wallIntact });
+      const intact = (l) => { for (let i = 0; i < l.length; i += 2) if (w.tileAt(l[i], l[i + 1]) !== 0) return true; return false; };
+      const sim = createBotSim(w, { tutorial: true, wallIntact: () => intact(lv.walls) || intact(lv.sticky) });
+      const rooms = createTutorialState(lv), acts = { throws: 0, casts: 0, buys: 0 }, opened = [];
+      sim.onStep = (s) => {
+        for (const d of tutorialRooms(rooms, lv, { x: s.octo.x, y: s.octo.y, ...acts, tileAt: w.tileAt }, STEP).open) {
+          opened.push(d); const l = lv.doors[d]; for (let i = 0; i < l.length; i += 2) w.breakTile(l[i], l[i + 1]);
+        }
+      };
       const out = { rep };
-      let r = follow(sim, 30, 12.5, 0.7, 2500);
+      let r = follow(sim, 16.9, 11.6, 0.4, 2500);
       out.toDash = r.ok;
-      // dash along the corridor
-      for (let i = 0; i < 12; i++) tick(sim, 1, 0);
       tick(sim, 1, 0, { dash: true });
-      for (let i = 0; i < 20; i++) tick(sim, 1, 0);
-      out.dashed = sim.dashes >= 1;
+      for (let i = 0; i < 40; i++) tick(sim, 1, 0);
+      out.dashed = sim.dashes >= 1 && rooms.done[0] === 1;
+      r = follow(sim, 30.6, 9.6, 0.5, 2500);
+      out.shutAtInk = r.ok && opened.length === 0;
+      w.crumbleTile(30, 6); for (let i = 0; i < 5; i++) tick(sim, 0, 0);       // the ink blob's work
+      r = follow(sim, 41.5, 11, 0.6, 2500); acts.throws++; for (let i = 0; i < 5; i++) tick(sim, 0, 0); // a pot thrown
+      out.door12 = r.ok && opened.join() === '1,2';
       if (rep === 1) { sim.octo.bombs = 0; }                // wasted every bomb: the tutorial refills one
       if (rep === 2) { for (let i = 0; i < 4; i++) { sim.octo.bombs = 0; tick(sim, 0, 0); } } // spam-empty it
-      r = follow(sim, 37.5, 11.5, 0.3, 2500);       // into the bomb room, above the floor
-      out.atWall = r.ok;
-      const bombsAtWall = sim.octo.bombs;
-      out.bombsAtWall = bombsAtWall;
+      r = follow(sim, 61.5, 11.4, 0.3, 2500);
+      out.atWall = r.ok; out.bombsAtWall = sim.octo.bombs;
       let bombsPlaced = 0;
-      for (let attempt = 0; attempt < 3 && wallIntactBlocking(w); attempt++) {
-        r = follow(sim, 37.5, 11.5, 0.3, 1200);      // swim over the floor
-        for (let i = 0; i < 35; i++) tick(sim, 0, 0); // let the swim settle: a bomb inherits the octopus velocity
-        tick(sim, 0, 0, { bomb: true }); bombsPlaced++; // no aim: a short toss, it sinks onto the floor
-        // swim away from the blast, back up the room
-        follow(sim, 33.5, 9.5, 0.8, 600);
-        for (let i = 0; i < 260 && sim.bombs.list().length; i++) tick(sim, 0, 0); // fuse 2.5 s
+      for (let attempt = 0; attempt < 3 && floorBlocking(w); attempt++) {
+        follow(sim, 61.5, 11.4, 0.3, 1200);
+        for (let i = 0; i < 35; i++) tick(sim, 0, 0);        // settle: a bomb inherits the octopus velocity
+        tick(sim, 0, 0, { bomb: true }); bombsPlaced++;       // dropped: it sinks onto the floor
+        follow(sim, 54.5, 8.5, 0.8, 600);                     // swim clear
+        for (let i = 0; i < 260 && sim.bombs.list().length; i++) tick(sim, 0, 0);
       }
       out.bombsPlaced = bombsPlaced;
-      r = follow(sim, w.exitX, w.exitY, 1.05, 3500);
+      r = follow(sim, 55.5, 31, 0.5, 3000);
+      out.inSticky = r.ok;
+      let mines = 0;
+      for (let attempt = 0; attempt < 3 && rooms.done[4] !== 1; attempt++) {
+        follow(sim, 55.5, 31, 0.5, 600);
+        for (let i = 0; i < 20; i++) tick(sim, 0, 0);
+        tick(sim, 0, 0, { bomb: true, aim: { x: -1, y: 0 } }); mines++; // a sticky mine thrown at the wall
+        follow(sim, 62.5, 28.5, 0.8, 600);
+        for (let i = 0; i < 300 && sim.bombs.list().length; i++) tick(sim, 0, 0);
+      }
+      out.mines = mines; out.sticky = rooms.done[4] === 1;
+      r = follow(sim, 44.5, 30.5, 0.6, 2500); acts.casts++; for (let i = 0; i < 5; i++) tick(sim, 0, 0); // an Ink Cloud
+      r = follow(sim, 28.5, 31, 0.6, 2500); acts.buys++; for (let i = 0; i < 5; i++) tick(sim, 0, 0);   // a ware taken
+      out.doors = opened.join();
+      r = follow(sim, w.exitX, w.exitY, 1.05, 4000);
       out.exit = r.ok && w.reachedExit(sim.octo.x, sim.octo.y);
       out.hearts = sim.minHearts;
       results.push(out);
     }
-    assert('bot tutorial: swims, dashes, bombs the wall, reaches the exit (' + results.map((o) => o.bombsPlaced + ' bomb' + (o.bombsPlaced === 1 ? '' : 's')).join(', ') + ')',
-      results.every((o) => o.toDash && o.dashed && o.atWall && o.exit && o.bombsPlaced >= 1));
+    assert('bot tutorial: swims, dashes through the gap, the goals open doors 1-4 in order, bombs the floor, sticks a mine on the wall, reaches the exit (' + results.map((o) => o.bombsPlaced + ' bomb(s), ' + o.mines + ' mine(s)').join('; ') + ') ' + (results.every((o) => o.exit) ? '' : JSON.stringify(results)),
+      results.every((o) => o.toDash && o.dashed && o.shutAtInk && o.door12 && o.atWall && o.inSticky && o.sticky && o.doors === '1,2,3,4' && o.exit && o.bombsPlaced >= 1));
     assert('bot tutorial: also completes after wasting every bomb first (refill: had ' + results.map((o) => o.bombsAtWall).join('/') + ' at the wall)', results[1].exit && results[2].exit && results[1].bombsAtWall >= 1 && results[2].bombsAtWall >= 1);
-    assert('bot tutorial: the bot survives the blast (swims clear before it goes off)', results.every((o) => o.hearts === 3));
+    assert('bot tutorial: the bot survives the blasts (swims clear before they go off)', results.every((o) => o.hearts === 3));
   }
   {
-    // r41: the floor can be broken from the side approach too (thrown from the room's entrance) and from straight above
+    // r41: the floor can be broken from the side approach too (thrown from the room's side) and from straight above
     const out = [];
     // controls 2026-10-08: an aimed bomb is a sticky mine (it clings to the first rock: thrown flat it would stick to the far wall),
     // a plain one is dropped straight down
-    for (const [name, sx, sy, aim] of [['thrown down and right from the entrance', 32.5, 11.5, { x: 1, y: 0.6 }], ['thrown right and down from higher up', 32.5, 10.5, { x: 1, y: 0.75 }], ['thrown straight down', 38.0, 10.5, { x: 0, y: 1 }], ['dropped from above', 37.5, 11.5, null]]) {
+    for (const [name, sx, sy, aim] of [['thrown down and right from the side', 56.5, 11.5, { x: 1, y: 0.6 }], ['thrown right and down from higher up', 56.5, 10.5, { x: 1, y: 0.75 }], ['thrown straight down', 62.0, 10.5, { x: 0, y: 1 }], ['dropped from above', 61.5, 11.5, null]]) {
       const w = createLevelWorld(1, 0, { level: parseAuthoredMap(tutJson) });
       const sim = createBotSim(w, { tutorial: true, wallIntact: () => true });
       sim.octo.x = sim.octo.prevX = sx; sim.octo.y = sim.octo.prevY = sy;
       for (let i = 0; i < 25; i++) tick(sim, 0, 0);
       tick(sim, 0, 0, { bomb: true, aim });
       for (let i = 0; i < 300 && (sim.bombs.list().length || i < 5); i++) tick(sim, 0, 0);
-      out.push({ name, open: !wallIntactBlocking(w) });
+      out.push({ name, open: !floorBlocking(w) });
     }
-    assert('tutorial floor: a bomb dropped or thrown from the entrance or from above breaks through (' + out.map((o) => o.name + ' ' + (o.open ? 'yes' : 'NO')).join(', ') + ')', out.every((o) => o.open));
+    assert('tutorial floor: a bomb dropped or thrown from the side or from above breaks through (' + out.map((o) => o.name + ' ' + (o.open ? 'yes' : 'NO')).join(', ') + ')', out.every((o) => o.open));
   }
   {
     // hub -> tutorial -> Shallows 1-1..1-3, generated levels across 10 seeds
@@ -236,9 +282,8 @@ export async function runPathcheckTests(assert) {
   }
 }
 
-function wallIntactBlocking(w) {
-  // true while a 2-wide passage through the bomb wall is still missing
-  const lv = w.level;
+function floorBlocking(w) {
+  // true while no octopus-wide way leads from the bomb room down through its floor into the shaft
   const grid = createPathGrid(w.width, w.height, (x, y) => w.tileAt(x, y) !== 0);
-  return !findPath(grid, lv.startX + 0.5, lv.startY + 0.5, w.exitX, w.exitY);
+  return !findPath(grid, 61.5, 10.5, 61.5, 18.5);
 }

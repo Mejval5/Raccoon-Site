@@ -51,17 +51,43 @@ export async function runAuthoredTests(assert) {
   // --- tutorial ---
   assert(`authored tutorial: ${tut.w}x${tut.h}, a short authored level`, tut.w >= 40 && tut.w <= 100 && tut.h >= 20);
   const kinds = tut.prompts.map((p) => p.title.toLowerCase());
-  assert('authored tutorial: prompts for swim, dash, bomb and the exit, each with desktop and touch text',
-    ['swim', 'dash', 'bomb', 'exit'].every((k) => kinds.some((t) => t.includes(k))) && tut.prompts.every((p) => p.desktop && p.touch));
-  assert('authored tutorial: prompts are ordered left to right along the level', tut.prompts.every((p, i) => i === 0 || p.x > tut.prompts[i - 1].x));
-  assert('authored tutorial: bomb prompt mentions the bomb controls for keyboard, mouse and touch', (() => {
-    const b = tut.prompts.find((p) => p.title.toLowerCase().includes('bomb'));
-    return /press B /.test(b.desktop) && /middle/i.test(b.desktop) && /bomb/i.test(b.touch); // controls 2026-10-08: B drops, the middle click throws a sticky one
+  assert('authored tutorial: prompts for swim, dash, ink, grab, bomb, sticky mine, spells, shop, spikes, boulders, clams and the dive, each with desktop and touch text',
+    ['swim', 'dash', 'ink', 'grab', 'bomb', 'sticky', 'spells', 'shop', 'spikes', 'boulders', 'clams', 'dive'].every((k) => kinds.some((t) => t.includes(k))) && tut.prompts.every((p) => p.desktop && p.touch));
+  assert('authored tutorial: every prompt has a short sign label and a sign standing on rock (in water, floor under it)',
+    tut.prompts.every((p) => p.label && p.label.length <= 8 && p.sign && tut.tiles[p.sign[1] * tut.w + p.sign[0]] === 0 && tut.tiles[(p.sign[1] + 1) * tut.w + p.sign[0]] !== 0));
+  assert('authored tutorial: the touch texts never name keys or mouse buttons', tut.prompts.every((p) => !/WASD|Space|Shift|left click|right click|middle click|press [A-Z]\b|\bTab\b/i.test(p.touch)));
+  assert('authored tutorial: every room holds a prompt, and the rooms are listed in play order with one door each for ink, hand, cloud and shop', (() => {
+    const inRect = (r, x, y) => x >= r[0] && x <= r[2] + 1 && y >= r[1] && y <= r[3] + 1;
+    const ids = tut.rooms.map((r) => r.id).join(',');
+    return ids === 'swim,ink,hand,bomb,sticky,cloud,shop,hazards,exit' && tut.rooms.every((r) => tut.prompts.some((p) => inRect(r.rect, p.x, p.y)))
+      && tut.rooms.filter((r) => r.door).map((r) => r.goal).join(',') === 'bone,throw,cast,buy' && Object.keys(tut.doors).length === 4;
   })());
-  assert('authored tutorial: the exit is NOT reachable without bombing the wall', !fatReach(tut.tiles, tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
-  const cleared = tut.tiles.slice();
-  for (let i = 0; i < tut.walls.length; i += 2) cleared[tut.walls[i + 1] * tut.w + tut.walls[i]] = 0;
-  assert('authored tutorial: once the wall is gone the exit is reachable', fatReach(cleared, tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
+  assert('authored tutorial: bomb prompt names C (drop), B / X (quick bomb) and the touch Bomb button; the sticky prompt the right click', (() => {
+    const b = tut.prompts.find((p) => p.title.toLowerCase().includes('bomb')), st = tut.prompts.find((p) => p.title.toLowerCase().includes('sticky'));
+    return /press C/.test(b.desktop) && /B or X/.test(b.desktop) && /tap Bomb/.test(b.touch) && /right click/.test(st.desktop) && /tap Bomb/.test(st.touch);
+  })());
+  assert('authored tutorial: the dive prompt names F, the Beholder, the Swift Current and the journal', (() => {
+    const d = tut.prompts.find((p) => p.title === 'Dive');
+    return /press F/.test(d.desktop) && /Beholder/.test(d.desktop) && /Swift Current/.test(d.desktop) && /Tab/.test(d.desktop) && /journal/.test(d.touch);
+  })());
+  const clear = (base, lists) => { const t = base.slice(); for (const l of lists) for (let i = 0; i < l.length; i += 2) t[l[i + 1] * tut.w + l[i]] = 0; return t; };
+  const doorLists = Object.values(tut.doors);
+  assert('authored tutorial: the exit is NOT reachable without bombing the walls (doors open)', !fatReach(clear(tut.tiles, doorLists), tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
+  assert('authored tutorial: nor with the walls gone while the doors are shut', !fatReach(clear(tut.tiles, [tut.walls, tut.sticky]), tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
+  const cleared = clear(tut.tiles, [tut.walls, tut.sticky, ...doorLists]);
+  assert('authored tutorial: once the walls and the doors are open the exit is reachable', fatReach(cleared, tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
+  assert('authored tutorial: each door alone shuts the way (any one door closed: no exit)', Object.keys(tut.doors).every((k) =>
+    !fatReach(clear(tut.tiles, [tut.walls, tut.sticky, ...Object.entries(tut.doors).filter(([n]) => n !== k).map(([, l]) => l)]), tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY)));
+  assert('authored tutorial: the hazard gallery is sealed (no spike, boulder or clam can be reached with everything open)', tut.spawns.filter((s) => (s.type === 'hazard' && s.hk !== 1) || s.type === 'creature').every((s) =>
+    !fatReach(cleared, tut.w, tut.h, tut.startX, tut.startY, Math.floor(s.x), Math.floor(s.y)) && s.x < 19));
+  assert('authored tutorial: two urchins close the dash gap (one on its floor, one on its ceiling), a piranha in the spell room, pots in the ink and hand rooms', (() => {
+    const en = tut.spawns.filter((s) => s.type === 'enemy-slot');
+    const roomOf = (s) => tut.rooms.findIndex((r) => s.x >= r.rect[0] && s.x < r.rect[2] + 1 && s.y >= r.rect[1] && s.y < r.rect[3] + 1);
+    const pots = tut.spawns.filter((s) => s.type === 'loot');
+    return en.filter((e) => e.kind === 'urchin').length === 2 && en.some((e) => e.kind === 'piranha' && tut.rooms[roomOf(e)].id === 'cloud')
+      && pots.some((s) => tut.rooms[roomOf(s)].id === 'ink') && pots.filter((s) => tut.rooms[roomOf(s)].id === 'hand').length >= 2;
+  })());
+  assert('authored tutorial: a free stall (one keeper, three pedestals) in the shop room', !!tut.shop && tut.shop.kx >= tut.rooms[6].rect[0] && tut.shop.kx <= tut.rooms[6].rect[2]);
   assert('authored tutorial: the barrier is a horizontal floor, two rows thick, spanning the shaft (bombs sink, so it is dropped on, not thrown at)', (() => {
     const ys = new Set(), xs = new Set(); for (let i = 0; i < tut.walls.length; i += 2) { xs.add(tut.walls[i]); ys.add(tut.walls[i + 1]); }
     return ys.size === 2 && xs.size >= 6 && tut.walls.length / 2 === ys.size * xs.size;
@@ -75,9 +101,9 @@ export async function runAuthoredTests(assert) {
     if (!T(x0 - 1, y0) || !T(x0 - 1, y1) || !T(x1 + 1, y0) || !T(x1 + 1, y1)) ok = false;
     return ok;
   })());
-  assert('authored tutorial: before the wall the start reaches the bomb prompt area', (() => {
+  assert('authored tutorial: with the doors open the start reaches the bomb prompt area; with them shut it does not', (() => {
     const p = tut.prompts.find((q) => q.title.toLowerCase().includes('bomb'));
-    return fatReach(tut.tiles, tut.w, tut.h, tut.startX, tut.startY, Math.floor(p.x), Math.floor(p.y));
+    return fatReach(clear(tut.tiles, doorLists), tut.w, tut.h, tut.startX, tut.startY, Math.floor(p.x), Math.floor(p.y)) && !fatReach(tut.tiles, tut.w, tut.h, tut.startX, tut.startY, Math.floor(p.x), Math.floor(p.y));
   })());
 
   // --- map validation ---
@@ -95,5 +121,7 @@ export async function runAuthoredTests(assert) {
   assert('authored world: the border is unbreakable', w.breakTile(0, 5) === false && w.breakTile(tut.w - 1, 5) === false && w.breakTile(10, 0) === false && w.breakTile(10, tut.h - 1) === false);
   assert('authored world: a bombed level does not leak into a fresh parse', parseAuthoredMap(tutJson).tiles[wy * tut.w + wx] === 1);
   assert('authored world: outline bands cover the whole map height', w.bandCount() * w.bandRows >= tut.h && !!w.getWallOutline(0));
-  assert('authored world: authored spawns are handed to the chunk (plankton only)', w.residentChunks()[0].chunk.spawns.length === tut.spawns.length && tut.spawns.every((s) => s.type === 'plankton-swarm'));
+  assert('authored world: authored spawns are handed to the chunk (named ones made into enemy, hazard, creature and loot records)', w.residentChunks()[0].chunk.spawns.length === tut.spawns.length
+    && ['enemy-slot', 'hazard', 'creature', 'loot', 'plankton-swarm'].every((k) => tut.spawns.some((s) => s.type === k)) && tut.spawns.every((s) => s.type !== 'enemy'));
+  assert('authored: a named spawn that does not fit the map is refused', (() => { try { parseAuthoredMap({ id: 'q', rows: ['######', '######', '##S.##', '##.E##', '######', '######'], spawns: [{ type: 'hazard', name: 'rock', x: 2.5, y: 2.5 }] }); return false; } catch (e) { return true; } })());
 }

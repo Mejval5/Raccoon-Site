@@ -65,7 +65,7 @@ export async function runRestTests(assert) {
   // the other authored maps are untouched by the new markers
   const hub = parseAuthoredMap(await (await fetch('../data/hub.json')).json());
   const tut = parseAuthoredMap(await (await fetch('../data/tutorial.json')).json());
-  assert('rest grotto: hub and tutorial still parse with no spring and no shop', hub.springX === -1 && hub.springY === -1 && hub.shop === null && tut.springX === -1 && tut.shop === null && hub.exitX >= 0 && tut.walls.length > 0);
+  assert('rest grotto: the hub parses with no spring and no shop; the tutorial with no spring and its free practice stall', hub.springX === -1 && hub.springY === -1 && hub.shop === null && tut.springX === -1 && !!tut.shop && hub.exitX >= 0 && tut.walls.length > 0);
   let threw = false;
   try { parseAuthoredMap({ id: 'x', rows: ['####', '#SK#', '#.E#', '####'] }); } catch (e) { threw = true; }
   assert('rest grotto: a keeper without three pedestals is rejected', threw);
