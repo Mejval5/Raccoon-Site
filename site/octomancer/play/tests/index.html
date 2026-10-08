@@ -40,6 +40,10 @@ function approx(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps; }
   assert('metrics() has frameMsMedian/P95 fields', typeof m.frameMsMedian === 'number' && typeof m.frameMsP95 === 'number');
 }
 
+// --- art round 3: the second sprite atlas and the code it replaced (first, so the fallback runs before any sprite was asked for) ---
+import { runArtR3Tests } from './art-r3.test.js';
+await runArtR3Tests(assert);
+
 // --- 50 steps == 1.000s of simulated time ---
 {
   let time = 0;
@@ -90,6 +94,11 @@ runDecorTests(assert, approx);
 // --- Round-6 task 2: concave-corner collision escape tests (physics.js) ---
 import { runCornerTests } from './corner.test.js';
 runCornerTests(assert, approx);
+
+// --- 2026-10-08: the movement test room (data/movement-test.json, ?movetest=1): sweep, rest-and-leave and the tour at
+// 30/60/120 Hz, no dash. Must stay green after ANY change to swimming, collision, the wall outline or block pushing ---
+import { runMovementTests } from './movement.test.js';
+await runMovementTests(assert);
 
 // --- Round-8 task 1/3: wall-outline trace closure + collision-matches-rim
 // tests (outline.js / world.js / physics.js) ---
@@ -241,9 +250,17 @@ await runDamageTests(assert);
 import { runNpcTests } from './npcs.test.js';
 await runNpcTests(assert);
 
+// --- 2026-10-08: unified creature rules (one creature table, one damage entry) ---
+import { runCreatureRulesTests } from './creature-rules.test.js';
+await runCreatureRulesTests(assert);
+
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
+
+// --- 2026-10-08: time pressure (the Beholder as the Spelunky ghost) and the Swift Current bonus ---
+import { runTimePressureTests } from './timepressure.test.js';
+await runTimePressureTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

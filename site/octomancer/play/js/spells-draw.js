@@ -1,8 +1,10 @@
 // Drawing for fish juice droplets and ink clouds (spells.js). Both are code-drawn in the house style (dark ink outline, flat
 // fills, a soft glow) from two small sprites baked once per page, so a frame costs one drawImage per droplet and a handful per
-// cloud. Off-screen culling (cull.js) applies to both.
+// cloud. Off-screen culling (cull.js) applies to both. Round 3 art (sprites-r3.webp: four painted beads, four painted ink puffs)
+// replaces the baked sprites once its atlas is ready; the baked ones stay as the fallback.
 import { sharedCanvas } from './canvas-pool.js';
 import { cullView, cullFlags, visibleAt } from './cull.js';
+import { drawSprite, spriteRect } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
@@ -72,7 +74,7 @@ function bakePuff() {
  */
 export function drawJuiceDrops(ctx, camera, cw, ch, d, time, life = 3.5) {
   if (!d.live) return;
-  if (!dropSprite) { dropSprite = bakeDrop(); murkSprite = bakeMurk(); }
+  if (!murkSprite) murkSprite = bakeMurk();
   cullView(camera, cw, ch);
   const flags = cullFlags('juice', d.n), ppu = camera.pxPerUnit;
   ctx.save();
@@ -87,11 +89,20 @@ export function drawJuiceDrops(ctx, camera, cw, ch, d, time, life = 3.5) {
     ctx.drawImage(murkSprite, sx - ms / 2, sy - ms / 2 + ppu * 0.12, ms, ms);
     const size = ppu * (0.52 + 0.05 * Math.sin(time * 4.3 + d.ph[i] * 2)) * Math.min(1, 0.4 + age * 4) * (0.6 + 0.4 * fade);
     ctx.globalAlpha = 0.9 * fade;
-    ctx.drawImage(dropSprite, sx - size / 2, sy - size / 2, size, size);
+    if (spriteRect('juiceDrop0')) { // the painted bead alone (no glow): about 0.6 of the baked sprite, turning a little
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.sin(time * 2.3 + d.ph[i]) * 0.25);
+      drawSprite(ctx, 'juiceDrop' + (i & 3), 0, 0, 0, size * 0.6, 0.5, 0.5);
+      ctx.restore();
+    } else {
+      if (!dropSprite) dropSprite = bakeDrop();
+      ctx.drawImage(dropSprite, sx - size / 2, sy - size / 2, size, size);
+    }
   }
   ctx.restore();
 }
 
+const PAINTED_ALPHA = [0.385, 0.315]; // pass 0 / pass 1: 0.7 x 0.55 / 0.45 (artist review: same darkness as the baked puffs, the octopus stays readable)
+const PAINTED_SIZE = 0.8;
 const BILLOWS = 7; // around the centre, plus the centre one
 const WISPS = 5;   // smaller, fainter puffs drifting at the rim
 /** How opaque a cloud is at `age` of `dur`: a quick swell, thick for a while, then it thins out over the rest of its life. */
@@ -106,7 +117,8 @@ export function cloudAlpha(age, dur) {
  */
 export function drawInkClouds(ctx, camera, cw, ch, c, time, pass = 0) {
   if (!c.live) return;
-  if (!puffSprite) puffSprite = bakePuff();
+  const painted = !!spriteRect('inkPuff0');
+  if (!painted && !puffSprite) puffSprite = bakePuff();
   cullView(camera, cw, ch);
   const flags = cullFlags(pass ? 'inkVeil' : 'ink', c.n), ppu = camera.pxPerUnit;
   ctx.save();
@@ -115,7 +127,7 @@ export function drawInkClouds(ctx, camera, cw, ch, c, time, pass = 0) {
     const a = cloudAlpha(c.age[i], c.dur[i]) * (pass ? 0.38 : 0.95);
     if (a <= 0.01) continue;
     const grow = Math.min(1, 0.55 + 0.45 * c.age[i] / 0.25) * (1 + 0.12 * c.age[i] / c.dur[i]);
-    const R = c.r[i] * grow, seed = c.seed[i];
+    const R = c.r[i] * grow, seed = c.seed[i], si = Math.abs(Math.floor(seed * 7));
     const cx = cw / 2 + (c.x[i] - camera.x) * ppu, cy = ch / 2 + (c.y[i] - camera.y) * ppu;
     for (let k = 0; k <= BILLOWS + WISPS; k++) {
       let bx = cx, by = cy, br = R * 1.05, ba = 1;
@@ -132,9 +144,16 @@ export function drawInkClouds(ctx, camera, cw, ch, c, time, pass = 0) {
         br = R * (0.36 + 0.06 * Math.sin(j * 2.7 + seed));
         ba = 0.45;
       }
-      ctx.globalAlpha = a * ba;
       const s = br * 2 * ppu;
-      ctx.drawImage(puffSprite, bx - s / 2, by - s / 2, s, s);
+      if (painted) { // denser than the baked puff: PAINTED_ALPHA keeps the cloud from reading blacker than before
+        ctx.globalAlpha = a * ba * PAINTED_ALPHA[pass ? 1 : 0];
+        ctx.save(); ctx.translate(bx, by); ctx.rotate(seed + k * 1.3 + time * 0.15 * (k % 2 ? 1 : -1));
+        drawSprite(ctx, 'inkPuff' + ((k + si) & 3), 0, 0, s * PAINTED_SIZE, s * PAINTED_SIZE, 0.5, 0.5);
+        ctx.restore();
+      } else {
+        ctx.globalAlpha = a * ba;
+        ctx.drawImage(puffSprite, bx - s / 2, by - s / 2, s, s);
+      }
     }
   }
   ctx.restore();

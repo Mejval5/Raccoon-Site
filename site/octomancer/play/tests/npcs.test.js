@@ -34,12 +34,14 @@ export async function runNpcTests(assert) {
     t.run(1, () => { t.sys.place(NPC_QUILL, 22, 15.65); t.sys.place(NPC_PIP, 28, 15); });
     const hit = t.sys.blast(20.5, 15, 2.5);
     t.sys.drain((e) => t.evs.push(e));
-    const q = t.sys.list().find((n) => n.who === 'quill'), p = t.sys.list().find((n) => n.who === 'pip');
-    assert('a blast hurts and angers a calm NPC (hp down, hostile, one angered event)', hit === 1 && q.hp < 4 && q.hostile && t.evs.filter((e) => e.type === 'angered' && e.name === 'quill').length === 1);
-    assert('damage falls off with distance (centre about 6)', (() => { const s = setup(fakeWorld()); s.sys.place(NPC_MARLO, 20, 15.55); s.sys.place(NPC_QUILL, 22.3, 15.65); s.sys.blast(20, 15, 2.5); const l = s.sys.list(); const m = l.find((n) => n.who === 'marlo'), qq = l.find((n) => n.who === 'quill'); return m.hp < 0.5 && qq.hp > 3 && qq.hp < 4; })());
+    const q = t.sys.list().find((n) => n.who === 'quill' && !n.dead), p = t.sys.list().find((n) => n.who === 'pip');
+    assert('a blast hurts and angers a calm NPC (inside its radius it kills: one angered and one killed event)', hit === 1 && !q && t.evs.filter((e) => e.type === 'angered' && e.name === 'quill').length === 1 && t.evs.some((e) => e.type === 'killed' && e.name === 'quill'));
+    // 2026-10-08 (unified creature rules): a bomb is the same for everyone: inside its radius it kills any NPC, as it kills any fish;
+    // out to twice the radius it only shoves (no damage, no anger)
+    assert('a bomb kills an NPC inside its radius; beyond it only shoves (no hurt, no anger)', (() => { const s = setup(fakeWorld()); s.sys.place(NPC_MARLO, 20, 15.55); s.sys.place(NPC_QUILL, 24.2, 15.65); s.sys.blast(20, 15, 2.5); const l = s.sys.list(); const m = l.find((n) => n.who === 'marlo' && !n.dead), qq = l.find((n) => n.who === 'quill'); return m === undefined && s.sys.moods.dead[NPC_MARLO] === 1 && qq && qq.hp === 4 && !qq.hostile; })());
     assert('a blast through rock does not hurt (the wall shields Pip)', p.hp === 2 && !p.hostile);
     t.sys.blast(29.5, 15, 2.5); // same side, but the wall is not between this blast and Pip
-    assert('a blast on the open side does', t.sys.list().find((n) => n.who === 'pip').hostile);
+    assert('a blast on the open side does', t.sys.moods.dead[NPC_PIP] === 1 || t.sys.list().find((n) => n.who === 'pip').hostile);
   }
 
   // ---- Marlo sealed in his pocket ----

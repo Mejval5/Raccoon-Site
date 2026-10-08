@@ -7,7 +7,9 @@
 // pathcheck.js (finalPathOk) and drops hazards until the exit (and shop) is reachable again, so no hazard can
 // make a level unsolvable. Jets and eels do not block: a jet only pushes, an eel's ring can be timed.
 
-import { hurtOctopus, stunOctopus, killOctopus, hitBody } from './octopus.js';
+import { killOctopus, hitBody } from './octopus.js';
+import { octoHit } from './damage.js';
+import { IMPACT_SPEED, rowOf, PH_ANCHORED, PH_NONE } from './creature-rules.js';
 import { hasLineOfSight } from './pathfind.js';
 import { IMPALE_DEPTH } from './config.js';
 import { PK_ROCK, PK_BOMB, PK_POT, PK_RELIC, PK_RUBBLE, PK_FIND, PS_FREE, PS_HELD } from './props.js';
@@ -31,7 +33,8 @@ export const ROCK_RADIUS = 0.5;
 export const ROCK_SMASH_SPEED = 4;  // u/s downward at which a falling rock smashes timber or bone under it
 export const ROCK_TRIGGER_HALF = 1.0; // the octopus is "under it" within this sideways distance
 export const ROCK_CRUSH_SPEED = 1.5;  // u/s: a falling boulder at least this fast crushes enemies and hurts NPCs and shopkeepers it touches
-export const SPIKE_KILL_SPEED = 5;    // u/s: an enemy this fast (a lunging piranha), or one that is stunned / knocked about, dies on spikes; a calm patrol (crab 2, piranha 4 chase) does not
+export const SPIKE_KILL_SPEED = IMPACT_SPEED; // u/s: a body this fast (a lunging piranha, a charging keeper), or one knocked out, hits the spikes (creature-rules.js); a calm patrol (crab 2, piranha 4 chase) does not
+export const ROCK_HIT_COOL = 1.5;     // s: a falling boulder hits each body once per drop
 export const JET_DRIFT = 0.15;        // a free-swimming enemy drifts along a stream at JET_ACC * this (u/s): its own AI still steers
 export const EEL_SPEED = 1.5;
 export const EEL_PERIOD = 3.6;      // s between shocks
@@ -199,15 +202,14 @@ export function createHazards(props = null) {
     hit: new Uint8Array(CAP), // rock: it has already hurt the octopus this drop (one hit per rock)
     gain: 1, // the pool vents' current push scale (setPoolGain), read by jetForceAt
     cause: new Uint8Array(CAP), // rock: 1 = the octopus caused the fall (stood under it, or bombed it loose); 0 = an enemy or nothing did
-    vic: new Uint16Array(CAP),  // rock: bits of the NPCs / shopkeepers this drop has already hurt (one hit per victim; bits are chosen by the injected bodyHit)
     pool: new Uint8Array(CAP), // jet: one of the Challenge Pool's vents (its push is scaled by poolGain, weak until a wager runs)
   };
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
-  // Injected by main.js (kept out of this module so it stays free of enemies.js / npcs.js / shopkeeper.js):
-  let killEnemy = null;   // (enemyRecord, reason) kills by the regular path, so a corpse is made like for any kill
-  let bodyHit = null;     // (x, y, r, octoCaused, mask) -> mask: hurts NPCs and shopkeepers in the circle that are not in `mask` yet
-  let enemyList = null;   // this step's enemy records (update() param), null when the caller has none
+  // 2026-10-08: every creature body (enemies, clams and tentacles, NPCs, shopkeepers) is reached through the shared damage entry
+  // (damage.js, injected by main.js; null in tests that only drive the octopus). No kind is special-cased here: the creature
+  // table (creature-rules.js) says what spikes, a boulder, a jet, a shock or an anemone does to each.
+  let dmg = null;
 
   function add(rec) {
     if (d.n >= CAP) return -1;
@@ -219,7 +221,7 @@ export function createHazards(props = null) {
     d.t[i] = rec.hk === HZ_EEL ? (i * 0.7) % EEL_PERIOD : 0;
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
-    d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.vic[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
+    d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -227,13 +229,15 @@ export function createHazards(props = null) {
     return i;
   }
 
+  // the creature-table source of each hazard kind (what it does to the octopus and to every creature)
+  const HZ_SOURCE = ['', 'jet', 'spikes', 'boulder', 'shock', 'anemone'];
   function hurt(octo, i, fx, fy) {
-    if (hurtOctopus(octo, fx, fy, HZ_CAUSE[d.kind[i]])) { events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }); return true; }
+    if (octoHit(octo, HZ_SOURCE[d.kind[i]], fx, fy, HZ_CAUSE[d.kind[i]])) { events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }); return true; }
     return false;
   }
-  /** V2-PLAN 16: a shock (ring or body) is an incapacitation: one heart, EEL_STUN_S of limp body. */
+  /** V2-PLAN 16: a shock (ring or body) is an incapacitation: one heart, EEL_STUN_S of limp body (creature-rules.js SOURCES.shock). */
   function shockOcto(octo, i, fx, fy) {
-    if (stunOctopus(octo, fx, fy, HZ_CAUSE[d.kind[i]], EEL_STUN_S)) {
+    if (octoHit(octo, 'shock', fx, fy, HZ_CAUSE[d.kind[i]])) {
       events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }, { type: 'shocked', x: octo.x, y: octo.y });
     }
   }
@@ -274,12 +278,18 @@ export function createHazards(props = null) {
     if (hurt(octo, i, octo.x - side, octo.y)) d.hit[i] = 1;
   }
 
-  const crushable = (e) => !e.dead && !e.ghost && !e.immune && e.kind !== 'beholder';
+  /** A creature body that moves about (not anchored to rock), and is moving now or knocked out: it sets a boulder off. */
+  const roams = (V) => { const ph = rowOf(V.kind).physics; return ph !== PH_ANCHORED && ph !== PH_NONE && (V.stun > 0 || Math.hypot(V.vx, V.vy) > 0.2); };
   const lineClear = (world, tx, y0, y1) => { for (let ty = y0; ty <= y1; ty++) if (world.tileAt(tx, ty) !== 0) return false; return true; };
 
+  const trig = { x: 0, y: 0, bottom: 0, tx: 0, ya: 0, world: null, who: 0 };
+  const trigBody = (f, k, V) => {
+    if (trig.who || !roams(V) || Math.abs(V.x - trig.x) >= ROCK_TRIGGER_HALF || V.y <= trig.y + 0.8 || V.y >= trig.bottom) return;
+    if (lineClear(trig.world, trig.tx, trig.ya, Math.floor(V.y))) trig.who = 2;
+  };
   /**
-   * Does something stand under rock i, in line, close enough to set it off? The octopus does (cause 1), and so does an enemy
-   * (cause 0: a boulder an enemy triggered never angers a shopkeeper). Item 6: only while the boulder is inside the camera
+   * Does something stand under rock i, in line, close enough to set it off? The octopus does (cause 1), and so does any creature
+   * that roams (cause 0: a boulder a creature triggered never angers a shopkeeper or an NPC). Item 6: only while the boulder is inside the camera
    * view, so nothing drops from off-screen. True when it was triggered (the shake starts).
    */
   function underRock(i, octo, world) {
@@ -288,12 +298,10 @@ export function createHazards(props = null) {
     const tx = Math.floor(x), ya = Math.floor(y) + 1, bottom = d.a[i] + 1.5;
     let who = 0;
     if (Math.abs(octo.x - x) < ROCK_TRIGGER_HALF && octo.y > y + 0.8 && octo.y < bottom && lineClear(world, tx, ya, Math.floor(octo.y))) who = 1;
-    else if (enemyList) {
-      for (let k = 0; k < enemyList.length; k++) {
-        const e = enemyList[k];
-        if (!e.moving || !crushable(e) || Math.abs(e.x - x) >= ROCK_TRIGGER_HALF || e.y <= y + 0.8 || e.y >= bottom) continue;
-        if (lineClear(world, tx, ya, Math.floor(e.y))) { who = 2; break; }
-      }
+    else if (dmg) {
+      trig.x = x; trig.y = y; trig.bottom = bottom; trig.tx = tx; trig.ya = ya; trig.world = world; trig.who = 0;
+      dmg.each(trigBody);
+      who = trig.who;
     }
     if (!who) return false;
     d.state[i] = 1; d.t[i] = ROCK_SHAKE; d.cause[i] = who === 1 ? 1 : 0;
@@ -302,55 +310,68 @@ export function createHazards(props = null) {
   }
 
   /**
-   * A boulder falling faster than ROCK_CRUSH_SPEED crushes what it touches, once per victim: enemies by the regular kill path
-   * (a corpse, like crushEnemies in props.js), NPCs and the shopkeeper through the injected bodyHit.
-   * SHOPKEEPER RULE: a boulder (or spikes) may hurt him, but it only angers him when the octopus caused it (d.cause: she
-   * stood under it, or her bomb released it). A boulder an enemy set off hurts him quietly (main.js boulderBodies).
+   * A boulder falling faster than ROCK_CRUSH_SPEED crushes what it touches, once per victim per drop: every creature body through
+   * the shared damage entry (creature-rules.js 'boulder': a oneHitSplat kind is splatted, the rest take its damage; a corpse
+   * for any kill). SHOPKEEPER / NPC RULE: it may hurt them, but it only angers them when the octopus caused the fall (d.cause:
+   * she stood under it, or her bomb released it). A boulder a creature set off hurts quietly.
    */
   function crushUnder(i, x, y, speed) {
-    if (speed <= ROCK_CRUSH_SPEED) return;
-    if (enemyList && killEnemy) {
-      for (let k = 0; k < enemyList.length; k++) {
-        const e = enemyList[k];
-        if (!crushable(e)) continue;
-        if (Math.hypot(e.x - x, e.y - y) < ROCK_RADIUS + (e.radius || 0.4) * 0.8) killEnemy(e, 'crush');
-      }
-    }
-    if (bodyHit) d.vic[i] = bodyHit(x, y, ROCK_RADIUS, d.cause[i] === 1, d.vic[i]);
+    if (speed <= ROCK_CRUSH_SPEED || !dmg) return;
+    dmg.circle('boulder', x, y, ROCK_RADIUS, d.cause[i] === 1, ROCK_HIT_COOL);
   }
 
-  /** Spikes kill an enemy that is knocked / stunned onto them or hurtling into them; one that merely walks or swims by does not. */
-  function spikeEnemies(i, world) {
-    const dx = d.dx[i], dy = d.dy[i], tx = -dy, ty = dx;
-    const fx = d.x[i] - dx * 0.5, fy = d.y[i] - dy * 0.5;
-    spanWorld = world; const sp = spikeSpan(dx, dy, d.x[i], d.y[i], world && world.isSolid ? spanSolid : null, span);
-    for (let k = 0; k < enemyList.length; k++) {
-      const e = enemyList[k];
-      if (!e.moving || !crushable(e)) continue;
-      const rx = e.x - fx, ry = e.y - fy;
-      if (rx > 3 || rx < -3 || ry > 3 || ry < -3) continue;
-      const n = rx * dx + ry * dy, tt = rx * tx + ry * ty;
-      if (n > SPIKE_REACH || n < -0.2 || tt > sp.hi || tt < sp.lo) continue; // the enemy's centre must be in the strip
-      if (e.stun > 0 || Math.hypot(e.vx || 0, e.vy || 0) >= SPIKE_KILL_SPEED) killEnemy(e, 'spikes');
-    }
+  /**
+   * Spikes hurt any body that hits them: knocked out onto them or hurtling in (SPIKE_KILL_SPEED); one that merely walks or swims
+   * by does not. The table decides the rest (a oneHitSplat kind dies, the keeper takes a heavy hit and is thrown off, an
+   * anchored or invulnerable one is never touched). Blame: the octopus only when she knocked the body about (damage.js blame).
+   */
+  // the each() callbacks read the hazard they test from these (no closure per hazard per step)
+  let cbI = 0, cbLo = 0, cbHi = 0, cbRing = 0, cbWorld = null;
+  const cbSolid = (tx, ty) => cbWorld.isSolid(tx, ty);
+  const spikeBody = (f, k, V) => {
+    const i = cbI, dx = d.dx[i], dy = d.dy[i], tx = -dy, ty = dx, fx = d.x[i] - dx * 0.5, fy = d.y[i] - dy * 0.5;
+    const rx = V.x - fx, ry = V.y - fy;
+    if (rx > 3 || rx < -3 || ry > 3 || ry < -3) return;
+    const n = rx * dx + ry * dy, tt = rx * tx + ry * ty;
+    if (n > SPIKE_REACH + V.r * 0.5 || n < -0.2 || tt > cbHi || tt < cbLo) return; // the body's edge must reach the tips, its centre over the strip
+    if (dmg.cooling(V) || !(V.stun > 0 || Math.hypot(V.vx, V.vy) >= SPIKE_KILL_SPEED)) return;
+    if (dmg.hitFound(f, k, 'spikes', fx + tx * tt, fy + ty * tt) !== 0) dmg.cool(f, k);
+  };
+  function spikeBodies(i, world) {
+    spanWorld = world; const sp = spikeSpan(d.dx[i], d.dy[i], d.x[i], d.y[i], world && world.isSolid ? spanSolid : null, span);
+    cbI = i; cbLo = sp.lo; cbHi = sp.hi;
+    dmg.each(spikeBody);
   }
 
-  /** Current jets also carry what is loose: knocked / free-swimming enemies and the light props (bombs, rubble, finds, pots, relics). */
+  /** An eel's shock (ring or body) and an anemone's sting reach every creature body too (the table: a stun where it can be knocked out). */
+  const shockBody = (f, k, V) => {
+    if (dmg.cooling(V)) return;
+    const ex = d.x[cbI], ey = d.y[cbI];
+    let hit = false;
+    if (cbRing > 0) hit = Math.abs(Math.hypot(V.x - ex, V.y - ey) - cbRing) < 0.3 + V.r * 0.8 && hasLineOfSight(cbSolid, ex, ey, V.x, V.y);
+    if (!hit) { const py = Math.max(ey - EEL_HALF_BODY, Math.min(ey + EEL_HALF_BODY, V.y)); hit = Math.hypot(V.x - ex, V.y - py) < 0.3 + V.r * 0.8; }
+    if (hit && dmg.hitFound(f, k, 'shock', ex, ey) !== 0) dmg.cool(f, k, EEL_PERIOD * 0.5);
+  };
+  function shockBodies(i, world, ring) { cbI = i; cbRing = ring; cbWorld = world; dmg.each(shockBody); }
+  const stingBody = (f, k, V) => {
+    const ax = d.x[cbI], ay = d.y[cbI] + 0.1;
+    if (dmg.cooling(V) || Math.hypot(V.x - ax, V.y - ay) >= ANEMONE_R + V.r * 0.6) return;
+    if (dmg.hitFound(f, k, 'anemone', ax, ay + 0.2) !== 0) dmg.cool(f, k, 1);
+  };
+  function stingBodies(i) { cbI = i; dmg.each(stingBody); }
+
+  /** Current jets also carry what is loose: every creature body the table lets them (damage.js push: a knocked-out body is thrown,
+   * a free swimmer drifts, a walker on its floor and anything anchored stay put) and the light props (bombs, rubble, finds, pots, relics). */
+  let jetI = 0, jetDt = 0;
+  const jetBody = (f, k, V) => {
+    const fo = jetForceAt(d, jetI, V.x, V.y);
+    if (fo) dmg.push(f, k, V, fo.fx, fo.fy, jetDt, JET_DRIFT);
+  };
   function jetsPush(dt) {
     const pd = props ? props.data : null;
     for (let i = 0; i < d.n; i++) {
       if (d.kind[i] !== HZ_JET) continue;
-      if (enemyList) {
-        for (let k = 0; k < enemyList.length; k++) {
-          const e = enemyList[k];
-          if (!e.moving || e.dead || e.ghost || e.kind === 'beholder') continue;
-          const stunned = e.stun > 0;
-          if (!stunned && e.kind !== 'piranha' && e.kind !== 'manta') continue; // a crab walks the floor; urchins and cannons are bolted down
-          const f = jetForceAt(d, i, e.x, e.y);
-          if (!f) continue;
-          if (stunned) { e.kvx += f.fx * dt; e.kvy += f.fy * dt; } else { e.x += f.fx * JET_DRIFT * dt; e.y += f.fy * JET_DRIFT * dt; }
-        }
-      }
+      if (dmg) { jetI = i; jetDt = dt; dmg.each(jetBody); }
       if (pd) {
         for (let k = 0; k < pd.n; k++) {
           if (!pd.alive[k] || pd.state[k] !== PS_FREE) continue;
@@ -501,10 +522,12 @@ export function createHazards(props = null) {
     // the body itself
     const py = Math.max(ey - EEL_HALF_BODY, Math.min(ey + EEL_HALF_BODY, octo.y));
     if (Math.hypot(octo.x - ex, octo.y - py) < 0.3 + octo.radius * 0.8) shockOcto(octo, i, ex, ey);
+    if (dmg) shockBodies(i, world, d.r[i]);
   }
 
   function updateAnemone(i, octo) {
     if (Math.hypot(octo.x - d.x[i], octo.y - (d.y[i] + 0.1)) < ANEMONE_R + octo.radius * 0.6) hurt(octo, i, d.x[i], d.y[i] + 0.3);
+    if (dmg) stingBodies(i);
   }
 
   return {
@@ -516,9 +539,8 @@ export function createHazards(props = null) {
     /** r40: the Challenge Pool's vents push with this fraction of a jet's force (weak while the pool is idle, full during a wager). */
     setPoolGain(g) { d.gain = g; },
     /** One fixed step (after the octopus moved). Picks up the hazard records of every resident chunk once. */
-    update(dt, time, octo, world, resident, enemies = null) {
+    update(dt, time, octo, world, resident) {
       events.length = 0;
-      enemyList = enemies;
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -529,20 +551,17 @@ export function createHazards(props = null) {
       for (let i = 0; i < d.n; i++) {
         switch (d.kind[i]) {
           case HZ_JET: updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
-          case HZ_SPIKES: updateSpikes(i, octo, world); if (enemyList && killEnemy) spikeEnemies(i, world); break;
+          case HZ_SPIKES: updateSpikes(i, octo, world); if (dmg) spikeBodies(i, world); break;
           case HZ_ROCK: updateRock(i, dt, octo, world); break;
           case HZ_EEL: updateEel(i, dt, octo, world); break;
           case HZ_ANEMONE: updateAnemone(i, octo); break;
           default: break;
         }
       }
-      if (enemyList || props) jetsPush(dt);
+      if (dmg || props) jetsPush(dt);
     },
-    /**
-     * main.js wires the victims in: kill(e, reason) = enemies.kill (a corpse like any kill); bodies(x, y, r, octoCaused, mask) hurts
-     * NPCs and shopkeepers in the circle and returns the updated mask of who it has hit (one hit per boulder per victim).
-     */
-    setVictims(v) { killEnemy = v && v.kill || null; bodyHit = v && v.bodies || null; },
+    /** main.js wires the shared damage entry in (damage.js createDamage with every family registered); null: only the octopus. */
+    setDamage(dm) { dmg = dm || null; },
     /** A blast at (x, y): hanging rocks within `reach` (main.js passes the blast's knock reach, 2 radii: the shock, not only
      * their ceiling tile going) come loose. */
     blast(x, y, reach) {

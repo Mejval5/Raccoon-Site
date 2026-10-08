@@ -39,7 +39,9 @@ import { drawCorpses } from './corpses-draw.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { SHELL_NAMES, SK_PEARL, payout } from './shells.js';
+import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js';
+import { beholderTiming } from './beholder.js';
+import { swimDistance, swiftTarget, swiftLabel, createSwift, stepSwift } from './swift.js';
 import { mulberry32 } from './rng.js';
 import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, getHelpDone, setHelpDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
@@ -66,7 +68,9 @@ import { drawPool, drawPoolHost } from './pool-draw.js';
 import { createTalk, say, talkStep, talkAlpha, talking } from './speech.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { fetchShopItems, createShopState, shopStep, shopBlast, shopWares, keeperSeat } from './shop.js';
-import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, bombKeepers, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
+import { createDamage, proxyFamily } from './damage.js';
+import { CREATURES, SOURCES, resolveHit } from './creature-rules.js';
+import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
 import { createTutorialState, tutorialStep, tutorialActed } from './tutorial.js';
@@ -135,6 +139,20 @@ if (V2) {
   else if (at === 'end') run.state = S_END;
   else if (at === '1' || at === '2' || at === '3') { run.state = S_BIOME; run.level = Number(at); run.juice = run.juiceStart; }
 }
+// ?movetest=1: the hand-made movement test room (data/movement-test.json; tests/movement.test.js and movement-cdp.js swim
+// the same room). A safe state (no enemies, no hazards), built like the hub from an authored map, never by the generator.
+const MOVETEST = V2 && params.get('movetest') === '1';
+let movetestJson = null;
+if (MOVETEST) {
+  movetestJson = await (await fetch(new URL('../data/movement-test.json', import.meta.url))).json();
+  run.state = S_HUB;
+}
+/** The movement test room as a level: its exit (sealed in rock in the map) is moved off the map, so nothing leads out. */
+function movetestLevel() {
+  const lv = parseAuthoredMap(movetestJson);
+  lv.exitX = lv.exitY = -100;
+  return lv;
+}
 /**
  * r43: the same world as makeWorld, built in three tasks (generate the level, place its spawns, assemble the world) with a
  * timeout between them, so a transition never does all of it in one go. `done(world)` gets the result. Hub and tutorial are
@@ -186,6 +204,7 @@ function makeWorldSteps(done) {
 function makeWorld(runSeed) {
   if (!V2) return createWorld(runSeed);
   const spec = levelSpec(run);
+  if (MOVETEST) return createLevelWorld(spec.seed, 0, { level: movetestLevel() });
   if (spec.kind === 'hub') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.hub) });
   if (spec.kind === 'tutorial') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.tutorial) });
   if (spec.kind === 'rest') return createLevelWorld(spec.seed, 0, { level: parseAuthoredMap(authoredJson.rest) });
@@ -237,13 +256,19 @@ let decor = createDecor(world.width, world.chunkHeight);
 let enemies = createEnemies();
 const blockChunks = new Set(); // chunks whose 'block' spawns are already props
 let props = createProps(); // v2: rigid bodies (bombs, loot, falling rocks, rubble); idle in endless mode
-props.setEnemyKiller((e) => enemies.kill(e, 'crush'));
 let corpses = createCorpses(); // v2: what dead enemies and NPCs leave behind (sinks, settles, fades; no item drops)
 let hazards = createHazards(V2 ? props : null);
-if (V2) { enemies.setHazardData(hazards.data); wireHazardVictims(); }
+if (V2) enemies.setHazardData(hazards.data);
 let creatures = createCreatures(); // v2: the giant clam and the tentacle (creatures.js)
 let loot = createLoot(V2 ? props : null);
 let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
+// 2026-10-08: the shared damage entry (damage.js, creature-rules.js); see wireDamage
+const damage = createDamage();
+damage.register(proxyFamily('enemy', () => enemies.family));
+damage.register(proxyFamily('creature', () => creatures.dmgFam || (creatures.dmgFam = creatures.family(() => octo))));
+damage.register(proxyFamily('npc', () => (npcs ? npcs.family : null)));
+damage.register(proxyFamily('keeper', () => (V2 && run && run.state === S_BIOME ? keepers.dmgFam || (keepers.dmgFam = keeperFamily(keepers)) : null)));
+if (V2) wireDamage();
 // materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
 if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
 let embedBaked = null; // the embedded set whose tiles were last marked for a re-bake
@@ -269,6 +294,7 @@ const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
+let swift = null; // Swift Current (swift.js): this level's target time, earned flag and the moon shell it brought
 let questClear = null; // [x, y, ...]: enemies within QUEST_CLEAR_R of these are removed after the level's first enemy update (the encounter, r3: the visitors)
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
@@ -297,7 +323,7 @@ function arriveInHub() {
   if (key) { setStory(key, 1); story = getStory(); }
   run.shortcut3 = story.marlo >= DIVER_RUNS && !npcGone('marlo'); // killing Marlo closes his ring for a run
 }
-if (V2 && run.state === S_HUB) arriveInHub();
+if (V2 && run.state === S_HUB && !MOVETEST) arriveInHub();
 
 const sim = {
   time: 0,
@@ -427,7 +453,7 @@ function discover(id) {
 }
 window.addEventListener('pagehide', () => journal.flush());
 function discoverStatePlace() {
-  discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : run.state === S_REST ? 'place-rest' : null);
+  if (!MOVETEST) discover(run.state === S_HUB ? 'place-hub' : run.state === S_TUTORIAL ? 'place-tutorial' : run.state === S_BIOME ? 'place-shallows' : run.state === S_REST ? 'place-rest' : null);
 }
 
 // Manual (Esc/button) and automatic (hidden tab/blur) pause are tracked
@@ -627,7 +653,7 @@ function step(dt) {
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#e8f1e4' : '#9dffd8'; // r46: pale, natural specks, no gold
     particles.pickupSparkle(ev.x, ev.y, color);
-    if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } } }
+    if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } if (ev.sk === SK_MOON) ui.showToast('A moon shell, +' + ev.value + ' shells'); } }
   }
   if (octo.hearts < prevHearts) {
     sfx.hurt();
@@ -648,10 +674,11 @@ function step(dt) {
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
   if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) damage.tick(dt);
   if (V2) corpses.update(dt, world, hazards.data);
   if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world);
   if (V2 && !isSafeState(run)) {
-    hazards.update(dt, sim.time, octo, world, resident, enemyAll);
+    hazards.update(dt, sim.time, octo, world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
       else if (ev.type === 'hazardHurt') particles.deathPoof(ev.x, ev.y, ev.kind === 4 ? '#fff58a' : '#cfe8ff');
@@ -663,7 +690,7 @@ function step(dt) {
       }
     }
   }
-  if (V2 && !isSafeState(run)) { creatures.update(dt, octo, world, resident); handleCreatureEvents(); }
+  if (V2 && !isSafeState(run)) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
   if (V2 && !isSafeState(run)) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
@@ -672,9 +699,9 @@ function step(dt) {
   dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
   if (!transitioning) { // r41: nothing new starts while one level is being torn down
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
-    audio.setBeholderDread(dreadLevel);
+    audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
-  bombs.update(dt, world, octo, enemies);
+  bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
   if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
@@ -693,15 +720,19 @@ function step(dt) {
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
     if (V2 && shopSt) shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props);
-    if (V2 && run.state === S_BIOME) {
-      if (keepers.n) bombKeepers(keepers, ev.x, ev.y, BOMB_RADIUS);
-      if (world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
+    // 2026-10-08: the creatures, NPCs and keepers already took the blast inside bombs.update (damage.js blast, by the creature table)
+    if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
+    if (V2 && npcs) npcs.drain(onNpcEvent);
+    if (V2 && !isSafeState(run)) {
+      loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2);
+      for (let i = 0; i < creatures.data.n; i++) creatures.releaseNear(i, ev.x, ev.y, BOMB_RADIUS, octo); // a tentacle lets a held octopus go
+      handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS);
     }
-    if (V2 && npcs) { npcs.blast(ev.x, ev.y, BOMB_RADIUS); npcs.drain(onNpcEvent); } // V2-PLAN 16: friendly NPCs are hurt by blasts (rock shields them)
-    if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); creatures.blast(ev.x, ev.y, BOMB_RADIUS, octo); handleCreatureEvents(); if (quest) { questBlast(quest, ev.x, ev.y, BOMB_RADIUS); if (quest.status === ST_DONE && !quest.paid) payQuest(); } }
+    if (V2 && quest && quest.status === ST_DONE && !quest.paid) payQuest(); // r3: a bomb broke a cage whose critter stays
     if (V2 && (run.state === S_BIOME || run.state === S_REST)) peopleReact(ev.x, ev.y); // r3: the people about jump and shout
   }
   for (const ev of enemies.events) {
+    if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
@@ -899,6 +930,7 @@ function checkPerfStepDown() {
   }
 }
 
+let deathTintA = 0; // fade-in of the death tint (0..1)
 function render(alpha, frameMs) {
   checkPerfStepDown();
   const w = canvas.width, h = canvas.height;
@@ -920,6 +952,7 @@ function render(alpha, frameMs) {
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     preWallDraw: V2 ? v2PreWall : null,
     dreadLevel,
+    beholderWarn: V2 && isSafeState(run) ? null : enemies.beholderWarn(),
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     postOctoDraw: V2 ? v2People : null,
     followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : null,
@@ -930,8 +963,18 @@ function render(alpha, frameMs) {
   if (V2 && octo.dead) { // the clear hole in the death tint follows the body
     const a = octo.prevX + (octo.x - octo.prevX) * alpha, b = octo.prevY + (octo.y - octo.prevY) * alpha;
     const p = worldToScreen(renderer.camera, w, h, a, b);
-    ui.setDeathFocus(p.x / dpr, p.y / dpr, renderer.camera.pxPerUnit * 1.6 / dpr);
-  }
+    // The light tint with a clear hole around the body is drawn here on the game canvas: as a CSS radial gradient
+    // moved every frame it forced a full-screen repaint per frame and dropped the death screen to ~8 fps.
+    if (ui.gameOverPanelRect()) {
+      deathTintA = Math.min(1, deathTintA + frameMs / 400);
+      const hole = renderer.camera.pxPerUnit * 1.6;
+      const g = ctx.createRadialGradient(p.x, p.y, hole, p.x, p.y, hole * 2.6);
+      g.addColorStop(0, 'rgba(4, 12, 18, 0)');
+      g.addColorStop(1, `rgba(4, 12, 18, ${(0.3 * deathTintA).toFixed(3)})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    } else deathTintA = 0;
+  } else deathTintA = 0;
   if (entry && !holdDark) { // r45: the black hole closes on the whirlpool, on the entry's clock (interpolated like the octopus)
     const c = worldToScreen(renderer.camera, w, h, entry.cx, entry.cy);
     if (!entry.far) entry.far = farCorner(w, h, c.x, c.y);
@@ -966,17 +1009,16 @@ function deathFocus(w, h) {
   return { x0: x0 * dpr, y0: y0 * dpr, x1: x1 * dpr, y1: y1 * dpr, strict: ui.isGameOverShown() };
 }
 
-let hudStage = V2 ? stageLabel(run) : undefined;
+let hudStage = V2 ? (MOVETEST ? 'Test room' : stageLabel(run)) : undefined;
 const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
 loop.start();
-if (V2) showLevelTitle(); // the first level's title card
 
 function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
   timed('r:dispose', () => { sfx.stopAll(); renderer.dispose(); });
-  if (V2) hudStage = stageLabel(run);
+  if (V2) hudStage = MOVETEST ? 'Test room' : stageLabel(run);
   resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
@@ -989,13 +1031,13 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     decor = createDecor(world.width, world.chunkHeight);
     enemies = createEnemies();
     props = createProps();
-    props.setEnemyKiller((e) => enemies.kill(e, 'crush')); // materials: a falling block's victim leaves a corpse
     blockChunks.clear();
     corpses = createCorpses();
     hazards = createHazards(V2 ? props : null);
-    if (V2) { enemies.setHazardData(hazards.data); wireHazardVictims(); }
+    if (V2) enemies.setHazardData(hazards.data);
     creatures = createCreatures();
     loot = createLoot(V2 ? props : null);
+    if (V2) wireDamage();
     embedded = createEmbedded(V2 ? props : null);
     if (AUTO) autofire = createAutofire();
     bombs = createBombs(V2 ? props : null);
@@ -1143,7 +1185,7 @@ function v2Event(ev) {
 function showLevelTitle() {
   if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
   const t = levelTitle(run, !!Number(params.get('seed')) || (run.nextSeed !== null && run.nextSeed !== undefined));
-  if (t) ui.showTitle(t.text, t.sub, 1500);
+  if (t) ui.showTitle(t.text, t.sub, swift ? 2200 : 1500, swift ? swiftLabel(swift.target) : '');
 }
 
 /** Run summary shown on the death and biome-clear screens: stats, best runs (this run highlighted), the shortcut note. */
@@ -1297,7 +1339,9 @@ function stepV2(snap) {
   }
   if (run.state === S_REST) stepRest();
   if (run.state === S_BIOME || run.state === S_REST) stepPeople();
+  if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
   if (world.reachedExit(octo.x, octo.y)) {
+    if (run.state === S_BIOME) paySwiftShell();
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
     beginEntry(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT, lv.exitX, lv.exitY);
@@ -1320,7 +1364,7 @@ function stepV2(snap) {
   if (lv.prompts && lv.prompts.length) {
     let best = null, bd = 1e9;
     // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
-    const welcomed = run.state === S_HUB && (getMeta().clears | 0) >= 1;
+    const welcomed = run.state === S_HUB && !MOVETEST && (getMeta().clears | 0) >= 1;
     for (const p of welcomed ? [] : lv.prompts) {
       const d = Math.hypot(octo.x - p.x, octo.y - p.y);
       if (d < p.r && d < bd) { best = p; bd = d; }
@@ -1481,6 +1525,9 @@ function handleCreatureEvents() {
       default: break;
     }
   }
+  // handled once: a creature can now be hit between its own updates (a boulder, a block, a shock, a bomb, ink: damage.js), and
+  // this runs after each of those; without the clear a pearl or a corpse could be taken twice in one step
+  creatures.events.length = 0;
 }
 
 // --- round 31: loot and secrets (js/loot.js) ---
@@ -1637,7 +1684,7 @@ function stepRest() {
 
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null; swift = null;
   npcs = makeNpcs();
   if (run.state === S_BIOME || run.state === S_REST) for (let w = 1; w < 5; w++) { // r3: a grudge lasts the whole dive (the grotto too)
     if (people.grudge[w] === G_ANGRY) npcMoods.hostile[w] = 1;
@@ -1663,9 +1710,58 @@ function setupLevelExtras() {
     poolSts = planPools(world.level).map(createPoolState);
     for (const ps of poolSts) { ps.talk = createTalk(); ps.idle = createIdle(ps.plan.x); ps.outcome = ''; } // r3: the host speaks after a won wager
     setupKeepers(spec);
+    setupTimePressure(spec);
     setupPeople();
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
   }
+}
+
+// --- 2026-10-08: time pressure (beholder.js) and the Swift Current bonus (swift.js) ---
+/** This level's Beholder clock (sooner deeper down) and its Swift Current target from the swim distance to the whirlpool. */
+function setupTimePressure(spec) {
+  enemies.setBeholderTiming(beholderTiming(spec.levelIndex));
+  const lv = world.level;
+  if (lv.exitX < 0) return;
+  const ex = lv.exitX + 0.5, ey = lv.exitY + 0.5;
+  swift = createSwift(swiftTarget(swimDistance(world, world.startX, world.startY, ex, ey)), ex, ey);
+}
+/** In time: the current brings a moon shell up out of the whirlpool toward the octopus; a quiet toast and a journal count. */
+function earnSwift() {
+  const dx = octo.x - swift.exitX, dy = octo.y - swift.exitY, d = Math.hypot(dx, dy) || 1;
+  swift.shell = pickups.dropShell(swift.exitX, swift.exitY, dx / d * 7, dy / d * 7, SK_MOON) || null;
+  if (!swift.shell) paySwiftShell(); // no level chunk to drop into (never in a real level): straight into the purse
+  run.dive.swift = (run.dive.swift | 0) + 1;
+  discover('loot-swift'); journal.bump('loot-swift', STAT_COLLECTED);
+  for (let i = 0; i < 6; i++) particles.trailBubble(swift.exitX + (i - 2.5) * 0.15, swift.exitY);
+  sfx.chime();
+  ui.showToast('Swift Current: the tide brings up a moon shell', 2600, false, true);
+}
+/** Diving in without the moon shell: it comes along anyway (paid once). */
+function paySwiftShell() {
+  if (!swift || !swift.earned || swift.paid) return;
+  if (swift.shell && swift.shell.collected) return;
+  swift.paid = true;
+  if (swift.shell) swift.shell.collected = true;
+  gainShells(run, MOON_VALUE);
+  discover('item-moon'); journal.bump('item-moon', STAT_COLLECTED);
+}
+/** The Beholder's warning and entry: a quiet toast, the swell, a small shake when it comes. */
+function onBeholderEvent(ev) {
+  if (V2 && isSafeState(run)) return;
+  if (ev.type === 'beholderWarn') {
+    sfx.dreadSwell();
+    if (V2) ui.showToast('The water turns cold. Something is watching.', 3000, false, true);
+  } else {
+    sfx.beholderArrive();
+    particles.shakeFx(2.5, 0.5);
+    if (V2) discover('creature-beholder');
+  }
+}
+/** The drone under the warning: it swells as the Beholder's entry nears and holds while it is here. */
+function warnDrone() {
+  if (V2 && isSafeState(run)) return 0;
+  const w = enemies.beholderWarn();
+  return w.state === 1 ? 0.12 + 0.33 * w.p : w.state === 2 ? 0.3 : 0;
 }
 
 // --- 2026-10-07: shopkeepers and Spelunky aggro (shopkeeper.js, shop-aggro.js) ---
@@ -1692,40 +1788,12 @@ function setupKeepers(spec) {
  * Registered for other modules as shop-aggro.js shopAggro(reason). Returns true when this call angered them.
  */
 /**
- * Hazards that crush (hazards.js crushUnder): hurt every NPC and shopkeeper the falling boulder touches, once per victim (`mask` holds
- * the bits already hit: NPC list position k, keeper i as bit 8 + i). Returns the new mask.
- * SHOPKEEPER RULE: he takes the damage always, but turns on the octopus only when she caused the fall (octoCaused: she stood under
- * the boulder or her bomb released it). The keeper's 'hurt' / 'killed' events of an enemy-triggered boulder are marked quiet and
- * handleKeeperEvents skips shopAggro for them. (A keeper killed that way still leaves his shells.)
+ * 2026-10-08, unified creature rules: one shared damage entry (damage.js) for every creature body. Its families forward to this
+ * level's systems (proxyFamily), so they are registered once; the hazards, props, loot traps and bombs reach the bodies through it.
  */
-function boulderBodies(x, y, r, octoCaused, mask) {
-  const BOULDER_NPC_DMG = 4, BOULDER_KEEPER_DMG = 10;
-  if (npcs) {
-    const list = npcs.list();
-    for (let k = 0; k < list.length && k < 8; k++) {
-      const n = list[k];
-      if (n.dead || (mask & (1 << k)) || Math.hypot(n.x - x, n.cy - y) > r + 0.5) continue;
-      mask |= 1 << k;
-      npcs.hurt(n.who, BOULDER_NPC_DMG, 'rock', n.idx);
-    }
-  }
-  if (V2 && run && run.state === S_BIOME) {
-    for (let i = 0; i < keepers.n && i < 8; i++) {
-      if (keepers.mode[i] === KM_DEAD || (mask & (1 << (8 + i))) || Math.hypot(keepers.x[i] - x, keepers.y[i] - y) > r + KEEPER_R) continue;
-      mask |= 1 << (8 + i);
-      const before = keepers.events.length, mode0 = keepers.mode[i];
-      hitKeeper(keepers, i, HIT_HEAVY, BOULDER_KEEPER_DMG, x, y - 1);
-      if (!octoCaused) {
-        for (let e = keepers.events.length - 1; e >= before; e--) { if (keepers.events[e].type === 'roused') keepers.events.splice(e, 1); else keepers.events[e].quiet = true; }
-        if (keepers.mode[i] === KM_ANGRY && mode0 !== KM_ANGRY) { keepers.mode[i] = mode0; keepers.roused[i] = 0; } // not roused: the octopus did not do it
-      }
-    }
-  }
-  return mask;
+function wireDamage() {
+  hazards.setDamage(damage); props.setDamage(damage); loot.setDamage(damage);
 }
-/** Hand a fresh hazards instance the ways to kill enemies by the regular path and to hurt NPCs and shopkeepers. */
-function wireHazardVictims() { hazards.setVictims({ kill: (e, reason) => enemies.kill(e, reason), bodies: boulderBodies }); }
-
 function shopAggro(reason) {
   if (!V2 || !run || run.state !== S_BIOME) return false;
   const first = !run.shopAggro;
@@ -1820,7 +1888,7 @@ function handleKeeperEvents() {
       case 'hurt':
         if (ev.kind === HIT_BOMB || ev.kind === HIT_HEAVY) particles.deathPoof(ev.x, ev.y, '#f2a66a');
         else particles.bouncePuff(ev.x, ev.y - 0.3, 0, -1); // it glanced off his shell
-        if (!ev.quiet) shopAggro('hurt'); // quiet: an enemy's boulder hit him (boulderBodies)
+        if (!ev.quiet) shopAggro('hurt'); // quiet: the octopus is not to blame (a boulder a creature set off, spikes he ran onto: creature-rules.js)
         break;
       case 'killed':
         particles.deathPoof(ev.x, ev.y, '#e8622a'); particles.bombDebris(ev.x, ev.y);
@@ -2158,6 +2226,7 @@ function onShopEvent(ev) {
 if (V2) {
   ui.setGameOverLabels('The dark took you', 'Back to the hub');
   setupLevelExtras();
+  showLevelTitle(); // the first level's title card (after the extras: it carries the Swift Current target)
   discoverStatePlace();
   if (run.state === S_END) showEndScreen();
 }
@@ -2227,6 +2296,14 @@ window.__octo = {
   },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
+  /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
+  tileAt(tx, ty) { return world.tileAt(tx, ty); },
+  setLevelTime(t) { sim.time = +t || 0; return sim.time; },
+  timePressure() {
+    const w = enemies.beholderWarn(), tm = enemies.beholderTiming(), b = enemies.beholder();
+    return { time: sim.time, warn: { state: w.state, p: w.p, dx: w.dx, dy: w.dy }, timing: { ...tm }, beholder: b ? { x: b.x, y: b.y } : null, safe: isSafeState(run),
+      swift: swift ? { target: swift.target, earned: swift.earned, paid: swift.paid, exitX: swift.exitX, exitY: swift.exitY, shell: swift.shell ? { x: swift.shell.x, y: swift.shell.y, collected: swift.shell.collected } : null } : null };
+  },
   giveBombs(n) { octo.bombs = n | 0; return octo.bombs; },
   /** v2: the corpses (kind, position, velocity, state: 'free' | 'rest') for tests and review. */
   corpses() {
@@ -2405,6 +2482,24 @@ window.__octo = {
   shopAggro(reason) { return shopAggro(reason || 'test'); },
   /** Test hook: hit keeper i ('ink' | 'dash' | 'bomb' | 'heavy', damage before his resistance); returns the damage dealt. */
   hitKeeper(i, kind, dmg) { return hitKeeper(keepers, i, { ink: HIT_INK, dash: HIT_DASH, bomb: HIT_BOMB, heavy: HIT_HEAVY }[kind] || HIT_INK, dmg, octo.x, octo.y); },
+  /** 2026-10-08, unified creature rules: the creature and source tables (creature-rules.js), read-only. */
+  creatureRules() { return { creatures: CREATURES, sources: SOURCES }; },
+  /** What `src` would do to a body of `kind` (creature-rules.js resolveHit), as a plain object. */
+  resolveHit(kind, src, dmg = -1, shut = false) { return { ...resolveHit(kind, src, dmg, shut) }; },
+  /** Test / debug hook: hit body i of a damage family ('enemy' | 'creature' | 'npc' | 'keeper') with `src` through the shared
+   * entry, from just under it (byOcto: undefined = the source's own blame). Returns the damage dealt. */
+  damageHit(family, i, src, dmg = -1, byOcto = undefined) {
+    const f = damage.family(family);
+    if (!f) return 0;
+    if (f.begin) f.begin();
+    if (!f.view(i, damage.view)) return 0;
+    const r = damage.hit(f, i, src, damage.view.x, damage.view.y + 0.5, dmg, 1, byOcto);
+    if (npcs) npcs.drain(onNpcEvent);
+    handleCreatureEvents();
+    return r;
+  },
+  /** Test / debug hook: every live body the shared damage entry sees (family, index, kind, position). */
+  damageBodies() { const out = []; damage.each((f, i, V) => out.push({ family: f.name, i, kind: V.kind, x: V.x, y: V.y, r: V.r })); return out; },
   /** Test hook: stop / restart the real-time loop without the pause overlay (frame-by-frame captures with stepDraw). */
   freeze(on) { loop.setPaused(!!on); return loop.paused; },
   /** Test hook: n fixed steps, then draw one frame (works while frozen). */
