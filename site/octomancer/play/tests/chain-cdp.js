@@ -23,7 +23,7 @@ const VW = +(process.argv[4] || 1280), VH = +(process.argv[5] || 800);
     await page.setViewport({ width: VW, height: VH, deviceScaleFactor: phone ? 2 : 1, isMobile: phone, hasTouch: phone });
     // a level with a long flat floor stretch (12 open tiles over 12 solid ones, 4 open rows above, not the shop) close to the start
     let found = null;
-    for (const seed of [11, 23, 5, 42, 77, 101, 3, 8, 13, 19, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67]) {
+    for (const seed of [47, 11, 23, 5, 42, 77, 101, 3, 8, 13, 19, 29, 31, 37, 41, 43, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 103, 107, 109, 113]) {
       console.log('seed', seed);
       await page.goto(BASE + `?at=1&seed=${seed}`, { waitUntil: 'networkidle0', timeout: 60000 });
       await page.waitForFunction(() => window.__octo && !__octo.level().transitioning, { timeout: 90000 });
@@ -38,7 +38,7 @@ const VW = +(process.argv[4] || 1280), VH = +(process.argv[5] || 800);
           for (let k = 0; k < 12 && ok; k++) {
             ok = T(x + k, y) === 0 && T(x + k, y - 1) === 0 && T(x + k, y - 2) === 0 && T(x + k, y - 3) === 0;
             let f = -1;
-            for (let j = 1; j <= 3 && ok && f < 0; j++) if (T(x + k, y + j) !== 0) f = y + j;
+            for (let j = 1; j <= 4 && ok && f < 0; j++) if (T(x + k, y + j) !== 0) f = y + j;
             ok = ok && f > 0 && !shop(T(x + k, f));
             floor.push(f);
           }
