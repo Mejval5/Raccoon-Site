@@ -50,6 +50,11 @@ export const SPLAT_ABOVE = 0.25;    // tiles: and its centre must be this far ab
 export const SPLAT_HALF = 0.45;     // tiles: the octopus centre must be this close to the boulder's centre line
 export const SPLAT_FULL = 0.96;     // tiles: the body's height before it is squashed (the sprite's world size)
 export const SPLAT_THIN = 0.29;     // tiles: the pancake's height (SPLAT_FULL * octopus-draw's 0.3)
+export const ROCK_IMPACT_SPEED = 3;  // u/s: a falling boulder that hits something this fast and stops short (its fall speed halves) makes an impact (chain.js: it sets off what it hit)
+export const CHAIN_ROCK_SHAKE = 0.2;  // s: a boulder a chain shook loose rumbles this long before it drops (the octopus's own trigger: ROCK_SHAKE)
+export const CHAIN_EEL_CHARGE = 0.12; // s: an eel a chain set off crackles this long before its ring goes out
+export const JET_SURGE_T = 0.8;       // s: a jet a blast set off surges this long...
+export const JET_SURGE_GAIN = 2.2;    // ...pushing up to (1 + this) times as hard (falling off over the surge)
 export const PAIR_MIN_CLEAR = 5;    // jet + spikes: least clear rows in the stream, the room to dash sideways out of it
 export const PAIR_MAX_CLEAR = 12;   // ...and the farthest a ceiling may be
 export const SPIKE_COUNT = 6;       // spikes drawn along a strip (hazards-draw.js); the impaled body hangs between two of them
@@ -72,7 +77,7 @@ export function jetForceAt(d, i, x, y) {
   const rx = x - d.x[i], ry = y - d.y[i];
   const s = rx * dx + ry * dy, l = -rx * dy + ry * dx;
   if (s < 0 || s > d.len[i] || Math.abs(l) > JET_HALF_WIDTH) return 0;
-  const f = JET_ACC * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]);
+  const f = JET_ACC * (d.pool[i] ? d.gain : 1) * (1 - 0.5 * s / d.len[i]) * (d.surge && d.surge[i] > 0 ? 1 + JET_SURGE_GAIN * Math.min(1, d.surge[i] / JET_SURGE_T) : 1); // a surge (chain.js); hand-made data has none
   jetOut.fx = dx * f; jetOut.fy = dy * f;
   return jetOut;
 }
@@ -203,6 +208,9 @@ export function createHazards(props = null) {
     gain: 1, // the pool vents' current push scale (setPoolGain), read by jetForceAt
     cause: new Uint8Array(CAP), // rock: 1 = the octopus caused the fall (stood under it, or bombed it loose); 0 = an enemy or nothing did
     pool: new Uint8Array(CAP), // jet: one of the Challenge Pool's vents (its push is scaled by poolGain, weak until a wager runs)
+    // chain reactions (chain.js): the chain a rock / eel was set off by (-1: none) and its generation; a jet's surge timer
+    chain: new Int32Array(CAP).fill(-1), cdepth: new Uint8Array(CAP), surge: new Float32Array(CAP),
+    imp: new Uint8Array(CAP), // rock: its impact (chain.js) has happened this drop
   };
   const events = []; // {type:'rockLanded'|'rockFall'|'shock'|'hazardHurt', ...}, consumed by main.js each frame
   const loaded = new Set();
@@ -222,6 +230,7 @@ export function createHazards(props = null) {
     d.v[i] = rec.hk === HZ_EEL ? (i % 2 ? 1 : -1) * EEL_SPEED : 0;
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
     d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
+    d.chain[i] = -1; d.cdepth[i] = 0; d.surge[i] = 0; d.imp[i] = 0;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -438,6 +447,12 @@ export function createHazards(props = null) {
       if (octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
     }
     if (st === 2) crushUnder(i, d.x[i], d.y[i], sp);
+    // chain.js: the first hard stop of a drop (on the floor, on a bomb, on a clam) is its impact: it sets off what it hit
+    if (st === 2) {
+      const vy = pd.vy[pid], pv = d.v[i];
+      if (!d.imp[i] && pv > ROCK_IMPACT_SPEED && vy < pv * 0.45) impact(i);
+      d.v[i] = vy;
+    }
     // materials: a falling boulder smashes through a wooden platform or a bone block it hits (and keeps falling)
     if (st === 2 && world.smashTile && pd.vy[pid] > ROCK_SMASH_SPEED) {
       const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i] + ROCK_RADIUS + 0.05 + pd.vy[pid] * 0.04); // looks one or two steps ahead: the wall resolver stops it at contact
@@ -463,7 +478,13 @@ export function createHazards(props = null) {
     d.state[i] = 3;
     props.remove(pid); d.pid[i] = -1;
     if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
-    events.push({ type: 'rockLanded', x: d.x[i], y: d.y[i] });
+    events.push({ type: 'rockLanded', x: d.x[i], y: d.y[i], i, chain: d.chain[i], depth: d.cdepth[i], byOcto: d.cause[i] === 1 });
+  }
+
+  /** A falling boulder's impact (once per drop): chain.js sets off what it hit; a boulder a chain shook loose carries that chain. */
+  function impact(i) {
+    d.imp[i] = 1;
+    events.push({ type: 'rockImpact', x: d.x[i], y: d.y[i], i, chain: d.chain[i], depth: d.cdepth[i], byOcto: d.cause[i] === 1 });
   }
 
   function updateRock(i, dt, octo, world) {
@@ -490,13 +511,14 @@ export function createHazards(props = null) {
         if (d.y[i] >= d.a[i]) d.state[i] = 6;
         return;
       }
+      if (d.y[i] >= d.a[i] && !d.imp[i] && d.v[i] > ROCK_IMPACT_SPEED) impact(i);
       if (d.y[i] >= d.a[i]) {
         // never settle on top of the octopus: wait (state 4) until it swims clear
         if (Math.hypot(d.x[i] - octo.x, d.a[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; d.y[i] = d.a[i]; return; }
         d.state[i] = 3; d.y[i] = d.a[i];
         const tx = Math.floor(d.x[i]), ty = Math.floor(d.a[i]);
         if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
-        events.push({ type: 'rockLanded', x: d.x[i], y: d.a[i] });
+        events.push({ type: 'rockLanded', x: d.x[i], y: d.a[i], i, chain: d.chain[i], depth: d.cdepth[i], byOcto: d.cause[i] === 1 });
       }
     }
   }
@@ -511,7 +533,10 @@ export function createHazards(props = null) {
     d.t[i] = (prev + dt) % EEL_PERIOD;
     const c = d.t[i];
     d.state[i] = c >= EEL_CHARGE_AT && c < EEL_FIRE_AT ? 1 : 0;
-    if (prev < EEL_FIRE_AT && c >= EEL_FIRE_AT) { d.r[i] = 0.3; events.push({ type: 'shock', x: d.x[i], y: d.y[i] }); }
+    if (prev < EEL_FIRE_AT && c >= EEL_FIRE_AT) { // chain.js: a shock a chain set off carries that chain on (and the eel forgets it)
+      d.r[i] = 0.3; events.push({ type: 'shock', x: d.x[i], y: d.y[i], i, chain: d.chain[i], depth: d.cdepth[i] });
+      d.chain[i] = -1; d.cdepth[i] = 0;
+    }
     if (d.r[i] > 0) {
       d.r[i] += EEL_RING_SPEED * dt;
       if (d.r[i] > EEL_RING_MAX) d.r[i] = 0;
@@ -550,7 +575,7 @@ export function createHazards(props = null) {
       }
       for (let i = 0; i < d.n; i++) {
         switch (d.kind[i]) {
-          case HZ_JET: updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
+          case HZ_JET: if (d.surge[i] > 0) d.surge[i] = Math.max(0, d.surge[i] - dt); updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
           case HZ_SPIKES: updateSpikes(i, octo, world); if (dmg) spikeBodies(i, world); break;
           case HZ_ROCK: updateRock(i, dt, octo, world); break;
           case HZ_EEL: updateEel(i, dt, octo, world); break;
@@ -573,6 +598,55 @@ export function createHazards(props = null) {
         if (props.data.state[d.pid[i]] === PS_HELD) { props.release(d.pid[i]); d.cause[i] = 1; n++; } // her bomb
       }
       return n;
+    },
+    /**
+     * Chain reactions (chain.js): set hazard i off. A hanging boulder rumbles CHAIN_ROCK_SHAKE and drops; an eel crackles
+     * CHAIN_EEL_CHARGE and shocks; a jet surges JET_SURGE_T. ctx {chain, depth, byOcto} rides along to the boulder's landing and
+     * the eel's shock. False when it cannot go off now (already falling, already shocking).
+     */
+    trigger(i, ctx = null) {
+      if (i < 0 || i >= d.n) return false;
+      const k = d.kind[i];
+      if (k === HZ_ROCK) {
+        if (d.state[i] !== 0) return false;
+        if (props && d.pid[i] >= 0 && props.data.state[d.pid[i]] !== PS_HELD) return false;
+        d.state[i] = 1; d.t[i] = CHAIN_ROCK_SHAKE; d.cause[i] = ctx && ctx.byOcto ? 1 : 0;
+      } else if (k === HZ_EEL) {
+        if (d.t[i] >= EEL_FIRE_AT - CHAIN_EEL_CHARGE && d.t[i] < EEL_FIRE_AT) { /* about to shock anyway: it joins the chain */ }
+        else if (d.r[i] > 0) return false; // its ring is still out
+        else d.t[i] = EEL_FIRE_AT - CHAIN_EEL_CHARGE;
+      } else if (k === HZ_JET) {
+        d.surge[i] = JET_SURGE_T;
+        events.push({ type: 'surge', x: d.x[i] + d.dx[i] * 0.6, y: d.y[i] + d.dy[i] * 0.6, i });
+        return true;
+      } else return false;
+      d.chain[i] = ctx && ctx.chain >= 0 ? ctx.chain : -1; d.cdepth[i] = ctx ? ctx.depth | 0 : 0;
+      if (k === HZ_ROCK) events.push({ type: 'rockFall', x: d.x[i], y: d.y[i], i });
+      return true;
+    },
+    /** The chain.js target adapters: 'rock' (hanging boulders), 'eel', 'jet' (the nearest point of its stream). */
+    chainTargets() {
+      const api = this;
+      const adapter = (name, hk, test) => ({
+        name,
+        each(x, y, r, cb) {
+          for (let i = 0; i < d.n; i++) {
+            if (d.kind[i] !== hk || !test(i)) continue;
+            let px = d.x[i], py = d.y[i];
+            if (hk === HZ_JET) { // the stream is a segment from the mouth along (dx, dy)
+              const s = Math.max(0, Math.min(d.len[i], (x - px) * d.dx[i] + (y - py) * d.dy[i]));
+              px += d.dx[i] * s; py += d.dy[i] * s;
+            }
+            if (Math.hypot(px - x, py - y) <= r) cb(i, px, py);
+          }
+        },
+        fire: (i, ctx) => api.trigger(i, ctx),
+      });
+      return [
+        adapter('rock', HZ_ROCK, (i) => d.state[i] === 0 && (!props || d.pid[i] < 0 || props.data.state[d.pid[i]] === PS_HELD)),
+        adapter('eel', HZ_EEL, (i) => d.r[i] <= 0),
+        adapter('jet', HZ_JET, (i) => d.surge[i] <= 0),
+      ];
     },
     /** Hazard codes within `range` of (x,y) with a clear line (journal sightings). */
     seen(x, y, range, isSolid) {

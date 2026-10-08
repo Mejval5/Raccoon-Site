@@ -34,6 +34,8 @@ import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
 import { beholderTiming, beholderSpeed, planBeholderEntry, driftBeholder } from './beholder.js';
 import { resolveHit, rowOf, dashKillable, SOURCES, PH_ANCHORED, PH_WALK } from './creature-rules.js';
 import { octoHit } from './damage.js';
+import { FRENZY_R } from './creature-rules.js';
+import { LURE_ARRIVE } from './infight.js';
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -395,6 +397,7 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
       ...base, radius: PIRANHA_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), moving: true,
       dir, face: dir, chasing: false, baseX: x, baseY: y, flipCd: 0, stuck: 0, st: PS_PATROL, t: 0.3 + rnd(base) * 0.7,
       lx: 0, ly: 0, ltrav: 0, lmax: 0, rvx: 0, rvy: 0,
+      tg: 0, tgid: 0, tgx: 0, tgy: 0, scan: 0, frenzy: 0, // infight.js frenzy: tg 1 = it hunts body / corpse tgid instead of the octopus
     };
   }
   if (kind === 'cannon') {
@@ -487,6 +490,10 @@ export function createEnemies() {
   let cloak = null; // spells.js ink clouds (v2): a creature whose line to the octopus passes through one has lost it
   /** The octopus is hidden from `e` by an ink cloud (inside one, or one is in the way). */
   function lost(e, octo) { return cloak !== null && cloak.hides(e.x, e.y, octo.x, octo.y); }
+  let inf = null; // infight.js (v2): the INFIGHT rules (frenzy, projectiles) and the lures; null = creatures ignore each other entirely
+  let curWorld = null;
+  const solidAt = (tx, ty) => curWorld.isSolid(tx, ty);
+  const losSolid = (x0, y0, x1, y1) => hasLineOfSight(solidAt, x0, y0, x1, y1);
   function allEnemies() {
     const out = [];
     for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) out.push(list[i]);
@@ -564,6 +571,7 @@ export function createEnemies() {
       if (!e || e.dead || e.ghost) return false;
       V.kind = e.kind; V.x = e.x; V.y = e.y; V.r = e.radius || 0.4; V.vx = e.vx || 0; V.vy = e.vy || 0; V.stun = e.stun || 0;
       V.shut = false; V.cool = e.hzCool || 0; V.blame = e.blame || 0;
+      V.id = e.id; V.wound = e.hp !== undefined && e.hp < e.maxHp ? 1 : 0;
       return true;
     },
     apply(i, src, fx, fy, dmg, knockScale) { return applyHit(famList[i], src, fx, fy, dmg, knockScale); },
@@ -627,57 +635,94 @@ export function createEnemies() {
     const k = hit ? 3.2 : 1.2;
     e.rvx = -e.lx * k; e.rvy = -e.ly * k;
   }
+  /** infight.js: the target of a frenzy (e.tg = 1: a bleeding or knocked-out body, or a fresh corpse) is still there? Moves (e.tgx, e.tgy). */
+  function trackPrey(e) {
+    if (!inf || !inf.locate(e.tgid)) return false;
+    e.tgx = inf.target.x; e.tgy = inf.target.y;
+    return true;
+  }
+  function piranhaToPatrol(e, t) {
+    e.st = PS_PATROL; e.t = t; e.tell = 0; e.flipCd = 0.4; e.stuck = 0; e.tg = 0;
+    e.dir = rnd(e) < 0.5 ? -1 : 1; e.face = e.dir; e.baseX = e.x; e.baseY = e.y; e.chasing = false;
+  }
   function updatePiranha(e, dt, octo, world) {
     const px = e.x, py = e.y;
     const seesOcto = () => dist(e.x, e.y, octo.x, octo.y) < PIRANHA_NOTICE && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y);
     // ink: a winding-up or lunging piranha that loses the octopus gives up and wanders off from where it is
-    if ((e.st === PS_WINDUP || e.st === PS_LUNGE) && lost(e, octo)) {
-      e.st = PS_PATROL; e.t = 1.2; e.tell = 0; e.flipCd = 0.4; e.stuck = 0;
-      e.dir = rnd(e) < 0.5 ? -1 : 1; e.face = e.dir; e.baseX = e.x; e.baseY = e.y; e.chasing = false; e.lostInk = (e.lostInk | 0) + 1;
+    if (!e.tg && (e.st === PS_WINDUP || e.st === PS_LUNGE) && lost(e, octo)) {
+      piranhaToPatrol(e, 1.2); e.lostInk = (e.lostInk | 0) + 1;
     }
+    // a frenzy whose prey is gone (dead and stripped, eaten by another, out of reach): back to its beat
+    if (e.tg && e.st === PS_WINDUP && !trackPrey(e)) piranhaToPatrol(e, 0.3);
     e.chasing = e.st === PS_WINDUP || e.st === PS_LUNGE;
     switch (e.st) {
       case PS_PATROL: {
         e.ph += dt * 1.3;
         e.t = Math.max(0, e.t - dt);
         e.flipCd = Math.max(0, e.flipCd - dt);
-        e.vx = e.dir * PIRANHA_IDLE_SPEED;
-        e.vy = Math.cos(e.ph) * 0.35 + Math.max(-0.6, Math.min(0.6, (e.baseY - e.y) * 0.5));
-        e.x += e.vx * dt; e.y += e.vy * dt;
-        collideWithWalls(e, world);
-        // turn at the end of its range, or when the hull would meet rock (probe = nose + body radius, not a tile centre);
-        // a piranha that is not getting anywhere turns too (smoothed rims bulge a little past the tile edge)
-        const moved = Math.abs(e.x - px);
-        e.stuck = moved < 0.55 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0; // r36: 0.3 let one hovering at 0.01 per step through
-        const far = (e.x - e.baseX) * e.dir > PIRANHA_PATROL_RANGE;
-        if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_TURN_PROBE, 0.45) || enemyAhead(e, e.dir, 0.4) || hazardAhead(e, e.dir, 0.4))) {
-          e.dir = -e.dir; e.flipCd = 0.6; e.stuck = 0;
+        if (inf && inf.lureAt(e.x, e.y)) {
+          // the target override (a lure, infight.setLure): it swims to the point of interest instead of its beat, and hovers there
+          const L = inf.lurePoint, ld = dist(e.x, e.y, L.x, L.y);
+          if (ld > LURE_ARRIVE) chaseWithPath(e, world, L.x, L.y, PIRANHA_IDLE_SPEED * 1.4, dt);
+          else { e.vx = Math.cos(e.ph) * 0.3; e.vy = Math.sin(e.ph * 1.3) * 0.2; e.x += e.vx * dt; e.y += e.vy * dt; }
+          collideWithWalls(e, world);
+          e.baseX = e.x; e.baseY = e.y; e.stuck = 0;
+          if (Math.abs(e.vx) > 0.05) e.dir = sgn(e.vx, e.dir);
+        } else {
+          e.vx = e.dir * PIRANHA_IDLE_SPEED;
+          e.vy = Math.cos(e.ph) * 0.35 + Math.max(-0.6, Math.min(0.6, (e.baseY - e.y) * 0.5));
+          e.x += e.vx * dt; e.y += e.vy * dt;
+          collideWithWalls(e, world);
+          // turn at the end of its range, or when the hull would meet rock (probe = nose + body radius, not a tile centre);
+          // a piranha that is not getting anywhere turns too (smoothed rims bulge a little past the tile edge)
+          const moved = Math.abs(e.x - px);
+          e.stuck = moved < 0.55 * PIRANHA_IDLE_SPEED * dt ? e.stuck + dt : 0; // r36: 0.3 let one hovering at 0.01 per step through
+          const far = (e.x - e.baseX) * e.dir > PIRANHA_PATROL_RANGE;
+          if (e.flipCd <= 0 && (far || e.stuck > 0.2 || blockedAhead(world, e.x, e.y, e.dir, PIRANHA_TURN_PROBE, 0.45) || enemyAhead(e, e.dir, 0.4) || hazardAhead(e, e.dir, 0.4))) {
+            e.dir = -e.dir; e.flipCd = 0.6; e.stuck = 0;
+          }
         }
         e.face = e.dir;
         if (e.t <= 0 && seesOcto()) {
-          e.st = PS_WINDUP; e.t = PIRANHA_WINDUP; e.vx = e.vy = 0; e.tell = 0;
+          e.st = PS_WINDUP; e.t = PIRANHA_WINDUP; e.vx = e.vy = 0; e.tell = 0; e.tg = 0;
           e.face = sgn(octo.x - e.x, e.face);
+        } else if (inf && e.t <= 0 && (e.scan = (e.scan || 0) - dt) <= 0) {
+          // INFIGHT.frenzy: it smells blood (a bleeding or knocked-out body, a fresh corpse) and goes for it like for the octopus
+          e.scan = 0.25;
+          if (inf.prey(e.x, e.y, FRENZY_R, e.id, losSolid)) {
+            e.tg = 1; e.tgid = inf.target.id; e.tgx = inf.target.x; e.tgy = inf.target.y;
+            e.st = PS_WINDUP; e.t = PIRANHA_WINDUP * 0.6; e.vx = e.vy = 0; e.tell = 0; e.frenzy = (e.frenzy | 0) + 1;
+            e.face = sgn(e.tgx - e.x, e.face);
+          }
         }
         break;
       }
       case PS_WINDUP: {
         e.vx = e.vy = 0;
-        e.t -= dt; e.tell = Math.min(1, 1 - e.t / PIRANHA_WINDUP);
-        e.face = sgn(octo.x - e.x, e.face);
+        const wind = e.tg ? PIRANHA_WINDUP * 0.6 : PIRANHA_WINDUP;
+        const ax = e.tg ? e.tgx : octo.x, ay = e.tg ? e.tgy : octo.y;
+        e.t -= dt; e.tell = Math.min(1, 1 - e.t / wind);
+        e.face = sgn(ax - e.x, e.face);
         if (e.t <= 0) {
-          const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
+          const dx = ax - e.x, dy = ay - e.y, d = Math.hypot(dx, dy) || 1;
           e.lx = dx / d; e.ly = dy / d; e.lmax = d + 1.5; e.ltrav = 0;
           e.st = PS_LUNGE; e.t = PIRANHA_LUNGE_MAX; e.tell = 0; e.face = sgn(e.lx, e.face);
         }
         break;
       }
       case PS_LUNGE: {
+        // a frenzy lunge homes on its prey (a bleeding fish keeps swimming); a lunge at the octopus stays locked (she can dodge it)
+        if (e.tg && trackPrey(e)) { const dx = e.tgx - e.x, dy = e.tgy - e.y, d = Math.hypot(dx, dy); if (d > 0.3) { e.lx = dx / d; e.ly = dy / d; e.face = sgn(e.lx, e.face); } }
         e.vx = e.lx * PIRANHA_LUNGE_SPEED; e.vy = e.ly * PIRANHA_LUNGE_SPEED;
         e.x += e.vx * dt; e.y += e.vy * dt;
         collideWithWalls(e, world);
         const moved = Math.hypot(e.x - px, e.y - py);
         e.ltrav += moved; e.t -= dt;
-        if (moved < 0.4 * PIRANHA_LUNGE_SPEED * dt || e.t <= 0 || e.ltrav >= e.lmax) piranhaRecover(e, false);
+        // a frenzy lunge bites at its nose: the corpse it hunts, or any prey (bleeding, knocked out) it meets; a healthy body it
+        // swims into is left alone (touch enemies never hurt each other). The nose is the sprite's (PIRANHA_BODY_HALF_LEN): the
+        // separation pass keeps two piranhas about 1.8 tiles apart side by side, so a bite circle nearer the centre never lands
+        if (e.tg && inf && inf.bite(e.tgid, e.x + e.lx * PIRANHA_BODY_HALF_LEN, e.y + e.ly * PIRANHA_BODY_HALF_LEN, 0.6, e.id)) { piranhaRecover(e, true); e.tg = 0; break; }
+        if (moved < 0.4 * PIRANHA_LUNGE_SPEED * dt || e.t <= 0 || e.ltrav >= e.lmax) { piranhaRecover(e, false); e.tg = 0; }
         break;
       }
       default: { // PS_RECOVER
@@ -713,7 +758,8 @@ export function createEnemies() {
       if (!target) { e.st = CN_TRACK; e.tell = 0; return; } // lost the line: stand down
       if (e.t <= 0) {
         const ca = Math.cos(e.aim), sa = Math.sin(e.aim);
-        shots.push({ x: e.x + ca * 0.5, y: e.y + sa * 0.5, vx: ca * CANNON_SHOT_SPEED, vy: sa * CANNON_SHOT_SPEED, radius: CANNON_SHOT_RADIUS, dead: false });
+        // owner: the cannon itself is never hit by its own shot; oc: the octopus is to blame for this shot (0: a future reflect spell sets it)
+        shots.push({ x: e.x + ca * 0.5, y: e.y + sa * 0.5, vx: ca * CANNON_SHOT_SPEED, vy: sa * CANNON_SHOT_SPEED, radius: CANNON_SHOT_RADIUS, dead: false, owner: e.id, oc: 0 });
         events.push({ type: 'shotFired', kind: 'cannon' });
         e.st = CN_RELOAD; e.t = CANNON_RELOAD; e.tell = 0;
       }
@@ -740,7 +786,13 @@ export function createEnemies() {
       case CS_WALK: {
         // sinks if the floor under it was bombed away
         if (groundDy === 1 && !world.isSolid(e.x, e.y + 0.6)) { e.y += 2.5 * dt; e.vy = 2.5; } else e.vy = 0;
-        const step = e.dir * e.speed * dt;
+        // the target override (a lure, infight.setLure) on about its level: it walks its ledge toward it, and waits under it
+        let lureStop = false;
+        if (inf && e.flipCd <= 0 && inf.lureAt(e.x, e.y) && Math.abs(inf.lurePoint.y - e.y) < 3) {
+          const lx = inf.lurePoint.x - e.x;
+          if (Math.abs(lx) < LURE_ARRIVE * 0.6) lureStop = true; else e.dir = lx > 0 ? 1 : -1;
+        }
+        const step = lureStop ? 0 : e.dir * e.speed * dt;
         const cx0 = e.x;
         e.x += step;
         const aheadX = e.x + e.dir * (e.radius + 0.15);
@@ -752,7 +804,8 @@ export function createEnemies() {
         e.vx = e.dir * e.speed; e.face = e.dir;
         collideWithWalls(e, world);
         // r36 stuck detector (as the piranha and manta have): a crab that is not getting anywhere turns round
-        e.stuck = Math.abs(e.x - cx0) < 0.55 * e.speed * dt ? e.stuck + dt : 0;
+        e.stuck = !lureStop && Math.abs(e.x - cx0) < 0.55 * e.speed * dt ? e.stuck + dt : 0;
+        if (lureStop) e.vx = 0;
         if (e.stuck > 0.4) { e.dir = -e.dir; e.face = e.dir; e.stuck = 0; e.flipCd = 0.5; }
         if (e.cool <= 0 && near) { e.st = CS_PAUSE; e.t = CRAB_PAUSE; e.dir = sgn(octo.x - e.x, e.dir); e.face = e.dir; e.vx = 0; e.tell = 0; }
         break;
@@ -792,6 +845,14 @@ export function createEnemies() {
     const glideY = e.baseY + Math.sin(e.ph) * MANTA_SINE_AMPLITUDE;
     switch (e.st) {
       case MA_GLIDE: {
+        if (inf && inf.lureAt(e.x, e.y)) {
+          // the target override (a lure, infight.setLure): its glide line moves to the point of interest
+          const L = inf.lurePoint, k = MANTA_SPEED * dt;
+          e.baseX += Math.max(-k, Math.min(k, L.x - e.baseX));
+          const by = e.baseY + Math.max(-k * 0.5, Math.min(k * 0.5, L.y - e.baseY));
+          if (mantaFits(world, e.x, by)) e.baseY = by;
+          if (e.flipCd <= 0 && Math.abs(L.x - e.x) > 1.5 && sgn(L.x - e.x) !== e.dir) { e.dir = -e.dir; e.flipCd = 0.6; }
+        }
         e.vx = e.dir * MANTA_SPEED;
         let nx = e.x + e.vx * dt;
         // wide back-and-forth around its spawn point; it turns while a wingtip (plus margin) is still clear of rock
@@ -854,6 +915,13 @@ export function createEnemies() {
       if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
         octoHit(octo, 'shot', s.x, s.y, 'shot');
         s.dead = true;
+        continue;
+      }
+      // INFIGHT.projectile: the first other body it touches takes the shot (a fish, a crab, Marlo, the keeper; a spike or a shut
+      // shell just stops it); never its own cannon
+      if (inf && inf.projectile('shot', s.x, s.y, s.radius, s.owner || 0, s.oc ? true : undefined) >= 0) {
+        s.dead = true;
+        events.push({ type: 'shotHit', x: s.x, y: s.y });
       }
     }
     shots = shots.filter((s) => !s.dead);
@@ -896,6 +964,8 @@ export function createEnemies() {
     setHazardData(d) { hazData = d; },
     /** v2: the level's ink clouds (spells.js createInkClouds; anything with `hides(ex, ey, ox, oy)`), or null. */
     setInkClouds(c) { cloak = c; },
+    /** v2: the enemy-infighting runtime (infight.js createInfight): frenzies, projectiles hitting creatures, lures. null: none. */
+    setInfight(x) { inf = x; },
     events,
     /** All resident enemies plus the Beholder (if spawned) and any hit-stop ghosts, for rendering. */
     all() {
@@ -915,6 +985,7 @@ export function createEnemies() {
     /** One fixed step. `props` (v2, optional): resting bombs make a crab turn around. */
     update(dt, time, octo, world, resident, props = null) {
       events.length = 0;
+      curWorld = world;
       for (let i = ghosts.length - 1; i >= 0; i--) { ghosts[i].t -= dt; if (ghosts[i].t <= 0) ghosts.splice(i, 1); }
       const liveChunks = new Set(resident.map((r) => r.index));
       for (const { index, yOffset, chunk } of resident) spawnFromSlots(index, chunk, yOffset);
@@ -983,6 +1054,7 @@ export function createEnemies() {
       pruneDead();
 
       updateShots(dt, octo, world, hurtOctopus);
+      if (inf) pruneDead(); // a shot that killed an enemy (INFIGHT.projectile)
       updateBeholder(dt, octo, time, world);
       if (hpMode) {
         liveCache.length = 0;

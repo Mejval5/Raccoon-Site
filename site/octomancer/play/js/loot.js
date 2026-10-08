@@ -266,7 +266,8 @@ export function createLoot(props = null) {
   }
 
   let dmg = null; // 2026-10-08: the shared damage entry (damage.js): a trap's rock and spike burst hit every creature body too
-  return {
+  let lastOcto = null; // the octopus of the last update (a trap a chain springs can still catch her)
+  const api = {
     /** main.js: the shared damage entry (damage.js); null: the traps only reach the octopus. */
     setDamage(dm) { dmg = dm || null; },
     data: d,
@@ -300,6 +301,7 @@ export function createLoot(props = null) {
 
     /** One fixed step (after the octopus moved). Picks up the loot records of every resident chunk once. */
     update(dt, octo, world, resident) {
+      lastOcto = octo;
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -368,6 +370,37 @@ export function createLoot(props = null) {
       updateChase(dt, octo, world);
     },
 
+    /**
+     * Chain reactions (chain.js): set loot i off. A pot or a loot clam bursts (its shells spill, how 'chain'); a trapped
+     * chest's trap springs (a spike burst that hurts what is close, or the piranha swarm) and the chest stays shut, safe to
+     * open after. False when there is nothing to set off.
+     */
+    trigger(i, ctx = null) {
+      if (i < 0 || i >= d.n || d.state[i] !== ST_INTACT) return false;
+      const k = d.kind[i];
+      if (k === LK_CLAM || k === LK_POT) { breakObject(i, 'chain'); return true; }
+      if (k !== LK_CHEST || !d.aux[i]) return false;
+      const trap = d.aux[i];
+      d.aux[i] = TRAP_NONE;
+      if (trap === TRAP_SWARM) { events.push({ type: 'trap', trap: TRAP_SWARM, x: d.x[i], y: d.y[i] - 0.3, n: SWARM_SIZE, chain: true }); return true; }
+      events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i], chain: true });
+      const octo = lastOcto;
+      if (octo && !octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
+        if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
+      }
+      if (dmg) dmg.circle('trap', d.x[i], d.y[i], SPIKE_RADIUS - 0.5, !!(ctx && ctx.byOcto));
+      return true;
+    },
+    /** The chain.js target adapters: 'pot' (pots and loot clams) and 'trap' (chests with a trap still set). */
+    chainTargets() {
+      const near = (i, x, y, r) => Math.hypot(d.x[i] - x, d.y[i] - y) <= r;
+      return [
+        { name: 'pot', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.state[i] === ST_INTACT && (d.kind[i] === LK_CLAM || d.kind[i] === LK_POT) && near(i, x, y, r)) cb(i, d.x[i], d.y[i]); } },
+        { name: 'trap', fire: (i, ctx) => api.trigger(i, ctx),
+          each(x, y, r, cb) { for (let i = 0; i < d.n; i++) if (d.state[i] === ST_INTACT && d.kind[i] === LK_CHEST && d.aux[i] && near(i, x, y, r)) cb(i, d.x[i], d.y[i]); } },
+      ];
+    },
     /** Loot codes within `range` of (x,y) with a clear line, for journal sightings (pockets count once revealed). */
     seen(x, y, range, isSolid) {
       const out = [];
@@ -378,4 +411,5 @@ export function createLoot(props = null) {
       return out;
     },
   };
+  return api;
 }

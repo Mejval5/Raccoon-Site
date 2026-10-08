@@ -135,12 +135,12 @@ async function setStage(page) {
       __octo.step(25); // they notice and wind up
       const before = __octo.enemies().filter((e) => ids.includes(e.id)).map((e) => e.st);
       __octo.input({ spell: true }); __octo.step(1); __octo.input(null); __octo.step(40);
-      const after = __octo.enemies().filter((e) => ids.includes(e.id)).map((e) => ({ st: e.st, x: e.x, y: e.y }));
+      const after = __octo.enemies().filter((e) => ids.includes(e.id)).map((e) => ({ st: e.st, x: e.x, y: e.y, tg: e.tg, frenzy: e.frenzy }));
       return { before, after, hides: after.map((e) => __octo.inkHides(e.x, e.y)) };
     });
     await sleep(150);
     await p2.screenshot({ path: OUT + 'cloud-1440.png' });
-    check('piranhas around the octopus lose it in the cloud (back to wandering, line of sight hidden)', lost.after.every((e) => e.st === 0) && lost.hides.every(Boolean), JSON.stringify(lost));
+    check('piranhas around the octopus lose it in the cloud (back to wandering, or off after a fresh corpse: the frenzy, line of sight hidden)', lost.after.every((e) => e.st === 0 || e.tg === 1 || e.frenzy > 0) && lost.hides.every(Boolean), JSON.stringify(lost));
     const hb = await p2.evaluate(() => { const r = document.querySelector('.octo-hotbar').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
     await p2.screenshot({ path: OUT + 'hotbar-1440.png', clip: { x: Math.max(0, hb.x - 30), y: Math.max(0, hb.y - 30), width: hb.w + 60, height: Math.min(900 - hb.y + 30, hb.h + 60) } });
     check('desktop: no page errors (screens)', p2.errs.length === 0, p2.errs.join(' | '));

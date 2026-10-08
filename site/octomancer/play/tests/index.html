@@ -263,6 +263,10 @@ await runNpcTests(assert);
 import { runCreatureRulesTests } from './creature-rules.test.js';
 await runCreatureRulesTests(assert);
 
+// --- 2026-10-08: enemy infighting, Spelunky style (projectiles hit anything, no touch-vs-touch, the few INFIGHT rules, lures) ---
+import { runInfightTests } from './infight.test.js';
+await runInfightTests(assert);
+
 // --- V2-PLAN 14: the death ragdoll (limp body as a prop, enemies keep attacking it, the death camera) ---
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
@@ -270,6 +274,10 @@ await runRagdollTests(assert);
 // --- 2026-10-08: time pressure (the Beholder as the Spelunky ghost) and the Swift Current bonus ---
 import { runTimePressureTests } from './timepressure.test.js';
 await runTimePressureTests(assert);
+
+// --- 2026-10-08: chain reactions (chain.js, creature-rules.js TRIGGERS) ---
+import { runChainTests } from './chain.test.js';
+await runChainTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
