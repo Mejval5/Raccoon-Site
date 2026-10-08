@@ -20,51 +20,26 @@
   color: var(--sv-ink-2);
 }
 
-/* ---------- Vertical / horizontal toggle ---------- */
-.dary-view {
-  display: inline-flex;
-  margin: 14px auto 0;
-  padding: 3px;
-  border: 1px solid rgba(226, 180, 95, 0.6);
-  border-radius: 999px;
-  background: #fbf6ec;
-}
-.dary-view-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--sv-ink-2);
-  font-family: var(--font-label);
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.dary-view-btn svg { width: 16px; height: 16px; }
-.dary-view-btn:hover { color: var(--sv-ink); }
-.dary-view-btn[aria-pressed="true"] {
-  background: var(--sv-gold-deep);
-  color: var(--sv-paper);
-}
-.dary-view-btn:focus-visible { outline: 2px solid var(--sv-gold); outline-offset: 2px; }
-
 /* ---------- The window the path scrolls in ---------- */
 .dary-frame {
   position: relative;
   width: min(100%, 560px);
   margin: 18px auto 8px;
 }
-/* On phones the vertical path stays narrower than the card, so a swipe
-   beside it still scrolls the page. */
-@media (max-width: 699px) {
-  [data-orientation="vertical"] .dary-frame { width: 78%; }
-}
+/* On phones the path runs sideways across the full screen width, edge to
+   edge past the card's padding; vertical swipes still scroll the page. */
 [data-orientation="horizontal"] .dary-frame { width: 100%; }
+@media (max-width: 699px) {
+  [data-orientation="horizontal"] .dary-frame {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+  }
+  [data-orientation="horizontal"] .dary-path {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+}
 
 .dary-path {
   position: relative;
@@ -91,6 +66,11 @@
   overscroll-behavior-x: contain;
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
   mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+}
+/* Mouse users drag the path around (see initDrag); text selection would get in the way. */
+@media (pointer: fine) {
+  .dary-path { cursor: grab; user-select: none; -webkit-user-select: none; }
+  .dary-path.is-dragging { cursor: grabbing; }
 }
 .dary-path:focus-visible {
   outline: 2px solid var(--sv-gold);
@@ -332,6 +312,11 @@
   box-shadow: 0 0 0 1px rgba(226, 180, 95, 0.8), 0 4px 14px rgba(58, 38, 20, 0.12);
 }
 .dary-level.is-next .dary-label-title { font-size: 0.95rem; }
+/* keep the card clear of the bigger, glowing next dot */
+.dary-level.is-next .dary-label.is-left { margin-right: 12px; }
+.dary-level.is-next .dary-label.is-right { margin-left: 12px; }
+.dary-level.is-next .dary-label.is-above { margin-bottom: 10px; }
+.dary-level.is-next .dary-label.is-below { margin-top: 10px; }
 
 @media (max-width: 420px) {
   .dary-label { padding: 4px 6px; }

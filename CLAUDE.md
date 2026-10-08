@@ -18,4 +18,4 @@ Older Octomancer docs (`octomancer-web/OVERNIGHT.md`, `MORNING-REPORT.md`, `PLAN
 
 ## Wedding page
 
-The invite page `/svatba/` is locked behind an invite key (`?k=<key>`). The key is in the gitignored `.svatba-key` file in the repo root; the repo only holds its SHA-256 hash, and this repo is public, so never commit the key. When reporting wedding-page changes, give Daniel the unlock URLs: `http://localhost:41089/svatba/?k=<key>`, the LAN one, and `https://raccoon.website/svatba/?k=<key>`.
+The invite page `/svatba/` is locked behind an invite key (`?k=<key>`). The key is in the gitignored `.svatba-key` file in the repo root; the repo only holds its SHA-256 hash, and this repo is public, so never commit the key. When reporting wedding-page changes, give Daniel the unlock URLs: `http://localhost:41089/svatba/?k=<key>`, the LAN one, and `https://raccoon.website/svatba/?k=<key>`. The gifts admin page is `https://raccoon.website/svatba/admin/#key=<admin key>`; that key is in the gitignored `.dary-admin-key` and must match the Firebase secret `DARY_ADMIN_KEY`.
