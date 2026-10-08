@@ -59,8 +59,8 @@ const VPS = [
       check(`[${vn}] swimming into the sealed dive bounces the octopus back (no entry)`, (await stage(page)) === 'Hub' && !(await page.evaluate(() => __octo.entry())) && s.bumpAt > 0 && !(await page.evaluate(() => __octo.transitioning())), JSON.stringify({ bump: s.bumpAt, y: pos.y }));
       const prompt = await page.evaluate(() => { const e = document.querySelector('.octo-prompt'); return e && e.style.display !== 'none' ? e.textContent : ''; });
       check(`[${vn}] the prompt at the dive says why`, /Sealed by kelp/.test(prompt) && /tutorial/.test(prompt), prompt);
-      // the tutorial ring: swim into it
-      await page.evaluate((x, y) => __octo.teleport(x, y), s.tutorialX + 0.5, s.tutorialY + 0.3);
+      // the tutorial ring: swim into it and press F (Daniel 2026-10-08: whirlpools are entered with the hand)
+      await page.evaluate((x, y) => { __octo.teleport(x, y); __octo.pressHand(); }, s.tutorialX + 0.5, s.tutorialY + 0.3);
       await page.waitForFunction(() => __octo.transitioning() || __octo.level().stage === 'Tutorial', { timeout: 6000 }).catch(() => {});
       await settle(page);
       check(`[${vn}] the hub's tutorial ring enters the tutorial`, (await stage(page)) === 'Tutorial');

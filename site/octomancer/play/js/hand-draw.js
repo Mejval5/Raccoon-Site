@@ -92,6 +92,25 @@ export function drawHeldArm(ctx, camera, cw, ch, ox, oy, hx, hy, r, t) {
   ctx.restore();
 }
 
+/** A key hint over a whirlpool (Daniel 2026-10-08: entered on F): a small bone-white tablet with the key on it, breathing. */
+export function drawKeyHint(ctx, camera, cw, ch, x, y, label, t) {
+  const ppu = camera.pxPerUnit;
+  toScreen(camera, cw, ch, x, y, A);
+  const s = ppu * 0.42, a = 0.75 + 0.25 * Math.sin(t * 3);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.translate(A.x, A.y + Math.sin(t * 2.2) * ppu * 0.04);
+  ctx.fillStyle = '#efe6d6'; ctx.strokeStyle = '#2a1c18'; ctx.lineWidth = Math.max(1, ppu * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.5, -s * 0.42); ctx.quadraticCurveTo(0, -s * 0.56, s * 0.5, -s * 0.44);
+  ctx.lineTo(s * 0.46, s * 0.44); ctx.quadraticCurveTo(0, s * 0.54, -s * 0.48, s * 0.42); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#2a1c18'; ctx.font = '700 ' + Math.round(s * 0.62) + 'px Quicksand, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, 0, s * 0.03);
+  ctx.restore();
+}
+
 /** The shopkeeper's '!' at (x, y) (above his head), k = 1 .. 0 as it fades. */
 export function drawKeeperNotice(ctx, camera, cw, ch, x, y, k, t) {
   const ppu = camera.pxPerUnit;
