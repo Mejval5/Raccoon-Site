@@ -245,6 +245,10 @@ await runNpcTests(assert);
 import { runRagdollTests } from './ragdoll.test.js';
 await runRagdollTests(assert);
 
+// --- 2026-10-08: time pressure (the Beholder as the Spelunky ghost) and the Swift Current bonus ---
+import { runTimePressureTests } from './timepressure.test.js';
+await runTimePressureTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);

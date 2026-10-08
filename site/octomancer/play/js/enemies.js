@@ -3,8 +3,8 @@
 // entries." Spawned from each chunk's `enemy-slot` spawns (gen.js, tagged by
 // placement: floor/ceiling/wall/open) via a small depth table, pooled and
 // despawned with the chunk that owns them. The Beholder is not chunk-owned:
-// it is a single, always-resident chaser that appears once at
-// BEHOLDER_SPAWN_TIME.
+// it is a single, always-resident chaser: a warning at beholderTiming().warn, then it enters off screen at .arrive
+// and drifts through rock toward the octopus (beholder.js, the Spelunky ghost).
 //
 // Sources: `NPC25` (urchin), `NPC21`/`SidePiranha` (piranha),
 // `NPC30`+`NPC32Ball` (cannon+shot), `Beholder_*` (46 frames) --
@@ -18,8 +18,7 @@
 import {
   URCHIN_RADIUS, PIRANHA_RADIUS, PIRANHA_CHASE_SPEED,
   PIRANHA_CHASE_RANGE, CANNON_RADIUS, CANNON_RANGE,
-  CANNON_SHOT_SPEED, CANNON_SHOT_RADIUS, BEHOLDER_SPAWN_TIME,
-  BEHOLDER_SPAWN_HEIGHT, BEHOLDER_RADIUS, BEHOLDER_SPEED, BEHOLDER_SPEED_RAMP,
+  CANNON_SHOT_SPEED, CANNON_SHOT_RADIUS, BEHOLDER_RADIUS,
   DASH_KILL_SPEED, ENEMY_MIN_DEPTH,
   CRAB_RADIUS, CRAB_SPEED_SLOW, CRAB_SPEED_FAST,
   HORNS_RADIUS,
@@ -30,6 +29,7 @@ import { inCameraView } from './cull.js';
 import { hurtOctopus, stunOctopus, killOctopus } from './octopus.js';
 import { resolveCircleVsGrid, resolveCircleVsSegments } from './physics.js';
 import { hasLineOfSight, findSmoothPath, resetPathBudget } from './pathfind.js';
+import { beholderTiming, beholderSpeed, planBeholderEntry, driftBeholder, beholderTouch } from './beholder.js';
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -422,44 +422,6 @@ function blockedAhead(world, x, y, dir, reach, halfH) {
   return false;
 }
 
-// its body is 1.8 across but it squeezes through the 2-tile passages the level generator guarantees: the wall collision
-// uses a smaller circle (it used to wedge on rim corners with a clear straight line)
-const BEHOLDER_WALL_R = 0.55;
-const BEHOLDER_CLEAR = 1; // tiles of open space around its spawn cell (its body is 1.8 across)
-/** v2: the open cell, reachable from the octopus, nearest to `BEHOLDER_SPAWN_HEIGHT` above it but at least 13 tiles away
- * (off screen on every viewport). Null when the world has no grid or nothing fits. */
-function findBeholderSpawn(octo, world) {
-  const W = world.width, H = world.height;
-  if (!W || !H || typeof world.isSolid !== 'function') return null;
-  const sx = Math.floor(octo.x), sy = Math.floor(octo.y);
-  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return null;
-  const seen = new Uint8Array(W * H), queue = new Int32Array(W * H);
-  let qh = 0, qt = 0;
-  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !world.isSolid(x + 0.5, y + 0.5);
-  if (!open(sx, sy)) return null;
-  seen[sy * W + sx] = 1; queue[qt++] = sy * W + sx;
-  const aimX = octo.x, aimY = octo.y - BEHOLDER_SPAWN_HEIGHT;
-  let best = -1, bestScore = Infinity;
-  while (qh < qt) {
-    const i = queue[qh++], x = i % W, y = (i / W) | 0;
-    const d = Math.hypot(x + 0.5 - octo.x, y + 0.5 - octo.y);
-    if (d >= 13) {
-      let clear = true;
-      for (let dy = -BEHOLDER_CLEAR; dy <= BEHOLDER_CLEAR && clear; dy++) for (let dx = -BEHOLDER_CLEAR; dx <= BEHOLDER_CLEAR; dx++) if (!open(x + dx, y + dy)) { clear = false; break; }
-      if (clear) {
-        const sc = Math.hypot(x + 0.5 - aimX, y + 0.5 - aimY);
-        if (sc < bestScore) { bestScore = sc; best = i; }
-      }
-    }
-    for (let k = 0; k < 4; k++) {
-      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
-      if (!open(nx, ny) || seen[ny * W + nx]) continue;
-      seen[ny * W + nx] = 1; queue[qt++] = ny * W + nx;
-    }
-  }
-  return best < 0 ? null : { x: (best % W) + 0.5, y: ((best / W) | 0) + 0.5 };
-}
-
 /** Nudge a body that ended up inside rock to the nearest open cell centre (spiral over 4 tiles). */
 function ejectFromRock(e, world) {
   const cx = Math.floor(e.x), cy = Math.floor(e.y);
@@ -490,6 +452,8 @@ export function createEnemies() {
   /** @type {any[]} */
   let shots = [];
   let beholder = null;
+  let timing = beholderTiming(0);
+  const warn = { state: 0, p: 0, dx: 0, dy: 0, pref: 0 };
   const ghosts = []; // a dash-killed enemy lingers 60 ms, flashing white, while the sim freezes (hit-stop)
   let tileVer = -1;
   const events = []; // consumed by main.js each frame: {type:'enemyKilled'|'shotFired'|'hitStop'|'beholderSpawned', ...}
@@ -829,28 +793,34 @@ export function createEnemies() {
     shots = shots.filter((s) => !s.dead);
   }
 
-  function updateBeholder(dt, octo, time, hurtFn, world) {
-    if (!beholder && time >= BEHOLDER_SPAWN_TIME) {
-      // v2 (a level grid): the nearest open cell reachable from the octopus, off screen; before, it spawned at
-      // octo.y - 20 even when that was rock or outside the level and sat there forever
-      const sp = findBeholderSpawn(octo, world) || { x: octo.x, y: octo.y - BEHOLDER_SPAWN_HEIGHT };
-      beholder = {
-        id: nextId++, kind: 'beholder', x: sp.x, y: sp.y,
-        prevX: sp.x, prevY: sp.y,
-        vx: 0, vy: 0, radius: BEHOLDER_RADIUS, wallR: BEHOLDER_WALL_R, dead: false, spawnedAt: time, moving: true,
-      };
-      events.push({ type: 'beholderSpawned', x: beholder.x, y: beholder.y });
+  // Time pressure (beholder.js): warning at timing.warn, entry at timing.arrive, then a slow drift through rock
+  function makeBeholder(x, y, time) {
+    return {
+      id: nextId++, kind: 'beholder', x, y, prevX: x, prevY: y, vx: 0, vy: 0,
+      radius: BEHOLDER_RADIUS, dead: false, spawnedAt: time, moving: true, ghostly: true,
+    };
+  }
+  function updateBeholder(dt, octo, time, world) {
+    if (!beholder && time >= timing.warn && time > 0) {
+      if (warn.state === 0) {
+        warn.state = 1;
+        warn.pref = (Math.floor(octo.x) + Math.floor(octo.y)) & 1; // left or right side first: varies by where you are, still deterministic
+        events.push({ type: 'beholderWarn' });
+      }
+      const plan = planBeholderEntry(octo.x, octo.y, world, warn.pref);
+      warn.dx = plan.dx; warn.dy = plan.dy;
+      warn.p = Math.min(1, (time - timing.warn) / Math.max(1e-6, timing.arrive - timing.warn));
+      if (time >= timing.arrive) {
+        beholder = makeBeholder(plan.x, plan.y, time);
+        warn.state = 2; warn.p = 1;
+        events.push({ type: 'beholderSpawned', x: beholder.x, y: beholder.y });
+      }
     }
     if (!beholder) return;
     beholder.prevX = beholder.x; beholder.prevY = beholder.y;
-    const aliveFor = time - beholder.spawnedAt;
-    const speed = BEHOLDER_SPEED + BEHOLDER_SPEED_RAMP * (aliveFor / 10);
-    // It collides with the grid like every other moving enemy and chases with A* (the piranha no longer does).
-    chaseWithPath(beholder, world, octo.x, octo.y, speed, dt);
-    collideWithWalls(beholder, world);
-    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) { // dead: it keeps knocking the body about (octopus.js hitBody)
-      killOctopus(octo, 'beholder');
-    }
+    if (Number.isNaN(beholder.spawnedAt)) beholder.spawnedAt = time;
+    driftBeholder(beholder, octo.x, octo.y, beholderSpeed(timing, time - beholder.spawnedAt), dt);
+    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) beholderTouch(octo); // dead: it keeps knocking the body about (octopus.js hitBody)
   }
 
   return {
@@ -868,6 +838,11 @@ export function createEnemies() {
     },
     shots() { return shots; },
     beholder() { return beholder; },
+    /** Time pressure: this level's clock (beholder.js beholderTiming). Set once per level; a new createEnemies starts at 1-1's. */
+    setBeholderTiming(t) { timing = t; },
+    beholderTiming() { return timing; },
+    /** The warning: {state: 0 calm | 1 warning | 2 it is here, p: 0..1 through the warning, dx, dy: the side it comes from}. */
+    beholderWarn() { return warn; },
 
     /** One fixed step. `props` (v2, optional): resting bombs make a crab turn around. */
     update(dt, time, octo, world, resident, props = null) {
@@ -941,7 +916,7 @@ export function createEnemies() {
       }
 
       updateShots(dt, octo, world, hurtOctopus);
-      updateBeholder(dt, octo, time, hurtOctopus, world);
+      updateBeholder(dt, octo, time, world);
       if (hpMode) {
         liveCache.length = 0;
         for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) if (!list[i].dead) liveCache.push(list[i]);
@@ -1015,10 +990,8 @@ export function createEnemies() {
      * tied to any chunk (never despawns from chunk eviction). */
     spawnAt(kind, x, y, placement, wallDir = 0) {
       if (kind === 'beholder') {
-        beholder = {
-          id: nextId++, kind: 'beholder', x, y, prevX: x, prevY: y, vx: 0, vy: 0,
-          radius: BEHOLDER_RADIUS, wallR: BEHOLDER_WALL_R, dead: false, spawnedAt: 0, moving: true,
-        };
+        beholder = makeBeholder(x, y, NaN); // its drift ramp starts on its first step
+        warn.state = 2; warn.p = 1;
         return beholder;
       }
       const e = makeEnemy(kind, x, y, -1, placement || 'open', wallDir);

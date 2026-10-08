@@ -39,7 +39,9 @@ import { drawCorpses } from './corpses-draw.js';
 import { createParticles } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { SHELL_NAMES, SK_PEARL, payout } from './shells.js';
+import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js';
+import { beholderTiming } from './beholder.js';
+import { swimDistance, swiftTarget, swiftLabel, createSwift, stepSwift } from './swift.js';
 import { mulberry32 } from './rng.js';
 import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, getHelpDone, setHelpDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
@@ -265,6 +267,7 @@ const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
+let swift = null; // Swift Current (swift.js): this level's target time, earned flag and the moon shell it brought
 let questClear = null; // {x, y}: enemies within QUEST_CLEAR_R of it are removed after the level's first enemy update
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
@@ -621,7 +624,7 @@ function step(dt) {
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#e8f1e4' : '#9dffd8'; // r46: pale, natural specks, no gold
     particles.pickupSparkle(ev.x, ev.y, color);
-    if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } } }
+    if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } if (ev.sk === SK_MOON) ui.showToast('A moon shell, +' + ev.value + ' shells'); } }
   }
   if (octo.hearts < prevHearts) {
     sfx.hurt();
@@ -666,7 +669,7 @@ function step(dt) {
   dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
   if (!transitioning) { // r41: nothing new starts while one level is being torn down
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
-    audio.setBeholderDread(dreadLevel);
+    audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
   bombs.update(dt, world, octo, enemies);
   if (world.fresh) world.fresh.update(dt);
@@ -695,6 +698,7 @@ function step(dt) {
     if (V2 && !isSafeState(run)) { loot.explode(ev.x, ev.y, BOMB_RADIUS); handleLootEvents(); hazards.blast(ev.x, ev.y, BOMB_RADIUS * 2); creatures.blast(ev.x, ev.y, BOMB_RADIUS, octo); handleCreatureEvents(); if (quest) questBlast(quest, ev.x, ev.y, BOMB_RADIUS); }
   }
   for (const ev of enemies.events) {
+    if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type !== 'enemyKilled') continue;
     particles.deathPoof(ev.x, ev.y); runKills++;
@@ -913,6 +917,7 @@ function render(alpha, frameMs) {
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     preWallDraw: V2 ? v2PreWall : null,
     dreadLevel,
+    beholderWarn: V2 && isSafeState(run) ? null : enemies.beholderWarn(),
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
     postOctoDraw: V2 ? v2People : null,
     followBias: V2 && run.state === S_BIOME && !octo.dead ? poolCameraBias() : null,
@@ -964,7 +969,6 @@ const loop = createLoop(step, render);
 const debug = createDebugOverlay(debugEl, { loop, input });
 
 loop.start();
-if (V2) showLevelTitle(); // the first level's title card
 
 function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   // r41: tear the old level down first (every baked canvas, every synthesised sound), then build the new one: the two are never alive together
@@ -1135,7 +1139,7 @@ function v2Event(ev) {
 function showLevelTitle() {
   if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
   const t = levelTitle(run, !!Number(params.get('seed')) || (run.nextSeed !== null && run.nextSeed !== undefined));
-  if (t) ui.showTitle(t.text, t.sub, 1500);
+  if (t) ui.showTitle(t.text, t.sub, swift ? 2200 : 1500, swift ? swiftLabel(swift.target) : '');
 }
 
 /** Run summary shown on the death and biome-clear screens: stats, best runs (this run highlighted), the shortcut note. */
@@ -1282,7 +1286,9 @@ function stepV2(snap) {
     }
   }
   if (run.state === S_REST) stepRest();
+  if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
   if (world.reachedExit(octo.x, octo.y)) {
+    if (run.state === S_BIOME) paySwiftShell();
     if (run.state === S_BIOME && questOnExit(quest)) payQuest();
     if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
     beginEntry(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT, lv.exitX, lv.exitY);
@@ -1621,7 +1627,7 @@ function stepRest() {
 
 /** Place this level's shop and, about one level in three, an emergent encounter (the caged critter or the stranded diver). */
 function setupLevelExtras() {
-  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null;
+  quest = null; shopSt = null; poolSts = []; tutState = createTutorialState(); relicHeld = false; siphonSpot = null; restSpring = null; swift = null;
   npcs = makeNpcs();
   if (run.state === S_REST) {
     const lv = world.level;
@@ -1641,8 +1647,57 @@ function setupLevelExtras() {
     shopSt = createShopState(world.level.shop, shopItems, spec.seed, spec.levelIndex, run.items);
     poolSts = planPools(world.level).map(createPoolState);
     setupKeepers(spec);
+    setupTimePressure(spec);
     if (run.level === siphonLevel() && !run.items.includes('siphon')) { const p = findFloorSpot(); if (p) siphonSpot = { x: p.x, y: p.y, taken: false }; }
   }
+}
+
+// --- 2026-10-08: time pressure (beholder.js) and the Swift Current bonus (swift.js) ---
+/** This level's Beholder clock (sooner deeper down) and its Swift Current target from the swim distance to the whirlpool. */
+function setupTimePressure(spec) {
+  enemies.setBeholderTiming(beholderTiming(spec.levelIndex));
+  const lv = world.level;
+  if (lv.exitX < 0) return;
+  const ex = lv.exitX + 0.5, ey = lv.exitY + 0.5;
+  swift = createSwift(swiftTarget(swimDistance(world, world.startX, world.startY, ex, ey)), ex, ey);
+}
+/** In time: the current brings a moon shell up out of the whirlpool toward the octopus; a quiet toast and a journal count. */
+function earnSwift() {
+  const dx = octo.x - swift.exitX, dy = octo.y - swift.exitY, d = Math.hypot(dx, dy) || 1;
+  swift.shell = pickups.dropShell(swift.exitX, swift.exitY, dx / d * 7, dy / d * 7, SK_MOON) || null;
+  if (!swift.shell) paySwiftShell(); // no level chunk to drop into (never in a real level): straight into the purse
+  run.dive.swift = (run.dive.swift | 0) + 1;
+  discover('loot-swift'); journal.bump('loot-swift', STAT_COLLECTED);
+  for (let i = 0; i < 6; i++) particles.trailBubble(swift.exitX + (i - 2.5) * 0.15, swift.exitY);
+  sfx.chime();
+  ui.showToast('Swift Current: the tide brings up a moon shell', 2600, false, true);
+}
+/** Diving in without the moon shell: it comes along anyway (paid once). */
+function paySwiftShell() {
+  if (!swift || !swift.earned || swift.paid) return;
+  if (swift.shell && swift.shell.collected) return;
+  swift.paid = true;
+  if (swift.shell) swift.shell.collected = true;
+  gainShells(run, MOON_VALUE);
+  discover('item-moon'); journal.bump('item-moon', STAT_COLLECTED);
+}
+/** The Beholder's warning and entry: a quiet toast, the swell, a small shake when it comes. */
+function onBeholderEvent(ev) {
+  if (V2 && isSafeState(run)) return;
+  if (ev.type === 'beholderWarn') {
+    sfx.dreadSwell();
+    if (V2) ui.showToast('The water turns cold. Something is watching.', 3000, false, true);
+  } else {
+    sfx.beholderArrive();
+    particles.shakeFx(2.5, 0.5);
+    if (V2) discover('creature-beholder');
+  }
+}
+/** The drone under the warning: it swells as the Beholder's entry nears and holds while it is here. */
+function warnDrone() {
+  if (V2 && isSafeState(run)) return 0;
+  const w = enemies.beholderWarn();
+  return w.state === 1 ? 0.12 + 0.33 * w.p : w.state === 2 ? 0.3 : 0;
 }
 
 // --- 2026-10-07: shopkeepers and Spelunky aggro (shopkeeper.js, shop-aggro.js) ---
@@ -2016,6 +2071,7 @@ function onShopEvent(ev) {
 if (V2) {
   ui.setGameOverLabels('The dark took you', 'Back to the hub');
   setupLevelExtras();
+  showLevelTitle(); // the first level's title card (after the extras: it carries the Swift Current target)
   discoverStatePlace();
   if (run.state === S_END) showEndScreen();
 }
@@ -2085,6 +2141,14 @@ window.__octo = {
   },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
+  /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
+  tileAt(tx, ty) { return world.tileAt(tx, ty); },
+  setLevelTime(t) { sim.time = +t || 0; return sim.time; },
+  timePressure() {
+    const w = enemies.beholderWarn(), tm = enemies.beholderTiming(), b = enemies.beholder();
+    return { time: sim.time, warn: { state: w.state, p: w.p, dx: w.dx, dy: w.dy }, timing: { ...tm }, beholder: b ? { x: b.x, y: b.y } : null, safe: isSafeState(run),
+      swift: swift ? { target: swift.target, earned: swift.earned, paid: swift.paid, exitX: swift.exitX, exitY: swift.exitY, shell: swift.shell ? { x: swift.shell.x, y: swift.shell.y, collected: swift.shell.collected } : null } : null };
+  },
   giveBombs(n) { octo.bombs = n | 0; return octo.bombs; },
   /** v2: the corpses (kind, position, velocity, state: 'free' | 'rest') for tests and review. */
   corpses() {
