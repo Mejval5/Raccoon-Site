@@ -169,7 +169,7 @@ const TRACK = `(() => { const refs = []; window.__cv = refs; window.__lt = [];
       await page.evaluate(() => __octo.step(150)); // 3 s of simulation with the octopus where it is
       await sleep(300);
       const e1 = await page.evaluate((i) => __octo.enemies().find((e) => e.id === i), id);
-      check('... but it keeps patrolling: its position changed while it was culled', e1 && Math.hypot(e1.x - e0.x, e1.y - e0.y) > 0.2 && e1.drawn === false, e1 ? `moved ${Math.hypot(e1.x - e0.x, e1.y - e0.y).toFixed(2)} tiles` : '');
+      check('... but it keeps patrolling: its position changed while it was culled (it may have swum back into view by now)', e1 && Math.hypot(e1.x - e0.x, e1.y - e0.y) > 0.2, e1 ? `moved ${Math.hypot(e1.x - e0.x, e1.y - e0.y).toFixed(2)} tiles` : '');
       // the octopus comes back into view: it is drawn again, and it bites
       const hearts0 = await page.evaluate(() => { const s = __octo.state(); return s.octopus.hearts; });
       // r44: in front of its nose as it is NOW (it patrols and turns, so the position sampled a moment ago can be behind it or in rock)
