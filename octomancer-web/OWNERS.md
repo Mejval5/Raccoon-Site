@@ -62,3 +62,20 @@ Waiting to merge (finished, built on older master, must re-merge master themselv
 Then: verification pass (Opus playtest of every agreed item + Spelunky/Noita vibe check), small fixes and decisions, and the handover doc with feature proposals.
 Known minor: tests/ imports the octopus drawing with a wrong relative asset path (two 404s, test page only); timing-flaky tests (r43 canvas size, shake, phone-cdp long task occasionally).
 - 2026-10-08, Materials (round 2 merge): shop frame tiles are bomb-breakable (no inShop guard) and boulder smashes of shop timber also bump `world.shopTilesBroken`. `enemies.kill(e, reason)` added (regular killEnemy path); props.js `setEnemyKiller(fn)` uses it for enemies crushed by a pushable block (main.js wires it, reason 'crush').
+
+## Round 3 (2026-10-08): owners now running
+
+| Owner | Request | Ports |
+|---|---|---|
+| Art (artist + 1 dev) | Paint the code-drawn leftovers: giant clam, tentacle limb, juice droplets, Ink Cloud, bomb, hotbar icons, tutorial marker | 60300-60399 |
+| Unified creature rules | Same physics, collision and damage path for every creature (shopkeeper included), immunities per type like Spelunky | 60400-60499 |
+| Time pressure | Beholder creeps in late on a level; optional bonus that drops a valuable 'diamond' shell | 60500-60599 |
+| Actions tuning | Ink Jet slower and rarer, physics-checked; dash does no damage but gives instant invincibility; body damage via a spike-helmet item | 60600-60699 |
+| Quests rework | NPCs stay, thank you, reward now or later down the run | 60700-60799 |
+| Movement | Fix corner snags; fixed hand-built movement test room and regression tests | 60800-60899 |
+| Spells brainstorm (Fable, doc only) | SPELLS-IDEAS.md, then a second Fable picks; implementation waits for the controls talk | none |
+| Controls brainstorm (Fable, doc only) | CONTROLS-IDEAS.md: movement set, actions, bombs, carry/pick-up, interact key (back rooms, altar); Daniel wants to talk before building | none |
+| Queued after Unified creature rules | Chain reactions; enemy infighting (Spelunky style) | later |
+| Queued after the controls talk | Back rooms (overlaid), offering altar, spells implementation | later |
+
+Overlaps: Unified creature rules owns the damage/immunity table; Actions tuning (dash, spike helmet, ink) and Time pressure (Beholder) call into it; Quests rework owns NPC behaviour after rescue (Unified creature rules owns their health and damage). Merge master before finishing.
