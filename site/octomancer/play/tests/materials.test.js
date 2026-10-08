@@ -15,7 +15,9 @@ import { createOctopus } from '../js/octopus.js';
 import { artImg, ensureV2Art } from '../js/v2-art.js';
 
 const PAIRS = [];
-for (let a = 0; a < MAT_DRAW_ORDER.length; a++) for (let b = a + 1; b < MAT_DRAW_ORDER.length; b++) PAIRS.push([MAT_DRAW_ORDER[a], MAT_DRAW_ORDER[b]]); // [lower, higher]
+// the generated materials only: coral (6) is grown by a spell, drawn lowest by priority (the draw-order test below); adding its pairs would move
+// every pair down the sheet onto other texture spots, and the dark fish-bone and bedrock rims are too alike to sample there
+for (let a = 0; a < MAT_DRAW_ORDER.length; a++) for (let b = a + 1; b < MAT_DRAW_ORDER.length; b++) if (MAT_DRAW_ORDER[a] !== 6 && MAT_DRAW_ORDER[b] !== 6) PAIRS.push([MAT_DRAW_ORDER[a], MAT_DRAW_ORDER[b]]); // [lower, higher]
 
 /** A small authored-style level (bedrock border) with `paint(put)` filling the inside. */
 function handLevel(W, H, paint) {

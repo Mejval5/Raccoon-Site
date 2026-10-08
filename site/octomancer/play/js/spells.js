@@ -113,6 +113,7 @@ export const EFFECTS = {
   riptide(p, ctx) { return !!ctx.fx && ctx.fx.riptide(ctx.x, ctx.y, ctx.dirX, ctx.dirY, p); },
   coral(p, ctx) { return !!ctx.fx && ctx.fx.coral(ctx.x, ctx.y, p); },
   anchor(p, ctx) { return !!ctx.fx && ctx.fx.anchor(p); },
+  lure(p, ctx) { return !!ctx.fx && ctx.fx.lure(ctx.x, ctx.y, p); },
 };
 /**
  * Cast a hotbar slot (its id list, or one spell id) out of the run's jar: CAST_OK (paid and done), CAST_EMPTY (not enough juice:

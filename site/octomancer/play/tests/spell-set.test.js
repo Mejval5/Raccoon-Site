@@ -19,6 +19,7 @@ import { SOURCES, resolveHit, pushScale } from '../js/creature-rules.js';
 import { createHotbar } from '../js/hotbar.js';
 import { runeForLevel, takeRune, slotForMod, ownsRune, RUNE_SPELLS, RUNE_MODS } from '../js/runes.js';
 import { setGameView, resetGameView } from '../js/cull.js';
+import { createInfight } from '../js/infight.js';
 
 const DT = 1 / 60;
 const NO_INPUT = { move: { x: 0, y: 0 }, dash: { pressed: false, held: false } };
@@ -47,8 +48,8 @@ export async function runSpellSetTests(assert) {
   setGameView({ x: 15, y: 15, pxPerUnit: 32 }, 1280, 1280); // the whole room is "on screen" (hazards act only in view)
   try {
     // ------------------------------------------------------------ data and price folding
-    assert('spell set: four spells (Ink Cloud, Riptide, Coral Wall, Anchor) and three runes (Heavy, Delayed, Lingering); Lure waits for infighting',
-      ['ink-cloud', 'riptide', 'coral-wall', 'anchor'].every((id) => spellById(id)) && !spellById('lure') && SPELLS.length === 4 &&
+    assert('spell set: five spells (Ink Cloud, Riptide, Coral Wall, Anchor, Lure) and three runes (Heavy, Delayed, Lingering)',
+      ['ink-cloud', 'riptide', 'coral-wall', 'anchor', 'lure'].every((id) => spellById(id)) && SPELLS.length === 5 &&
       ['heavy', 'delayed', 'lingering'].every((id) => modById(id)) && MODS.length === 3 && SLOT.maxMods === 2 && SLOT.castLock === 0.4);
     const rp = resolveSlot(['riptide']);
     assert('Riptide: 5 tiles, half width 1.1, 3 s, 0.8 x JET_ACC, 1 cast', rp.price === 1 && near(rp.length, 5) && near(rp.radius, 1.1) && near(rp.duration, 3) && near(rp.power, 0.8));
@@ -66,7 +67,7 @@ export async function runSpellSetTests(assert) {
     assert('at most two runes per slot: a third is greyed', resolveSlot(['ink-cloud', 'heavy', 'lingering', 'delayed']).greyed.join() === 'delayed');
     {
       let ok = true;
-      const ids = ['ink-cloud', 'riptide', 'coral-wall', 'anchor'], mods = [[], ['heavy'], ['delayed'], ['lingering'], ['heavy', 'delayed'], ['heavy', 'lingering'], ['delayed', 'lingering']];
+      const ids = ['ink-cloud', 'riptide', 'coral-wall', 'anchor', 'lure'], mods = [[], ['heavy'], ['delayed'], ['lingering'], ['heavy', 'delayed'], ['heavy', 'lingering'], ['delayed', 'lingering']];
       for (const s of ids) for (const m of mods) { const p = resolveSlot([s, ...m]); if (!Number.isInteger(p.price) || p.price < 1 || p.price > 3) ok = false; if (p.duration < spellById(s).duration * 0.4 - 1e-6 || p.duration > spellById(s).duration * 3 + 1e-6) ok = false; }
       assert('every slot price is a whole number of casts, never below 1; durations stay within the 0.4-3x clamp', ok);
     }
@@ -238,6 +239,41 @@ export async function runSpellSetTests(assert) {
       b.blast(5.5, 5, 2);
       for (let k = 0; k < 30; k++) b.update(DT);
       assert('a blast inside a cloud blows it out (gone within half a second)', b.count() === 0);
+    }
+
+    // ------------------------------------------------------------ Lure (on the infighting owner's target override, infight.js setLure)
+    {
+      const lp = resolveSlot(['lure']), lh = resolveSlot(['lure', 'heavy']), ll = resolveSlot(['lure', 'lingering']);
+      assert('Lure: light 2.5, 6 s, 1 cast; Heavy light 4; Lingering 15 s', lp.price === 1 && near(lp.radius, 2.5) && near(lp.duration, 6) && near(lh.radius, 4, 1e-5) && near(ll.duration, 15, 1e-5));
+      const world = room(), props = createProps(), hazards = createHazards(props), en = createEnemies(), dm = createDamage();
+      dm.register(en.family); hazards.setDamage(dm);
+      const inf = createInfight(dm, { corpses: () => null, props: () => props });
+      en.setInfight(inf);
+      const fx = createSpellFx({ world, hazards, props, damage: dm, clouds: createInkClouds(), infight: inf });
+      const octo = createOctopus(27, 3); octo.invulnTimer = 1e9; fx.setOcto(octo);
+      const fish = en.spawnAt('piranha', 8, 10, 'open');
+      const boss = en.spawnAt('beholder', 24, 20);
+      const ok = castSpell({ juice: 4 }, ['lure'], { clouds: null, fx, x: 14, y: 16, vx: 0, vy: 0, dirX: 1, dirY: 0 });
+      const step = (n) => { for (let k = 0; k < n; k++) { dm.tick(DT); inf.tick(DT); en.update(DT, 30, octo, world, [], null); hazards.update(DT, 0, octo, world, null); fx.update(DT, octo); } };
+      step(20);
+      const early = inf.lures().length;
+      step(20);
+      assert(`Lure: no pull during its 0.6 s grace, then one lure on the hook (${early} then ${inf.lures().length})`, ok === CAST_OK && early === 0 && inf.lures().length === 1 && fx.lureLive());
+      const d0 = Math.hypot(fish.x - 14, fish.y - 16), b0 = Math.hypot(boss.x - octo.x, boss.y - octo.y);
+      step(240);
+      const d1 = Math.hypot(fish.x - 14, fish.y - 16), b1 = Math.hypot(boss.x - octo.x, boss.y - octo.y), bl = Math.hypot(boss.x - 14, boss.y - 16);
+      assert(`Lure retargets a patrolling piranha (${d0.toFixed(1)} -> ${d1.toFixed(1)} tiles from it)`, d1 < 2 && d1 < d0 - 3);
+      assert(`the Beholder ignores the Lure: it keeps closing on the octopus (${b0.toFixed(1)} -> ${b1.toFixed(1)})`, b1 < b0);
+      step(120);
+      assert('Lure runs out after 6 s and leaves the hook', !fx.lureData.on && inf.lures().length === 0);
+      castSpell({ juice: 4 }, ['lure'], { clouds: null, fx, x: 14, y: 16, vx: 0, vy: 0, dirX: 1, dirY: 0 }); step(50);
+      castSpell({ juice: 4 }, ['lure'], { clouds: null, fx, x: 10, y: 10, vx: 0, vy: 0, dirX: 1, dirY: 0 }); step(50);
+      assert('at most one Lure: the newest replaces it', inf.lures().length === 1 && near(inf.lures()[0].x, 10, 0.3));
+      const gone = fx.blast(10.5, 10, 1.5);
+      assert('a blast on the Lure ends it', gone && inf.lures().length === 0 && !fx.lureData.on);
+      hazards.addTempJet(4, 16, 1, 0, 6, 1.1, 0.8, 3);
+      castSpell({ juice: 4 }, ['lure'], { clouds: null, fx, x: 5, y: 16, vx: 0, vy: 0, dirX: 1, dirY: 0 }); step(90);
+      assert(`a Riptide carries the Lure (x 5 -> ${fx.lureData.x.toFixed(2)})`, fx.lureData.x > 5.5);
     }
 
     // ------------------------------------------------------------ runes

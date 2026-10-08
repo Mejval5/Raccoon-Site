@@ -34,6 +34,23 @@ export function drawSpellFx(ctx, camera, cw, ch, fx, octo, t) {
     const fl = cullFlags('motes', mo.n);
     for (let i = 0; i < mo.n; i++) if (mo.alive[i] && visibleAt(fl, i, mo.x[i], mo.y[i], 0.6)) drawMote(ctx, ox + mo.x[i] * ppu, oy + mo.y[i] * ppu, ppu, t, Math.min(1, mo.t[i] / Math.max(0.01, mo.delay[i])));
   }
+  const lu = fx.lureData;
+  if (lu && lu.on && visibleAt(cullFlags('lure', 1), 0, lu.x, lu.y, lu.light + 0.5)) {
+    // an anglerfish lure: a pale-green bulb on a curved stalk, its light (radius lu.light) pulsing; it swells in over its grace
+    const x = ox + lu.x * ppu, y = oy + lu.y * ppu, k = Math.min(1, lu.t / Math.max(0.05, lu.grace)), fade = Math.min(1, (lu.life - lu.t) / 0.6);
+    const R = lu.light * ppu * (0.6 + 0.4 * k) * (0.92 + 0.08 * Math.sin(t * 3.1));
+    ctx.save();
+    ctx.globalAlpha = fade;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, 'rgba(190,255,215,0.32)'); g.addColorStop(0.35, 'rgba(110,230,190,0.14)'); g.addColorStop(1, 'rgba(60,200,170,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill();
+    if (!drawSprite(ctx, 'iconLure', x, y + ppu * 0.1, 0, ppu * 0.75, 0.5, 0.5, Math.sin(t * 1.7) * 0.15)) {
+      ctx.strokeStyle = '#3f5a3a'; ctx.lineWidth = Math.max(1, ppu * 0.05);
+      ctx.beginPath(); ctx.moveTo(x - ppu * 0.25, y + ppu * 0.45); ctx.quadraticCurveTo(x - ppu * 0.3, y - ppu * 0.1, x, y); ctx.stroke();
+      ctx.fillStyle = '#d8ffe4'; ctx.beginPath(); ctx.arc(x, y, ppu * 0.12, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
   const co = fx.coralData;
   if (co.live) {
     const fl = cullFlags('coral', co.n);
@@ -65,25 +82,29 @@ export function drawSpellFx(ctx, camera, cw, ch, fx, octo, t) {
     }
     ctx.restore();
   }
-  if (octo && octo.anchorT > 0 && !octo.dead) {
-    // an old anchor hanging under the body on a short kelp line, bubbles streaming up off it as it drops
-    const x = ox + octo.x * ppu, y = oy + octo.y * ppu, fall = Math.min(1, Math.max(0, octo.vy) / 12);
-    ctx.save();
-    ctx.strokeStyle = '#3f5a3a'; ctx.lineWidth = Math.max(1, ppu * 0.045);
-    ctx.beginPath(); ctx.moveTo(x, y + ppu * 0.15); ctx.quadraticCurveTo(x + ppu * 0.06, y + ppu * 0.3, x, y + ppu * 0.38); ctx.stroke();
-    if (!drawSprite(ctx, 'iconAnchor', x, y + ppu * 0.3, 0, ppu * 0.85, 0.5, 0, Math.sin(t * 3) * 0.08)) {
-      ctx.fillStyle = '#56645c'; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, ppu * 0.04);
-      ctx.beginPath(); ctx.rect(x - ppu * 0.04, y + ppu * 0.35, ppu * 0.08, ppu * 0.4); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x, y + ppu * 0.68, ppu * 0.22, 0.15, Math.PI - 0.15); ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(225,250,255,0.7)'; ctx.lineWidth = Math.max(1, ppu * 0.025);
-    for (let b = 0; b < 5; b++) {
-      const u = (t * (1.2 + fall) + b * 0.21) % 1;
-      ctx.globalAlpha = (1 - u) * (0.3 + 0.7 * fall);
-      ctx.beginPath(); ctx.arc(x + Math.sin(b * 2.3 + t * 3) * ppu * 0.25, y - u * ppu * 1.2, ppu * (0.04 + 0.02 * (b % 2)), 0, TAU); ctx.stroke();
-    }
-    ctx.restore();
+}
+
+/**
+ * Anchor: an old barnacled anchor the octopus clutches in its arms (drawn over the body, after the octopus), bubbles streaming up
+ * off it as it drops. Its flukes end at the body's lower rim, so a body resting on a floor never shows iron sunk in the rock.
+ */
+export function drawAnchorHeld(ctx, camera, cw, ch, octo, t) {
+  if (!octo || !(octo.anchorT > 0) || octo.dead) return;
+  const ppu = camera.pxPerUnit;
+  const x = cw / 2 + (octo.x - camera.x) * ppu, y = ch / 2 + (octo.y - camera.y) * ppu, fall = Math.min(1, Math.max(0, octo.vy) / 12);
+  ctx.save();
+  if (!drawSprite(ctx, 'iconAnchor', x, y + ppu * 0.42, 0, ppu * 0.6, 0.5, 1, Math.sin(t * 3) * 0.06)) {
+    ctx.fillStyle = '#56645c'; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, ppu * 0.04);
+    ctx.beginPath(); ctx.rect(x - ppu * 0.04, y - ppu * 0.1, ppu * 0.08, ppu * 0.4); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y + ppu * 0.2, ppu * 0.2, 0.15, Math.PI - 0.15); ctx.stroke();
   }
+  ctx.strokeStyle = 'rgba(225,250,255,0.7)'; ctx.lineWidth = Math.max(1, ppu * 0.025);
+  for (let b = 0; b < 5; b++) {
+    const u = (t * (1.2 + fall) + b * 0.21) % 1;
+    ctx.globalAlpha = (1 - u) * (0.3 + 0.7 * fall);
+    ctx.beginPath(); ctx.arc(x + Math.sin(b * 2.3 + t * 3) * ppu * 0.25, y - u * ppu * 1.2, ppu * (0.04 + 0.02 * (b % 2)), 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** A rune pedestal: the carved stone with the rune floating over it in a faint bioluminescent glow. `spot` = {x, y, id, dwell}. */

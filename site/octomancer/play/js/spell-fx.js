@@ -25,7 +25,7 @@ const CRUMBLE_WARN = 1.5;        // s before it crumbles: the coral shakes (spel
  */
 export function createSpellFx(sys) {
   const { world, hazards } = sys;
-  const props = sys.props || null, damage = sys.damage || null;
+  const props = sys.props || null, damage = sys.damage || null, infight = sys.infight || null;
   // ---- coral cells
   const co = {
     n: MAX_CORAL, live: 0,
@@ -48,7 +48,7 @@ export function createSpellFx(sys) {
   /** Things main.js turns into particles and sounds: {type:'coralGrow'|'coralCrumble'|'moteFire'|'anchorCrush'|'anchorSmash'|'riptide', x, y}. */
   const events = [];
   let octo = null; // the octopus record (set by update; Anchor and self casts read it)
-  const stats = { riptides: 0, coralCells: 0, crumbled: 0, motes: 0, anchors: 0, crushes: 0, smashes: 0 };
+  const stats = { riptides: 0, coralCells: 0, crumbled: 0, motes: 0, anchors: 0, crushes: 0, smashes: 0, lures: 0 };
 
   // ---------------------------------------------------------------- Coral Wall
   /** Something sits in cell (tx, ty): the octopus, a creature body, a prop (rubble excepted: it is pushed out). */
@@ -199,6 +199,39 @@ export function createSpellFx(sys) {
     }
   }
 
+  // ---------------------------------------------------------------- Lure
+  // A bioluminescent bulb at the cast point, on the infighting owner's target override (infight.js setLure): patrolling or lost
+  // piranhas, crabs, mantas and hostile NPCs within `reach` go to it instead of their beat. Rooted kinds, the keeper and the Beholder
+  // never read it (their own code does not ask). It attracts only after a short grace, drifts with jets and Riptides, a blast ends it.
+  const lu = { on: 0, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, grace: 0.6, light: 2.5, reach: 7, slot: -1 };
+  function endLure() {
+    if (lu.slot >= 0 && infight) infight.clearLure(lu.slot);
+    lu.on = 0; lu.slot = -1;
+  }
+  function lure(x, y, p) {
+    if (!infight || world.isSolid(x, y)) return false;
+    endLure(); // at most one: the newest replaces it
+    lu.on = 1; lu.x = x; lu.y = y; lu.vx = 0; lu.vy = 0; lu.t = 0; lu.life = p.duration;
+    lu.grace = p.spell.grace || 0.6; lu.light = p.radius; lu.reach = p.spell.reach || 7; // Heavy widens the light (2.5 -> 4), not the pull
+    stats.lures++;
+    events.push({ type: 'lure', x, y });
+    return true;
+  }
+  function stepLure(dt) {
+    if (!lu.on) return;
+    lu.t += dt;
+    if (lu.t >= lu.life) { endLure(); return; }
+    const f = hazards && hazards.forceAt ? hazards.forceAt(lu.x, lu.y) : null;
+    if (f) { lu.vx += f.fx * MOTE_CARRY * dt; lu.vy += f.fy * MOTE_CARRY * dt; }
+    const k = Math.exp(-MOTE_DRAG * dt); lu.vx *= k; lu.vy *= k;
+    const nx = lu.x + lu.vx * dt, ny = lu.y + lu.vy * dt;
+    if (!world.isSolid(nx, ny)) { lu.x = nx; lu.y = ny; } else { lu.vx = lu.vy = 0; }
+    if (lu.t >= lu.grace) {
+      if (lu.slot < 0) lu.slot = infight.setLure(lu.x, lu.y, lu.reach, lu.life - lu.t);
+      else infight.moveLure(lu.slot, lu.x, lu.y);
+    }
+  }
+
   // ---------------------------------------------------------------- Delayed motes
   /** A Delayed cast: a mote drifts off from the cast point (a self spell follows the octopus) and the effect goes off 1.5 s later there. */
   function defer(p, ctx) {
@@ -238,13 +271,18 @@ export function createSpellFx(sys) {
 
   const api = {
     coralData: co, moteData: mo, events, stats,
-    riptide, coral, anchor, defer,
+    riptide, coral, anchor, lure, defer, lureData: lu,
+    /** A blast at (x, y), radius R, ends a Lure it reaches. */
+    blast(x, y, R) { if (lu.on && Math.hypot(lu.x - x, lu.y - y) <= R + 0.3) { endLure(); events.push({ type: 'lureGone', x, y }); return true; } return false; },
+    /** Is the Lure attracting now (past its grace)? */
+    lureLive() { return lu.on === 1 && lu.slot >= 0; },
     canGrow,
     /** One fixed step (after the octopus and the hazards moved). */
     update(dt, o) {
       events.length = 0;
       octo = o;
       stepMotes(dt);
+      stepLure(dt);
       stepCoral(dt);
       stepAnchorLanding();
     },

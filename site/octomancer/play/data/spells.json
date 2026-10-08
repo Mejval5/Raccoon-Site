@@ -90,6 +90,23 @@
    "uses": ["delayed"],
    "journal": "spell-anchor",
    "blurb": "you drop like a stone: crush what is under you, nothing throws you about"
+  },
+  {
+   "id": "lure",
+   "name": "Lure",
+   "effect": "lure",
+   "cost": 1,
+   "radius": 2.5,
+   "reach": 7,
+   "duration": 6,
+   "grace": 0.6,
+   "power": 1,
+   "delay": 0,
+   "max": 1,
+   "aim": "ahead",
+   "uses": ["heavy", "delayed", "lingering"],
+   "journal": "spell-lure",
+   "blurb": "a glowing bulb: creatures that lost you swim to its light instead"
   }
  ],
  "mods": [

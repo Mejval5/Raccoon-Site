@@ -9,8 +9,8 @@
 import { spellById, modById, modApplies, SLOT, START_SPELL } from './spells.js';
 import { addSpell } from './hotbar.js';
 
-/** Every rune a pedestal may hold, spells before modifiers (the order the seeded shuffle starts from). Lure waits for infighting. */
-export const RUNE_SPELLS = ['riptide', 'coral-wall', 'anchor'];
+/** Every rune a pedestal may hold, spells before modifiers (the order the seeded shuffle starts from). Lure rides on infight.js setLure. */
+export const RUNE_SPELLS = ['riptide', 'coral-wall', 'anchor', 'lure'];
 export const RUNE_MODS = ['heavy', 'delayed', 'lingering'];
 export const PICKUP_DWELL = 0.5; // s on the pedestal before the rune is taken (a swim past does not take it)
 export const PEDESTAL_R = 0.75;  // tiles: the octopus is "on" it this close

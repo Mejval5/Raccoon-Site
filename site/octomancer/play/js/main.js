@@ -94,7 +94,7 @@ import { STAT_ANGERED } from './journal.js';
 import { JUICE, juiceStart, juiceCap, castsOf, addJuice, dropCount, castSpell, spellById, createJuiceDrops, createInkClouds, CAST_OK, CAST_EMPTY, resolveSlot, slotPrice, SLOT } from './spells.js';
 import { createSpellFx } from './spell-fx.js';
 import { runeForLevel, takeRune, runeName, PICKUP_DWELL, PEDESTAL_R } from './runes.js';
-import { drawSpellFx, drawRunePedestal } from './spell-fx-draw.js';
+import { drawSpellFx, drawRunePedestal, drawAnchorHeld } from './spell-fx-draw.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
 import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
 import { CR_DASH } from './fragile.js';
@@ -289,7 +289,7 @@ let inkClouds = createInkClouds();
 let inkJet = createInkJet();
 if (V2) enemies.setInkClouds(inkClouds);
 // SPELLS-PICK.md: the level side of Riptide, Coral Wall, Anchor and the Delayed motes (spell-fx.js); the rune pedestal of this level (runes.js)
-let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds });
+let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
 let runeSpot = null;
 let lastAim = { x: 1, y: 0 }; // the facing direction for the J / K ink jet: the last swim direction
 let slurpCool = 0; // s until the next slurp sound may play (many droplets in one step make one sound)
@@ -729,7 +729,7 @@ function step(dt) {
   for (const ev of bombs.events) {
     if (ev.type !== 'exploded') continue;
     blastLog.push(ev.x, ev.y);
-    if (V2) inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); // SPELLS-PICK: a blast inside an ink cloud blows it out
+    if (V2) { inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); spellFx.blast(ev.x, ev.y, BOMB_RADIUS); } // SPELLS-PICK: a blast blows an ink cloud out and ends a Lure
     const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
@@ -875,7 +875,7 @@ function castSelected(snap, forceAt = null) {
   if (!p) return -1;
   const sp = p.spell;
   // the hub, the tutorial and the rest grotto: no currents or coral (their hazards do not run); a cloud and an Anchor are harmless there
-  if (isSafeState(run) && (sp.effect === 'riptide' || sp.effect === 'coral')) { ui.showToast(sp.name + ' stirs nothing here', 1400); return -1; }
+  if (isSafeState(run) && (sp.effect === 'riptide' || sp.effect === 'coral' || sp.effect === 'lure')) { ui.showToast(sp.name + ' stirs nothing here', 1400); return -1; }
   const mouse = snap.src && snap.src.spell === 'mouse' ? cursorWorld() : null;
   let at, dx = lastAim.x, dy = lastAim.y;
   if (forceAt) at = forceAt;
@@ -916,6 +916,7 @@ function handleSpellFxEvents() {
     else if (ev.type === 'moteFire') particles.pickupSparkle(ev.x, ev.y, '#9dffd8');
     else if (ev.type === 'anchorCrush') { particles.shakeFx(4, 0.2); sfx.thud(); }
     else if (ev.type === 'anchorSmash') { particles.bombDebris(ev.x, ev.y); particles.shakeFx(3, 0.18); sfx.thud(); }
+    else if (ev.type === 'lure' || ev.type === 'lureGone') particles.pickupSparkle(ev.x, ev.y, '#c8ffd8');
     else if (ev.type === 'riptide') { for (let i = 0; i < 4; i++) particles.trailBubble(ev.x + (i - 1.5) * 0.15, ev.y); }
   }
 }
@@ -1134,7 +1135,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     inkClouds = createInkClouds();
     inkJet = createInkJet();
     if (V2) enemies.setInkClouds(inkClouds);
-    spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds });
+    spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
   sim.time = 0;
   entry = null;
@@ -1575,6 +1576,7 @@ function v2PreWall(c, camera, cw, ch) {
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
+  drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus

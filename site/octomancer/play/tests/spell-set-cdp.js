@@ -122,7 +122,20 @@ async function stage(page) {
     check('Heavy + Lingering Riptide: wider (half width 1.76), 4.5 s, the whole jar (3 casts) paid', big.r === 1 && big.rips.length >= 1 && Math.abs(big.rips[big.rips.length - 1].hw - 1.76) < 0.01 && Math.abs(big.rips[big.rips.length - 1].life - 4.5) < 0.01 && big.juice === 0, JSON.stringify(big));
     await sleep(100);
     await page.screenshot({ path: OUT + 'heavy-riptide-1440.png' });
-    await page.screenshot({ path: OUT + 'hotbar-1440.png', clip: { x: 0, y: 0, width: 720, height: 140 } });
+    // ---- Lure: a piranha that lost the octopus swims to its light
+    await sleep(500);
+    const lu = await page.evaluate((at) => {
+      __octo.setSlots([['lure']], 0); __octo.setJuice(12);
+      __octo.teleport(at.x - 2.5, at.y); __octo.step(30);
+      const e = __octo.spawn('piranha', at.x + 2.5, at.y - 1.5);
+      const r = __octo.cast(at.x + 0.5, at.y, 1, 0);
+      __octo.step(150);
+      const f = __octo.enemies().find((q) => q.id === e.id);
+      return { r, lures: __octo.lures(), d: f ? Math.hypot(f.x - (at.x + 0.5), f.y - at.y) : -1, stats: __octo.spells().stats };
+    }, at);
+    check('Lure: a glowing bulb on the infight lure hook, a nearby piranha goes to it', lu.r === 1 && lu.lures.length === 1 && lu.d >= 0 && lu.d < 2.5, JSON.stringify(lu));
+    await sleep(120);
+    await page.screenshot({ path: OUT + 'lure-1440.png' });
     check('desktop: no page errors', page.errs.length === 0, page.errs.join(' | '));
     await page.close();
 
@@ -136,7 +149,7 @@ async function stage(page) {
     await tap(100, 600); await sleep(300);
     const pat = await stage(ph);
     const spellBtn = await ph.evaluate(() => { const r = document.querySelector('#octo-spell-btn').getBoundingClientRect(); return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 }; });
-    const shots = [['riptide', 'riptide-412', 40], ['coral-wall', 'coral-412', 30], ['anchor', 'anchor-412', 12]];
+    const shots = [['riptide', 'riptide-412', 40], ['coral-wall', 'coral-412', 30], ['anchor', 'anchor-412', 12], ['lure', 'lure-412', 90]];
     for (const [id, name, steps] of shots) {
       await ph.evaluate((id, at) => { __octo.setSlots([[id]], 0); __octo.setJuice(12); __octo.teleport(at.x - 1.5, at.y - (id === 'anchor' ? 1 : 0)); __octo.step(30); }, id, pat);
       // facing right: a short swim right first
@@ -150,6 +163,7 @@ async function stage(page) {
       if (id === 'riptide') ok = after.riptides.length === 1 && Math.abs(after.riptides[0].x - oo.x) < 4 && after.riptides[0].dx > 0.5;
       if (id === 'coral-wall') ok = after.coral > before.coral && after.cells.every((c) => c.tx + 0.5 > oo.x - 0.2);
       if (id === 'anchor') ok = after.anchorT > 0;
+      if (id === 'lure') ok = after.stats.lures > before.stats.lures;
       check('phone: the Spell button casts ' + id + (id === 'anchor' ? ' on the octopus' : ' 1.5 tiles ahead of the facing'), ok, JSON.stringify({ r: after.riptides, cells: after.cells, a: after.anchorT, o: [oo.x, oo.y] }));
       await sleep(150);
       await ph.screenshot({ path: OUT + name + '.png' });

@@ -73,6 +73,7 @@ export const FN = {
   // SPELLS-PICK: the first spell set and its runes (painted icons, round 4 atlas; drawSpellIcon falls back to a carved stone)
   riptide(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'riptide', 0, 0, 0.85 * u); c.restore(); },
   coralwall(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'coral-wall', 0, 0, 0.85 * u); c.restore(); },
+  lure(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'lure', 0, 0, 0.85 * u); c.restore(); },
   anchor(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'anchor', 0, 0, 0.85 * u); c.restore(); },
   runeheavy(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'heavy', 0, 0, 0.75 * u); c.restore(); },
   runedelayed(c, u = 40) { c.save(); c.scale(1 / u, 1 / u); drawSpellIcon(c, 'delayed', 0, 0, 0.75 * u); c.restore(); },
