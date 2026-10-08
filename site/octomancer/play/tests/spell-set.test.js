@@ -170,7 +170,7 @@ export async function runSpellSetTests(assert) {
       hurtOctopus(o, o.x - 1, o.y, 'test');
       assert('a knock still hurts but does not move an anchored octopus', o.hearts === 2 && o.vx === vx0 && o.vy === vy0);
       // the blast: hurts (invulnerable here), never throws
-      const bombs = createBombs(r.props); o.invulnTimer = 9;
+      const bombs = createBombs(r.props); o.invulnTimer = 9; o.noKill = true; // (controls 2026-10-08: a blast kills outright; the test hook keeps her alive to watch the throw)
       const vb = o.vx; bombs.place(o, o.x - 1.2, o.y, null, { pinned: true });
       for (let k = 0; k < 200; k++) bombs.update(DT, r.world, o, r.dm);
       assert(`a blast does not throw an anchored octopus (vx ${o.vx.toFixed(3)})`, near(o.vx, vb, 1e-3));
