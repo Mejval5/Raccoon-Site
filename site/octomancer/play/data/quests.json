@@ -1,31 +1,83 @@
 {
- "_doc": "Emergent NPC questlines, the Spelunky 2 way (round 39). Nothing is announced: no HUD text, no list. `npcs` are the people (hub lines per stage; `thanks` is said in the hub the first time you visit after the stage was reached; Quill has `relics` lines, one per relic handed over); `quests` are the encounters met in the levels: a row is eligible when the person's stage is between `need` and `max` (inclusive) on one of the listed levels (0 = Shallows 1-1), rolls `chance` once per level, and when finished moves the stage up by exactly one. kinds: vault (sealed in a rock pocket: bomb it open), rescue (a cage on a floor: break it with a dash or a bomb, the critter follows, bring it to the exit). lines: meet, ask (said as you approach), help (when you act), thank (right after). The Collector has no level row: he moves into the hub after your first dive. The Challenge Pool is a set-piece room (pool.js).",
+ "_doc": "Emergent NPC questlines, the Spelunky 2 way (round 39, reworked in round 3 of the owners board: people stay, thank you, and pay now or later). Nothing is announced: no HUD text, no list. `npcs` are the people: hub lines per stage; `thanks` is said in the hub the first time you visit after the stage was reached; `chat` are idle lines said when you swim up to someone who has already been helped; `react` is what they shout when a bomb goes off near them; `hurt` / `angry` belong to npcs.js; Quill has `relics` lines; the host has `outcomes` for a won wager. `quests` are the encounters met in the levels: a row is eligible when the person's stage is between `need` and `max` (inclusive) on one of the listed levels (0 = Shallows 1-1), rolls `chance` once per level, and when finished moves the stage up by exactly one (unless `stage` is false). kinds: vault (sealed in a rock pocket: bomb it open), rescue (a cage on a floor: break it with a dash or a bomb), meet (someone standing in a side cave: swim up to them). lines: meet, ask (said as you approach), help (when you act), thank (right after). OUTCOMES (rows and the host): one is picked per encounter, seeded by the dive seed, the level and the person, by `weight`. `lines` are said at once; `now` is a reward given at once; `role` (rescue only) is 'follow' (the critter follows you to the exit, `now` is paid there) or 'stay' (it stays and swims about its cage); `later` brings the person (or `npc`/`variant`/`name`: someone else) back `after` [min, max] levels further down the same dive, waiting near the exit (`where` 'exit') or in the rest grotto ('rest'; also when the due level is past the last one), saying `lines` and giving `reward`; `next` is a gift kept in the save and handed over in the hub (`lines`, `boon`: applied when the next dive starts). Rewards: {shells}, {bombs}, {hearts}, {juice}, {item: items.js id}. Boons: {bombs}, {shells}, {juice}.",
  "npcs": [
   { "id": "marlo", "name": "Marlo", "title": "The Stranded Diver", "journal": "person-diver",
     "hub": { "1": ["Fresh air at last. Thank you!", "The current keeps burying me down there. Dig me out again, if you find me."],
              "2": ["You again! Twice now.", "One more rescue, and I will make it worth your while."],
              "3": ["A ring in the floor, straight to the third cave. It is yours."] },
     "thanks": { "1": "Out of the rock! Find me at the hub.", "2": "Free again! You are getting good at this.", "3": "Three times! There is a shortcut waiting in the hub." },
+    "chat": ["Mind the urchins out there.", "I will catch my breath here a while.", "Go on, I will be fine.", "Nice ink, by the way."],
+    "react": ["Whoa! Easy!", "That one was close!", "Careful with those!"],
     "hurt": ["Ow! What was that for?!", "Hey! I dug you out!", "You will regret that!"], "angry": ["Stay away from me!", "I have a harpoon, you know.", "That was my last warning."] },
   { "id": "pip", "name": "Pip", "title": "The Caged Critter", "journal": "person-critter",
-    "hub": { "1": ["Squeak!", "Squeak squeak. (Home!)"] },
-    "thanks": { "1": "Squeak! Home!" },
+    "hub": { "1": ["Squeak!", "Squeak squeak. (Home!)"], "2": ["Squeak! (Pip explores now!)", "Squee. (Pip finds shiny things.)"] },
+    "thanks": { "1": "Squeak! Home!", "2": "Squeak squeak! (You found Pip again!)" },
+    "chat": ["Squeak!", "Squee? (Play?)", "Squeak squeak. (Thank you.)"],
+    "react": ["Eep!", "Squeak!!", "Eek! Loud!"],
     "hurt": ["Squeak!", "Eek! Eek!", "Squeeak!"], "angry": ["Grrk!", "Squeak! (Bad!)", "Skreee!"] },
   { "id": "quill", "name": "Quill", "title": "The Collector", "journal": "person-collector",
     "hub": { "1": ["Old octopus idols, my friend. Carved stone, heavy, slightly cursed.", "{n} of 3 so far. {left} to go.", "Carry one out through the exit ring, and it is mine."],
              "2": ["My lantern burns for you now.", "Every dive starts a little brighter."] },
     "relics": ["A relic! Splendid. Two more, if you would.", "The second! The shelf is filling up.", "Three! You have outdone yourself. The lantern is yours."],
     "thanks": { "1": "Ah, a new neighbour. Mind the ledge.", "2": "Take my lantern on every dive." },
+    "chat": ["Carved stone, my friend. Always carved stone.", "Do not touch the merchandise.", "I am digging. Quietly."],
+    "react": ["My monocle!", "Please! I am working!", "Gracious!"],
     "hurt": ["Mind the merchandise!", "How rude!", "My monocle!"], "angry": ["Out of my sight!", "Not one relic more!", "I will remember this."] },
   { "id": "host", "name": "The Host", "title": "The Pool Host", "journal": "person-host",
+    "hub": { "1": ["The champion of the round basin!", "I am on holiday. Even hosts need one.", "Five shells, twenty seconds. You know the deal."] },
+    "thanks": { "1": "Moved in. The pool can run itself for a while." },
+    "chat": ["What a wager that was!", "The house remembers a winner.", "Splendid swimming!"],
+    "react": ["Not the hat!", "Hoo! Fireworks!", "Steady on!"],
+    "outcomes": [
+      { "id": "tip", "weight": 3, "lines": ["Bravo! A little extra from the house."], "now": { "shells": 4 } },
+      { "id": "owed", "weight": 2, "lines": ["The house owes you one. I will find you further down."],
+        "later": { "after": [1, 2], "where": "exit", "lines": ["There you are, champ!", "The house pays its debts."], "reward": { "shells": 10 } } },
+      { "id": "vibe", "weight": 2, "lines": ["What a show! Come back any time."] },
+      { "id": "gift", "weight": 1, "lines": ["I will save you something at the hub."],
+        "next": { "lines": ["Champ! I saved you a bomb or two. Take them on your next dive."], "boon": { "bombs": 2 } } }
+    ],
     "hurt": ["Hey! Not the hat!", "Sir! This is a respectable pool!", "Ow, ow, ow!"], "angry": ["You are banned!", "The house always bites back.", "No more wagers for you!"] }
  ],
  "quests": [
-  { "id": "marlo-1", "npc": "marlo", "kind": "vault", "need": 0, "max": 2, "levels": [0, 1], "chance": 0.5, "reward": 3,
-    "lines": { "meet": "Hey! Over here! In the rock!", "ask": "Blow this wall open, would you?", "help": "Fresh water! You did it!", "thank": "Find me at the hub." },
+  { "id": "marlo-1", "npc": "marlo", "kind": "vault", "need": 0, "max": 2, "levels": [0, 1], "chance": 0.5,
+    "lines": { "meet": "Hey! Over here! In the rock!", "ask": "Blow this wall open, would you?", "help": "Fresh water! You did it!", "thank": "Thank you, friend. Truly." },
+    "outcomes": [
+      { "id": "shells", "weight": 3, "lines": ["Here, all I had in my pockets."], "now": { "shells": 5 } },
+      { "id": "bombs", "weight": 2, "lines": ["I dug these out of the rock. Take them."], "now": { "bombs": 2 } },
+      { "id": "later", "weight": 3, "lines": ["I have nothing on me now.", "Look for me near an exit further down."],
+        "later": { "after": [1, 2], "where": "exit", "lines": ["There you are! I kept my word.", "Salvage from a wreck. It is yours."], "reward": { "shells": 12 } } },
+      { "id": "gift", "weight": 1, "lines": ["I will leave something for you at the hub."],
+        "next": { "lines": ["I found these while you were out. For your next dive."], "boon": { "bombs": 2 } } }
+    ],
     "done": "The diver waves, free at last" },
-  { "id": "pip-1", "npc": "pip", "kind": "rescue", "need": 0, "max": 0, "levels": [0, 1, 2], "chance": 0.4, "reward": 8,
-    "lines": { "meet": "Eep! Someone is here!", "ask": "Squeak! The bars! The bars!", "help": "Free! Squee! Lead the way!", "thank": "I will follow you home." },
-    "done": "It squeaks happily and swims home" }
+  { "id": "pip-1", "npc": "pip", "kind": "rescue", "need": 0, "max": 0, "levels": [0, 1, 2], "chance": 0.4,
+    "lines": { "meet": "Eep! Someone is here!", "ask": "Squeak! The bars! The bars!", "help": "Free! Squee!", "thank": "Squeak squeak! (Thank you!)" },
+    "outcomes": [
+      { "id": "follow", "weight": 3, "role": "follow", "lines": ["I will follow you home."], "now": { "shells": 8 } },
+      { "id": "mama", "weight": 2, "role": "stay", "lines": ["Squee! (Pip swims happy circles.)"],
+        "later": { "after": [1, 2], "where": "exit", "npc": "pip", "variant": "mama", "name": "Pip's Mama", "lines": ["You freed my little Pip!", "Take this. A mother does not forget."], "reward": { "hearts": 1 } } },
+      { "id": "pearl", "weight": 1, "role": "stay", "lines": ["Squeak! (Pip will bring you something!)"],
+        "next": { "lines": ["Squeak! (Pip found shiny shells for you!)"], "boon": { "shells": 6 } } }
+    ],
+    "done": "It squeaks happily and swims home" },
+  { "id": "pip-2", "npc": "pip", "kind": "meet", "need": 1, "max": 1, "levels": [1, 2], "chance": 0.3,
+    "lines": { "meet": "Squeak? Squeak! (It is you!)", "ask": "Squee! (Come here!)", "help": "Squeak squeak! (Pip explores now!)", "thank": "Squee! (Look what Pip found!)" },
+    "outcomes": [
+      { "id": "shells", "weight": 2, "lines": ["Squeak! (Shiny!)"], "now": { "shells": 6 } },
+      { "id": "vibe", "weight": 1, "lines": ["Squee... (Pip just wanted to say hello.)"] },
+      { "id": "mama", "weight": 1, "lines": ["Squeak! (Mama is further down!)"],
+        "later": { "after": [1, 1], "where": "exit", "npc": "pip", "variant": "mama", "name": "Pip's Mama", "lines": ["Pip told me about you.", "Here, for the road."], "reward": { "hearts": 1 } } }
+    ],
+    "done": "Pip is out exploring" },
+  { "id": "quill-dig", "npc": "quill", "kind": "meet", "need": 1, "max": 2, "levels": [1, 2], "chance": 0.3, "stage": false,
+    "lines": { "meet": "Psst! Over here, my friend.", "ask": "Come, come. I do not bite.", "help": "Out on a dig, as you see.", "thank": "Always a pleasure to meet a fellow collector." },
+    "outcomes": [
+      { "id": "trade", "weight": 2, "lines": ["Here, a little something for your trouble."], "now": { "shells": 6 } },
+      { "id": "hint", "weight": 2, "lines": ["The old idols rest on pedestals, one cave in three.", "Lift one, and the ceiling comes down. Swim fast!"] },
+      { "id": "grotto", "weight": 2, "lines": ["Meet me in the grotto at the end of the dive. I will have something for you."],
+        "later": { "after": [9, 9], "where": "rest", "lines": ["Ah, you made it!", "A few drops of fish juice. Fresh, I promise."], "reward": { "juice": 6 } } },
+      { "id": "goggles", "weight": 1, "lines": ["Take these old goggles. They see into stone."], "now": { "item": "goggles" } }
+    ],
+    "done": "Quill tips his monocle" }
  ]
 }
