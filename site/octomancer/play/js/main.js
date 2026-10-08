@@ -32,9 +32,9 @@ import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, spawnRubble, DROP_BELOW } from './bomb.js';
-import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, HAND_REACH } from './hand.js';
+import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, HAND_REACH } from './hand.js';
 import { registerHandKinds } from './hand-kinds.js';
-import { drawHandTell, drawHeldArm, drawKeeperNotice } from './hand-draw.js';
+import { drawHandTell, drawHeldArm, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
 import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
@@ -337,6 +337,7 @@ let inkResident = null; // this step's resident chunks, for the ambient fish the
 if (V2) enemies.setInkClouds(inkClouds);
 // controls 2026-10-08 (V2-PLAN 17): the hand on F (hand.js; the built-in targets are hand-kinds.js, talking is below)
 let hand = createHand();
+let handTap = false; // test hook __octo.pressHand(): the next step sees one tap of the hand button
 let keeperNotice = 0; // s left of the shopkeeper's '!' (he saw a ware knocked off its pedestal)
 // SPELLS-PICK.md: the level side of Riptide, Coral Wall, Anchor and the Delayed motes (spell-fx.js); the rune pedestal of this level (runes.js)
 let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
@@ -418,7 +419,7 @@ function stepUnlock(dt) {
     for (let i = 0; i < 5; i++) particles.pickupSparkle(cx - 1 + i * 0.5, cy + 0.3, i % 2 ? '#8fc46a' : '#c8f5e6');
     particles.bouncePuff(cx, cy + 0.5, 0, -1);
     ui.showTitle('The dive is open', '', 2200);
-    ui.showToast('Swim into the whirlpool to start a run', 3600);
+    ui.showToast('Swim to the whirlpool and press F to start a run', 3600);
   }
   if (u.t >= UNLOCK_END_S) unlockAnim = null;
 }
@@ -710,6 +711,7 @@ function endOfStepEntry() {
 function step(dt) {
   sim.time += dt;
   let snap = input.snapshot();
+  if (handTap) { handTap = false; snap = { ...snap, hand: { pressed: true, held: false } }; } // __octo.pressHand(): one tap of F (tests)
   if (autoDiveOn) {
     // __octo.autoDive(true): a small bounded BFS through the tile grid
     // toward "deeper", re-planned every 0.3s, so the 10-minute soak test
@@ -911,7 +913,7 @@ function step(dt) {
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
   if (V2) handleCrumbles(dt);
   particles.update(dt, solidForSight);
-  if (snap.bomb.pressed && !octo.dead && !entry && !octo.hidden) placeBomb(snap, snap.src ? snap.src.bomb : 'key'); // B / X, middle click: the quick bomb
+  if (snap.bomb.pressed && !octo.dead && !entry && !octo.hidden) placeBomb(snap, snap.src ? snap.src.bomb : 'key'); // B / X: the keyboard quick bomb (dropped)
 
   if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
   endOfStepEntry(); // r45: the entry's pose wins over anything that touched the body this step; the level changes here when it is over
@@ -1726,25 +1728,9 @@ function stepV2(snap) {
   if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
   const sealedHere = run.state === S_HUB && !MOVETEST && hubSeal() > 0;
   if (sealedHere && world.reachedExit(octo.x, octo.y)) sealedBump(lv); // the kelp holds the dive shut: bounced back up, the plank and the prompt say why
-  else if (world.reachedExit(octo.x, octo.y)) {
-    if (run.state === S_BIOME) paySwiftShell();
-    if (run.state === S_BIOME && questOnExit(quest)) payQuest();
-    if (run.state === S_BIOME && relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
-    beginEntry(run.state === S_HUB ? EV_ENTER_DIVE : EV_EXIT, lv.exitX, lv.exitY);
-    return;
-  }
-  if (run.state === S_HUB && !MOVETEST && !unlockAnim && lv.tutorialX >= 0 && lv.tutorialX !== undefined && Math.hypot(octo.x - (lv.tutorialX + 0.5), octo.y - (lv.tutorialY + 0.5)) < 1.2) {
-    beginEntry(EV_ENTER_TUTORIAL, lv.tutorialX, lv.tutorialY);
-    return;
-  }
-  if (run.state === S_HUB && run.shortcut && lv.shortcutX >= 0 && Math.hypot(octo.x - (lv.shortcutX + 0.5), octo.y - (lv.shortcutY + 0.5)) < 1.2) {
-    beginEntry(EV_ENTER_SHORTCUT, lv.shortcutX, lv.shortcutY);
-    return;
-  }
-  if (run.state === S_HUB && run.shortcut3 && lv.shortcut3X >= 0 && Math.hypot(octo.x - (lv.shortcut3X + 0.5), octo.y - (lv.shortcut3Y + 0.5)) < 1.2) {
-    beginEntry(EV_ENTER_SHORTCUT3, lv.shortcut3X, lv.shortcut3Y);
-    return;
-  }
+  // Daniel 2026-10-08: a whirlpool is entered only with the hand (F, the middle click, the phone's Enter): the 'portal'
+  // interact kind below (portalAt / enterPortal). Swimming into one only shows the tell and the key hint.
+  if (entry) return;
   if (run.state === S_HUB) hubStep(lv);
   if (lv.boardX >= 0) {
     const d = Math.hypot(octo.x - (lv.boardX + 0.5), octo.y - (lv.boardY + 0.5));
@@ -1871,7 +1857,10 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (!octo.dead && !octo.hidden && !entry) { // controls 2026-10-08: the tentacle curl toward what F would take, the arm round what it holds
     const o = octo; // the step's position, as the held thing's (props are drawn at their step position too)
     if (hand.held) { const hp = hand.held.pos ? hand.held.pos() : null; if (hp) drawHeldArm(c, camera, cw, ch, o.x, o.y, hp.x, hp.y, hand.held.r || 0.3, t); }
-    else if (hand.target) drawHandTell(c, camera, cw, ch, o.x, o.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
+    else if (hand.target) {
+      drawHandTell(c, camera, cw, ch, o.x, o.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
+      if (hand.target.kind === 'portal' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 1.45, 'F', t); // (phones: the Spell button reads Enter)
+    }
   }
 }
 /** Pushable blocks: each resident chunk's 'block' spawns become PK_BLOCK props once. */
@@ -2275,6 +2264,32 @@ setShopHooks({
 
 // controls 2026-10-08 (V2-PLAN 17): what F does besides grabbing. The things to grab and the shop are hand-kinds.js; talking
 // (F next to someone: the next line now, or a hub resident's turn at once) is here, where the hub and the encounters live.
+/**
+ * The whirlpool the octopus is in (within PORTAL_R of its centre), or null: the level exit (the hub's dive), the hub's Tutorial
+ * ring and its shortcut rings. {ev, tx, ty, x, y}. The sealed dive answers null (the kelp bounces her back on touch instead).
+ */
+const PORTAL_R = 1.2;
+function portalAt(o) {
+  if (!V2 || !run || entry || transitioning || octo.hidden || octo.dead) return null;
+  const lv = world.level;
+  const near = (tx, ty) => tx !== undefined && tx >= 0 && Math.hypot(o.x - (tx + 0.5), o.y - (ty + 0.5)) < PORTAL_R;
+  const hub = run.state === S_HUB;
+  if (world.reachedExit(o.x, o.y) && !(hub && !MOVETEST && hubSeal() > 0)) return { ev: hub ? EV_ENTER_DIVE : EV_EXIT, tx: lv.exitX, ty: lv.exitY, x: lv.exitX + 0.5, y: lv.exitY + 0.5 };
+  if (hub && !MOVETEST && !unlockAnim && near(lv.tutorialX, lv.tutorialY)) return { ev: EV_ENTER_TUTORIAL, tx: lv.tutorialX, ty: lv.tutorialY, x: lv.tutorialX + 0.5, y: lv.tutorialY + 0.5 };
+  if (hub && run.shortcut && near(lv.shortcutX, lv.shortcutY)) return { ev: EV_ENTER_SHORTCUT, tx: lv.shortcutX, ty: lv.shortcutY, x: lv.shortcutX + 0.5, y: lv.shortcutY + 0.5 };
+  if (hub && run.shortcut3 && near(lv.shortcut3X, lv.shortcut3Y)) return { ev: EV_ENTER_SHORTCUT3, tx: lv.shortcut3X, ty: lv.shortcut3Y, x: lv.shortcut3X + 0.5, y: lv.shortcut3Y + 0.5 };
+  return null;
+}
+/** The hand used on a whirlpool: pay what leaving pays, then the Unity-style entry (beginEntry, unchanged). */
+function enterPortal(p) {
+  if (p.ev === EV_EXIT && run.state === S_BIOME) {
+    paySwiftShell();
+    if (questOnExit(quest)) payQuest();
+    if (relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
+  }
+  beginEntry(p.ev, p.tx, p.ty);
+  return true;
+}
 const handEnv = {
   get props() { return props; }, get corpses() { return corpses; }, get enemies() { return enemies; },
   get loot() { return V2 && run && run.state === S_BIOME ? loot : null; }, get bombs() { return bombs; },
@@ -2283,6 +2298,11 @@ const handEnv = {
 };
 if (V2) {
   registerHandKinds(handEnv);
+  registerInteract('portal', { // Daniel 2026-10-08: whirlpools on F only; a portal beats anything else in reach
+    priority: PRI_PORTAL,
+    find(o) { const p = portalAt(o); return p ? { x: p.x, y: p.y, ref: p } : null; },
+    use(t) { const p = portalAt(octo); return p ? enterPortal(p) : false; },
+  });
   registerInteract('talk', {
     priority: PRI_TALK,
     find(o, reach) {
@@ -2781,6 +2801,8 @@ if (V2) {
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
   /** Controls 2026-10-08: the hand: what is held, the target in reach, counters, the swim weight and the phone button's mode. */
+  /** Test hook: one tap of F on the next step (grab, talk, buy, or enter the whirlpool the octopus is in). */
+  pressHand() { handTap = true; return true; },
   hand() {
     const t = hand.target;
     const hp = hand.held && hand.held.pos ? hand.held.pos() : null;
