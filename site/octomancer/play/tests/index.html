@@ -40,6 +40,10 @@ function approx(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps; }
   assert('metrics() has frameMsMedian/P95 fields', typeof m.frameMsMedian === 'number' && typeof m.frameMsP95 === 'number');
 }
 
+// --- art round 3: the second sprite atlas and the code it replaced (first, so the fallback runs before any sprite was asked for) ---
+import { runArtR3Tests } from './art-r3.test.js';
+await runArtR3Tests(assert);
+
 // --- 50 steps == 1.000s of simulated time ---
 {
   let time = 0;

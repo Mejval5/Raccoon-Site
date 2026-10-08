@@ -12,6 +12,7 @@ import {
 import { prefersReducedMotion } from './config.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 import { setCorpseArt } from './corpses-draw.js';
+import { drawSprite, drawSpriteColumns, spriteRect, spriteMeta } from './sprites.js';
 
 const TAU = Math.PI * 2;
 const INK = '#181012';
@@ -32,12 +33,21 @@ const LID_MAX = 45 * Math.PI / 180;             // how far the lid swings open a
 // sprites; the teal Tridacna mantle and no barnacles keep it apart from the mauve Barnacle Clam (the chest)
 const SHELL = '#b9ab8f', SHELL_LIGHT = '#e3d7bb', SHELL_DARK = '#7f705a', SAND = '#efe3c6';
 const FRILL = '#4fae9f', FRILL_2 = '#9a7cc4', CAVITY = '#3a2f4c';
+const LIMP_FILTER = 'brightness(0.72) saturate(0.45)';
+
+/** Draw painted sprite `name` (round 3 atlas) in tile units; limp greys it. False (nothing drawn) until the atlas is ready. */
+function clamSprite(c, name, x, y, w, h, ax, ay, limp) {
+  if (!spriteRect(name)) return false;
+  if (limp && typeof c.filter === 'string') { c.save(); c.filter = LIMP_FILTER; drawSprite(c, name, x, y, w, h, ax, ay); c.restore(); } else drawSprite(c, name, x, y, w, h, ax, ay);
+  return true;
+}
 
 /** The lower half of the rim ellipse: the front lip. */
 function frontLip(c) { c.ellipse(0, RIM_Y, RX, RY, 0, 0, Math.PI, false); }
 
 /** The cup's cavity (the inside seen over the front lip), drawn behind the octopus. `limp` greys it for the corpse. */
 function drawCavity(c, limp) {
+  if (clamSprite(c, 'gclamCavity', 0, RIM_Y, 2 * RX * 1.08, 0.36, 0.5, 0.5, limp)) return;
   c.beginPath(); c.ellipse(0, RIM_Y, RX - 0.02, RY, 0, 0, TAU);
   c.fillStyle = limp ? '#4a4452' : CAVITY; c.fill();
   // the mantle: a frilled band along the back edge, teal with violet spots
@@ -53,10 +63,13 @@ function drawCavity(c, limp) {
 /** The pearl: soft and milky, a faint highlight that comes and goes (no sparkle). */
 function drawPearl(c, glint) {
   const px = 0.02, py = RIM_Y - 0.1;
-  const g = c.createRadialGradient(px - 0.04, py - 0.04, 0.01, px, py, PEARL_R);
-  g.addColorStop(0, '#f4eee6'); g.addColorStop(1, '#cdc1b6');
-  c.beginPath(); c.arc(px, py, PEARL_R, 0, TAU); c.fillStyle = g; c.fill();
-  c.lineWidth = 0.035; c.strokeStyle = '#6f6260'; c.stroke();
+  const spr = clamSprite(c, 'gclamPearl', px, py, 2 * PEARL_R * 1.1, 2 * PEARL_R * 1.1, 0.5, 0.5, false);
+  if (!spr) {
+    const g = c.createRadialGradient(px - 0.04, py - 0.04, 0.01, px, py, PEARL_R);
+    g.addColorStop(0, '#f4eee6'); g.addColorStop(1, '#cdc1b6');
+    c.beginPath(); c.arc(px, py, PEARL_R, 0, TAU); c.fillStyle = g; c.fill();
+    c.lineWidth = 0.035; c.strokeStyle = '#6f6260'; c.stroke();
+  }
   if (glint > 0) { // a soft milky patch fading in and out
     const h = c.createRadialGradient(px - 0.05, py - 0.06, 0, px - 0.05, py - 0.06, 0.09);
     h.addColorStop(0, 'rgba(255,255,255,' + (0.55 * glint).toFixed(3) + ')'); h.addColorStop(1, 'rgba(255,255,255,0)');
@@ -94,6 +107,8 @@ function valveRibs(c, dir, depth, pw, col, light) {
 
 /** The cup's outer wall and front lip (in front of the octopus: it swims in over the lip). */
 function drawCup(c, limp) {
+  const m = spriteMeta('gclamCup');
+  if (m && spriteRect('gclamCup')) { const h = 2 * spriteRect('gclamCup')[3] / spriteRect('gclamCup')[2]; if (clamSprite(c, 'gclamCup', 0, RIM_Y - m.rimV * h, 2, h, 0.5, 0, limp)) return; }
   valvePath(c, 1, 0.43, 0.6);
   c.fillStyle = limp ? '#8c826f' : SHELL; c.fill();
   c.save(); c.clip();
@@ -112,6 +127,13 @@ function drawCup(c, limp) {
 function drawLid(c, theta, limp) {
   c.save();
   c.translate(-RX, RIM_Y); c.rotate(-theta); c.translate(RX, -RIM_Y);
+  const m = spriteMeta('gclamLid'), r = spriteRect('gclamLid');
+  if (m && r) {
+    const h = 2 * r[3] / r[2];
+    clamSprite(c, 'gclamLid', 0, RIM_Y - m.rimV * h, 2, h, 0.5, 0, limp);
+    c.restore();
+    return;
+  }
   valvePath(c, -1, 0.56, 0.7);
   c.fillStyle = limp ? '#8c826f' : SHELL; c.fill();
   c.save(); c.clip();
@@ -154,8 +176,26 @@ function glintAt(t, i) { const u = ((t + i * 1.9) % 4.5) / 0.9; return u < 1 ? M
 
 // ---------------------------------------------------------------- tentacle limb
 
-const SEG = 14;
+const SEG = 20;
 const px = new Float32Array(SEG + 1), py = new Float32Array(SEG + 1), nx = new Float32Array(SEG + 1), ny = new Float32Array(SEG + 1), ww = new Float32Array(SEG + 1);
+
+/**
+ * Draw the painted limb strip (tentLimb: base at the left, tip at the right, khaki underside at the bottom) along the points
+ * xs, ys (n + 1 of them) as n slices, each turned to its segment, `ws` the widths. Khaki lands on the -normal side. False until the atlas is ready.
+ */
+export function drawStripAlong(c, xs, ys, ws, n) {
+  if (!spriteRect('tentLimb')) return false;
+  for (let k = 0; k < n; k++) {
+    const dx = xs[k + 1] - xs[k], dy = ys[k + 1] - ys[k], len = Math.hypot(dx, dy) + 0.02, h = Math.max(0.2, (ws[k] + ws[k + 1]) * 0.5 * 1.08); // not thinner than 0.2 tiles: the painted tip keeps its outline
+    c.save();
+    c.translate((xs[k] + xs[k + 1]) * 0.5, (ys[k] + ys[k + 1]) * 0.5);
+    c.rotate(Math.atan2(dy, dx));
+    c.scale(1, -1);
+    drawSpriteColumns(c, 'tentLimb', k / n, (k + 1) / n, -len / 2, -h / 2, len, h);
+    c.restore();
+  }
+  return true;
+}
 const PINK = '#d98c8c', PINK_LIGHT = '#eaa8a6', KHAKI = '#b5a487', GREY_OUT = '#2a2630';
 
 /**
@@ -178,6 +218,7 @@ function drawLimb(c, bx, by, tx, ty, mdx, mdy, bend, w0, w1, limp) {
     nx[k] = -tdy / tl; ny[k] = tdx / tl;
     ww[k] = w0 + (w1 - w0) * Math.pow(u, 0.8);
   }
+  if (drawStripAlong(c, px, py, ww, SEG)) return;
   const path = () => {
     c.beginPath();
     c.moveTo(px[0] + nx[0] * ww[0] / 2, py[0] + ny[0] * ww[0] / 2);
@@ -264,6 +305,7 @@ function drawTentacleBack(c, d, i, t, front) {
   }
 }
 
+const WRAP_N = 16, wx = new Float32Array(WRAP_N + 1), wy = new Float32Array(WRAP_N + 1), wwid = new Float32Array(WRAP_N + 1);
 /** Two coils round the octopus, tightening while it is squeezed. */
 function drawWrap(c, d, i, ox, oy, t) {
   const sq = d.squeeze[i], r = 0.56 - 0.14 * sq;
@@ -273,6 +315,15 @@ function drawWrap(c, d, i, ox, oy, t) {
   c.lineCap = 'round';
   for (let k = 0; k < 2; k++) {
     const a0 = t * 1.2 + k * 3.3, r2 = r + k * 0.04;
+    if (spriteRect('tentLimb')) {
+      const ecy = k * 0.12 - 0.06, rot = k * 0.5 - 0.25, cr = Math.cos(rot), sr = Math.sin(rot);
+      for (let j = 0; j <= WRAP_N; j++) {
+        const a = a0 + 4.1 * j / WRAP_N, ex = Math.cos(a) * r2, ey = Math.sin(a) * r2 * 0.62;
+        wx[j] = ex * cr - ey * sr; wy[j] = ecy + ex * sr + ey * cr; wwid[j] = 0.22;
+      }
+      drawStripAlong(c, wx, wy, wwid, WRAP_N);
+      continue;
+    }
     c.beginPath(); c.ellipse(0, k * 0.12 - 0.06, r2, r2 * 0.62, k * 0.5 - 0.25, a0, a0 + 4.1);
     c.lineWidth = 0.26; c.strokeStyle = GREY_OUT; c.stroke();
     c.lineWidth = 0.19; c.strokeStyle = PINK; c.stroke();
