@@ -12,7 +12,7 @@ import { createTutorialState, tutorialStep, tutorialActed, tutorialRooms, IDLE_H
 import { STEP } from '../js/loop.js';
 import { loadBiome1Json } from './biome1.test.js';
 import { loadRoomsJson } from './rooms.test.js';
-import { createBotSim, tick, follow, wait } from './bot.js';
+import { createBotSim, tick, follow, wait, enterExit } from './bot.js';
 
 /** Build a tiny map from rows ('#' rock) and test pathSolvable between two marked cells. */
 function solvable(rows, opts) {
@@ -180,7 +180,7 @@ export async function runPathcheckTests(assert) {
     const w = createLevelWorld(1, 0, { level: parseAuthoredMap(hubJson) });
     const sim = createBotSim(w);
     const r = follow(sim, w.exitX, w.exitY, 1.0, 3000);
-    assert('bot hub: swims from the start to the dive ring using real input and physics', r.ok && w.reachedExit(sim.octo.x, sim.octo.y));
+    assert('bot hub: swims from the start to the dive ring using real input and physics', r.ok && enterExit(sim));
   }
   {
     // the scripted tutorial through its rooms: swim, dash through the urchin gap, the room goals open the coral doors (the ink,
@@ -237,7 +237,7 @@ export async function runPathcheckTests(assert) {
       r = follow(sim, 28.5, 31, 0.6, 2500); acts.buys++; for (let i = 0; i < 5; i++) tick(sim, 0, 0);   // a ware taken
       out.doors = opened.join();
       r = follow(sim, w.exitX, w.exitY, 1.05, 4000);
-      out.exit = r.ok && w.reachedExit(sim.octo.x, sim.octo.y);
+      out.exit = r.ok && enterExit(sim);
       out.hearts = sim.minHearts;
       results.push(out);
     }
@@ -274,7 +274,7 @@ export async function runPathcheckTests(assert) {
         const sim = createBotSim(w);
         const r = follow(sim, w.exitX, w.exitY, 1.05, 5000);
         ran++;
-        if (r.ok && w.reachedExit(sim.octo.x, sim.octo.y)) done++; else fails.push(seed + '/1-' + (k + 1) + ':' + r.reason);
+        if (r.ok && enterExit(sim)) done++; else fails.push(seed + '/1-' + (k + 1) + ':' + r.reason);
         runEvent(run, EV_EXIT);
       }
     }

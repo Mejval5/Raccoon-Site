@@ -20,7 +20,7 @@
 // Data-oriented: rows are plain data, the runtime state is one flat record.
 
 import { mulberry32, hashSeed2 } from './rng.js';
-import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
+import { tileGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
 import { ROOM_W, ROOM_H } from './rooms.js';
 import { createTalk, say, talkStep } from './speech.js';
 import { DASH_KILL_SPEED } from './config.js';
@@ -108,7 +108,7 @@ function tileSum(t) { let s = 0; for (let i = 0; i < t.length; i++) s = (s * 31 
  */
 export function questPathFor(level) {
   const w = level.w, h = level.h, t = level.tiles;
-  const grid = createPathGrid(w, h, (x, y) => t[y * w + x] !== 0);
+  const grid = tileGrid(t, w, h, null); // r44: the level's cached lattice (generateLevel / buildLevelSpawns just built it for these tiles)
   const reached = reachableNodes(grid, level.startX + 0.5, level.startY + 0.5);
   const route = findPath(grid, level.startX + 0.5, level.startY + 0.5, level.exitX + 0.5, level.exitY + 0.5);
   return { nx: grid.nx, ny: grid.ny, reached, route: route ? route.points : null, sum: tileSum(t) };

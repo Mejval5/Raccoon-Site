@@ -14,7 +14,7 @@ import {
   TAG_START, TAG_EXIT, TAG_PATH, TAG_DROP, TAG_LAND, TAG_SHOP, PROP_KEEPER, PROP_PEDESTAL, PROP_BLOCK,
   ANCH_UP, ANCH_DOWN, ANCH_LEFT, ANCH_RIGHT,
 } from './rooms.js';
-import { createPathGrid, findPath, reachableNodes, reachedNear } from './pathcheck.js';
+import { tileGrid, floodNodes, reachedNear, EXIT_TRIGGER_R } from './pathcheck.js';
 import { MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY } from './materials.js';
 import { getPatternTable, compilePatterns, matchPatterns, selectSpawns } from './patterns.js';
 
@@ -432,15 +432,26 @@ function carvePockets(tiles, reached, prng, out, shop) {
  * reachable too. `blockers` (hazards.js hazardBlockers) are circles the body must keep out of. Returns true when the level is fine.
  */
 export function finalPathOk(tiles, sx, sy, ex, ey, shop, blockers) {
-  const grid = createPathGrid(LEVEL_W, LEVEL_H, (x, y) => tiles[y * LEVEL_W + x] !== 0, blockers ? { blockers } : undefined);
-  if (!findPath(grid, sx + 0.5, sy + 0.5, ex + 0.5, ey + 0.5)) return false;
+  // r44 perf: one flood from the start answers the exit and the shop alike (A* to the exit finds a path exactly when the
+  // flood reaches a node inside its goal radius), and with no blockers the flood is kept for the same tiles and start, so
+  // the exit candidates of one level cost a lookup each
+  const bl = blockers && blockers.length ? blockers : null;
+  const grid = tileGrid(tiles, LEVEL_W, LEVEL_H, bl);
+  const R = _reach;
+  if (!R.seen || R.seen.length < grid.nx * grid.ny) { R.seen = new Uint8Array(grid.nx * grid.ny); R.q = new Int32Array(grid.nx * grid.ny); R.gen = -1; }
+  if (bl || R.gen !== grid.gen || R.sx !== sx || R.sy !== sy) {
+    floodNodes(grid, sx + 0.5, sy + 0.5, R.seen, R.q);
+    R.gen = bl ? -1 : grid.gen; R.sx = sx; R.sy = sy;
+  }
+  const reached = R.seen;
+  if (!reachedNear(grid, reached, ex + 0.5, ey + 0.5, EXIT_TRIGGER_R - 0.15)) return false;
   if (shop) {
-    const reached = reachableNodes(grid, sx + 0.5, sy + 0.5);
     if (!reachedNear(grid, reached, shop.kx + 0.5, shop.ky + 0.5)) return false;
     for (let i = 0; i < 3; i++) if (!reachedNear(grid, reached, shop.px[i * 2] + 0.5, shop.px[i * 2 + 1] + 0.5)) return false;
   }
   return true;
 }
+const _reach = { seen: null, q: null, gen: -1, sx: 0, sy: 0 };
 
 // ---------------------------------------------------------------- materials
 

@@ -9,6 +9,9 @@ import { createDecor, findPlantAnchors, findClusterMates } from '../js/decor.js'
 import { drawDecorBoulders } from '../js/v2-props-draw.js';
 import { loadBiome1Json } from './biome1.test.js';
 import { loadRoomsJson } from './rooms.test.js';
+import { loadPatternsJson } from './patterns.test.js';
+import { getPatternTable, setPatternTable, compilePatterns } from '../js/patterns.js';
+import { createPathGrid, tileGrid, reachableNodes, floodNodes, findPath, reachedNear, EXIT_TRIGGER_R } from '../js/pathcheck.js';
 
 // what one Shallows level carried before round 36 (30 seeds x 3 levels, round-35 rooms and caps, tests run in node)
 const BASE_PROPS = 4.67;      // clams + pots + chests
@@ -22,6 +25,30 @@ function recCtx() {
     set(t, k, v) { t[k] = v; return true; },
   });
 }
+
+/**
+ * r44 perf: a digest of everything generateLevel and buildLevelSpawns produce for seeds 1..`seeds`, levels 1-1..1-3 (the level
+ * object and the spawn list as JSON, typed arrays as plain lists), FNV-1a over the text in two 32-bit lanes. The speed work on
+ * level building must not change a single tile or spawn: LEVEL_DIGEST_50 was taken from the code before it.
+ */
+export function levelDigest(bank, seeds = 50) {
+  const rep = (k, v) => (ArrayBuffer.isView(v) ? Array.from(v) : v);
+  let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995;
+  for (let seed = 1; seed <= seeds; seed++) for (let lvl = 0; lvl < 3; lvl++) {
+    const L = generateLevel(seed, lvl, bank);
+    const s = JSON.stringify(L, rep) + '|' + JSON.stringify(buildLevelSpawns(L, seed, lvl), rep);
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
+      h2 = (h2 ^ (h2 >>> 15)) >>> 0;
+    }
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+// Retake this (node or the test page: levelDigest(bank, 50) with data/patterns.json registered) only when a change MEANS to alter
+// what levels look like (rooms, patterns, placement rules); a speed-up must leave it as it is.
+export const LEVEL_DIGEST_50 = '9f839b74c9c760e5';
 
 export async function runDetailTests(assert) {
   const bank = createRoomBank(await loadBiome1Json());
@@ -93,6 +120,31 @@ export async function runDetailTests(assert) {
     const ctx2 = recCtx();
     drawDecorBoulders(ctx2, { x: 12, y: 10, pxPerUnit: 40 }, 800, 600, list, () => 0);
     assert('detail: a boulder whose rock is gone (bombed) is not drawn', ctx2.calls.filter((k) => k === 'fill').length === 0);
+  }
+
+  // ---- r44: byte-identical levels and spawns for the same seed (the speed work must not move anything) ----
+  {
+    const prev = getPatternTable();
+    setPatternTable(compilePatterns(await loadPatternsJson()));
+    const d1 = levelDigest(bank, 50), d2 = levelDigest(bank, 50);
+    setPatternTable(prev);
+    assert(`detail: 50 seeds x 3 levels (generate + spawns) hash to the digest taken before the r44 speed work (${d1}, expected ${LEVEL_DIGEST_50}; a second pass ${d2 === d1 ? 'matches' : 'DIFFERS'})`, d1 === LEVEL_DIGEST_50 && d2 === d1);
+    // the cached level grid (fast lattice, blockers stamped, memoised midpoints) answers exactly as a plain createPathGrid
+    let bad = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const L = generateLevel(seed, seed % 3, bank);
+      const bl = seed % 2 ? [] : [{ x: L.startX + 6.3, y: L.startY + 0.5, r: 0.6 }, { x: L.exitX - 3.5, y: L.exitY + 0.2, r: 0.45 }];
+      const plain = createPathGrid(L.w, L.h, (x, y) => L.tiles[y * L.w + x] !== 0, { blockers: bl });
+      const fast = tileGrid(L.tiles, L.w, L.h, bl);
+      for (let i = 0; i < plain.free.length; i++) if (plain.free[i] !== fast.free[i]) { bad++; break; }
+      const a = reachableNodes(plain, L.startX + 0.5, L.startY + 0.5);
+      const b = floodNodes(fast, L.startX + 0.5, L.startY + 0.5, new Uint8Array(a.length), new Int32Array(a.length));
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { bad++; break; }
+      const p1 = findPath(plain, L.startX + 0.5, L.startY + 0.5, L.exitX + 0.5, L.exitY + 0.5), p2 = findPath(fast, L.startX + 0.5, L.startY + 0.5, L.exitX + 0.5, L.exitY + 0.5);
+      if (!!p1 !== !!p2 || (p1 && (p1.length !== p2.length || p1.points.join() !== p2.points.join()))) bad++;
+      if (!!p1 !== reachedNear(fast, b, L.exitX + 0.5, L.exitY + 0.5, EXIT_TRIGGER_R - 0.15)) bad++;
+    }
+    assert(`detail: the cached level path grid, its flood and A* match a plain createPathGrid on 12 levels with and without blockers (${bad} differ)`, bad === 0);
   }
 
   // ---- level generation time ----

@@ -253,7 +253,7 @@ async function toScreen(page, x, y) {
       await q.touchscreen.tap(60, 400); // a touch: the game is in touch mode
       await q.evaluate(() => __octo.input(null));
       const spots = [['swim', 8, 9, /Drag/], ['dash', 15.5, 11.5, /Tap Dash/], ['ink', 28, 9, /Tap Jet/], ['grab', 41, 10, /tap Grab/], ['bomb', 61.5, 10, /tap Bomb/],
-        ['sticky', 58, 30, /tap Bomb/], ['cloud', 42, 29, /Tap Spell/], ['shop', 27, 30, /tap Grab/], ['hazards', 12.5, 31, /Spikes/], ['exit', 4.5, 30.5, /tap Grab to dive/]];
+        ['sticky', 58, 30, /tap Bomb/], ['cloud', 42, 29, /Tap Spell/], ['shop', 27, 30, /tap Grab/], ['hazards', 12.5, 31, /Spikes/], ['exit', 4.5, 30.5, /tap Enter to dive/]];
       for (const [tag, x, y, re] of spots) {
         await q.evaluate((x, y) => { for (let n = 0; n < 12; n++) { __octo.teleport(x, y); __octo.stepDraw(1); } }, x, y);
         const w = await T(q);

@@ -301,8 +301,8 @@
     6,
     32
    ],
-   "desktop": "Swim to the whirlpool and press F to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
-   "touch": "Swim to the whirlpool and tap Grab to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
+   "desktop": "Swim to the whirlpool and press F (or middle click) to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
+   "touch": "Swim into the whirlpool and tap Enter to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
   }
  ],
  "spawns": [

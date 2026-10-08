@@ -81,8 +81,8 @@ prompts = [
     "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up.",
     "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up."),
   P("Dive", "Dive", 5, 30.5, 3.2, [6, 32],
-    "Swim to the whirlpool and press F to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
-    "Swim to the whirlpool and tap Grab to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."),
+    "Swim to the whirlpool and press F (or middle click) to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
+    "Swim into the whirlpool and tap Enter to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."),
 ]
 rooms = [
   {"id": "swim", "rect": [3, 5, 21, 12], "goal": "pass", "goalX": 21.5},

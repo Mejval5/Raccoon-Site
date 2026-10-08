@@ -28,7 +28,7 @@ export function createBotSim(world, opts = {}) {
 /** One fixed step with a move vector and optional dash / bomb presses. Mirrors main.js's step order. */
 export function tick(sim, mx, my, act = {}) {
   const { world, octo, input } = sim;
-  input.setOverride({ move: { x: mx, y: my }, dash: !!act.dash, bomb: !!act.bomb });
+  input.setOverride({ move: { x: mx, y: my }, dash: !!act.dash, bomb: !!act.bomb, hand: !!act.hand });
   const snap = input.snapshot();
   stepOctopus(octo, snap, STEP, world);
   if (octo.dashedThisStep) sim.dashes++;
@@ -40,6 +40,20 @@ export function tick(sim, mx, my, act = {}) {
   if (snap.bomb.pressed) sim.bombs.place(octo, octo.x, octo.y, act.aim || null); // thrown along act.aim, else a soft toss
   sim.steps++;
   if (octo.hearts < sim.minHearts) sim.minHearts = octo.hearts;
+}
+
+/**
+ * Daniel 2026-10-08: whirlpools are entered with the hand (F), not by touch. At the exit the bot presses F (through the real
+ * input layer) and the press counts when the octopus is inside the whirlpool's trigger then (main.js portalAt: reachedExit).
+ */
+export function enterExit(sim) {
+  const { world, octo, input } = sim;
+  tick(sim, 0, 0, { hand: true });
+  const snap = input.snapshot(); // (the override repeats: what the step saw)
+  const ok = !!snap.hand.pressed && world.reachedExit(octo.x, octo.y);
+  tick(sim, 0, 0);
+  sim.entered = ok;
+  return ok;
 }
 
 export function makeGrid(world) {
