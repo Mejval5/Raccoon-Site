@@ -20,7 +20,11 @@ function freshMeta() { return { dives: 0, clears: 0, bestDepth: 0, shells: 0, ki
 // V2-PLAN 16 (npcs.js): angered<Name> / killed<Name> count the times you turned on / killed Marlo, Pip, Quill or the pool Host (the
 // journal's story lines); gone<Name> is how many dive ends they stay away: 2 when killed in a dive, 1 in the hub (setStoryExact lowers it).
 const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'relics', 'relicsGiven', 'saidMarlo', 'saidPip', 'saidQuill', 'poolPaid', 'poolWon',
-  'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost'];
+  'angeredMarlo', 'angeredPip', 'angeredQuill', 'angeredHost', 'killedMarlo', 'killedPip', 'killedQuill', 'killedHost', 'goneMarlo', 'gonePip', 'goneQuill', 'goneHost',
+  // owners round 3 (quests rework): the host's stage (moves into the hub after a won wager), gifts promised for the hub (an outcome index,
+  // quests.js table.gifts), boons waiting for the next dive, later meetings kept, Quill met on a dig, Pip's mother met
+  'host', 'saidHost', 'giftMarlo', 'giftPip', 'giftQuill', 'giftHost', 'boonBombs', 'boonShells', 'boonJuice',
+  'laterMarlo', 'laterPip', 'laterQuill', 'laterHost', 'digQuill', 'mamaPip', 'explorePip'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
   return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory() };

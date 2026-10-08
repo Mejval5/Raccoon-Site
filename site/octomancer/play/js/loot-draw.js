@@ -8,7 +8,7 @@ import { LK_CLAM, LK_POT, LK_CHEST, LK_POCKET, LK_RELIC, ST_INTACT, ST_RATTLE, S
 import { itemFromCode } from './items.js';
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
-import { drawSprite, spriteRect } from './sprites.js';
+import { drawSprite, spriteRect, drawBombSprite } from './sprites.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 
 const TAU = Math.PI * 2;
@@ -266,6 +266,7 @@ function drawRelic(ctx, x, y, ppu, time, present) {
 
 export function drawBombItem(ctx, x, y, ppu) {
   const r = 0.2 * ppu;
+  if (drawBombSprite(ctx, 'bomb', x, y + r * 0.2, r)) return;
   ctx.fillStyle = '#26303a'; ctx.strokeStyle = '#0b1218'; ctx.lineWidth = Math.max(1.5, r * 0.18);
   ctx.beginPath(); ctx.arc(x, y + r * 0.2, r, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.1, r * 0.25, 0, TAU); ctx.fill();

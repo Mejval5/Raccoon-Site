@@ -3,7 +3,12 @@
 import {
   parseQuests, planQuest, questPathFor, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, eligibleRows, nextStage, hubResidents, hubVisit, collectorArrives,
   RELICS_NEEDED, DIVER_RUNS, Q_RESCUE, Q_VAULT, ST_ACTIVE, ST_DONE,
+  Q_MEET, questReact,
 } from '../js/quests.js';
+import { pickOutcome, beatSeed, owedFrom, findFloorNear, createVisitor, visitorStep, DUE_REST } from '../js/visitors.js';
+import { createIdle, idleStep, idleReact, idleLift } from '../js/idle.js';
+import { createPeople } from '../js/people.js';
+import { NPC_PIP, NPC_MARLO } from '../js/npcs.js';
 import { createTalk, say, talking, talkStep, talkAlpha, lineDuration, wrapLines } from '../js/speech.js';
 import { parseShopItems, createShopState, shopStep, applyItem, canUse, BUY_R } from '../js/shop.js';
 import { createRoomBank } from '../js/rooms.js';
@@ -29,16 +34,24 @@ export async function runQuestTests(assert) {
     ['marlo', 'pip', 'quill'].every((id) => table.npcById.has(id)) && table.npcs.every((n) => n.name && n.title && ENTRIES.some((e) => e.id === n.journal && e.cat === 'person') &&
       Object.keys(n.hub).every((st) => n.thanks[st] && n.hub[st].length > 0)) &&
     ['1', '2', '3'].every((st) => table.npcById.get('marlo').hub[st]) && table.npcById.get('pip').hub['1'] && table.npcById.get('quill').hub['2'] && table.npcById.get('quill').relics.length === RELICS_NEEDED);
-  assert('questlines data: two level encounters (Marlo vault, Pip cage), each pays shells and is a spoken scene (meet, ask, help, thank); Pip pays 8',
-    table.rows.length === 2 && table.rows.every((r) => r.reward > 0 && r.done && r.levels.length >= 1 && r.chance > 0 && r.chance < 1 && ['meet', 'ask', 'help', 'thank'].every((k) => r.lines[k] && r.lines[k].length > 8)) &&
-    table.rows.find((r) => r.id === 'pip-1').reward === 8);
-  assert('questlines data: Marlo is met on 1-1 or 1-2 and can be freed in three runs (stages 0..2 each go one up), Pip once; Quill and the Pool have no level row',
-    table.rows.find((r) => r.id === 'marlo-1').kind === 'vault' && table.rows.find((r) => r.id === 'marlo-1').levels.join() === '0,1' && table.rows.find((r) => r.id === 'marlo-1').need === 0 && table.rows.find((r) => r.id === 'marlo-1').max === DIVER_RUNS - 1 &&
-    table.rows.find((r) => r.id === 'pip-1').kind === 'rescue' && table.rows.find((r) => r.id === 'pip-1').max === 0 && !table.rows.some((r) => r.npc === 'quill'));
+  const row = (id) => table.rows.find((r) => r.id === id);
+  assert('questlines data (r3): four level encounters (Marlo vault, Pip cage, Pip and Quill met in a side cave), each a spoken scene (meet, ask, help, thank) with at least three outcomes',
+    table.rows.map((r) => r.id).sort().join() === 'marlo-1,pip-1,pip-2,quill-dig' && table.rows.every((r) => r.done && r.levels.length >= 1 && r.chance > 0 && r.chance < 1 && ['meet', 'ask', 'help', 'thank'].every((k) => r.lines[k] && r.lines[k].length > 8) && r.outcomes.length >= 3) &&
+    row('pip-2').kind === 'meet' && row('quill-dig').kind === 'meet' && row('quill-dig').stage === false && row('marlo-1').stage === true);
+  assert('questlines data (r3): rewards vary: every encounter can pay now, pay later in the dive and say nothing ("just vibing" or later only); Marlo and Pip also leave a gift in the hub',
+    table.rows.every((r) => r.outcomes.some((o) => o.now) && r.outcomes.some((o) => o.later) && r.outcomes.some((o) => !o.now)) &&
+    row('marlo-1').outcomes.some((o) => o.giftId > 0) && row('pip-1').outcomes.some((o) => o.giftId > 0) &&
+    row('pip-1').outcomes.find((o) => o.id === 'follow').now.shells === 8 && row('pip-1').outcomes.some((o) => o.role === 'stay'));
+  assert('questlines data (r3): the host has his own outcomes for a won wager (tip, owed, vibe, gift) and hub lines; every npc has chat and react lines',
+    table.npcById.get('host').outcomes.map((o) => o.id).join() === 'tip,owed,vibe,gift' && table.npcById.get('host').hub['1'].length > 0 &&
+    table.npcs.every((n) => n.chat.length >= 2 && n.react.length >= 2) && table.gifts.length === 3 && table.gifts.every((g) => g.lines.length && Object.keys(g.boon).length));
+  assert('questlines data: Marlo is met on 1-1 or 1-2 and can be freed in three runs (stages 0..2 each go one up), Pip once in a cage then out exploring; the Pool has no level row',
+    row('marlo-1').kind === 'vault' && row('marlo-1').levels.join() === '0,1' && row('marlo-1').need === 0 && row('marlo-1').max === DIVER_RUNS - 1 &&
+    row('pip-1').kind === 'rescue' && row('pip-1').max === 0 && row('pip-2').need === 1 && row('pip-2').max === 1 && !table.rows.some((r) => r.npc === 'host'));
   assert('questlines data: no HUD text anywhere', table.rows.every((r) => !r.hud));
-  assert('questlines: a person only appears while their stage is in the row\'s range, on the listed levels; Marlo three runs, Pip once',
+  assert('questlines: a person only appears while their stage is in the row\'s range, on the listed levels; Marlo three runs, Pip in a cage once, Quill on digs once he lives in the hub',
     eligibleRows(table, {}, 1).map((r) => r.id).sort().join() === 'marlo-1,pip-1' && eligibleRows(table, {}, 0).map((r) => r.id).sort().join() === 'marlo-1,pip-1' && eligibleRows(table, {}, 2).map((r) => r.id).join() === 'pip-1' &&
-    eligibleRows(table, { marlo: 2, pip: 1 }, 1).map((r) => r.id).join() === 'marlo-1' && eligibleRows(table, { marlo: 3, pip: 1, quill: 1 }, 1).length === 0);
+    eligibleRows(table, { marlo: 2, pip: 1 }, 1).map((r) => r.id).sort().join() === 'marlo-1,pip-2' && eligibleRows(table, { marlo: 3, pip: 2, quill: 1 }, 1).map((r) => r.id).join() === 'quill-dig' && eligibleRows(table, { marlo: 3, pip: 2, quill: 0 }, 1).length === 0);
   assert('questlines: the stage goes up by one per finished encounter and stops after the last (Marlo 0 -> 1 -> 2 -> 3, Pip 0 -> 1), never back',
     (() => { const r = table.rows.find((x) => x.id === 'marlo-1'), q = table.rows.find((x) => x.id === 'pip-1'); return nextStage(0, r) === 1 && nextStage(1, r) === 2 && nextStage(2, r) === 3 && nextStage(3, r) === 3 && nextStage(0, q) === 1 && nextStage(1, q) === 1; })());
   let threw = false;
@@ -99,13 +112,13 @@ export async function runQuestTests(assert) {
         if (!reachedNear(grid, reached, x, fy - 0.5, 0.3) || dr < 1.5 || inShop(x, y) || inSet || near || !onFloor) bad.push(a.id + ' ' + i + (inSet ? ' set' : '') + (near ? ' near' : '') + (onFloor ? '' : ' float'));
       }
     }
-    assert(`questlines: every planned encounter is feasible and deterministic (${planned}/${eligible} eligible levels planned, ${same}/${planned} identical on a replan), both questlines appear (${[...kinds].join(', ')})` + (bad.length ? ' [' + bad.slice(0, 5).join(', ') + ']' : ''),
-      bad.length === 0 && same === planned && kinds.size === 2 && planned >= eligible * 0.3);
+    assert(`questlines: every planned encounter is feasible and deterministic (${planned}/${eligible} eligible levels planned, ${same}/${planned} identical on a replan), every questline appears (${[...kinds].join(', ')})` + (bad.length ? ' [' + bad.slice(0, 5).join(', ') + ']' : ''),
+      bad.length === 0 && same === planned && kinds.size >= 2 && planned >= eligible * 0.3);
     assert('questlines: cages and people rest on a floor (never hang in open water), keep out of set-piece rooms and the shop, and clear of other spawns', bad.length === 0);
     // a level whose story has nobody eligible never gets an encounter
     let leaked = 0;
-    for (let i = 0; i < 40; i++) if (planQuest(generateLevel(7 + i, i % 3, bank), table, 7 + i, i % 3, { marlo: 3, pip: 1, quill: 1 })) leaked++;
-    assert('questlines: with Marlo freed three times and Pip freed, no level holds an encounter', leaked === 0);
+    for (let i = 0; i < 40; i++) if (planQuest(generateLevel(7 + i, i % 3, bank), table, 7 + i, i % 3, { marlo: 3, pip: 2, quill: 0 })) leaked++;
+    assert('questlines: with Marlo freed three times, Pip out exploring and Quill not yet in the hub, no level holds an encounter', leaked === 0);
     // the first dives meet somebody on most levels, later stages less often
     let first = 0; for (let i = 0; i < 120; i++) if (planQuest(generateLevel(3 + i * 5, 1, bank), table, 3 + i * 5, 1, {})) first++;
     assert(`questlines: Shallows 1-2 holds an encounter on a good share of fresh saves (${first}/120)`, first >= 25 && first <= 110);
@@ -185,7 +198,7 @@ export async function runQuestTests(assert) {
   {
     const st = mk(Q_VAULT, Float32Array.of(20.5, 20.55), { npc: 'marlo' });
     assert('quest vault: far from the cache nothing happens, near him he calls out (meet, ask) through the rock', questUpdate(st, { x: 15, y: 20 }, stubWorld) === false && st.talk.text === L.meet && st.status === ST_ACTIVE);
-    assert('quest vault: touching the cache completes the quest and he says help, then thank', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected && st.talk.text === L.help && st.talk.q[0] === L.thank && st.leave > 0);
+    assert('quest vault: touching the cache completes the quest and he says help, then thank', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === true && st.status === ST_DONE && st.collected && st.talk.text === L.help && st.talk.q[0] === L.thank);
     assert('quest vault: completing it twice is impossible', questUpdate(st, { x: 20.2, y: 20.6 }, stubWorld) === false);
     // r40: freed when the pocket is open and the octopus is within about 2 tiles (not only at touch range); a sealed pocket never frees him
     const wall = { isSolid: (x) => x >= 22 && x < 23 };
@@ -194,12 +207,11 @@ export async function runQuestTests(assert) {
     const sb = mk(Q_VAULT, Float32Array.of(20.5, 20.55), { npc: 'marlo' });
     assert('quest vault (r40): beyond about 2 tiles he stays', questUpdate(sb, { x: 22.8, y: 20.5 }, stubWorld) === false && !sb.collected);
     assert('quest vault (r40): open pocket, octopus 1.8 tiles away: freed', questUpdate(sb, { x: 22.3, y: 20.5 }, stubWorld) === true && sb.collected);
-    const y0 = sb.cy;
-    const sky = { isSolid: (x, y) => y < 12 };
-    for (let i = 0; i < 100; i++) questUpdate(sb, { x: 22.3, y: 20.5 }, sky);
-    assert('quest vault (r40): after freeing he swims up and out of the pocket (higher than where he sat) and is still around for a few seconds', sb.cy < y0 - 0.8 && sb.leave > 1.2);
-    for (let i = 0; i < 200; i++) questUpdate(sb, { x: 22.3, y: 20.5 }, sky);
-    assert('quest vault (r40): his time runs out after the swim (he has faded)', sb.leave <= 0);
+    const floor = { isSolid: (x, y) => y >= 24 };
+    for (let i = 0; i < 100; i++) questUpdate(sb, { x: 22.3, y: 20.5 }, floor);
+    assert('quest vault (r3): after freeing he swims up beside the octopus, not onto it', Math.abs(sb.cx - 22.3) > 0.3 && Math.abs(sb.cx - 22.3) < 1.2 && sb.cy < 20.5);
+    for (let i = 0; i < 700; i++) questUpdate(sb, { x: 25, y: 20.5 }, floor);
+    assert('quest vault (r3): then he sinks to the floor and stays (never fades: 16 s on he is settled, feet on the rock, still done, facing the octopus)', sb.settled && Math.abs(sb.cy + 0.22 - 24) < 0.1 && sb.status === ST_DONE && sb.idle.face === 1);
   }
 
   // ---- the hub residents ----
@@ -221,6 +233,105 @@ export async function runQuestTests(assert) {
     assert('hub: the third relic unlocks the third entry and moves Quill to stage 2 (the lantern)', r3.set.some(([k, v]) => k === 'relicsGiven' && v === 3) && r3.set.some(([k, v]) => k === 'quill' && v === 2) && r3.discover.includes('loot-relic-3'));
     assert('hub: relics are handed over one per visit, never past three', hubVisit(table, { quill: 2, saidQuill: 2, relics: 5, relicsGiven: 3 }, 'quill', 0).set.every(([k]) => k !== 'relicsGiven'));
     assert('journal: every relic the Collector takes has its own entry', [1, 2, 3].every((n) => ENTRIES.some((e) => e.id === 'loot-relic-' + n)));
+  }
+
+  // ---- owners round 3 (quests rework): people stay, thank you, pay now or later ----
+  {
+    // seeded outcomes: the same seed gives the same outcome, over many seeds every outcome comes up, roughly by weight
+    const outs = table.rows.find((r) => r.id === 'marlo-1').outcomes;
+    const seen = {};
+    for (let s = 0; s < 400; s++) { const o = pickOutcome(outs, beatSeed(s, 1, 'marlo')); seen[o.id] = (seen[o.id] || 0) + 1; }
+    assert(`r3 outcomes: seeded and varied (${JSON.stringify(seen)}): every Marlo outcome comes up, the common ones more often`,
+      pickOutcome(outs, 12345).id === pickOutcome(outs, 12345).id && outs.every((o) => seen[o.id] > 10) && seen.shells > seen.gift && pickOutcome([], 1) === null);
+    // a planned encounter carries its outcome (deterministic per level seed)
+    const lvl = generateLevel(77, 0);
+    const p1 = planQuest(lvl, { ...table, rows: [{ ...table.rows.find((r) => r.id === 'pip-1'), chance: 1 }] }, 77, 0, {}), p2 = planQuest(lvl, { ...table, rows: [{ ...table.rows.find((r) => r.id === 'pip-1'), chance: 1 }] }, 77, 0, {});
+    assert('r3 outcomes: planQuest picks the outcome with the level (the same twice) and its role', !!p1 && p1.outcome && p1.outcome.id === p2.outcome.id && p1.role === (p1.outcome.role || 'follow') && p1.chat.length > 0 && p1.react.length > 0);
+
+    // later: when and where the person comes back
+    const later = { after: [1, 2], where: 'exit', lines: ['a', 'b'], reward: { shells: 12 } };
+    const dues = new Set(); for (let s = 0; s < 60; s++) dues.add(owedFrom('marlo', 'Marlo', later, 1, s, 3, true).due);
+    assert(`r3 later: met on 1-1 he comes back on 1-2 or 1-3 (${[...dues].join()})`, dues.has(2) && dues.has(3) && dues.size === 2);
+    const late = owedFrom('marlo', 'Marlo', later, 3, 5, 3, true), none = owedFrom('marlo', 'Marlo', later, 3, 5, 3, false);
+    assert('r3 later: past the last level he waits in the rest grotto; with no grotto there is no meeting', late.due === DUE_REST && late.where === 'rest' && none === null);
+    const mama = owedFrom('pip', 'Pip', table.rows.find((r) => r.id === 'pip-1').outcomes.find((o) => o.id === 'mama').later, 1, 3, 3, true);
+    assert('r3 later: someone else can come instead (Pip\'s mother)', mama.npc === 'pip' && mama.variant === 'mama' && mama.name === "Pip's Mama" && mama.reward.hearts === 1 && mama.from === 'pip');
+    const q = owedFrom('quill', 'Quill', table.rows.find((r) => r.id === 'quill-dig').outcomes.find((o) => o.id === 'grotto').later, 1, 3, 3, true);
+    assert('r3 later: Quill asks you to the grotto', q.due === DUE_REST && q.reward.juice > 0);
+
+    // the meeting spot: a reachable floor near the exit
+    const box = (x, y) => x < 2 || x >= 30 || y < 2 || y >= 20 || (y >= 15 && x < 12);
+    const spot = findFloorNear(box, 20.5, 18.5, 2.5, 8, 2);
+    assert(`r3 later: the visitor stands on a floor 2.5-8 tiles from the exit (${spot && spot.x}, ${spot && spot.y})`, !!spot && box(spot.x, spot.y + 0.5) && !box(spot.x, spot.y - 0.5) && !box(spot.x, spot.y - 1.5) && Math.hypot(spot.x - 20.5, spot.y - 0.5 - 18.5) <= 8.6);
+    assert('r3 later: a veto moves the spot', (() => { const s2 = findFloorNear(box, 20.5, 18.5, 2.5, 8, 2, (x) => Math.abs(x - spot.x) < 2); return !!s2 && Math.abs(s2.x - spot.x) >= 2; })());
+
+    // the visitor: greets as you come near, hands over once when you swim up, stays and chats
+    const v = createVisitor(late, { x: 10.5, y: 15 }, ['chat line one', 'chat two']);
+    const far = { x: 30, y: 14, dead: false };
+    assert('r3 visitor: far away nothing happens', visitorStep(v, far, 0.02) === '' && !v.greeted);
+    const nearO = { x: 15, y: 14, dead: false };
+    visitorStep(v, nearO, 0.02);
+    assert('r3 visitor: coming near (7 tiles) he greets you with the first line and faces you', v.greeted && v.talk.text === 'a' && v.idle.face === 1);
+    const atO = { x: 11.3, y: 14.3, dead: false };
+    const ev = visitorStep(v, atO, 0.02), said = v.talk.text;
+    let again = 0; for (let i = 0; i < 300; i++) if (visitorStep(v, atO, 0.02) === 'give') again++;
+    assert('r3 visitor: swimming up to him hands the reward over exactly once, with his other lines', ev === 'give' && again === 0 && v.gave && said === 'b');
+    for (let i = 0; i < 800; i++) visitorStep(v, atO, 0.02);
+    assert('r3 visitor: he stays and says an idle line after a quiet spell', v.gave && v.chatN >= 1);
+
+    // idle: face, glance, jump at a blast
+    const id = createIdle(3);
+    idleStep(id, 0, 0, { x: -3, y: 0 }, 0.02);
+    const f1 = id.face;
+    let flips = 0, last = f1; for (let i = 0; i < 600; i++) { idleStep(id, 0, 0, { x: 50, y: 0 }, 0.02); if (id.face !== last) { flips++; last = id.face; } }
+    const tk = createTalk();
+    assert(`r3 idle: faces the octopus near, glances about when it is far (${flips} glances in 12 s)`, f1 === -1 && flips >= 3 && flips <= 8);
+    assert('r3 idle: a blast close by makes them jump and shout; far away nothing', idleReact(id, tk, ['Whoa!'], 2, 0, 0, 0) && id.hop === 1 && idleLift(id) < 1e-6 && tk.q[0] === 'Whoa!' && !idleReact(createIdle(), createTalk(), ['x'], 20, 0, 0, 0));
+
+    // the rescue that stays: the cage breaks, Pip swims about it and the encounter is done at once
+    const stay = { id: 'mama', lines: ['Squee!'], role: 'stay', now: null, later: null };
+    const ps = mk(Q_RESCUE, Float32Array.of(20.5, 20.5), { outcome: stay, role: 'stay', chat: ['hi'], react: ['eep'] });
+    assert('r3 rescue (stay): a bomb breaks the cage; help, thank, then the outcome line; done at once, not following', questBlast(ps, 21, 20.5, 2) && ps.staying && !ps.following && ps.status === ST_DONE && ps.talk.q.includes('Squee!'));
+    let maxD = 0; for (let i = 0; i < 1000; i++) { questUpdate(ps, { x: 26, y: 20, vx: 0, vy: 0 }, stubWorld, 0.02); maxD = Math.max(maxD, Math.hypot(ps.cx - 20.5, ps.cy - 20.5)); }
+    assert(`r3 rescue (stay): he swims about his open cage for 20 s (at most ${maxD.toFixed(2)} tiles off) and never leaves`, maxD > 0.3 && maxD < 2.2 && ps.status === ST_DONE);
+    assert('r3 rescue (stay): he jumps at a blast once out of the cage', questReact(ps, 22, 20.5) && ps.idle.hop > 0.9);
+    // the follower keeps following (paid at the exit)
+    const pf = mk(Q_RESCUE, Float32Array.of(20.5, 20.5), { outcome: { id: 'follow', lines: ['I will follow'], role: 'follow' }, role: 'follow' });
+    questBlast(pf, 21, 20.5, 2);
+    assert('r3 rescue (follow): the cage breaks and he follows; not done until the exit', pf.following && pf.status === ST_ACTIVE && questOnExit(pf) && pf.status === ST_DONE);
+    // meet: swim up to the person
+    const pm = mk(Q_MEET, Float32Array.of(12.5, 12.45), { npc: 'quill', outcome: { id: 'hint', lines: ['A hint'] } });
+    questUpdate(pm, { x: 18, y: 12 }, stubWorld);
+    assert('r3 meet: Quill calls out as you come near', pm.met && pm.talk.text === L.meet && pm.status === ST_ACTIVE);
+    questUpdate(pm, { x: 13.6, y: 12.3 }, stubWorld);
+    assert('r3 meet: swimming up to him finishes the scene (help, thank, outcome) and he stays', pm.status === ST_DONE && pm.talk.text === L.help && pm.talk.q.join('|') === L.thank + '|A hint');
+
+    // hub gifts: kept in the save, handed over by the resident, applied as a boon on the next dive
+    const gid = table.rows.find((r) => r.id === 'marlo-1').outcomes.find((o) => o.id === 'gift').giftId;
+    const gv = hubVisit(table, { marlo: 1, saidMarlo: 1, giftMarlo: gid, boonBombs: 1 }, 'marlo', 4);
+    assert('r3 hub gift: Marlo hands over his gift (his words), the gift is cleared and the bombs wait for the next dive (added up)',
+      gid > 0 && gv.gift && gv.lines.some((l) => /next dive/.test(l)) && gv.set.some(([k, n]) => k === 'giftMarlo' && n === 0) && gv.set.some(([k, n]) => k === 'boonBombs' && n === 3));
+    assert('r3 hub: the host lives in the hub after a won wager', hubResidents(table, { host: 1 }).map((r) => r.id).join() === 'host' && hubVisit(table, { host: 1, saidHost: 0 }, 'host', 0).lines[0] === table.npcById.get('host').thanks[1]);
+  }
+
+  // ---- people.js: owed meetings, grudges, visitors ----
+  {
+    const ppl = createPeople();
+    const box = (x, y) => x < 2 || x >= 40 || y < 2 || y >= 20;
+    ppl.owe('marlo', 'Marlo', { after: [1, 1], where: 'exit', lines: ['Hey', 'Here'], reward: { shells: 12 } }, 1, 1, 3, true);
+    ppl.owe('pip', 'Pip', { after: [1, 1], where: 'exit', npc: 'pip', variant: 'mama', name: "Pip's Mama", lines: ['Hi'], reward: { hearts: 1 } }, 1, 1, 3, true);
+    assert('r3 people: two meetings owed for 1-2, none on 1-1', ppl.owed.length === 2 && ppl.setupLevel(1, { isSolid: box }, { x: 20.5, y: 18.5 }).length === 0 && ppl.owed.length === 2);
+    ppl.noteGrudge(NPC_PIP, false);
+    const vs = ppl.setupLevel(2, { isSolid: box }, { x: 20.5, y: 18.5 });
+    assert('r3 people: on 1-2 both come; the angered one (Pip\'s family) comes back hostile, Marlo calm; they stand apart', vs.length === 2 && ppl.owed.length === 0 &&
+      vs.find((v) => v.npc === 'marlo').hostile === false && vs.find((v) => v.npc === 'pip').hostile === true && Math.hypot(vs[0].x - vs[1].x, vs[0].floorY - vs[1].floorY) >= 2.2);
+    const gives = ppl.step({ x: vs.find((v) => v.npc === 'marlo').x, y: vs.find((v) => v.npc === 'marlo').cy, dead: false }, 0.02, null);
+    assert('r3 people: only the calm one hands over', gives.length === 1 && gives[0].v.npc === 'marlo' && gives[0].reward.shells === 12);
+    ppl.owe('marlo', 'Marlo', { after: [1, 1], where: 'exit', lines: ['x'], reward: { shells: 1 } }, 2, 1, 3, true);
+    ppl.noteGrudge(NPC_MARLO, true);
+    assert('r3 people: a killed person never comes; the log says why', ppl.setupLevel(3, { isSolid: box }, { x: 20.5, y: 18.5 }).length === 0 && ppl.log.some((l) => l.npc === 'marlo' && l.why === 'dead'));
+    ppl.newDive();
+    assert('r3 people: a new dive forgets the grudges and the meetings', ppl.owed.length === 0 && ppl.grudge.every((g) => g === 0));
   }
 
   // ---- save.js story flags ----
