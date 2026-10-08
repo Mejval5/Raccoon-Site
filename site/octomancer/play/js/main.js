@@ -41,7 +41,7 @@ import { createUI } from './ui.js';
 import { computeScore } from './score.js';
 import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js';
 import { beholderTiming } from './beholder.js';
-import { swimDistance, swiftTarget, swiftLabel, createSwift, stepSwift } from './swift.js';
+import { swimDistance, swiftTarget, createSwift, stepSwift } from './swift.js';
 import { mulberry32 } from './rng.js';
 import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, getHelpDone, setHelpDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
@@ -343,6 +343,7 @@ const sfx = createSfx(audio);
 let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
+let levelClock = 0; // the HUD's level clock (s on this level; dive states only; stops with the run clock: pause, death, fades)
 let swift = null; // Swift Current (swift.js): this level's target time, earned flag and the moon shell it brought
 let questClear = null; // [x, y, ...]: enemies within QUEST_CLEAR_R of these are removed after the level's first enemy update (the encounter, r3: the visitors)
 const QUEST_CLEAR_R = 3;
@@ -669,7 +670,7 @@ function step(dt) {
   if (hitStop > 0) { if (entry) hitStop = 0; else { hitStop = Math.max(0, hitStop - dt); return; } } // r45: never during the entry, which runs on its own clock
   octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
   if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
-  if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) run.dive.time += dt; // the run summary's clock
+  if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) { run.dive.time += dt; levelClock += dt; } // the run summary's clock and the HUD's level clock
   if (entry || octo.hidden) snap = NO_INPUT; // r45: the octopus is going into a whirlpool: no swimming, dashing, bombs or spells
   if (V2) { // the way a no-direction bomb throw goes: the last swim direction
     if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
@@ -931,7 +932,7 @@ function stepCombat(snap, dt) {
       sfx.inkPuff();
       runStats.spellsCast++;
       if (row && row.journal) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); }
-    } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); sfx.emptyJar(); runStats.empty++; }
+    } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); ui.shakeJar(); sfx.emptyJar(); runStats.empty++; }
   }
 }
 /**
@@ -1078,6 +1079,10 @@ function render(alpha, frameMs) {
     stage: V2 ? hudStage : undefined, // r44: frozen at the fade, updated when the new level is built
     shells: V2 ? run.shells : undefined,
     items: V2 ? run.items : undefined,
+    juice: V2 ? run.juice : 0, cap: V2 ? juiceCap() : 0, perCast: JUICE.perCast,
+    levelTime: V2 && (run.state === S_BIOME || run.state === S_REST) ? levelClock : null, // the clocks show in a dive only
+    runTime: V2 ? run.dive.time : 0,
+    swift: V2 && run.state === S_BIOME && swift ? swift : null,
   });
   if (V2) {
     hotbarUI.update(hotbarState());
@@ -1141,6 +1146,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     if (V2) enemies.setInkClouds(inkClouds);
   });
   sim.time = 0;
+  levelClock = 0;
   entry = null;
   keepers = createKeepers(); shopBrokenSeen = 0; // the old level's keepers never step in the new world (setupLevelExtras places this level's)
   runKills = 0;
@@ -1278,7 +1284,7 @@ function v2Event(ev) {
 function showLevelTitle() {
   if (V2 && run.state === S_REST) return; // the grotto's own prompt says what it is (a title card would cover it)
   const t = levelTitle(run, !!Number(params.get('seed')) || (run.nextSeed !== null && run.nextSeed !== undefined));
-  if (t) ui.showTitle(t.text, t.sub, swift ? 2200 : 1500, swift ? swiftLabel(swift.target) : '');
+  if (t) ui.showTitle(t.text, t.sub, 1500); // the Swift Current target sits next to the clock on the HUD strip now
 }
 
 /** Run summary shown on the death and biome-clear screens: stats, best runs (this run highlighted), the shortcut note. */
@@ -1286,7 +1292,7 @@ function summaryDetail(sum, rank) {
   return {
     title: sum.cleared ? BIOME_NAME + ' cleared' : deathTitle(sum.cause),
     headline: summaryHeadline(sum),
-    rows: summaryRows(sum, true),
+    rows: summaryRows({ ...sum, levelTime: levelClock }, true), // the clocks as the HUD showed them
     best: bestRunLines(getBestRuns()),
     rank: rank === undefined ? -1 : rank,
     note: sum.shortcutNew ? 'Shortcut unlocked: a new ring in the hub leads to ' + BIOME_NAME + ' 1-' + SHORTCUT_LEVEL : '',
@@ -2443,6 +2449,9 @@ window.__octo = {
   /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
   tileAt(tx, ty) { return world.tileAt(tx, ty); },
   setLevelTime(t) { sim.time = +t || 0; return sim.time; },
+  /** The one-line HUD strip (hud-strip.js): what it shows, and the clocks behind it (s). `setClocks` moves the level / run clocks. */
+  hud() { return { ...ui.hudRead(), levelClock, runClock: run.dive.time }; },
+  setClocks(level, total) { levelClock = +level || 0; run.dive.time = +total || 0; return { levelClock, runClock: run.dive.time }; },
   timePressure() {
     const w = enemies.beholderWarn(), tm = enemies.beholderTiming(), b = enemies.beholder();
     return { time: sim.time, warn: { state: w.state, p: w.p, dx: w.dx, dy: w.dy }, timing: { ...tm }, beholder: b ? { x: b.x, y: b.y } : null, safe: isSafeState(run),

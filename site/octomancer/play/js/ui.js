@@ -3,8 +3,7 @@
 // OVERNIGHT.md §4 M4-1.
 
 import { artUrl } from './v2-art.js';
-import { drawItemIcon, itemArtVersion } from './items-draw.js';
-const HEART_SRC = new URL('../assets/ui-heart.webp', import.meta.url).href; // relative to this module, not the page (the test page lives in tests/)
+import { createHudStrip } from './hud-strip.js';
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
 function el(tag, className, text) {
@@ -59,31 +58,9 @@ function createSummaryBlock() {
  * @param {{onRestart:()=>void, onExit:()=>void, onTogglePause:()=>void, onToggleMute?:()=>boolean, onToggleSettings?:()=>void, onOpenJournal?:()=>void, muted?:boolean}} handlers
  */
 export function createUI(root, handlers) {
-  // --- HUD bar (hearts + stats), always visible during play ---
-  const bar = el('div', 'octo-hud-bar');
-  const heartsRow = el('div', 'octo-hud-hearts');
-  const stats = el('div', 'octo-hud-stats');
-  const bombsEl = el('span', 'octo-hud-stat octo-hud-bombs');
-  const depthEl = el('span', 'octo-hud-stat octo-hud-depth');
-  const scoreEl = el('span', 'octo-hud-stat octo-hud-score');
-  const bestEl = el('span', 'octo-hud-stat octo-hud-best');
-  // v2 only: the run state and level ("Shallows 1-2"); it replaces depth and best.
-  const stageEl = el('span', 'octo-hud-stat octo-hud-stage');
-  stageEl.style.display = 'none';
-  // v2 only: the shell currency (icon + count). There is no quest line: questlines are told in the world (speech bubbles, journal).
-  const shellsEl = el('span', 'octo-hud-stat octo-hud-shells');
-  const shellsIcon = el('img', 'octo-hud-shell-icon');
-  shellsIcon.src = new URL('../assets/shell-blue.webp', import.meta.url).href;
-  shellsIcon.alt = 'Shells';
-  const shellsNum = el('span', 'octo-hud-shell-num', '0');
-  shellsEl.append(shellsIcon, shellsNum);
-  shellsEl.style.display = 'none';
-  // v2 only: carried items (items.js) as small icons right after the shell counter
-  const itemsEl = el('div', 'octo-hud-items'); // its own row under the stats (never runs under the pause button)
-  itemsEl.style.display = 'none';
-  let itemsKey = '';
-  stats.append(stageEl, shellsEl, bombsEl, depthEl, scoreEl, bestEl);
-  bar.append(heartsRow, stats, itemsEl);
+  // --- the one-line HUD strip (hud-strip.js): hearts, bombs, jar, items | shells, clocks, level; always visible during play ---
+  const strip = createHudStrip();
+  const bar = strip.el;
 
   const pauseBtn = el('button', 'octo-pause-btn', '⏸');
   pauseBtn.type = 'button';
@@ -153,70 +130,14 @@ export function createUI(root, handlers) {
   let titleTimer = 0, titleTimer2 = 0;
   root.append(bar, pauseBtn, muteBtn, gearBtn, controlsHelp, promptEl, toastEl, titleEl);
 
-  /** @type {HTMLImageElement[]} */
-  const heartEls = [];
-  function ensureHearts(max) {
-    while (heartEls.length < max) {
-      const img = el('img', 'octo-heart');
-      img.src = HEART_SRC;
-      img.alt = '';
-      heartEls.push(img);
-      heartsRow.appendChild(img);
-    }
-  }
-
   let helpV2 = false, helpRetired = false;
-  let heartsKey = '';
-  // r43: the HUD is updated every frame; a textContent write replaces the text node and invalidates layout even when the string is the
-  // same (about 4 per frame, and the Layout showed up in the transition frames on a phone), so a write happens only on a change
-  const setText = (e, t) => { if (e._t !== t) { e._t = t; e.textContent = t; } };
   function updateHud(state) {
-    const hk = state.heartMax + ':' + state.hearts;
-    if (hk !== heartsKey) {
-      heartsKey = hk;
-      ensureHearts(state.heartMax);
-      for (let i = 0; i < heartEls.length; i++) {
-        const shown = i < state.heartMax;
-        heartEls[i].style.display = shown ? '' : 'none';
-        heartEls[i].style.opacity = i < state.hearts ? '1' : '0.25';
-      }
-    }
-    setText(bombsEl, `Bombs ${state.bombs}`);
+    strip.update(state);
     const v2 = state.stage !== undefined;
     if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
       helpV2 = true;
       controlsHelp.textContent = 'Swim: WASD/arrows | Dash: Space/Shift | Ink jet: left-click or J/K | Spell: right-click or F | Bomb: middle-click or B/X | Spells: wheel, Q/E, 1-9 | Inventory: Tab/I';
     }
-    stageEl.style.display = v2 ? '' : 'none';
-    depthEl.style.display = v2 ? 'none' : '';
-    bestEl.style.display = v2 ? 'none' : '';
-    if (v2 && stageEl.textContent !== state.stage) stageEl.textContent = state.stage;
-    shellsEl.style.display = v2 && state.shells !== undefined ? '' : 'none';
-    if (state.shells !== undefined && shellsNum.textContent !== String(state.shells)) shellsNum.textContent = String(state.shells);
-    const key = state.items && state.items.length ? state.items.join() + '/' + itemArtVersion() : '';
-    if (key !== itemsKey) {
-      itemsKey = key;
-      itemsEl.textContent = '';
-      // a stacked item is drawn once with an 'x2' badge
-      const counts = new Map();
-      for (const id of state.items || []) counts.set(id, (counts.get(id) || 0) + 1);
-      for (const [id, n] of counts) {
-        const c = document.createElement('canvas');
-        c.width = 40; c.height = 40; c.className = 'octo-hud-item'; c.dataset.item = id; c.title = n > 1 ? id + ' x' + n : id;
-        const cx = c.getContext('2d');
-        drawItemIcon(cx, id, 20, 20, 15);
-        if (n > 1) {
-          cx.font = '700 15px Quicksand, sans-serif'; cx.textAlign = 'right'; cx.textBaseline = 'alphabetic';
-          cx.lineWidth = 4; cx.strokeStyle = '#04121c'; cx.strokeText('x' + n, 40, 39);
-          cx.fillStyle = '#f1e4c3'; cx.fillText('x' + n, 40, 39);
-        }
-        itemsEl.appendChild(c);
-      }
-      itemsEl.style.display = key ? '' : 'none';
-    }
-    setText(depthEl, `Depth ${state.depth}m`);
-    setText(scoreEl, `Score ${state.score}`);
-    setText(bestEl, `Best ${state.best}`);
   }
 
   // --- Overlays (pause, game over): dim backdrop + centred card ---
@@ -282,6 +203,10 @@ export function createUI(root, handlers) {
 
   const api = {
     updateHud,
+    /** The empty-jar feedback on the strip's jar. */
+    shakeJar() { strip.shakeJar(); },
+    /** What the HUD strip shows (tests). */
+    hudRead() { return strip.read(); },
     /** Prompt banner: title + text, or null to hide it. */
     setPrompt(title, text) {
       if (!title) { promptEl.style.display = 'none'; return; }
