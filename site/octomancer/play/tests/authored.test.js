@@ -56,7 +56,7 @@ export async function runAuthoredTests(assert) {
   assert('authored tutorial: prompts are ordered left to right along the level', tut.prompts.every((p, i) => i === 0 || p.x > tut.prompts[i - 1].x));
   assert('authored tutorial: bomb prompt mentions the bomb controls for keyboard, mouse and touch', (() => {
     const b = tut.prompts.find((p) => p.title.toLowerCase().includes('bomb'));
-    return /press B /.test(b.desktop) && /middle/i.test(b.desktop) && /bomb/i.test(b.touch); // controls 2026-10-08: B drops, the middle click throws a sticky one
+    return /press B /.test(b.desktop) && /right-click/i.test(b.desktop) && /bomb/i.test(b.touch); // B drops, right click on the bomb slot throws a sticky one (the middle button is the hand)
   })());
   assert('authored tutorial: the exit is NOT reachable without bombing the wall', !fatReach(tut.tiles, tut.w, tut.h, tut.startX, tut.startY, tut.exitX, tut.exitY));
   const cleared = tut.tiles.slice();

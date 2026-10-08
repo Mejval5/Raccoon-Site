@@ -98,7 +98,7 @@ export async function runHandTests(assert) {
     assert('input: the right button uses the selected slot (src mouse)', s.use.pressed && s.src.use === 'mouse');
     cv.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: 5, clientY: 5, bubbles: true }));
     s = mi.snapshot(); window.dispatchEvent(new MouseEvent('mouseup', { button: 1 }));
-    assert('input: the middle button is the quick bomb (src mouse)', s.bomb.pressed && s.src.bomb === 'mouse');
+    assert('input: the middle button is the hand (like F), not a bomb', s.hand.pressed && !s.bomb.pressed);
     cv.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
     cv.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
     s = mi.snapshot();

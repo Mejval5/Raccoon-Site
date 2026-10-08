@@ -109,7 +109,7 @@ export function createInventoryUI(root, handlers = {}) {
     if (i >= 0) bomb.dataset.slot = String(i);
     bomb.appendChild(iconCanvas(40, (ctx, px) => drawBombSlotIcon(ctx, px / 2, px / 2, px * 0.38)));
     const bt = el('div', 'octo-inv-text');
-    const how = state.touch ? 'Use: drop one under you (hold the stick to throw a sticky one)' : 'right click or C: drop one under you, or throw a sticky one at the cursor; B / X drops one, the middle button throws one';
+    const how = state.touch ? 'Use: drop one under you (hold the stick to throw a sticky one)' : 'right click or C: drop one under you, or throw a sticky one at the cursor; shortcut: B / X drops one';
     bt.append(el('div', 'octo-inv-name', (i >= 0 ? (i + 1) + '. ' : '') + 'Bombs ' + state.bombs + '/' + state.bombMax), el('div', 'octo-inv-blurb', how));
     bomb.append(bt, el('span', 'octo-inv-tag octo-inv-tag-active', 'active'));
     if (i >= 0) { moveButtons(bomb, i, n); bomb.addEventListener('click', () => { if (handlers.onSelect) handlers.onSelect(i); }); }

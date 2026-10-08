@@ -81,7 +81,7 @@ async function setStage(page) {
     const b2 = (await page.evaluate(() => __octo.state().octopus.bombs));
     await page.keyboard.press('KeyX'); await sleep(150);
     const b3 = (await page.evaluate(() => __octo.state().octopus.bombs));
-    check('middle click, B and X each throw a bomb', b1 === b0 - 1 && b2 === b1 - 1 && b3 === b2 - 1, [b0, b1, b2, b3].join());
+    check('middle click throws no bomb (it is the hand); B and X each drop one', b1 === b0 && b2 === b1 - 1 && b3 === b2 - 1, [b0, b1, b2, b3].join());
     await sleep(2500); // the bombs go off away from... (god mode)
     for (const [key, dirKey] of [['Space', 'KeyD'], ['ShiftLeft', 'KeyA']]) {
       await sleep(700);
@@ -206,7 +206,7 @@ async function setStage(page) {
     await tap(btn.attack.cx, btn.attack.cy); await sleep(100);
     check('touch: the Jet button fires the ink jet', (await J(ph)).shots === pj0.shots + 1);
     const pb0 = await ph.evaluate(() => __octo.state().octopus.bombs);
-    await ph.evaluate(() => { __octo.input({ select: 0 }); __octo.step(1); __octo.input(null); }); // the bomb stack (slot 1) picked on the hotbar
+    await ph.evaluate(() => { const i = __octo.juice().hotbar.slots.findIndex((s) => s[0] === 'bomb'); __octo.input({ select: i }); __octo.step(1); __octo.input(null); }); // the bomb stack picked on the hotbar
     await tap(btn.use.cx, btn.use.cy); await sleep(100);
     check('touch: the Use button with the bomb picked drops a bomb', (await ph.evaluate(() => __octo.state().octopus.bombs)) === pb0 - 1);
     await sleep(2600);
