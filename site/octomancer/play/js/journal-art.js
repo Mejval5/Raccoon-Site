@@ -11,11 +11,12 @@ import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
 import { drawSprite, drawSpriteColumns, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
 import { drawPoolHost } from './pool-draw.js';
 import { drawClamIcon, drawPearlIcon } from './creatures-draw.js';
+import { drawOctopusPortrait, onOctopusReady } from './octopus-draw.js';
 
 const TAU = Math.PI * 2;
 const INK = '#10202c';
 
-/** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {sprite: atlas name} | {item: carried item id} | {game: person} | {fn: name of a code drawing below}. */
+/** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {sprite: atlas name} | {skin: skins.js id} | {item: carried item id} | {game: person} | {fn: name of a code drawing below}. */
 const ART = new Map(ENTRIES.map((e) => [e.id, e.art ? (e.art.img ? { ...e.art, img: new URL('../' + e.art.img, import.meta.url).href } : e.art) : null]));
 
 /** @type {Map<string, HTMLImageElement>} */
@@ -222,6 +223,8 @@ export const GAME_DRAW = {
 };
 
 const cache = new Map();
+// 2026-10-08 skins: the Looks pages paint the octopus in each skin: redrawn when its sheet (and the accessory atlas) is in
+onOctopusReady(() => { cache.clear(); for (const fn of listeners) fn(); });
 /** The locked silhouette's ink: a warm brown that reads on parchment. */
 const LOCKED_INK = '#5b4636';
 
@@ -246,6 +249,8 @@ function paint(ctx, id, px) {
     if (a.rot) { ctx.rotate(a.rot * Math.PI / 180); drawSprite(ctx, a.sprite, 0, 0, h, w, 0.5, 0.5); }
     else if (a.cols) drawSpriteColumns(ctx, a.sprite, c[0], c[1], -w / 2, -h / 2, w, h);
     else drawSprite(ctx, a.sprite, 0, 0, w, h, 0.5, 0.5);
+  } else if (a.skin) {
+    drawOctopusPortrait(ctx, a.skin, 0, px * 0.1, px * 0.84);
   } else if (a.item) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
   } else if (a.game && GAME_DRAW[a.game]) {

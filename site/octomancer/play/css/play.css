@@ -776,3 +776,28 @@ body {
   .octo-death-ui .octo-summary-note { grid-column: 2; grid-row: 4; font-size: 12px; }
   .octo-death-ui .octo-go-actions { grid-column: 3; grid-row: 1 / span 3; width: 100%; flex-direction: column; position: sticky; top: 0; margin-top: 0; padding: 4px 0 0; background: none; }
 }
+
+/* --- looks picker (2026-10-08, skins: the hub's mirror shell, Settings > Looks) --- */
+.octo-skins-overlay { z-index: 7; background: rgba(4, 12, 18, 0.9); }
+.octo-skins-panel { width: min(100%, 520px); max-width: 520px; max-height: 100%; padding: 14px 16px; gap: 8px; align-items: stretch; background: rgb(10, 28, 42); }
+.octo-skins-banner { width: min(58%, 200px); align-self: center; flex: none; }
+.octo-skins-banner .octo-banner-text { font-size: clamp(15px, 4.4vw, 20px); }
+.octo-skins-sub { font-size: 13px; opacity: .8; text-align: center; }
+.octo-skins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; overflow-y: auto; min-height: 0; touch-action: pan-y; padding: 2px; }
+.octo-skin-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 8px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #eafffa; font: 700 13px 'Quicksand', sans-serif; cursor: pointer; min-height: 44px; }
+.octo-skin-cv { width: 80px; height: 80px; }
+.octo-skin-card.is-locked { color: rgba(234,255,250,0.5); background: rgba(0,0,0,0.18); }
+.octo-skin-card.is-focus { border-color: rgba(124, 240, 208, 0.55); }
+.octo-skin-card.is-current { border-color: #3fd6a8; background: rgba(63, 214, 168, 0.14); }
+.octo-skin-name { line-height: 1.2; text-align: center; }
+.octo-skins-detail { min-height: 52px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); text-align: left; }
+.octo-skins-dname { font-size: 14px; font-weight: 700; color: #fff; }
+.octo-skins-dtext { font-size: 12.5px; line-height: 1.35; opacity: .85; }
+.octo-skins-close { flex: none; min-height: 44px; }
+.octo-set-looks { min-height: 44px; margin-top: 2px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .octo-skins-panel { width: min(100%, 760px); max-width: 760px; padding: 8px 12px; gap: 6px; }
+  .octo-skins-grid { grid-template-columns: repeat(5, 1fr); }
+  .octo-skin-cv { width: 64px; height: 64px; }
+  .octo-skins-sub { display: none; }
+}

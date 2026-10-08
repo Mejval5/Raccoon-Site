@@ -15,7 +15,13 @@ import { screenToWorld, worldToScreen } from './camera.js';
 import { drawBlackHole, farCorner } from './blackhole.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
-import { isBaked } from './octopus-draw.js';
+import { isBaked, setOctopusSkin, getOctopusSkin } from './octopus-draw.js';
+// 2026-10-08 skins: each person gives a look the first time they are rescued or befriended (skins.js, skin-draw.js, skin-gifts.js)
+import { getSkins, unlockSkins, getSkin, setSkin as saveSkin } from './save.js';
+import { newSkins, earnedSkins, skinById, DEFAULT_SKIN } from './skins.js';
+import { createSkinGifts, drawSkinGifts, drawMirrorShell, mirrorPoint, MIRROR_REACH } from './skin-gifts.js';
+import { createSkinPicker } from './skin-picker.js';
+import { skinSheetStats } from './skin-draw.js';
 import { createEnemies, setHpMode } from './enemies.js';
 import { createHazards, hazardJournalId, makeHazardRecord } from './hazards.js';
 import { drawHazards, drawImpaleOverlay, drawSplatRock } from './hazards-draw.js';
@@ -492,7 +498,7 @@ const journalScreen = createJournalScreen(hudEl, journal, {
   onSelectSlot(i) { if (V2 && run) selectIndex(hotbar(), i); },
 });
 /** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
-function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen); }
+function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen || looksOpen); }
 // settings menu (round 38): every change applies at once and is persisted by save.js
 function applySetting(key, v) {
   switch (key) {
@@ -515,6 +521,7 @@ const settingsPanel = createSettingsPanel(hudEl, {
   onClose() { settingsOpen = false; applyPaused(); syncModal(); },
   onResetProgress() { resetProgress(); setTimeout(() => location.reload(), 700); },
   onOpenJournal() { settingsPanel.hide(); journalScreen.show(); },
+  onOpenLooks() { settingsPanel.hide(); openLooks(); },
 });
 // section 14: the hotbar (spells, bombs, the juice jar) and the inventory panel (Tab / I, pauses the game)
 const hotbarUI = createHotbarUI(hudEl, { onSelect(i) { if (V2) selectIndex(hotbar(), i); } });
@@ -545,12 +552,57 @@ function closeInventory() {
   inventoryOpen = false; applyPaused(); syncModal();
   return true;
 }
+// --- 2026-10-08 skins: the looks the octopus can wear. A person's look unlocks the first time they are rescued or befriended
+// (skins.js earnedSkins, from the story counters); the gift moment (skin-gifts.js) flies their trinket over, then 'New look: ...'.
+// The look is picked at the hub's mirror shell (F) or Settings > Looks (skin-picker.js) and kept in the save.
+const skinGifts = createSkinGifts();
+let looksOpen = false;
+const lookJournal = (id) => skinById(id).journal;
+if (getSkins() === null) unlockSkins(earnedSkins(story)); // a save from before skins: what its story earned, quietly
+for (const id of getSkins()) journal.discover(lookJournal(id));
+setOctopusSkin(getSkin());
+const looksPicker = createSkinPicker(hudEl, {
+  getUnlocked: () => getSkins() || [DEFAULT_SKIN],
+  getCurrent: () => getSkin(),
+  onWear(id) { setOctopusSkin(saveSkin(id)); sfx.chime(); },
+  onOpen() { looksOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
+  onClose() { looksOpen = false; applyPaused(); syncModal(); },
+});
+function openLooks() {
+  if (!V2 || looksOpen || transitioning || ui.isEndShown()) return false;
+  if (journalScreen.isOpen()) journalScreen.hide();
+  looksPicker.show();
+  return true;
+}
+/** A person at (x, y) may have just earned the octopus their look: give each new one (their line said through `talk`). */
+function checkSkins(x, y, talk) {
+  if (!V2 || MOVETEST) return [];
+  const nu = newSkins(story, getSkins());
+  if (!nu.length) return nu;
+  unlockSkins(nu);
+  for (const id of nu) {
+    const sk = skinById(id);
+    if (talk && sk.give) say(talk, [sk.give]);
+    skinGifts.give(id, x === undefined ? octo.x : x, y === undefined ? octo.y - 1.2 : y);
+  }
+  return nu;
+}
+/** Per step: the trinkets in flight; one that lands is the toast and the journal page. */
+function stepSkinGifts() {
+  for (const id of skinGifts.step(STEP)) {
+    const sk = skinById(id);
+    sfx.chime();
+    ui.showToast('New look: ' + sk.name + '. Wear it at the mirror shell in the hub', 3400, true);
+    discover(lookJournal(id));
+  }
+}
 // "Runs carried": every journal id carried in a dive counts once for that dive (and carrying a thing discovers it).
 let carriedDive = null;
 const carriedIds = new Set();
 let carriedTick = 0;
 function noteCarried() {
   if (!V2 || !run || MOVETEST) return;
+  if (!skinGifts.busy()) checkSkins(); // skins: a story change that did not come through a person's scene (e.g. an old save's late counter)
   const inDive = run.state === S_BIOME || run.state === S_REST;
   if (inDive && carriedDive !== run.dive) { carriedDive = run.dive; carriedIds.clear(); }
   for (const id of carriedJournalIds(carriedState())) {
@@ -594,8 +646,8 @@ let manualPaused = false;
 let autoPaused = false;
 function applyPaused() {
   const wasPaused = loop.paused;
-  const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen;
-  const showOverlay = isPaused && !settingsOpen && !inventoryOpen; // the settings panel and the inventory are their own overlays
+  const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen || looksOpen;
+  const showOverlay = isPaused && !settingsOpen && !inventoryOpen && !looksOpen; // (the looks picker too) // the settings panel and the inventory are their own overlays
   if (showOverlay && V2) ui.setPauseActions(canQuickRestart(run) && !octo.dead && !transitioning, run.state === S_TUTORIAL && !transitioning); // Restart run in a dive, Leave the tutorial in it
   if (isPaused === wasPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); return; }
   loop.setPaused(isPaused);
@@ -1511,6 +1563,7 @@ function v2Event(ev, cause) {
     timed('discover', () => discoverStatePlace());
     if (newDive && story.quill >= 2 && !run.items.includes('lantern') && giveItem(run.items, octo, 'lantern')) { discover('item-lantern'); journal.bump('item-lantern', STAT_COLLECTED); } // Quill's lantern: no words
     if (newDive) applyBoons(); // gifts handed over in the hub (people of the last runs)
+    if (newDive) journal.bump(lookJournal(getSkin()), STAT_USED); // skins: the Looks page counts the dives worn
     timed('restart event', () => window.dispatchEvent(new CustomEvent('restart')));
     const t0 = performance.now();
     holdDark = true;
@@ -1704,6 +1757,7 @@ function endOfDiveNpcs() {
 /** v2 per-step logic after the octopus moved: exit, hub board, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
+  stepSkinGifts();
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
     questUpdate(quest, octo, world, STEP);
@@ -1763,6 +1817,10 @@ function stepV2(snap) {
     // Daniel 2026-10-08: bombs kill outright (not in the tutorial, which only costs a heart): while one of ours is lit there, the prompt says get clear
     if (run.state === S_TUTORIAL && bombs.list().some((b) => !b.exploded && Math.hypot(b.x - octo.x, b.y - octo.y) < 4)) {
       best = { title: 'Swim away!', desktop: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.', touch: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.' };
+    }
+    if (!best && run.state === S_HUB && lv.mirror && !looksOpen) { // skins: the mirror shell says what it is when you are beside it
+      const mp = mirrorPoint(lv.mirror);
+      if (Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2) best = { title: 'The mirror shell', desktop: 'Press F to change your look.', touch: 'Stay still beside it and tap Use to change your look.' };
     }
     if (unlockAnim) best = null; // the unlock moment speaks for itself (the title card)
     ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
@@ -1949,6 +2007,8 @@ function addBlocks(resident) {
 }
 /** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
 function v2PreWall(c, camera, cw, ch) {
+  const mr = run.state === S_HUB ? world.level.mirror : null;
+  if (mr) drawMirrorShell(c, camera, cw, ch, mr.x, mr.y, !!(hand.target && hand.target.kind === 'mirror'));
   drawBlocks(c, camera, cw, ch, props.data); // blocks only exist in generated levels, so no state test
   if (run.state === S_BIOME) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
 }
@@ -1962,6 +2022,7 @@ function v2People(c, camera, w2s, cw, ch) {
   if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
+  if (skinGifts.busy()) drawSkinGifts(c, camera, cw, ch, skinGifts, octo, t);
   if (run.state === S_BIOME && !(npcs && (npcs.owns(NPC_HOST) || npcGone('host')))) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
   if (npcs) drawNpcs(c, camera, cw, ch, npcs, t, octo); // the ones that turned on you, their sight lines and the harpoons
   if (run.state === S_BIOME) { // V2-PLAN 16: the skewering spikes show through the body, the boulder sits on the pancake
@@ -2375,6 +2436,16 @@ const handEnv = {
 };
 if (V2) {
   registerHandKinds(handEnv);
+  registerInteract('mirror', { // skins: the hub's mirror shell opens the looks picker
+    priority: PRI_TALK + 1,
+    find(o, reach) {
+      const m = run && run.state === S_HUB ? world.level.mirror : null;
+      if (!m) return null;
+      const p = mirrorPoint(m);
+      return Math.hypot(o.x - p.x, o.y - p.y) <= Math.max(reach, MIRROR_REACH) ? { x: p.x, y: p.y, ref: 'mirror', label: 'looks' } : null;
+    },
+    use() { return openLooks(); },
+  });
   registerInteract('portal', { // Daniel 2026-10-08: whirlpools on F only; a portal beats anything else in reach
     priority: PRI_PORTAL,
     find(o) { const p = portalAt(o); return p ? { x: p.x, y: p.y, ref: p } : null; },
@@ -2565,6 +2636,7 @@ function payQuest() {
   else if (p.id === 'pip-2') addStory('explorePip');
   else if (p.npc === 'quill') addStory('digQuill');
   story = getStory();
+  checkSkins(quest.cx, quest.cy - 0.1, quest.talk); // skins: their look, the first time
 }
 
 /**
@@ -2634,6 +2706,7 @@ function hostWin(ps) {
   if ((story.host | 0) < 1) setStory('host', 1); // he moves into the hub after your first win
   ps.outcome = o.id;
   story = getStory();
+  checkSkins(ps.plan.x - 1.7, ps.plan.floorY - 0.4, ps.talk); // skins: the host's hat after the first won wager
 }
 
 /** This level's visitors: meetings owed for this level (or the grotto), placed near the exit (or the spring). */
@@ -2817,6 +2890,7 @@ function hubStep(lv) {
     if (v.gift) { sfx.chime(); particles.pickupSparkle(octo.x, octo.y, '#c8f5e6'); } // r3: a gift for the next dive
     story = getStory();
     for (const id of v.discover) discover(id);
+    { const pl = hubPlace(lv, r.id, sim.time); checkSkins(pl.x, pl.fly ? pl.y : pl.y - 1, hubTalk.talk); } // skins: Quill's welcome
   }
 }
 
@@ -2877,6 +2951,13 @@ if (V2) {
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
+  /** Skins (2026-10-08): unlocked, worn, the sheet being built / kept, gifts in flight, the picker. */
+  skins() { return { unlocked: getSkins(), current: getSkin(), drawn: getOctopusSkin(), sheet: skinSheetStats(), gifts: skinGifts.list.map((g) => ({ id: g.id, t: g.t, done: g.done })), open: looksPicker.isOpen(), cards: looksPicker.cards(), mirror: world.level.mirror || null }; },
+  wearSkin(id) { const r = saveSkin(id); setOctopusSkin(r); return r; },
+  openLooks() { return openLooks(); },
+  closeLooks() { looksPicker.hide(); return true; },
+  looksWear(i) { return looksPicker.wearIndex(i); },
+  checkSkins(x, y) { return checkSkins(x, y); },
   /** Controls 2026-10-08: the hand: what is held, the target in reach, counters, the swim weight and the phone button's mode. */
   /** Test hook: one tap of F on the next step (grab, talk, buy, or enter the whirlpool the octopus is in). */
   pressHand() { handTap = true; return true; },
@@ -3337,6 +3418,7 @@ window.__octo = {
       canvases: pool.live + pool.shared, canvasMB: +((pool.liveBytes + pool.sharedBytes) / MB).toFixed(2), sharedMB: +(pool.sharedBytes / MB).toFixed(2), poolMB: +(pool.pooledBytes / MB).toFixed(2), pooled: pool.pooled,
       allocatedMB: +(pool.allocatedBytes / MB).toFixed(2), allocated: pool.allocatedCount, reused: pool.reuseCount,
       heapMB: pm ? +(pm.usedJSHeapSize / MB).toFixed(1) : null,
+      skinMB: +((skinSheetStats().bytes + skinSheetStats().previewBytes) / MB).toFixed(2), skinSheets: skinSheetStats().sheets, // skins: the worn look's tinted sheet + the picker previews
       drawnEntities: cs.drawn, totalEntities: cs.total, setupMaxMs: renderer.timing().warmMax, wallsMaxMs: renderer.timing().wallsMax, bake: c.bake, cells: c.cells, deepStage: c.deepStage,
     };
   },

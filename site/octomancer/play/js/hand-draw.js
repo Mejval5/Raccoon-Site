@@ -8,7 +8,8 @@
 //   drawKeeperNotice  the shopkeeper's '!' when a ware is knocked off its pedestal: a bone-white mark that pops and fades.
 // All coordinates are world units; the camera turns them into canvas px.
 
-const SKIN = '#c05060', SKIN_DARK = '#904050', SUCKER = '#f0d8d2', OUTLINE = 'rgba(24,16,18,0.55)';
+import { wornColors } from './skin-draw.js'; // the arm takes the worn look's colour (skins.js)
+const SUCKER = '#f0d8d2', OUTLINE = 'rgba(24,16,18,0.55)';
 
 function toScreen(camera, cw, ch, x, y, out) {
   out.x = cw / 2 + (x - camera.x) * camera.pxPerUnit;
@@ -24,7 +25,7 @@ function tentacle(ctx, ax, ay, bx, by, bend, w0, w1, suckers) {
   const N = 10;
   // outline pass, then the skin, as round-capped segments of falling width
   for (const pass of [0, 1]) {
-    ctx.strokeStyle = pass ? SKIN : OUTLINE;
+    ctx.strokeStyle = pass ? wornColors().body : OUTLINE;
     ctx.lineCap = 'round';
     let px = ax, py = ay;
     for (let k = 1; k <= N; k++) {
@@ -58,7 +59,7 @@ export function drawHandTell(ctx, camera, cw, ch, ox, oy, tx, ty, t, use = false
   ctx.globalAlpha = 0.9;
   tentacle(ctx, A.x, A.y, B.x, B.y, ppu * 0.16 * Math.sin(t * 2.3), ppu * 0.13, ppu * 0.05, true);
   // the tip curls (a little spiral toward the thing)
-  ctx.strokeStyle = SKIN; ctx.lineWidth = ppu * 0.05; ctx.lineCap = 'round';
+  ctx.strokeStyle = wornColors().body; ctx.lineWidth = ppu * 0.05; ctx.lineCap = 'round';
   const a0 = Math.atan2(uy, ux) - Math.PI / 2;
   ctx.beginPath(); ctx.arc(B.x + ux * ppu * 0.06, B.y + uy * ppu * 0.06, ppu * 0.065, a0, a0 + Math.PI * 1.5); ctx.stroke();
   // a soft bioluminescent halo round the target (a glow in the water, never a hard UI ring)
@@ -107,7 +108,7 @@ export function drawHeldGrip(ctx, camera, cw, ch, ox, oy, hx, hy, r, t) {
   ctx.lineCap = 'round';
   ctx.strokeStyle = OUTLINE; ctx.lineWidth = q * 0.085 + 1.6;
   ctx.beginPath(); ctx.arc(B.x, B.y, R, a0, a1); ctx.stroke();
-  ctx.strokeStyle = SKIN; ctx.lineWidth = q * 0.08;
+  ctx.strokeStyle = wornColors().body; ctx.lineWidth = q * 0.08;
   ctx.beginPath(); ctx.arc(B.x, B.y, R, a0, a1); ctx.stroke();
   ctx.fillStyle = SUCKER;
   for (let k = 1; k < 4; k++) { const a = a0 + (a1 - a0) * k / 4; ctx.beginPath(); ctx.arc(B.x + Math.cos(a) * (R - q * 0.025), B.y + Math.sin(a) * (R - q * 0.025), Math.max(0.8, q * 0.014), 0, Math.PI * 2); ctx.fill(); }

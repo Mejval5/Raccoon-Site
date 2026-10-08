@@ -149,6 +149,13 @@ export function createSettingsPanel(root, handlers) {
   journalBtn.type = 'button';
   journalBtn.addEventListener('click', () => { if (handlers.onOpenJournal) handlers.onOpenJournal(); });
   cur.appendChild(journalBtn);
+  // 2026-10-08 skins: the looks picker (the hub's mirror shell opens the same one)
+  if (handlers.onOpenLooks) {
+    const looksBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-set-looks', 'Looks');
+    looksBtn.type = 'button';
+    looksBtn.addEventListener('click', () => handlers.onOpenLooks());
+    cur.appendChild(looksBtn);
+  }
   const resetRow = el('div', 'octo-set-row octo-set-reset');
   const resetBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-btn-danger', 'Reset progress');
   resetBtn.type = 'button';

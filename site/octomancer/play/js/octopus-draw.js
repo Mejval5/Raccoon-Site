@@ -12,6 +12,24 @@
 
 import { sharedCanvas } from './canvas-pool.js';
 import { decodeBitmap } from './v2-art.js';
+import { skinSheet, skinBodyColor, drawAccessory, skinPreviewBody, ensureSkinAtlas, onSkinArtReady, setWornSkin } from './skin-draw.js';
+import { DEFAULT_SKIN, isSkinId } from './skins.js';
+
+// 2026-10-08 skins (skins.js / skin-draw.js): the look the octopus wears. The body frame comes from the skin's tinted sheet once it
+// is built (Milan's sheet until then), the eyes always from Milan's sheet, the accessory goes on last.
+let wornSkin = DEFAULT_SKIN;
+/** Wear a skin (an id of skins.js SKINS); its tinted sheet starts building at once (a few frames, offscreen). */
+export function setOctopusSkin(id) {
+  wornSkin = isSkinId(id) ? id : DEFAULT_SKIN;
+  setWornSkin(wornSkin);
+  if (bake) skinSheet(wornSkin, bake);
+  if (wornSkin !== DEFAULT_SKIN) ensureSkinAtlas();
+}
+export function getOctopusSkin() { return wornSkin; }
+const readyListeners = [];
+/** Called when the baked sheet is in (at once if it already is) and again when its decoded bitmap or the accessory atlas arrives (the picker and the journal redraw their previews). */
+export function onOctopusReady(fn) { readyListeners.push(fn); if (bake) fn(); }
+onSkinArtReady(() => { for (const fn of readyListeners) fn(); });
 
 const TENTACLE_COUNT = 8;
 const BODY = '#c05060';
@@ -72,10 +90,11 @@ if (!FORCE_CODE) {
       right: idle0 && idle0.right ? idle0.right.angle : 0,
     };
     bake = { data, img, eyeBaseAngle };
+    if (wornSkin !== DEFAULT_SKIN) skinSheet(wornSkin, bake);
     // vibe fixes: draw from a decoded ImageBitmap. The <img> is decoded lazily by the browser's image cache, which drops it under memory
     // pressure (a level change frees a lot) and decodes the whole 7076 px sheet again inside a frame: a 50-80 ms task on a phone at 4x
     // (Chrome trace: 'Decode Image' webp inside CanvasRenderingContext2D::FinalizeFrame), heard as a music stutter.
-    decodeBitmap(img).then((b) => { if (bake) bake.img = b; }, () => { /* keep the <img> */ });
+    decodeBitmap(img).then((b) => { if (bake) bake.img = b; for (const fn of readyListeners) fn(); }, () => { for (const fn of readyListeners) fn(); });
   }).catch((err) => {
     bakeFailed = true;
     // eslint-disable-next-line no-console
@@ -155,7 +174,8 @@ function drawBaked(ctx, o, bakeData) {
 
   ctx.save();
   ctx.scale(1 / squash, squash);
-  ctx.drawImage(img, frameIndex * cell, 0, cell, cell, -half, -half, worldSize, worldSize);
+  const skinImg = wornSkin !== DEFAULT_SKIN ? skinSheet(wornSkin, bakeData) : null; // null while it builds: Milan's own colours
+  ctx.drawImage(skinImg || img, frameIndex * cell, 0, cell, cell, -half, -half, worldSize, worldSize);
   ctx.restore();
   // a crushed body (resting as well as flattening) is dark: a bruised ink-violet over the body's own pixels only (drawOctopus
   // gives a splat its own offscreen canvas, so source-atop cannot touch anything but the octopus), before the eyes go on
@@ -247,7 +267,7 @@ function drawBaked(ctx, o, bakeData) {
     // the socket before the (smaller) actual eye state draws on top.
     if (eyeState !== 'open') {
       // (a bruised body: the socket patch takes the same dark tint as the body around it, and the X goes pale so it still reads)
-      ctx.fillStyle = bruise > 0 ? 'rgb(' + Math.round(192 - 174 * bruise) + ',' + Math.round(80 - 70 * bruise) + ',' + Math.round(96 - 62 * bruise) + ')' : BODY;
+      ctx.fillStyle = bruise > 0 ? bruised(skinImg ? skinBodyColor(wornSkin) : BODY, bruise) : (skinImg ? skinBodyColor(wornSkin) : BODY);
       ctx.beginPath();
       ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -261,6 +281,48 @@ function drawBaked(ctx, o, bakeData) {
     }
     ctx.restore();
   }
+  if (wornSkin !== DEFAULT_SKIN) drawAccessory(ctx, wornSkin, anchors, cell, toWorld, OPEN_EYE_W(data, anchors));
+}
+
+/** The open eye's width in local units for a frame's anchors (the accessories are sized by it). */
+function OPEN_EYE_W(data, anchors) {
+  const a = anchors.left || anchors.right, r = data.eyeSprites.open.left;
+  return data.eyeRestSize.left.meshH * data.meshUnitsToWorld * (a ? a.scale : 1) * OCTO_VISUAL_SCALE * (r.w / r.h);
+}
+/** A body colour bruised toward the crushed body's ink-violet (the splat). */
+function bruised(hex, k) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 'rgb(' + Math.round(r + (18 - r) * k * 0.9) + ',' + Math.round(g + (10 - g) * k * 0.9) + ',' + Math.round(b + (34 - b) * k * 0.9) + ')';
+}
+
+/**
+ * A still portrait of the octopus in a skin (the mirror shell's picker, Settings, the journal's Looks pages): idle frame 0 with open
+ * eyes and the accessory, centred at (x, y), `size` px across. Returns false before the bake is in.
+ */
+export function drawOctopusPortrait(ctx, id, x, y, size) {
+  if (!bake) return false;
+  const { data, img } = bake;
+  const body = skinPreviewBody(isSkinId(id) ? id : DEFAULT_SKIN, bake);
+  if (!body) return false;
+  const cell = data.cellSize;
+  const k = size / cell;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(k, k); // cell px units, origin = cell centre
+  ctx.drawImage(body, -cell / 2, -cell / 2, cell, cell);
+  const an = data.eyeAnchors.idle && data.eyeAnchors.idle[0];
+  if (an) {
+    // the open eye in cell pixels: drawBaked's openWorldH divided by its px -> world factor (cellWorldSize / cellSize)
+    const eyePx = (side) => data.eyeRestSize[side].meshH * data.meshUnitsToWorld * (an[side] ? an[side].scale : 1) / data.cellWorldSize * cell;
+    for (const side of ['left', 'right']) {
+      const a = an[side], r = data.eyeSprites.open[side];
+      if (!a || !r) continue;
+      const h = eyePx(side), w = h * r.w / r.h;
+      ctx.drawImage(img, r.x, r.y, r.w, r.h, a.x - cell / 2 - w / 2, a.y - cell / 2 - h / 2, w, h);
+    }
+    if (id !== DEFAULT_SKIN) drawAccessory(ctx, id, an, cell, 1, eyePx('left'));
+  }
+  ctx.restore();
+  return true;
 }
 
 /** A dead eye: a dark X, `s` across, centred on the (already socket-filled) eye. */
