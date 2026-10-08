@@ -37,6 +37,14 @@
   "###.E..............4.K..P..P..P..3................VV..................##",
   "########################################################################",
   "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
+  "########################################################################",
   "########################################################################"
  ],
  "rooms": [
@@ -228,7 +236,7 @@
     47,
     32
    ],
-   "desktop": "Q, E or the wheel pick a slot on your bar. Pick Ink Cloud and right click or press C: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
+   "desktop": "Q, E, the wheel or 1-9 pick a slot on your bar. Pick Ink Cloud and right click or press C: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
    "touch": "Tap Spell to puff an Ink Cloud: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell."
   },
   {
@@ -293,8 +301,8 @@
     6,
     32
    ],
-   "desktop": "Swim to the whirlpool and press F to dive. Down there the Beholder comes for slow divers after about 2:30; be quick for a Swift Current shell. Tab opens your journal.",
-   "touch": "Swim to the whirlpool and tap Grab to dive. Down there the Beholder comes for slow divers after about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
+   "desktop": "Swim to the whirlpool and press F to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
+   "touch": "Swim to the whirlpool and tap Grab to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
   }
  ],
  "spawns": [
