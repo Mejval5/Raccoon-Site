@@ -73,7 +73,7 @@ export function pickPad(list) {
  * @param {{
  *   getPads?: () => (Gamepad|null)[],
  *   menuActive?: () => boolean,          // a menu takes the pad (pause, settings, death, clear screens ...)
- *   onMenu?: (action: string) => void,   // 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'tabprev' | 'tabnext'
+ *   onMenu?: (action: string) => void,   // 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'tabprev' | 'tabnext' | 'x' | 'y'
  *   onPause?: () => void,                // Start (Menu)
  *   onInventory?: () => void,            // Back (View)
  *   onConnect?: (id: string, style: string) => void,
@@ -165,6 +165,8 @@ export function createGamepad(input, hooks = {}) {
       if (edge('b') && hooks.onMenu) hooks.onMenu('back');
       if (edge('lb') && hooks.onMenu) hooks.onMenu('tabprev');
       if (edge('rb') && hooks.onMenu) hooks.onMenu('tabnext');
+      if (edge('x') && hooks.onMenu) hooks.onMenu('x'); // Phase 2A: a screen's second and third verbs (the journal's Carried page: X its
+      if (edge('y') && hooks.onMenu) hooks.onMenu('y'); // journal page, Y hold the slot)
       const d = menuDirection(gp);
       if (d && latched[d]) { /* a d-pad arm held over the switch */ }
       else if (d !== menuDir) { menuDir = d; menuHold = 0; menuNext = REPEAT_FIRST; if (d && hooks.onMenu) hooks.onMenu(d); }

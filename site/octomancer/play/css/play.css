@@ -366,6 +366,24 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 #hud.octo-pad-mode .octo-pad-focus input:focus { outline: none; } /* the row wears the ring: no browser box round the track too */
 /* on a pad the key caps after button labels (R, H, Enter, Esc) name keys the player is not using */
 #hud.octo-pad-mode .octo-key { display: none !important; }
+/* controller Phase 2A: a screen's pad legend (glyph-dom.js padLegend), shown only while the pad drives */
+/* the ring keeps clear of a scroll box's edge (scrollIntoView honours it) and over its neighbours in a tight grid */
+#hud .octo-overlay button, #hud .octo-overlay input { scroll-margin: 12px; }
+.octo-skin-card.octo-pad-focus { position: relative; z-index: 1; outline-offset: 2px; }
+/* scroll boxes that hold ringed controls keep room for the ring inside their clip */
+#hud .octo-skins-grid { padding: 8px; }
+#hud .octo-settings-body { padding-left: 8px; padding-right: 8px; padding-bottom: 10px; }
+/* on the journal's parchment the pale ring alone would vanish: the same sea-glass band, framed in dark sea ink */
+.octo-book .octo-bk-page .octo-pad-focus { outline: none !important; box-shadow: 0 0 0 2px #17363c, 0 0 0 5px #d2fbe6, 0 0 0 6.5px #17363c !important; }
+.octo-padhint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font: 700 12px 'Quicksand', sans-serif; letter-spacing: .03em; color: #cfeee4; }
+.octo-padhint-part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.octo-padhint .octo-glyph { display: block; }
+.octo-bk-padhint { display: none; }
+#hud.octo-pad-mode .octo-bk-padhint { display: flex; margin-left: auto; min-height: 30px; align-items: center; }
+#hud.octo-pad-mode .octo-bk-foot .octo-bk-turn, #hud.octo-pad-mode .octo-bk-foot .octo-bk-close { display: none; }
+#hud.octo-pad-mode .octo-bk-pagelabel { position: static; transform: none; max-width: none; padding-left: 4px; }
+.octo-set-helpglyphs { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; vertical-align: -5px; }
+.octo-set-helpglyphs:empty { display: none; }
 
 /* --- v2 (?v2=1): stage label, tutorial prompts, toasts, journal screen, end screen --- */
 #hud > .octo-prompt {

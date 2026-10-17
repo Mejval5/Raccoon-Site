@@ -297,6 +297,8 @@ input.onModeChange((mode) => {
   ui.setControlsScheme(mode, input.padStyle()); // controller Phase 1: the line shows the scheme's own glyphs
   hudEl.classList.toggle('octo-pad-mode', mode === 'pad'); // (play.css hides the key caps on buttons then)
   if (mode !== 'pad') menuNav.hideRing();
+  else { journalScreen.padRestyle(); if (settingsPanel.isOpen()) settingsPanel.refresh(); } // (a pad of another make: its glyphs)
+  journalScreen.refresh(); // the Carried page's "How" line names the scheme's own buttons
   hotbarUI.setCompact(mode === 'touch'); // phones: the small bar at the top (the buttons own the bottom right, the stick the left)
 });
 
@@ -539,8 +541,9 @@ if (getHelpDone()) ui.retireControlsHelp(); // finished two levels in an earlier
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
 const seenDive = new Set(); // entry ids already counted as seen in this dive / hub visit
 const journalScreen = createJournalScreen(hudEl, journal, {
-  onClose() { if (inventoryOpen) { inventoryOpen = false; applyPaused(); } syncModal(); },
+  onClose() { if (inventoryOpen) { inventoryOpen = false; applyPaused(); } syncModal(); backToSettings(); },
   onOpen() { ui.setPrompt(null); noteCarried(); journal.flush(); syncModal(); },
+  padStyle: () => input.padStyle(),
   getStats() { return { meta: getMeta(), bestRuns: getBestRuns() }; },
   getStory() { return getStory(); },
   reducedMotion: prefersReducedMotion,
@@ -572,9 +575,14 @@ const settingsPanel = createSettingsPanel(hudEl, {
   onOpen() { settingsOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
   onClose() { settingsOpen = false; applyPaused(); syncModal(); },
   onResetProgress() { resetProgress(); setTimeout(() => location.reload(), 700); },
-  onOpenJournal() { settingsPanel.hide(); journalScreen.show(); },
-  onOpenLooks() { settingsPanel.hide(); openLooks(); },
+  onOpenJournal() { settingsPanel.hide(); journalScreen.show(); fromSettings = true; },
+  onOpenLooks() { settingsPanel.hide(); if (openLooks()) fromSettings = true; },
+  padStyle: () => input.padStyle(),
 });
+// controller Phase 2A: the journal or the looks picker opened from Settings goes back there when it closes (B, Esc, Close):
+// B always backs out one level
+let fromSettings = false;
+function backToSettings() { if (!fromSettings) return; fromSettings = false; if (!settingsPanel.isOpen()) settingsPanel.show(); }
 // section 14: the hotbar (spells, bombs, the juice jar) and the inventory panel (Tab / I, pauses the game)
 const hotbarUI = createHotbarUI(hudEl, { onSelect(i) { if (V2) selectIndex(hotbar(), i); } });
 if (!V2) hotbarUI.setVisible(false);
@@ -585,7 +593,7 @@ let inventoryOpen = false;
 /** What the octopus carries, for the Carried page (carried.js). */
 function carriedState() {
   const m = input.mode() || (matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
-  return { ...hotbarState(), items: run.items.slice(), touch: m === 'touch' };
+  return { ...hotbarState(), items: run.items.slice(), touch: m === 'touch', pad: m === 'pad' ? input.padStyle() : '' };
 }
 function hotbarState() {
   const hb = hotbar();
@@ -618,7 +626,7 @@ const looksPicker = createSkinPicker(hudEl, {
   getCurrent: () => getSkin(),
   onWear(id) { setOctopusSkin(saveSkin(id)); sfx.chime(); },
   onOpen() { looksOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
-  onClose() { looksOpen = false; applyPaused(); syncModal(); },
+  onClose() { looksOpen = false; applyPaused(); syncModal(); backToSettings(); },
 });
 function openLooks() {
   if (!V2 || looksOpen || transitioning || ui.isEndShown()) return false;
@@ -715,7 +723,7 @@ window.addEventListener('focus', () => { if (!document.hidden) { autoPaused = fa
 let keyboardSeen = false;
 window.addEventListener('keydown', () => { keyboardSeen = true; });
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && settingsPanel.isOpen()) { settingsPanel.hide(); return; }
+  if (e.code === 'Escape' && settingsPanel.isOpen()) { settingsPanel.back(); return; }
   if (e.code === 'Escape' && inventoryOpen) { closeInventory(); return; }
   // Tab / I: the inventory (handled here, not in step(): the game is paused while it is open, so step() never runs then)
   if ((e.code === 'Tab' || e.code === 'KeyI') && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && V2) {
@@ -740,13 +748,15 @@ window.addEventListener('keydown', (e) => {
 
 // --- controller Phase 1 (CONTROLLER-PLAN.md): the pad (gamepad.js) and the menu cursor (menu-nav.js) ---
 const qs = (sel) => document.querySelector(sel);
-/** The menu the pad drives now (pause, settings, the death and clear screens, the tutorial offer), or null in play.
- *  The journal, inventory and looks picker get the generic cursor and B to close until Phase 2A gives them their own. */
+/** The menu the pad drives now (pause, settings, the journal / inventory, the looks picker, the death and clear screens, the
+ *  tutorial offer), or null in play. Phase 2A: the journal and the looks picker keep their own selection (pad, focus: menu-nav.js). */
+const PAD_JOURNAL = { root: null, back: () => closeInventory(), pad: (a) => journalScreen.pad(a), focus: () => journalScreen.padFocus() };
+const PAD_LOOKS = { root: null, back: () => looksPicker.hide(), pad: (a) => looksPicker.pad(a), focus: () => looksPicker.padFocus() };
 function padMenu() {
   if (V2 && ui.isOfferShown()) return { root: qs('.octo-offer-overlay'), back: () => ui.answerOffer(false) };
-  if (settingsPanel.isOpen()) return { root: settingsPanel.el, back: () => settingsPanel.hide() };
-  if (looksOpen) return { root: looksPicker.el, back: () => looksPicker.hide() };
-  if (V2 && (inventoryOpen || journalScreen.isOpen())) return { root: qs('.octo-journal-overlay'), back: () => closeInventory() };
+  if (settingsPanel.isOpen()) return { root: settingsPanel.el, back: () => settingsPanel.back() };
+  if (looksOpen) { PAD_LOOKS.root = looksPicker.el; return PAD_LOOKS; }
+  if (V2 && (inventoryOpen || journalScreen.isOpen())) { PAD_JOURNAL.root = journalScreen.el; return PAD_JOURNAL; }
   if (V2 && ui.isEndShown()) return { root: qs('.octo-end-overlay') };
   if (ui.isGameOverShown()) return { root: qs('.octo-gameover-overlay') };
   if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), back: () => { manualPaused = false; applyPaused(); } };
@@ -757,7 +767,9 @@ let padMenuFrames = 0;
 const pad = createGamepad(input, {
   menuActive() {
     const m = padMenu();
-    if (m && input.mode() === 'pad' && ++padMenuFrames % 8 === 1) menuNav.sync(); // the ring finds a menu that just opened
+    // the ring finds a menu that just opened (a screen with its own selection, Phase 2A: every frame, it is one lookup, so the ring
+    // follows a grid the screen rebuilt under it)
+    if (m && input.mode() === 'pad' && (++padMenuFrames % 8 === 1 || m.focus)) menuNav.sync();
     if (!m) padMenuFrames = 0;
     return !!m;
   },

@@ -8,7 +8,8 @@
 //   drawGlyph(ctx, g, x, y, r)    -> draws g centred at (x, y), r = the icon's half height in px
 //
 // scheme: 'keyboard' | 'mouse' | 'pad' | 'touch' (input.mode()); style: 'xbox' | 'ps' for a pad (input.padStyle()).
-// Actions: move aim dash attack use hand cycle prev next select inventory pause bomb confirm back.
+// Actions: move aim dash attack use hand cycle prev next select inventory pause bomb confirm back (pad menus also: tabprev
+// tabnext menux menuy).
 
 const INK = 'rgba(14, 30, 34, 0.82)';  // the icon's fill: the HUD's dark sea ink
 const BONE = '#e6ddc9';                 // letters and plain rims: old bone
@@ -40,6 +41,8 @@ export const PAD_MAP = {
   move: ['ls'], aim: ['rs'], attack: ['rt'], use: ['rb'], hand: ['a'], dash: ['b', 'lt'],
   cycle: ['lb', 'lr'], prev: ['left'], next: ['lb'], select: ['up'], bomb: ['up'], inventory: ['back'], pause: ['start'],
   confirm: ['a'], back: ['b'],
+  // menus (Phase 2A): the bumpers turn tabs, X and Y are a screen's own extra verbs
+  tabprev: ['lb'], tabnext: ['rb'], menux: ['x'], menuy: ['y'],
 };
 // --- keyboard and mouse (one desktop scheme: the line lists both, a prompt shows the scheme's own)
 const KEY_MAP = {
