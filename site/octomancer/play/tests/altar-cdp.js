@@ -74,8 +74,14 @@ const layOn = (page, kind, a) => page.evaluate((kind, a) => { __octo.addCorpse(k
     }, a);
     check('it stands on three tiles of floor with open water above, reachable from the start', geo.floor && geo.water && geo.reach, JSON.stringify(geo));
     await beside(page, a);
-    const prompt = await page.evaluate(() => { const t = document.querySelector('.octo-prompt-title'), b = document.querySelector('.octo-prompt-text'), el = document.querySelector('.octo-prompt'); return { title: t && t.textContent, text: b && b.textContent, shown: el && el.style.display !== 'none' }; });
-    check('beside it the prompt explains the altar (F to grab, never a person or a bomb)', prompt.shown && /altar/i.test(prompt.title) && /F/.test(prompt.text) && /person/.test(prompt.text) && /bomb/.test(prompt.text), JSON.stringify(prompt));
+    await page.evaluate(() => __octo.stepDraw(15)); // (the board unfolds)
+    const sg = await page.evaluate(() => __octo.signs());
+    const prompt = { shown: !!sg.open, title: sg.open ? sg.open.title : '', text: sg.open ? sg.open.text : '', glyphs: sg.open ? sg.open.glyphs : [], popup: sg.popup };
+    check('beside it its sign opens and explains the altar (F to grab, never a person or a bomb), no floating box', prompt.shown && !prompt.popup && /altar/i.test(prompt.title) && /\bF\b/.test(prompt.text) && prompt.glyphs.includes('F') && /person/.test(prompt.text) && /bomb/.test(prompt.text), JSON.stringify(prompt));
+    await page.evaluate(() => { __octo.pad({ a: false, lx: 0.5 }); __octo.stepDraw(1); __octo.pad({}); __octo.stepDraw(2); });
+    const sgp = await page.evaluate(() => __octo.signs());
+    check('with a pad its sign names A, not F', sgp.scheme === 'pad' && sgp.open && sgp.open.glyphs.includes('A') && !/\bF\b/.test(sgp.open.text), JSON.stringify(sgp.open));
+    await page.keyboard.press('KeyQ'); await page.keyboard.press('KeyE'); await page.evaluate(() => __octo.stepDraw(3)); // (a key: back to the keyboard; the pad stays plugged in, an unplug pauses)
     const j = await page.evaluate(() => __octo.journal ? __octo.journal() : null);
     check('meeting it writes the journal page', j && (j.found || j).includes ? (j.found || j).includes('place-altar') : JSON.stringify(j).includes('place-altar'));
     await page.screenshot({ path: OUT + 'sign-1440.png' });
@@ -158,8 +164,8 @@ const layOn = (page, kind, a) => page.evaluate((kind, a) => { __octo.addCorpse(k
     const ph = await open(browser, 'phone', '?at=1&seed=5&altar=1');
     a = await A(ph);
     await beside(ph, a, -2.0);
-    const pp = await ph.evaluate(() => { const b = document.querySelector('.octo-prompt-text'); return b && b.textContent; });
-    check('phone: the prompt speaks of Grab and Throw, not keys', !!pp && /Grab/.test(pp) && !/middle click/.test(pp), pp);
+    const pp = await ph.evaluate(() => { const s = __octo.signs(); return s.open && s.scheme === 'touch' ? s.open.text : (s.open ? s.scheme + ': ' + s.open.text : ''); });
+    check('phone: the sign speaks of Grab and Throw, not keys', !!pp && /Grab/.test(pp) && !/middle click|MMB/.test(pp), pp);
     await ph.screenshot({ path: OUT + 'sign-412.png' });
     for (const k of ['gclam', 'gclam', 'gclam']) a = await layOn(ph, k, a);
     await beside(ph, a, -2.0);

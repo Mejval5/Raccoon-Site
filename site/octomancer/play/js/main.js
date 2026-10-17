@@ -6,7 +6,12 @@ import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
 import { createGamepad, fakePad, padStyleOf } from './gamepad.js';
 import { createMenuNav } from './menu-nav.js';
-import { glyph, drawGlyph } from './glyphs.js';
+import { glyph, drawGlyph, signScheme } from './glyphs.js';
+import { pickPrompt, signText, CONTROL_ROWS } from './signs.js';
+import { drawSigns, drawAnchorTag } from './signs-draw.js';
+import { plainText, glyphLabels } from './rich.js';
+import { drawCavePainting } from './cave-paint.js';
+import { setArtScheme } from './journal-art.js';
 import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
@@ -306,6 +311,9 @@ input.onModeChange((mode) => {
   else { journalScreen.padRestyle(); if (settingsPanel.isOpen()) settingsPanel.refresh(); } // (a pad of another make: its glyphs)
   journalScreen.refresh(); // the Carried page's "How" line names the scheme's own buttons
   hotbarUI.setCompact(mode === 'touch'); // phones: the small bar at the top (the buttons own the bottom right, the stick the left)
+  // Phase 2B: the signs, the painting and the journal's Controls page switch at once (paused too), not only at the next step
+  signView.scheme = signScheme(mode); signView.style = input.padStyle();
+  setArtScheme(signView.scheme, signView.style);
 });
 
 // --- Simulation state ---
@@ -395,6 +403,7 @@ let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null,
 let runeSpot = null;
 // the offering altar (altar-level.js): one on some Shallows level of a dive (?altar=1: every level)
 const altarLv = createAltarLevel({
+  signView: () => signView, // Phase 2B: its sign's board draws the scheme's glyphs
   world: () => world, octo: () => octo, run: () => run, corpses: () => corpses, kindName: (id) => corpseKindName(id),
   enemies: () => enemies.all(), keepers: () => keepers, keeperDead: KM_DEAD,
   found: (id) => journal.has(id), discover: (id) => discover(id), bump: (id, st) => journal.bump(id, st), statCollected: STAT_COLLECTED, statAngered: STAT_ANGERED,
@@ -487,7 +496,7 @@ function stepUnlock(dt) {
     for (let i = 0; i < 5; i++) particles.pickupSparkle(cx - 1 + i * 0.5, cy + 0.3, i % 2 ? '#8fc46a' : '#c8f5e6');
     particles.bouncePuff(cx, cy + 0.5, 0, -1);
     ui.showTitle('The dive is open', '', 2200);
-    ui.showToast('Swim to the whirlpool and press F to start a run', 3600);
+    diveTagUntil = sim.time + 6; // Phase 2B: the whirlpool itself says how to start a run (objectTags), no toast
   }
   if (u.t >= UNLOCK_END_S) unlockAnim = null;
 }
@@ -728,6 +737,17 @@ window.addEventListener('focus', () => { if (!document.hidden) { autoPaused = fa
 // the fixed-step loop stops calling step() at all while paused, so a
 // pause-driven "unpause" check inside step() would never run again).
 let keyboardSeen = false;
+// Controller Phase 2B: the signs (signs.js). signView = the scheme their words are drawn in; openSign = the prompt whose board
+// is open this step; bombWarn = a lit tutorial bomb that says "swim away"; mirrorTag = the mirror shell names its verb.
+const signView = { scheme: 'desktop', style: 'xbox' };
+let openSign = null, bombWarn = null, mirrorTag = false, diveTagUntil = -1;
+/** A hub prompt that does not apply now: the sealed-dive ones once the tutorial is done, the welcome once a dive was cleared. */
+function promptHidden(p) {
+  if (!p.when && run.state !== S_HUB) return false;
+  const welcomed = run.state === S_HUB && !MOVETEST && (getMeta().clears | 0) >= 1; // r40: the welcome is for newcomers
+  const open = run.state !== S_HUB || MOVETEST || diveOpen(run);
+  return p.when === 'sealed' ? open : p.when === 'open' ? (!open || welcomed) : welcomed;
+}
 window.addEventListener('keydown', () => { keyboardSeen = true; });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && settingsPanel.isOpen()) { settingsPanel.back(); return; }
@@ -1539,6 +1559,7 @@ function render(alpha, frameMs) {
     shakePx: V2 ? scalePx(particles.shakePx(), dpr) : null,
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     preWallDraw: V2 ? v2PreWall : null,
+    backWallDraw: V2 && world.level.painting ? paintPass : null, // Phase 2B: the tutorial's controls painting on the back wall
     dreadLevel,
     beholderWarn: V2 && isSafeState(run) ? null : enemies.beholderWarn(),
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
@@ -2417,17 +2438,14 @@ function stepV2(snap) {
   // interact kind below (portalAt / enterPortal). Swimming into one only shows the tell and the key hint.
   if (entry) return;
   if (run.state === S_HUB) hubStep(lv);
+  // Controller Phase 2B: guidance is in the world. The prompt the octopus is near opens its sign into a board (signs-draw.js);
+  // nothing floats over the screen (the old prompt banner stays hidden). The words follow the scheme (signView).
+  const touchy = snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer());
+  signView.scheme = touchy ? 'touch' : signScheme(input.mode() === 'pad' ? 'pad' : snap.mode);
+  signView.style = input.padStyle();
+  openSign = null; bombWarn = null; mirrorTag = false;
   if (lv.prompts && lv.prompts.length) {
-    let best = null, bd = 1e9;
-    // r40: the hub's 'Welcome to the Shallows' panel is for newcomers: gone once the first dive has been cleared
-    const welcomed = run.state === S_HUB && !MOVETEST && (getMeta().clears | 0) >= 1;
-    const open = run.state !== S_HUB || MOVETEST || diveOpen(run);
-    for (const p of lv.prompts) {
-      if (p.when === 'sealed' ? open : p.when === 'open' ? (!open || welcomed) : welcomed) continue; // hub: sealed-dive prompts until the tutorial is done, the welcome after
-      const d = Math.hypot(octo.x - p.x, octo.y - p.y);
-      if (d < p.r && d < bd) { best = p; bd = d; }
-    }
-    const touchy = snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer());
+    let best = pickPrompt(lv.prompts, octo.x, octo.y, promptHidden);
     // tutorial: bombs never run out while the wall stands, and an idle player gets the bomb hint back
     if (run.state === S_TUTORIAL) {
       const floorUp = wallIntact(lv);
@@ -2438,20 +2456,16 @@ function stepV2(snap) {
     }
     // controls 2026-10-08: at the tutorial's bomb floor the bomb is picked on the hotbar once, so Use / right click / C drop one
     if (best && best.refillBomb && !tutState.bombPicked) { tutState.bombPicked = true; const hb = hotbar(), bi = hb.slots.findIndex((sl) => sl.ids[0] === BOMB_SLOT); if (bi >= 0) selectIndex(hb, bi); }
-    // Daniel 2026-10-08: bombs kill outright (not in the tutorial, which only costs a heart): while one of ours is lit there, the prompt says get clear
-    if (run.state === S_TUTORIAL && bombs.list().some((b) => !b.exploded && Math.hypot(b.x - octo.x, b.y - octo.y) < 4)) {
-      best = { title: 'Swim away!', desktop: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.', touch: 'It goes off in a moment. Get more than two tiles away: outside the tutorial a bomb blast kills you.' };
-    }
-    if (!best && run.state === S_HUB && lv.mirror && !looksOpen) { // skins: the mirror shell says what it is when you are beside it
-      const mp = mirrorPoint(lv.mirror);
-      if (Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2) best = { title: 'The mirror shell', desktop: 'Press F to change your look.', touch: 'Stay still beside it and tap Use to change your look.' };
-    }
+    // Daniel 2026-10-08: bombs kill outright (not in the tutorial, which only costs a heart): while one of ours is lit there, the bomb itself says get clear
+    if (run.state === S_TUTORIAL) bombWarn = bombs.list().find((b) => !b.exploded && Math.hypot(b.x - octo.x, b.y - octo.y) < 4) || null;
     if (unlockAnim) best = null; // the unlock moment speaks for itself (the title card)
-    ui.setPrompt(best ? best.title : null, best ? (touchy ? best.touch : best.desktop) : '');
-  } else {
-    const ap = run.state === S_BIOME && !unlockAnim ? altarLv.prompt() : null; // the first offering altar's sign
-    const touchy = ap && (snap.mode === 'touch' || (!keyboardSeen && snap.mode === 'keyboard' && isCoarsePointer()));
-    ui.setPrompt(ap ? ap.title : null, ap ? (touchy ? ap.touch : ap.desktop) : '');
+    openSign = best;
+  } else if (run.state === S_BIOME && !unlockAnim && altarLv.prompt()) {
+    openSign = altarLv.sign ? altarLv.sign[0] : null; // the first offering altar's sign (altar-level.js opens it by distance itself)
+  }
+  if (run.state === S_HUB && lv.mirror && !looksOpen && !unlockAnim) { // skins: the mirror shell says what it is when you are beside it (on the shell)
+    const mp = mirrorPoint(lv.mirror);
+    mirrorTag = Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2;
   }
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
     for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
@@ -2517,10 +2531,11 @@ function v2Extra(c, camera, w2s, cw, ch) {
     d.targetHits = village.roundOn || t - village.wonAt < 2.5 ? village.hits : 0; d.keepsakeTaken = (story.hubSecret | 0) > 0;
     drawHubRooms(c, camera, cw, ch, lv, hubRooms, t, d);
   }
+  // Phase 2B: every level's prompts are signs (the hub's welcome board, the grotto's, the tutorial's planks)
+  if (lv.prompts && lv.prompts.length) drawSigns(c, camera, cw, ch, lv.prompts, openSign, signView, t, promptHidden);
   if (run.state === S_TUTORIAL) {
     if (lv.walls && lv.walls.length) drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
     if (lv.sticky && lv.sticky.length) drawWallCue(c, camera, cw, ch, { walls: lv.sticky, tileAt: world.tileAt, attention: 0 }, t);
-    drawTutorialSigns(c, camera, cw, ch, lv.prompts, octo.x, octo.y, t);
     drawLoot(c, camera, cw, ch, loot.data, t);
     drawCreaturesBack(c, camera, cw, ch, creatures.data, t);
     if (shopSt) { drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt); drawLooseWares(c, camera, cw, ch, shopSt, props, t); }
@@ -2566,13 +2581,17 @@ function v2Extra(c, camera, w2s, cw, ch) {
     if (hand.held) { if (hv && hv.rigid) drawHeldArm(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, hand.held.r || 0.3, t); }
     else if (hand.target) {
       drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
-      const hy = hand.target.kind === 'portal' ? 1.45 : hand.target.kind === 'backdoor' ? 2.0 : 0; // over the whirlpool / the back-room curtain
-      if (hy && input.mode() === 'pad') { // controller Phase 1: the pad's own button, drawn as its glyph (glyphs.js), bobbing like the key cap
-        const sp = worldToScreen(camera, cw, ch, hand.target.x, hand.target.y - hy);
-        c.save(); c.globalAlpha = 0.75 + 0.25 * Math.sin(t * 3);
-        drawGlyph(c, glyph('hand', 'pad', input.padStyle()), sp.x, sp.y + Math.sin(t * 2.2) * camera.pxPerUnit * 0.04, camera.pxPerUnit * 0.21);
-        c.restore();
-      } else if (hy && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - hy, 'F', t); // (phones: the Spell button reads Enter)
+      const k = hand.target.kind;
+      const hy = k === 'portal' ? 1.45 : k === 'backdoor' ? 2.0 : k === 'ware' ? 0.95 : 0; // over the whirlpool / the back-room curtain / the ware
+      if (hy && signView.scheme !== 'touch') { // (phones: the Spell button reads Enter)
+        if (k === 'ware') drawAnchorTag(c, camera, cw, ch, hand.target.x, hand.target.y - hy, '{hand} buy', signView, t, 0.92); // Phase 2B: on the ware itself
+        else if (signView.scheme === 'pad') { // controller Phase 1: the pad's own button, drawn as its glyph (glyphs.js), bobbing like the key cap
+          const sp = worldToScreen(camera, cw, ch, hand.target.x, hand.target.y - hy);
+          c.save(); c.globalAlpha = 0.75 + 0.25 * Math.sin(t * 3);
+          drawGlyph(c, glyph('hand', 'pad', signView.style), sp.x, sp.y + Math.sin(t * 2.2) * camera.pxPerUnit * 0.04, camera.pxPerUnit * 0.21);
+          c.restore();
+        } else drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - hy, glyph('hand', 'desktop').label, t);
+      }
     }
   }
   });
@@ -2654,6 +2673,7 @@ function addBlocks(resident) {
     for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
   }
 }
+function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); }
 /** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
 function v2PreWall(c, camera, cw, ch) {
   const mr = run.state === S_HUB ? world.level.mirror : null;
@@ -2693,6 +2713,19 @@ function v2People(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
   if (run.state === S_BIOME || run.state === S_REST) drawPeopleExtras(c, camera, cw, ch, t);
   if (keeperNotice > 0 && shopSt && shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n) drawKeeperNotice(c, camera, cw, ch, keepers.x[shopSt.keeperIdx], keepers.y[shopSt.keeperIdx] - 1.3, keeperNotice / 0.9, t);
+  drawObjectTags(c, camera, cw, ch, t);
+}
+/** Phase 2B: the prompts fixed to their object (CONTROLLER-PLAN "Text in the world"): what they say, for tests too. */
+function objectTags() {
+  const out = [];
+  if (bombWarn) out.push({ id: 'bomb', x: bombWarn.x, y: bombWarn.y - 0.85, text: 'Swim away! {dash}' });
+  if (mirrorTag && world.level.mirror) { const mp = mirrorPoint(world.level.mirror); out.push({ id: 'mirror', x: mp.x, y: mp.y - 1.35, text: signView.scheme === 'touch' ? 'Stay still, tap {use}: your look' : '{hand} change your look' }); }
+  if (octo.held && !octo.dead) out.push({ id: 'grab', x: octo.x, y: octo.y - 1.05, text: '{dash} break free!' });
+  if (run.state === S_HUB && sim.time < diveTagUntil) { const lv = world.level; out.push({ id: 'dive', x: lv.exitX + 0.5, y: lv.exitY - 1.6, text: signView.scheme === 'touch' ? 'Swim in, tap Enter: a run' : 'Swim in, {hand}: a run' }); }
+  return out;
+}
+function drawObjectTags(c, camera, cw, ch, t) {
+  for (const g of objectTags()) drawAnchorTag(c, camera, cw, ch, g.x, g.y, g.text, signView, t);
 }
 
 // --- V2-PLAN 16: ambush creatures (js/creatures.js) ---
@@ -2719,7 +2752,7 @@ function handleCreatureEvents() {
       case 'snap': chain.emit('snap', ev.x, ev.y - 0.4, ev.chain >= 0 ? ev : null, false, { target: 'clam', i: ev.i }); if (!ev.far) { particles.shakeFx(ev.kill ? 6 : 2.5, 0.25); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.4, ev.y - 0.5); } break;
       case 'grab':
         particles.shakeFx(3, 0.2);
-        if (!grabCueShown) { grabCueShown = true; ui.showToast('Dash to break free!', 1800); }
+        grabCueShown = true; // Phase 2B: '{dash} break free!' is drawn over the held octopus (objectTags), not a toast
         break;
       case 'release': particles.shakeFx(2, 0.15); for (let k = 0; k < 4; k++) particles.trailBubble(ev.x + (k - 1.5) * 0.25, ev.y); break;
       case 'bonk': particles.bouncePuff(ev.x, ev.y, 0, -1); break;
@@ -3097,7 +3130,7 @@ function tryTakeRune(now = false) {
   runeSpot.taken = true;
   const id = runeSpot.id, row = spellById(id);
   if (row) { discover(row.journal); journal.bump(row.journal, STAT_COLLECTED); } else { discover('rune-' + id); journal.bump('rune-' + id, STAT_COLLECTED); }
-  ui.showToast(row ? 'A rune: ' + row.name + ' (right click / F)' : 'A rune: ' + runeName(id) + ', set into ' + runeName(hotbar().slots[slot].ids[0]), 2600, false, true);
+  ui.showToast(row ? 'A rune: ' + row.name + ', on your bar (' + plainText('{use}', signView.scheme, signView.style) + ' casts it)' : 'A rune: ' + runeName(id) + ', set into ' + runeName(hotbar().slots[slot].ids[0]), 2600, false, true);
   particles.pickupSparkle(runeSpot.x, runeSpot.y - 0.4, '#9dffd8'); sfx.chime();
   return true;
 }
@@ -3884,11 +3917,8 @@ function onShopEvent(ev) {
 
 if (V2) {
   ui.setGameOverLabels('The dark took you', 'Restart run', 'Back to the hub');
-  // the tutorial is offered at launch until it has been finished once (the dive stays sealed until then); ?at= and the test room skip it
-  if (run.state === S_HUB && !MOVETEST && !run.tutorialDone && !params.get('at') && params.get('offer') !== '0') {
-    ui.showOffer('New to the Shallows?', 'The dive is sealed with kelp until you finish the tutorial: a few small caves that teach swimming, dashing, ink, the hand, bombs, spells, the shop and the dangers below. You can replay it from its ring in the hub.',
-      'Play the tutorial', 'Look around the hub first', (yes) => { if (yes) v2Event(EV_ENTER_TUTORIAL); });
-  }
+  // Controller Phase 2B: no first-launch offer card any more (Daniel: no floating boxes for guidance). The welcome board hung
+  // over the start says the dive is sealed until the tutorial is done and where its ring is (hub.json); the ring takes the hand.
   setupLevelExtras();
   if (run.state === S_HUB && !MOVETEST) villageArrived();
   showLevelTitle(); // the first level's title card (after the extras: it carries the Swift Current target)
@@ -4085,12 +4115,29 @@ window.__octo = {
     const lv = world.level, rooms = lv.rooms || [];
     const doors = {};
     for (const [k, l] of Object.entries(lv.doors || {})) { let n = 0; for (let i = 0; i < l.length; i += 2) if (world.tileAt(l[i], l[i + 1]) !== 0) n++; doors[k] = n; }
-    const pe = document.querySelector('.octo-prompt');
+    const os = openSign;
     return {
       state: run.state, tutorial: run.state === S_TUTORIAL, room: tutState.room, roomId: tutState.room >= 0 && rooms[tutState.room] ? rooms[tutState.room].id : '',
       rooms: rooms.map((r, i) => ({ id: r.id, goal: r.goal, door: r.door || 0, done: !!(tutState.done && tutState.done[i]), t: tutState.roomT ? tutState.roomT[i] : 0 })),
       open: { ...tutState.open }, doors, buys: tutBuys, throws: hand.throws, casts: runStats.spellsCast, hearts: octo.hearts, bombs: octo.bombs, juice: run.juice,
-      prompt: pe && pe.offsetParent !== null ? pe.textContent : '', practice: !!octo.practice,
+      // Phase 2B: the open sign's title and words as the scheme reads them (glyphs as their labels); no banner any more
+      prompt: os ? os.title + ' ' + plainText(signText(os, signView.scheme), signView.scheme, signView.style) : '', practice: !!octo.practice,
+    };
+  },
+  /** Phase 2B: what the signs say now: the scheme, the open sign (title, label, text with glyph labels, the glyphs drawn), the
+   *  object prompts, whether the painting is on this level, and whether any old floating box (prompt banner, offer card) shows. */
+  signs() {
+    const sc = signView.scheme, st = signView.style, os = openSign;
+    const read = (str) => ({ text: plainText(str, sc, st), glyphs: glyphLabels(str, sc, st) });
+    const shown = (sel) => { const e = document.querySelector(sel); return !!e && e.style.display !== 'none' && e.offsetParent !== null; };
+    const lv = world.level;
+    return {
+      scheme: sc, style: st, mode: input.mode(),
+      open: os ? { title: os.title || '', label: os.label || '', where: os.sign ? 'sign' : os.hang ? 'hang' : 'anchor', ...read(signText(os, sc)) } : null,
+      list: (lv.prompts || []).filter((p) => !promptHidden(p)).map((p) => ({ title: p.title, label: p.label || '', where: p.sign ? 'sign' : p.hang ? 'hang' : 'anchor', at: p.sign || p.hang || p.anchor, ...read(signText(p, sc)) })),
+      tags: objectTags().map((g) => ({ id: g.id, ...read(g.text) })),
+      painting: lv.painting ? { rect: lv.painting.rect.slice(), rows: CONTROL_ROWS.map(([a, n]) => ({ action: a, name: n, glyphs: glyphLabels('{' + a + '+}', sc, st) })) } : null,
+      popup: shown('.octo-prompt') || shown('.octo-offer-overlay'),
     };
   },
   restart() {

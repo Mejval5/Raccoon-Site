@@ -4,15 +4,18 @@
 //
 // Flat data: ENTRIES is plain data, `found` is a Uint8Array indexed like ENTRIES.
 
+import { CONTROL_ROWS } from './signs.js';
+
 export const CAT_PLACE = 'place', CAT_CREATURE = 'creature', CAT_HAZARD = 'hazard', CAT_ITEM = 'item', CAT_LOOT = 'loot', CAT_PERSON = 'person', CAT_PROP = 'prop', CAT_SPELL = 'spell';
 export const CAT_LOOK = 'look'; // 2026-10-08 skins: the octopus's looks (Items tab, after spells and runes)
-export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_SPELL, CAT_LOOK, CAT_LOOT, CAT_PROP];
+export const CAT_CONTROL = 'control'; // Controller Phase 2B: the Controls tab (the active scheme's map); not things to find
+export const CATEGORIES = [CAT_PLACE, CAT_PERSON, CAT_CREATURE, CAT_HAZARD, CAT_ITEM, CAT_SPELL, CAT_LOOK, CAT_LOOT, CAT_PROP, CAT_CONTROL];
 /** The book's tabs (Spelunky 2 journal: Places, People, Bestiary, Items, Traps), each showing some categories. */
 export const TABS = []; // filled from data/journal.json: { id, title, cats }
 /** Counters per entry (the entry page shows the ones that fit its category). */
 export const STAT_SEEN = 0, STAT_KILLED = 1, STAT_KILLED_BY = 2, STAT_COLLECTED = 3, STAT_ANGERED = 4, STAT_USED = 5, STAT_CARRIED = 6, STAT_COUNT = 7;
 
-export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells and Runes', look: 'Looks', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
+export const CATEGORY_TITLES = { control: 'Controls', place: 'Places', creature: 'Creatures', hazard: 'Hazards', item: 'Items', spell: 'Spells and Runes', look: 'Looks', loot: 'Loot and Secrets', person: 'People', prop: 'Props' };
 
 /**
  * The entries are data rows in data/journal.json (round 38): id, category, name, a short description, the art to draw
@@ -23,6 +26,12 @@ export const CATEGORY_TITLES = { place: 'Places', creature: 'Creatures', hazard:
  * @type {{id:string, cat:string, name:string, text:string, art:any, counters:[string,string][], story:any, where:string|null}[]}
  */
 export const ENTRIES = [];
+/**
+ * Controller Phase 2B: the Controls tab's rows, one per action of signs.js CONTROL_ROWS (art {control: action}: journal-art.js
+ * paints the active scheme's glyphs). Always open, never saved, left out of completion (they are not discoveries).
+ */
+export const CONTROL_ENTRIES = CONTROL_ROWS.map(([action, name, note]) => ({ id: 'control-' + action, cat: CAT_CONTROL, name, text: note, art: { control: action }, counters: [], story: null, where: null }));
+const NO_STATS = new Array(STAT_COUNT).fill(0);
 const STAT_KEYS = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, angered: STAT_ANGERED, used: STAT_USED, carried: STAT_CARRIED };
 {
   const res = await fetch(new URL('../data/journal.json', import.meta.url));
@@ -44,7 +53,7 @@ export function creatureId(kind) {
   return INDEX.has(id) ? id : null;
 }
 /** The entry row for an id, or null. */
-export function entryById(id) { const i = INDEX.get(id); return i === undefined ? null : ENTRIES[i]; }
+export function entryById(id) { const i = INDEX.get(id); return i === undefined ? CONTROL_ENTRIES.find((e) => e.id === id) || null : ENTRIES[i]; }
 /** Journal id for a pickup type ('shell' -> 'item-shell'), or null. */
 export function itemId(type) {
   const id = 'item-' + type;
@@ -137,6 +146,7 @@ export function createJournal(store) {
     /** Entries of one category (or all) with a `found` flag and a `stats` array [seen, killed, killedBy, collected, angered, used, carried], in ENTRIES order. */
     list(cat) {
       const out = [];
+      if (cat === CAT_CONTROL) { for (const e of CONTROL_ENTRIES) out.push({ ...e, found: true, stats: NO_STATS.slice() }); return out; }
       for (let i = 0; i < ENTRIES.length; i++) {
         if (cat && ENTRIES[i].cat !== cat) continue;
         out.push({ ...ENTRIES[i], found: found[i] === 1, stats: Array.from(stats.subarray(i * STAT_COUNT, i * STAT_COUNT + STAT_COUNT)) });
@@ -181,7 +191,7 @@ export function storyLines(e, flags) {
 
 /** Completion: overall and per tab, from the journal's found counts. {found, total, pct, tabs:[{id, title, found, total, pct}]} */
 export function completion(journal) {
-  const tabs = TABS.map((t) => { const p = journal.tabProgress(t.id); return { id: t.id, title: t.title, found: p.found, total: p.total, pct: percent(p.found, p.total) }; });
+  const tabs = TABS.filter((t) => !t.cats.includes(CAT_CONTROL)).map((t) => { const p = journal.tabProgress(t.id); return { id: t.id, title: t.title, found: p.found, total: p.total, pct: percent(p.found, p.total) }; });
   const found = tabs.reduce((a, t) => a + t.found, 0), total = tabs.reduce((a, t) => a + t.total, 0);
   return { found, total, pct: percent(found, total), tabs };
 }

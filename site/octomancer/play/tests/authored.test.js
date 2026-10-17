@@ -2,6 +2,8 @@
 // single-level world built from an authored level.
 import { parseAuthoredMap, MK_SIGN, MK_SHORTCUT, MK_SHORTCUT3, MK_TUTORIAL } from '../js/authored.js';
 import { createLevelWorld } from '../js/world-v2.js';
+import { plainText } from '../js/rich.js';
+import { signText } from '../js/signs.js';
 
 /** Generic 4-neighbour BFS over "fat" water (2x2 blocks) on a w x h grid. */
 function fatReach(tiles, w, h, sx, sy, ex, ey) {
@@ -48,8 +50,11 @@ export async function runAuthoredTests(assert) {
   assert('authored hub: sealed-dive prompts (when: sealed) and the welcome for an open dive (when: open)', hub.prompts.some((p) => p.when === 'sealed') && hub.prompts.some((p) => p.when === 'open'));
   assert('authored hub: start reaches the dive entrance without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.exitX, hub.exitY));
   assert('authored hub: start reaches the perch of Quill without bombs', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.quillX, hub.quillY));
-  assert('authored hub: no prompt sends the player to a board; the open-dive welcome names Tab / I on desktop and the pause menu on touch',
-    hub.prompts.every((p) => !/board/i.test(p.desktop + p.touch)) && hub.prompts.some((p) => p.when === 'open' && /Tab/.test(p.desktop) && /pause/i.test(p.touch)));
+  const dk = (p) => plainText(signText(p, 'desktop'), 'desktop'), pd = (p) => plainText(signText(p, 'pad'), 'pad');
+  assert('authored hub: no prompt sends the player to a board; the open-dive welcome names Tab on desktop, View on a pad and the pause menu on touch',
+    hub.prompts.every((p) => !/board/i.test(p.desktop + p.touch)) && hub.prompts.some((p) => p.when === 'open' && /Tab/.test(dk(p)) && /View/.test(pd(p)) && /pause/i.test(p.touch)));
+  assert('authored hub (Phase 2B): the welcome is a board hung from the rock over the start, not a floating banner',
+    hub.prompts.every((p) => p.hang && hub.tiles[p.hang[1] * hub.w + p.hang[0]] === 0 && hub.tiles[(p.hang[1] - 1) * hub.w + p.hang[0]] !== 0 && Math.hypot(p.x - hub.startX, p.y - hub.startY) < p.r));
   assert('authored hub: start reaches both shortcut rings (R and the T of Marlo, in his workshop) without bombs, three tiles or more apart', fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcutX, hub.shortcutY) && fatReach(hub.tiles, hub.w, hub.h, hub.startX, hub.startY, hub.shortcut3X, hub.shortcut3Y) && Math.abs(hub.shortcut3X - hub.exitX) >= 3 && Math.abs(hub.shortcutX - hub.exitX) >= 3);
   assert('authored hub: every ring has open water above it to hover in while pressing F (3 wide, 3 tall)', [[hub.exitX, hub.exitY], [hub.tutorialX, hub.tutorialY], [hub.shortcutX, hub.shortcutY], [hub.shortcut3X, hub.shortcut3Y]].every(([x, y]) => {
     for (let yy = y - 2; yy <= y; yy++) for (let xx = x - 1; xx <= x + 1; xx++) if (hub.tiles[yy * hub.w + xx] !== 0) return false;
@@ -72,13 +77,15 @@ export async function runAuthoredTests(assert) {
     return ids === 'swim,ink,hand,bomb,sticky,cloud,shop,hazards,exit' && tut.rooms.every((r) => tut.prompts.some((p) => inRect(r.rect, p.x, p.y)))
       && tut.rooms.filter((r) => r.door).map((r) => r.goal).join(',') === 'bone,throw,cast,buy' && Object.keys(tut.doors).length === 4;
   })());
-  assert('authored tutorial: bomb prompt names C (drop), B / X (quick bomb) and the touch Bomb button; the sticky prompt the right click', (() => {
+  assert('authored tutorial: bomb prompt names C (drop), B / X (quick bomb), RB on a pad and the touch Bomb button; the sticky prompt the right click (RMB) and RS + RB on a pad', (() => {
     const b = tut.prompts.find((p) => p.title.toLowerCase().includes('bomb')), st = tut.prompts.find((p) => p.title.toLowerCase().includes('sticky'));
-    return /press C/.test(b.desktop) && /B or X/.test(b.desktop) && /tap Bomb/.test(b.touch) && /right click/.test(st.desktop) && /tap Bomb/.test(st.touch);
+    const dk = (p) => plainText(signText(p, 'desktop'), 'desktop'), pd = (p) => plainText(signText(p, 'pad'), 'pad');
+    return /press C/.test(dk(b)) && /B or X/.test(dk(b)) && /press RB/.test(pd(b)) && /tap Bomb/.test(b.touch) && /press RMB/.test(dk(st)) && /RS/.test(pd(st)) && /press RB/.test(pd(st)) && /tap Bomb/.test(st.touch);
   })());
-  assert('authored tutorial: the dive prompt names F, the Beholder, the Swift Current and the journal', (() => {
+  assert('authored tutorial: the dive prompt names F (A on a pad), the Beholder, the Swift Current and the journal (Tab / View)', (() => {
     const d = tut.prompts.find((p) => p.title === 'Dive');
-    return /press F/.test(d.desktop) && /Beholder/.test(d.desktop) && /Swift Current/.test(d.desktop) && /Tab/.test(d.desktop) && /journal/.test(d.touch);
+    const dk = plainText(signText(d, 'desktop'), 'desktop'), pd = plainText(signText(d, 'pad'), 'pad');
+    return /press F/.test(dk) && /Beholder/.test(dk) && /Swift Current/.test(dk) && /Tab/.test(dk) && /press A\b/.test(pd) && /View/.test(pd) && /journal/.test(d.touch);
   })());
   const clear = (base, lists) => { const t = base.slice(); for (const l of lists) for (let i = 0; i < l.length; i += 2) t[l[i + 1] * tut.w + l[i]] = 0; return t; };
   const doorLists = Object.values(tut.doors);

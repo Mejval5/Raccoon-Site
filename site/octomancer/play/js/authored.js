@@ -16,6 +16,7 @@
 // Materials (materials.js): 'X' bedrock, 'B' bone block, '=' timber, 'M' masonry. The 2-tile border is written as rock
 // and becomes bedrock (the world treats it as unbreakable).
 
+import { placeSigns } from './signs.js';
 import { MK_START, MK_EXIT } from './rooms.js';
 import { createPathGrid, findPath } from './pathcheck.js';
 import { MAT_CHARS, MAT_ROCK, MAT_BEDROCK, MAT_CORAL } from './materials.js';
@@ -85,7 +86,10 @@ export function parseAuthoredMap(json) {
     sticky: Int16Array.from(sticky), // x,y pairs of the sticky-mine wall tiles (tutorial)
     doors: Object.fromEntries(Object.entries(doors).map(([k, v]) => [k, Int16Array.from(v)])), // door number -> x,y pairs (coral)
     rooms: json.rooms || [],
-    prompts: json.prompts || [], spawns: expandSpawns(json.spawns || [], tiles, w, h),
+    // Phase 2B: every prompt is a sign in the world (signs.js): one without a written place stands on the floor under it
+    prompts: placeSigns(json.prompts || [], (x, y) => x < 0 || y < 0 || x >= w || y >= h || tiles[y * w + x] !== 0),
+    painting: json.painting || null, // the tutorial's cave painting of the controls (cave-paint.js)
+    spawns: expandSpawns(json.spawns || [], tiles, w, h),
     // 2026-10-08 skins: the mirror shell (the looks picker), placed by data: {x, y} = the centre of its base on the floor (hub.json)
     mirror: json.mirror && Number.isFinite(json.mirror.x) && Number.isFinite(json.mirror.y) ? { x: +json.mirror.x, y: +json.mirror.y } : null,
     nSpawns: 0, fallback: 0, attempts: 0, nAnchors: 0,

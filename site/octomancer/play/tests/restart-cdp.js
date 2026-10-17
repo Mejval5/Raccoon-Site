@@ -46,10 +46,10 @@ const VPS = [
       // --- 1) a fresh save: the offer, the sealed dive, the tutorial ring ---
       let page = await open(vp, '?seed=7', false, vn);
       let s = await page.evaluate(() => __octo.hubSeal());
-      check(`[${vn}] a fresh save starts in the hub with the tutorial offered and the dive sealed`, (await stage(page)) === 'Hub' && s.offer && s.seal === 1 && !s.open);
-      if (!touch) { await page.keyboard.press('Escape'); await sleep(200); } else { await page.tap('.octo-offer-no'); await sleep(200); }
-      s = await page.evaluate(() => __octo.hubSeal());
-      check(`[${vn}] declining the offer leaves the hub`, !s.offer && (await stage(page)) === 'Hub');
+      // Phase 2B: no offer card any more; the welcome board hung over the start says the dive is sealed until the tutorial is done
+      const sg = await page.evaluate(() => __octo.signs());
+      check(`[${vn}] a fresh save starts in the hub, the dive sealed, no offer card: the welcome board over the start says why`, (await stage(page)) === 'Hub' && !s.offer && s.seal === 1 && !s.open &&
+        !sg.popup && sg.open && sg.open.where === 'hang' && /sealed/.test(sg.open.text) && /tutorial/.test(sg.open.text), JSON.stringify(sg.open));
       check(`[${vn}] the dive event is refused while sealed`, (await page.evaluate(() => __octo.runEvent('enter'))) === false && (await stage(page)) === 'Hub');
       const lv = await page.evaluate(() => __octo.level());
       await page.evaluate((x, y) => __octo.teleport(x, y), lv.exitX + 0.5, lv.exitY + 0.4);
@@ -57,8 +57,7 @@ const VPS = [
       s = await page.evaluate(() => __octo.hubSeal());
       const pos = await page.evaluate(() => __octo.state().octopus);
       check(`[${vn}] swimming into the sealed dive bounces the octopus back (no entry)`, (await stage(page)) === 'Hub' && !(await page.evaluate(() => __octo.entry())) && s.bumpAt > 0 && !(await page.evaluate(() => __octo.transitioning())), JSON.stringify({ bump: s.bumpAt, y: pos.y }));
-      const prompt = await page.evaluate(() => { const e = document.querySelector('.octo-prompt'); return e && e.style.display !== 'none' ? e.textContent : ''; });
-      check(`[${vn}] the prompt at the dive says why`, /Sealed by kelp/.test(prompt) && /tutorial/.test(prompt), prompt);
+      check(`[${vn}] no floating box at the sealed dive (its plank says why)`, !(await page.evaluate(() => __octo.signs().popup)));
       // the tutorial ring: swim into it and press F (Daniel 2026-10-08: whirlpools are entered with the hand)
       await page.evaluate((x, y) => { __octo.teleport(x, y); __octo.pressHand(); }, s.tutorialX + 0.5, s.tutorialY + 0.3);
       await page.waitForFunction(() => __octo.transitioning() || __octo.level().stage === 'Tutorial', { timeout: 6000 }).catch(() => {});
@@ -95,11 +94,13 @@ const VPS = [
       check(`[${vn}] the open dive starts Shallows 1-1`, (await page.evaluate(() => __octo.runEvent('enter'))) && ((await settle(page)), (await stage(page)) === 'Shallows 1-1'));
       await page.close();
 
-      // --- 2) the offer accepted with Enter / its button ---
+      // --- 2) a fresh save: the ring the welcome board points at takes the hand ---
       page = await open(vp, '?seed=9', false, vn);
-      if (!touch) await page.keyboard.press('Enter'); else await page.tap('.octo-offer-yes');
+      s = await page.evaluate(() => __octo.hubSeal());
+      await page.evaluate((x, y) => { __octo.teleport(x, y); __octo.pressHand(); }, s.tutorialX + 0.5, s.tutorialY + 0.3);
+      await page.waitForFunction(() => __octo.transitioning() || __octo.level().stage === 'Tutorial', { timeout: 6000 }).catch(() => {});
       await settle(page);
-      check(`[${vn}] accepting the offer starts the tutorial`, (await stage(page)) === 'Tutorial');
+      check(`[${vn}] the hand at the tutorial ring starts the tutorial`, (await stage(page)) === 'Tutorial');
       await page.close();
 
       // --- 3) quick restart vs death -> hub -> dive: the same state ---
