@@ -4,6 +4,7 @@
 
 import { artUrl } from './v2-art.js';
 import { createHudStrip } from './hud-strip.js';
+import { controlsLine, drawGlyph, glyph, glyphWidth } from './glyphs.js';
 const CREDIT_TEXT = 'Art & music: Milan Švancara'; // Milan Švancara
 
 function el(tag, className, text) {
@@ -101,8 +102,34 @@ export function createUI(root, handlers) {
   // it via `hideControlsHelp()` on the first touch input (touch-ui.js's own
   // on-screen stick/buttons are the touch equivalent) and shows it again if
   // the player switches back to keyboard/mouse.
-  const controlsHelp = el('div', 'octo-controls-help',
-    'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X');
+  // Controller Phase 1: the line follows the active scheme (glyphs.js controlsLine): words for the desktop, drawn button
+  // glyphs for a pad. It is the only guidance text on the HUD (CONTROLLER-PLAN "Text in the world").
+  const controlsHelp = el('div', 'octo-controls-help');
+  let helpScheme = 'keyboard', helpStyle = 'xbox';
+  function renderHelp() {
+    const line = controlsLine(helpScheme, helpStyle, helpV2);
+    controlsHelp.dataset.scheme = line.scheme;
+    controlsHelp.textContent = '';
+    if (!line.parts.length) { controlsHelp.textContent = line.text; return; }
+    const R = 9, dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+    line.parts.forEach((p, i) => {
+      const part = el('span', 'octo-ch-part');
+      part.appendChild(el('span', 'octo-ch-name', p.name));
+      p.glyphs.forEach((g, k) => {
+        if (k) part.appendChild(el('span', 'octo-ch-or', '/'));
+        const w = Math.ceil(glyphWidth(g, R)) + 2, h = 2 * R + 2;
+        const cv = el('canvas', 'octo-glyph');
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+        cv.style.width = w + 'px'; cv.style.height = h + 'px';
+        cv.dataset.glyph = g.label; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', g.label); cv.title = g.label;
+        const c = cv.getContext('2d');
+        if (c) { c.scale(dpr, dpr); drawGlyph(c, g, w / 2, h / 2, R); }
+        part.appendChild(cv);
+      });
+      if (p.note) part.appendChild(el('span', 'octo-ch-note', p.note));
+      controlsHelp.appendChild(part);
+    });
+  }
   // Round-9 fix (Daniel's screenshot review round 8, issue 3: a phone visitor
   // saw mouse/keyboard instructions at first load -- this used to always
   // start visible and only hide on the first touch input, via main.js's
@@ -140,15 +167,13 @@ export function createUI(root, handlers) {
   titleEl.append(titleText, titleSub, titleCurrent);
   let titleTimer = 0, titleTimer2 = 0;
   root.append(bar, pauseBtn, muteBtn, gearBtn, controlsHelp, promptEl, toastEl, titleEl);
-
   let helpV2 = false, helpRetired = false;
+  renderHelp();
+
   function updateHud(state) {
     strip.update(state);
     const v2 = state.stage !== undefined;
-    if (v2 && !helpV2) { // v2 bombs are thrown: along the move keys, or at the cursor
-      helpV2 = true;
-      controlsHelp.textContent = 'Swim: WASD/arrows | Dash: Space/Shift | Hand: F or middle-click (grab, talk, buy; again throws, hold drops) | Ink jet: left-click or J/K | Use slot: right-click or C (bombs: pick their slot; B/X drops one) | Hotbar: wheel, Q/E, 1-9 | Inventory: Tab/I';
-    }
+    if (v2 && !helpV2) { helpV2 = true; renderHelp(); } // v2 bombs are thrown: along the move keys, or at the cursor
   }
 
   // --- Overlays (pause, game over): dim backdrop + centred card ---
@@ -162,10 +187,9 @@ export function createUI(root, handlers) {
   }
 
   const pause = makeOverlay('octo-pause-overlay');
-  pause.panel.append(
-    el('div', 'octo-overlay-title', 'Paused'),
-    el('div', 'octo-overlay-hint', 'Esc, the pause button, or tap here to resume'),
-  );
+  const PAUSE_HINT = 'Esc, the pause button, or tap here to resume';
+  const pauseHint = el('div', 'octo-overlay-hint', PAUSE_HINT);
+  pause.panel.append(el('div', 'octo-overlay-title', 'Paused'), pauseHint);
   // round 38: the journal opens from the pause menu (the touch way in; the hub board is gone since 2026-10-08)
   const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Journal');
   journalBtn.type = 'button';
@@ -178,8 +202,12 @@ export function createUI(root, handlers) {
   pauseLeaveBtn.type = 'button';
   pauseLeaveBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onLeaveTutorial && handlers.onLeaveTutorial(); });
   pauseRestartBtn.style.display = pauseLeaveBtn.style.display = 'none';
+  // controller Phase 1: a pad has no gear button to click, so Settings is in the pause menu too
+  const pauseSettingsBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-settings', 'Settings');
+  pauseSettingsBtn.type = 'button';
+  pauseSettingsBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onToggleSettings && handlers.onToggleSettings(); });
   const pauseBtns = el('div', 'octo-pause-btns');
-  pauseBtns.append(pauseRestartBtn, journalBtn, pauseLeaveBtn);
+  pauseBtns.append(pauseRestartBtn, journalBtn, pauseSettingsBtn, pauseLeaveBtn);
   pause.panel.append(pauseBtns, el('div', 'octo-credit', CREDIT_TEXT));
   // Tapping the dimmed backdrop resumes too (but not clicks bubbling from
   // the panel's own future buttons, should any be added).
@@ -331,6 +359,17 @@ export function createUI(root, handlers) {
       return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
     },
     hideControlsHelp() { controlsHelp.style.display = 'none'; },
+    /** The input scheme changed (input.js modechange): the line re-renders with that scheme's glyphs. */
+    setControlsScheme(scheme, style = 'xbox') {
+      const s = scheme === 'pad' ? 'pad' : scheme === 'touch' ? 'touch' : 'keyboard';
+      if (s === helpScheme && style === helpStyle) return;
+      helpScheme = s; helpStyle = style; renderHelp();
+      pauseHint.textContent = s === 'pad' ? glyph('pause', 'pad', style).label + ' or ' + glyph('back', 'pad', style).label + ' to resume' : PAUSE_HINT;
+    },
+    /** Test hook: what the controls line shows: its scheme, words and the glyph labels drawn. */
+    controlsHelpRead() {
+      return { scheme: controlsHelp.dataset.scheme || '', text: controlsHelp.textContent, glyphs: [...controlsHelp.querySelectorAll('canvas.octo-glyph')].map((c) => c.dataset.glyph), shown: controlsHelp.style.display !== 'none' };
+    },
     showControlsHelp() { controlsHelp.style.display = helpRetired ? 'none' : ''; },
     /** Retire the bottom-left controls line for good (the player knows the controls; Settings still lists them). */
     retireControlsHelp() { helpRetired = true; controlsHelp.style.display = 'none'; },

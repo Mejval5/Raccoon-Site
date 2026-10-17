@@ -1,6 +1,6 @@
 // Input layer: keyboard + mouse + touch, normalised to one shape for gameplay. Gameplay only ever sees the snapshot:
-// {move:{x,y}, dash, bomb, pause, attack, spell, use, hand, inventory (buttons with pressed/held/released), cycle, select,
-// src, mode}.
+// {move:{x,y}, aim:{x,y,active}, dash, bomb, pause, attack, spell, use, hand, inventory (buttons with pressed/held/released),
+// cycle, select, src, mode}.
 //
 // Controls (Daniel, 2026-10-08, V2-PLAN section 17 "the eighth tentacle"):
 //   keyboard  WASD / arrows move; Space or Shift dash (Z and Enter still dash too: they confirm the end screens);
@@ -13,6 +13,9 @@
 //             next hotbar slot. No steering with the mouse.
 //   touch     stick on the left half; Jet (auto-aims), Dash, Use (the selected slot) and Spell (it turns into Grab /
 //             Throw when something is in reach) buttons bottom right (touch-ui.js).
+//   pad       gamepad.js (controller Phase 1, CONTROLLER-PLAN.md) writes `pad` below once per frame: left stick swims, right
+//             stick aims (`aim`), RT ink jet, RB use, A hand, B / LT dash, LB / d-pad cycle, d-pad up the bomb slot.
+// `mode` is the last device used ('keyboard' | 'mouse' | 'touch' | 'pad'); every change fires `modechange`.
 // `src` says where the last attack / spell / use / bomb press came from ('mouse' | 'key' | 'touch'), so main.js knows
 // whether to aim at the cursor, along the facing / swim direction, or at the nearest enemy.
 
@@ -63,15 +66,20 @@ export function createInput(canvas) {
   const touch = { x: 0, y: 0, active: false, dash: newButton(), bomb: newButton(), spell: newButton(), attack: newButton(), use: newButton(), hand: newButton() };
   // Mouse: `x`/`y` are the tracked cursor position in canvas BUFFER pixels (device px, what the camera works in).
   const mouse = { x: 0, y: 0, seen: false, attack: newButton(), use: newButton(), hand: newButton() };
+  // Gamepad (gamepad.js writes these once per frame): stick vectors after the deadzones, and the buttons.
+  const pad = { x: 0, y: 0, ax: 0, ay: 0, aimActive: false, style: 'xbox', dash: newButton(), attack: newButton(), use: newButton(), hand: newButton() };
   let cycle = 0, wheelAcc = 0, select = -1;
   const src = { attack: 'key', spell: 'key', bomb: 'key', use: 'key' };
-  let usingTouch = false, usingKeyboard = false, usingMouse = false;
+  let cur = ''; // the last device used: '' (none yet) | 'touch' | 'keyboard' | 'mouse' | 'pad'
   const listeners = { modechange: [] };
 
-  function setMode(mode) {
-    if (mode === 'touch' && !usingTouch) { usingTouch = true; usingKeyboard = false; usingMouse = false; emit('touch'); }
-    if (mode === 'keyboard' && !usingKeyboard) { usingKeyboard = true; usingTouch = false; usingMouse = false; emit('keyboard'); }
-    if (mode === 'mouse' && !usingMouse) { usingMouse = true; usingTouch = false; usingKeyboard = false; emit('mouse'); }
+  /** The last device used wins; a change fires `modechange` (and `force` re-fires it, e.g. a pad of another make took over). */
+  function setMode(mode, force = false) {
+    if (mode !== 'touch' && mode !== 'keyboard' && mode !== 'mouse' && mode !== 'pad') return;
+    if (mode === cur && !force) return;
+    cur = mode;
+    if (mode !== 'pad') { pad.x = pad.y = pad.ax = pad.ay = 0; pad.aimActive = false; }
+    emit(mode);
   }
   function emit(mode) { for (const fn of listeners.modechange) fn(mode); }
   function onModeChange(fn) { listeners.modechange.push(fn); }
@@ -162,28 +170,42 @@ export function createInput(canvas) {
     }, { passive: false });
   }
 
+  const ALL_BUTTONS = [kb.dash, kb.bomb, kb.pause, kb.attack, kb.use, kb.hand, kb.inventory, touch.dash, touch.bomb, touch.spell, touch.attack, touch.use, touch.hand, mouse.attack, mouse.use, mouse.hand, pad.dash, pad.attack, pad.use, pad.hand];
+  /** gamepad.js: a pad button went down / up (`name` = 'dash' | 'attack' | 'use' | 'hand'); a press makes that action's src 'pad'. */
+  function padButton(name, down) {
+    const b = pad[name];
+    if (!b) return;
+    if (down) { pressButton(b); if (name === 'attack' || name === 'use') src[name] = 'pad'; if (name === 'use') src.bomb = 'pad'; }
+    else releaseButton(b);
+  }
+  /** gamepad.js: hotbar steps (LB / d-pad left-right) and a slot pick (d-pad up = the bomb slot). */
+  function padCycle(n) { cycle += n; }
+  function padSelect(i) { select = i; }
+
   // Test / override hook: __octo.input(actions) replaces the actions it names, for every snapshot until cleared (null).
   let override = null;
   function setOverride(actions) { override = actions; }
 
   /** Called once per fixed step by main.js; returns the step's input and clears the one-shot `pressed` edges. */
   function snapshot() {
-    const move = usingTouch && touch.active ? { x: touch.x, y: touch.y } : keyboardVector();
+    let move = cur === 'touch' && touch.active ? { x: touch.x, y: touch.y } : keyboardVector();
+    if (move.x === 0 && move.y === 0 && (pad.x !== 0 || pad.y !== 0)) move = { x: pad.x, y: pad.y };
     const out = {
       move,
-      dash: read(kb.dash, touch.dash),
+      aim: { x: pad.ax, y: pad.ay, active: pad.aimActive },
+      dash: read(kb.dash, touch.dash, pad.dash),
       bomb: read(kb.bomb, touch.bomb),
       pause: read(kb.pause),
-      attack: read(kb.attack, touch.attack, mouse.attack),
+      attack: read(kb.attack, touch.attack, mouse.attack, pad.attack),
       spell: read(touch.spell),
-      use: read(kb.use, touch.use, mouse.use),
-      hand: read(kb.hand, touch.hand, mouse.hand),
+      use: read(kb.use, touch.use, mouse.use, pad.use),
+      hand: read(kb.hand, touch.hand, mouse.hand, pad.hand),
       inventory: read(kb.inventory),
       cycle, select,
       src: { attack: touch.attack.pressed || touch.attack.held ? 'touch' : src.attack, spell: 'touch', bomb: touch.bomb.pressed ? 'touch' : src.bomb, use: touch.use.pressed ? 'touch' : src.use },
-      mode: usingTouch ? 'touch' : usingMouse ? 'mouse' : 'keyboard',
+      mode: cur || 'keyboard',
     };
-    for (const b of [kb.dash, kb.bomb, kb.pause, kb.attack, kb.use, kb.hand, kb.inventory, touch.dash, touch.bomb, touch.spell, touch.attack, touch.use, touch.hand, mouse.attack, mouse.use, mouse.hand]) { b.pressed = false; b.released = false; }
+    for (const b of ALL_BUTTONS) { b.pressed = false; b.released = false; }
     cycle = 0; select = -1;
 
     if (override) {
@@ -191,6 +213,7 @@ export function createInput(canvas) {
       const btn = (v, d) => (v !== undefined ? { pressed: !!v, held: !!v } : d);
       return {
         move: o.move ? { x: o.move.x, y: o.move.y } : out.move,
+        aim: o.aim ? { x: o.aim.x, y: o.aim.y, active: o.aim.active !== false } : out.aim,
         dash: btn(o.dash, out.dash),
         bomb: btn(o.bomb, out.bomb),
         pause: btn(o.pause, out.pause),
@@ -216,8 +239,12 @@ export function createInput(canvas) {
     snapshot,
     setOverride,
     onModeChange,
-    mode() { return usingTouch ? 'touch' : usingMouse ? 'mouse' : usingKeyboard ? 'keyboard' : ''; },
+    mode() { return cur; },
     setMode,
+    // gamepad.js writes the sticks into `pad` and the buttons through these:
+    pad, padButton, padCycle, padSelect,
+    /** 'xbox' | 'ps': which glyphs a pad shows (gamepad.js sets it from the pad's id). */
+    padStyle() { return pad.style; },
     debugKeys,
     // touch-ui.js writes into these directly:
     touch,

@@ -4,6 +4,9 @@
 import { createLoop, STEP } from './loop.js';
 import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
+import { createGamepad, fakePad } from './gamepad.js';
+import { createMenuNav } from './menu-nav.js';
+import { glyph, drawGlyph } from './glyphs.js';
 import { createDebugOverlay } from './debug.js';
 import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
@@ -117,7 +120,7 @@ import { createSpellFx } from './spell-fx.js';
 import { runeForLevel, takeRune, runeName, PICKUP_DWELL, PEDESTAL_R } from './runes.js';
 import { drawSpellFx, drawRunePedestal, drawAnchorHeld } from './spell-fx-draw.js';
 import { drawJuiceDrops, drawInkClouds } from './spells-draw.js';
-import { createInkJet, autoAim, drawReticle, INKJET } from './inkjet.js';
+import { createInkJet, autoAim, coneAim, drawReticle, INKJET } from './inkjet.js';
 import { resetAmbient, killAmbient, ambientPos, ambientDeadCount, AMBIENT_R } from './ambient.js';
 import { CR_DASH } from './fragile.js';
 import { createHotbar, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, swapSlots, castableSpell, castableIndex, isItemId, BOMB_SLOT, bombFirst } from './hotbar.js';
@@ -291,6 +294,9 @@ const touchUI = createTouchUI(touchRoot, input, canvas); // the canvas takes the
 input.onModeChange((mode) => {
   if (mode === 'touch') ui.hideControlsHelp();
   else ui.showControlsHelp();
+  ui.setControlsScheme(mode, input.padStyle()); // controller Phase 1: the line shows the scheme's own glyphs
+  hudEl.classList.toggle('octo-pad-mode', mode === 'pad'); // (play.css hides the key caps on buttons then)
+  if (mode !== 'pad') menuNav.hideRing();
   hotbarUI.setCompact(mode === 'touch'); // phones: the small bar at the top (the buttons own the bottom right, the stick the left)
 });
 
@@ -732,6 +738,49 @@ window.addEventListener('keydown', (e) => {
   applyPaused();
 });
 
+// --- controller Phase 1 (CONTROLLER-PLAN.md): the pad (gamepad.js) and the menu cursor (menu-nav.js) ---
+const qs = (sel) => document.querySelector(sel);
+/** The menu the pad drives now (pause, settings, the death and clear screens, the tutorial offer), or null in play.
+ *  The journal, inventory and looks picker get the generic cursor and B to close until Phase 2A gives them their own. */
+function padMenu() {
+  if (V2 && ui.isOfferShown()) return { root: qs('.octo-offer-overlay'), back: () => ui.answerOffer(false) };
+  if (settingsPanel.isOpen()) return { root: settingsPanel.el, back: () => settingsPanel.hide() };
+  if (looksOpen) return { root: looksPicker.el, back: () => looksPicker.hide() };
+  if (V2 && (inventoryOpen || journalScreen.isOpen())) return { root: qs('.octo-journal-overlay'), back: () => closeInventory() };
+  if (V2 && ui.isEndShown()) return { root: qs('.octo-end-overlay') };
+  if (ui.isGameOverShown()) return { root: qs('.octo-gameover-overlay') };
+  if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), back: () => { manualPaused = false; applyPaused(); } };
+  return null;
+}
+const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' });
+let padMenuFrames = 0;
+const pad = createGamepad(input, {
+  menuActive() {
+    const m = padMenu();
+    if (m && input.mode() === 'pad' && ++padMenuFrames % 8 === 1) menuNav.sync(); // the ring finds a menu that just opened
+    if (!m) padMenuFrames = 0;
+    return !!m;
+  },
+  onMenu(a) { menuNav.handle(a); },
+  onPause() { // Start (Menu): as Esc
+    if (settingsPanel.isOpen()) { settingsPanel.hide(); return; }
+    if (looksOpen) { looksPicker.hide(); return; }
+    if (V2 && (inventoryOpen || journalScreen.isOpen())) { closeInventory(); return; }
+    if (V2 && ui.isOfferShown()) return;
+    if (octo.dead || ui.isEndShown()) return;
+    manualPaused = !manualPaused;
+    applyPaused();
+  },
+  onInventory() { // Back (View): as Tab
+    if (!V2 || settingsPanel.isOpen() || looksOpen || ui.isOfferShown()) return;
+    if (inventoryOpen || journalScreen.isOpen()) closeInventory(); else openInventory();
+  },
+  onDisconnect() { // the pad went away mid-play: pause, as consoles do
+    if (input.mode() === 'pad' && !octo.dead && !loop.paused && !transitioning) { manualPaused = true; applyPaused(); }
+  },
+});
+pad.start();
+
 const autoDive = { path: [], recalc: 0 };
 
 // r45: entering a whirlpool, as the original does it (octomancer-unity LevelPlayMode.AnimateOctopus / MoveOctoToExit, values from
@@ -1069,6 +1118,7 @@ function syncBody(dt = 0) { ragdoll.sync(octo, props, dt); }
  * stick (touch). Returns the unit aim, or null for a drop. */
 const DROP_CURSOR_R = 1.0; // tiles: a click this close to the octopus drops the bomb instead of throwing it
 function bombAim(snap, src) {
+  if (src === 'pad') return snap.aim && snap.aim.active ? unitOf(snap.aim) : null; // the aim stick throws it, else it drops
   if (src === 'mouse' && input.mouse.seen) {
     const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
     const dx = w.x - octo.x, dy = w.y - octo.y, l = Math.hypot(dx, dy);
@@ -1095,13 +1145,22 @@ function placeBomb(snap, src) {
 let hubBombSaidAt = -99;
 /** The way a thrown thing goes: at the cursor with a mouse, along the move keys / stick, else forward (null). */
 function throwAim(snap) {
-  if (snap.mode !== 'touch' && input.mode() !== 'touch' && input.mouse.seen) { // anyone who uses the mouse aims throws with it (F is a key)
+  if (snap.aim && snap.aim.active) return { x: snap.aim.x, y: snap.aim.y }; // a pad: the aim stick, else the swim stick below
+  if (snap.mode !== 'touch' && snap.mode !== 'pad' && input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen) { // anyone who uses the mouse aims throws with it (F is a key)
     const w = cursorWorld();
     if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) return { x: w.x - octo.x, y: w.y - octo.y };
   }
   const m = snap.move;
   if (Math.hypot(m.x, m.y) > 0.25) return { x: m.x, y: m.y };
   return null;
+}
+function unitOf(v) { const l = Math.hypot(v.x, v.y) || 1; return { x: v.x / l, y: v.y / l }; }
+/** Controller Phase 1: where a pad aims. The aim stick when it is out of its deadzone; else the facing / swim direction
+ *  (`lastAim`), bent toward the nearest creature inside a PAD_CONE cone around it (light auto-aim: never behind you). */
+const PAD_CONE = Math.cos((32 * Math.PI) / 180);
+function padAimDir(snap) {
+  if (snap.aim && snap.aim.active) return unitOf(snap.aim);
+  return coneAim(octo, enemies.all(), solidForSight, lastAim, PAD_CONE);
 }
 // --- section 14: the ink jet, spells, the hotbar and fish juice ---
 /** The run's hotbar (a new dive or a death starts a fresh one with the starting spell). */
@@ -1148,8 +1207,10 @@ function castSelected(snap, forceAt = null, src = null, slotIds = null) {
   if (isSafeState(run) && (sp.effect === 'riptide' || sp.effect === 'coral' || sp.effect === 'lure')) { ui.showToast(sp.name + ' stirs nothing here', 1400); return -1; }
   const mouse = src === 'mouse' ? cursorWorld() : null;
   let at, dx = lastAim.x, dy = lastAim.y;
+  if (src === 'pad') { const d = padAimDir(snap); dx = d.x; dy = d.y; } // a pad: the aim stick, else the facing with the light auto-aim
   if (forceAt) at = forceAt;
   else if (sp.self) at = { x: octo.x, y: octo.y };
+  else if (src === 'pad' && snap.aim && snap.aim.active && sp.aim !== 'ahead') at = aheadOf(dx, dy, SPELL_REACH); // as far as a cursor spell reaches
   else if (mouse) { at = spellTarget(src); const ex = mouse.x - octo.x, ey = mouse.y - octo.y, l = Math.hypot(ex, ey); if (l > 0.2) { dx = ex / l; dy = ey / l; } }
   else if (sp.aim === 'ahead') at = aheadOf(dx, dy, SLOT.phoneAim);
   else at = { x: octo.x, y: octo.y };
@@ -1200,6 +1261,7 @@ function stepCombat(snap, dt) {
     const src = snap.src ? snap.src.attack : 'key';
     if (src === 'mouse') { const w = cursorWorld(); if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) dir = { x: w.x - octo.x, y: w.y - octo.y }; }
     else if (src === 'touch') dir = autoAim(octo, enemies.all(), solidForSight, lastAim.x >= 0 ? 1 : -1);
+    else if (src === 'pad') dir = padAimDir(snap);
     if (src === 'touch' && dir.y === 0 && Math.abs(lastAim.y) > 0.5) dir = lastAim; // nothing to aim at: the facing direction, up or down too
     if (inkJet.fire(octo.x, octo.y, dir.x, dir.y, octo.radius + 0.1)) { sfx.inkJet(); runStats.shots++; if (V2) journal.bump('item-inkjet', STAT_USED); }
   }
@@ -2038,8 +2100,13 @@ function v2Extra(c, camera, w2s, cw, ch) {
     if (hand.held) { if (hv && hv.rigid) drawHeldArm(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, hand.held.r || 0.3, t); }
     else if (hand.target) {
       drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
-      if (hand.target.kind === 'portal' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 1.45, 'F', t); // (phones: the Spell button reads Enter)
-      else if (hand.target.kind === 'backdoor' && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - 2.0, 'F', t); // back rooms: over the curtain
+      const hy = hand.target.kind === 'portal' ? 1.45 : hand.target.kind === 'backdoor' ? 2.0 : 0; // over the whirlpool / the back-room curtain
+      if (hy && input.mode() === 'pad') { // controller Phase 1: the pad's own button, drawn as its glyph (glyphs.js), bobbing like the key cap
+        const sp = worldToScreen(camera, cw, ch, hand.target.x, hand.target.y - hy);
+        c.save(); c.globalAlpha = 0.75 + 0.25 * Math.sin(t * 3);
+        drawGlyph(c, glyph('hand', 'pad', input.padStyle()), sp.x, sp.y + Math.sin(t * 2.2) * camera.pxPerUnit * 0.04, camera.pxPerUnit * 0.21);
+        c.restore();
+      } else if (hy && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - hy, 'F', t); // (phones: the Spell button reads Enter)
     }
   }
 }
@@ -2135,7 +2202,12 @@ function v2People(c, camera, w2s, cw, ch) {
   drawHeld(c, camera, w2s, cw, ch, t); // what the hand holds: over the body, gripped by its arm
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
-  if (input.mode() !== 'touch' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
+  if (input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
+  else if (input.mode() === 'pad' && input.pad.aimActive && !octo.dead && !holdDark && !octo.hidden) { // the aim stick: the same quiet ring, 2.5 tiles out
+    const ax = input.pad.ax, ay = input.pad.ay, al = Math.hypot(ax, ay) || 1;
+    const sp = worldToScreen(camera, cw, ch, octo.x + (ax / al) * 2.5, octo.y + (ay / al) * 2.5);
+    drawReticle(c, sp.x, sp.y, camera.pxPerUnit, t);
+  }
   drawV2Labels(); // r42: the portal names, over the octopus
   if (run.state === S_HUB && lv.signX !== undefined && lv.signX >= 0) drawHubPeople(c, camera, cw, ch, lv, t);
   if (skinGifts.busy()) drawSkinGifts(c, camera, cw, ch, skinGifts, octo, t);
@@ -3344,6 +3416,20 @@ if (V2) {
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
+  /** Controller Phase 1: plug in / drive a fake standard pad ({lx, ly, rx, ry, a, b, x, y, lb, rb, lt, rt, back, start, up,
+   *  down, left, right, id}); null unplugs it. Polls at once (and every frame after) so the next step sees it. Tests may also
+   *  stub navigator.getGamepads before load; this replaces that stub with one returning the fake pad. */
+  pad(state, polls = 1) {
+    window.__octoFakePad = state ? fakePad(state) : null;
+    if (!navigator.getGamepads || !navigator.getGamepads.__octoFake) {
+      const f = () => [window.__octoFakePad || null, null, null, null];
+      f.__octoFake = true;
+      try { Object.defineProperty(navigator, 'getGamepads', { value: f, configurable: true, writable: true }); } catch (e) { navigator.getGamepads = f; }
+    }
+    for (let i = 0; i < polls; i++) pad.poll(1 / 60);
+    return pad.debug();
+  },
+  padState() { const f = menuNav.focused(); return { ...pad.debug(), mode: input.mode(), style: input.padStyle(), menu: !!padMenu(), focus: f ? (f.textContent || f.className).trim().slice(0, 40) : '', ring: !!document.querySelector('.octo-pad-focus'), help: ui.controlsHelpRead(), lastAim: { ...lastAim }, dashT: octo.dashT, dashCd: octo.dashCooldown, jet: [...inkJet.data.alive].map((a, i) => (a ? [inkJet.data.vx[i], inkJet.data.vy[i]] : null)).filter(Boolean) }; },
   /** Skins (2026-10-08): unlocked, worn, the sheet being built / kept, gifts in flight, the picker. */
   skins() { return { unlocked: getSkins(), current: getSkin(), drawn: getOctopusSkin(), sheet: skinSheetStats(), gifts: skinGifts.list.map((g) => ({ id: g.id, t: g.t, done: g.done })), open: looksPicker.isOpen(), cards: looksPicker.cards(), mirror: world.level.mirror || null }; },
   wearSkin(id) { const r = saveSkin(id); setOctopusSkin(r); return r; },
