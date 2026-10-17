@@ -322,8 +322,8 @@ const octoAt = (p) => p.evaluate(() => { const o = __octo.state().octopus; retur
     {
       const p = await open(browser, 'desktop', '?at=tutorial&seed=7');
       for (let n = 0; n < 20; n++) await p.evaluate(() => { __octo.teleport(61.5, 11.4); __octo.stepDraw(1); });
-      const pr = await p.evaluate(() => ({ text: (document.querySelector('.octo-prompt') || document.body).textContent, hb: __octo.juice().hotbar }));
-      check('tutorial: the bomb prompt names C (drop) and B / X (quick bomb), and the bomb is picked on the bar', /press C/.test(pr.text) && /B or X/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
+      const pr = await p.evaluate(() => ({ text: __octo.tutorial().prompt, hb: __octo.juice().hotbar }));
+      check('tutorial: the bomb sign names C (drop) and B / X (quick bomb), and the bomb is picked on the bar', /press C/.test(pr.text) && /B or X/.test(pr.text) && pr.hb.slots[pr.hb.sel][0] === 'bomb', pr.text.slice(0, 160));
       await p.keyboard.press('KeyB'); await step(p, 1);
       await p.evaluate(() => __octo.input({ move: { x: -1, y: -0.3 } }));
       await step(p, 40); await p.evaluate(() => __octo.input(null));

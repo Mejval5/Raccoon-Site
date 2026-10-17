@@ -33,8 +33,9 @@
    "y": 10,
    "r": 9,
    "title": "A quiet grotto",
-   "desktop": "Swim into the spring to heal and fill your jar. The ring on the right leads on: press F there.",
-   "touch": "Swim into the spring to heal and fill your jar. The ring on the right leads on: press F there."
+   "desktop": "Swim into the spring to heal and fill your jar. The ring on the right leads on: press {hand} there.",
+   "touch": "Swim into the spring to heal and fill your jar. The ring on the right leads on: tap Enter there.",
+   "label": "Grotto"
   }
  ]
 }

@@ -140,7 +140,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
     await page.evaluate(() => __octo.openJournal('bestiary')); await sleep(400);
     r = await rects();
     check('phone landscape: two pages, the book fits the screen and every tab is at least 40 px tall', r.left.vis && r.right.vis && r.book.b <= r.vh && r.book.t >= 0 && r.book.r <= Math.min(r.pause.l, r.mute.l, r.gear.l) + 1 &&
-      (await page.evaluate(() => [...document.querySelectorAll('.octo-bk-tab')].every((t) => t.getBoundingClientRect().height >= 39.5))), JSON.stringify(r.book));
+      (await page.evaluate(() => [...document.querySelectorAll('.octo-bk-tab')].filter((t) => getComputedStyle(t).display !== 'none').every((t) => t.getBoundingClientRect().height >= 39.5))), JSON.stringify(r.book));
     await page.screenshot({ path: path.join(process.env.OCTO_SHOT_DIR || process.env.TEMP || '.', 'journal-phoneL.png') });
     // ---- r39: every description fits the specified two lines on desktop (three on a phone), with every entry found
     {
@@ -317,7 +317,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
         const R = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
         return { book: R('.octo-book'), gear: R('.octo-gear-btn'), pause: R('.octo-pause-btn'), mute: R('.octo-mute-btn'), vw: innerWidth, vh: innerHeight };
       });
-      const tabInfo = () => ev(() => { const a = [...document.querySelectorAll('.octo-bk-tab')]; return { n: a.length, ok: a.every((t) => { const b = t.getBoundingClientRect(), n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(); return b.left >= -0.5 && b.right <= innerWidth + 1 && b.top >= -0.5 && b.bottom <= innerHeight + 1 && n.top >= b.top - 0.5 && n.bottom <= b.bottom + 0.5 && n.left >= b.left - 0.5 && n.right <= b.right + 0.5; }), minH: Math.min(...a.map((t) => t.getBoundingClientRect().height)) }; });
+      const tabInfo = () => ev(() => { const a = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => t.style.display !== 'none' && getComputedStyle(t).display !== 'none'); return { n: a.length, ok: a.every((t) => { const b = t.getBoundingClientRect(), n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(); return b.left >= -0.5 && b.right <= innerWidth + 1 && b.top >= -0.5 && b.bottom <= innerHeight + 1 && n.top >= b.top - 0.5 && n.bottom <= b.bottom + 0.5 && n.left >= b.left - 0.5 && n.right <= b.right + 0.5; }), minH: Math.min(...a.map((t) => t.getBoundingClientRect().height)) }; });
       const bookOk = (r) => r.book.l >= 0 && r.book.t >= 0 && r.book.b <= r.vh && r.book.r <= r.vw && r.book.r <= Math.min(r.pause.l, r.mute.l, r.gear.l) + 1;
       const toGrid = () => ev(() => { const b = document.querySelector('.octo-book'); if (b && b.dataset.view === 'entry') { const p = document.querySelector('.octo-bk-plate-big'); if (p) p.click(); } });
       for (const [w, h, mobile] of [[1440, 900, false], [412, 915, true], [915, 412, true]]) {
@@ -328,7 +328,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
         await ev(() => { __octo.openJournal('carried'); __octo.journalSelect('slot:1'); }); await sleep(500);
         const rr = await rects2(), ti = await tabInfo();
         check(tag + ': Carried page: book inside the viewport and clear of pause/mute/gear', bookOk(rr), JSON.stringify(rr.book));
-        check(tag + ': all 7 bookmark tabs on screen, names inside, at least 39.5 px tall', ti.n === 7 && ti.ok && ti.minH >= 39.5, JSON.stringify(ti));
+        check(tag + ': all 8 bookmark tabs (Controls since Phase 2B; 7 on a short screen) on screen, names inside, at least 39.5 px tall', ti.n === (h <= 520 ? 7 : 8) && ti.ok && ti.minH >= 39.5, JSON.stringify(ti));
         if (w === 412) {
           await toGrid(); await sleep(300);
           await pg.tap('.octo-bk-ccard[data-id="slot:1"]'); await sleep(500);

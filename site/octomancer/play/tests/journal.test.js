@@ -35,7 +35,7 @@ export async function runJournalTests(assert) {
   assert('journal: list(cat) marks found and unfound entries', list.length === ENTRIES.filter((e) => e.cat === 'creature').length && list.filter((e) => e.found).length === 1 && list.find((e) => e.id === 'creature-urchin').found);
 
   // --- round 38: tabs, art, counters ---
-  assert('journal tabs: Places, People, Bestiary, Items, Traps, and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
+  assert('journal tabs: Places, People, Bestiary, Items, Traps, Controls (Phase 2B), and every category is on a tab', TABS.map((t) => t.title).join() === 'Places,People,Bestiary,Items,Traps,Controls' && CATEGORIES.every((c) => TABS.some((t) => t.cats.includes(c))));
   assert('journal tabs (r39): Items holds only things you pick up, buy, cast or open (items, spells, the octopus looks and loot); scenery props (rune, fossil, bush, weed, boulder, fish-bone wall) sit in Places beside the places',
     TABS.find((t) => t.id === 'items').cats.join() === 'item,spell,look,loot' && TABS.find((t) => t.id === 'places').cats.join() === 'place,prop' && ENTRIES.filter((e) => e.cat === 'prop').length === 6 &&
     ENTRIES.filter((e) => TABS.find((t) => t.id === 'items').cats.includes(e.cat)).every((e) => !e.id.startsWith('prop-')));

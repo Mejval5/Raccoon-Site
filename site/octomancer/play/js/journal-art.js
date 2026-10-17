@@ -6,7 +6,8 @@
 import { drawItemIcon } from './items-draw.js';
 import { drawBoulder } from './hazards-draw.js';
 import { drawSpellIcon, drawJarIcon } from './spell-icons.js';
-import { ENTRIES } from './journal.js';
+import { ENTRIES, CONTROL_ENTRIES } from './journal.js';
+import { drawControlCard } from './cave-paint.js';
 import { drawDiver, drawCritter, drawCollector } from './v2-props-draw.js';
 import { drawSprite, drawSpriteColumns, spriteAspect, onSpritesReady, ensureSprites } from './sprites.js';
 import { drawPoolHost } from './pool-draw.js';
@@ -17,7 +18,7 @@ const TAU = Math.PI * 2;
 const INK = '#10202c';
 
 /** The picture of each entry is data (data/journal.json `art`): {img: url under play/} | {sprite: atlas name} | {skin: skins.js id} | {item: carried item id} | {game: person} | {fn: name of a code drawing below}. */
-const ART = new Map(ENTRIES.map((e) => [e.id, e.art ? (e.art.img ? { ...e.art, img: new URL('../' + e.art.img, import.meta.url).href } : e.art) : null]));
+const ART = new Map(ENTRIES.concat(CONTROL_ENTRIES).map((e) => [e.id, e.art ? (e.art.img ? { ...e.art, img: new URL('../' + e.art.img, import.meta.url).href } : e.art) : null]));
 
 /** @type {Map<string, HTMLImageElement>} */
 const images = new Map();
@@ -243,6 +244,16 @@ onOctopusReady(() => { cache.clear(); for (const fn of listeners) fn(); });
 /** The locked silhouette's ink: a warm brown that reads on parchment. */
 const LOCKED_INK = '#5b4636';
 
+// Controller Phase 2B: the Controls cards follow the active scheme (main.js calls this on every modechange)
+let artScheme = 'desktop', artStyle = 'xbox';
+/** The scheme the Controls page draws ('desktop' | 'pad' | 'touch', pad style): a change repaints the open book. */
+export function setArtScheme(scheme, style = 'xbox') {
+  if (scheme === artScheme && style === artStyle) return;
+  artScheme = scheme; artStyle = style;
+  for (const k of [...cache.keys()]) if (k.startsWith('control-')) cache.delete(k);
+  for (const fn of listeners) fn();
+}
+
 function paint(ctx, id, px) {
   const a = ART.get(id);
   ctx.save();
@@ -270,6 +281,8 @@ function paint(ctx, id, px) {
     drawItemIcon(ctx, a.item, 0, 0, px * 0.42);
   } else if (a.game && GAME_DRAW[a.game]) {
     GAME_DRAW[a.game](ctx, px);
+  } else if (a.control) {
+    drawControlCard(ctx, a.control, px, artScheme, artStyle);
   } else if (a.fn && FN[a.fn]) {
     ctx.scale(px * 0.46, px * 0.46);
     FN[a.fn](ctx, px * 0.46);

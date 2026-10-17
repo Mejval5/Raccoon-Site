@@ -146,6 +146,15 @@
    "goal": "exit"
   }
  ],
+ "painting": {
+  "rect": [
+   3.4,
+   5.15,
+   16.6,
+   9.15
+  ],
+  "cols": 3
+ },
  "prompts": [
   {
    "title": "Swim",
@@ -157,8 +166,9 @@
     9,
     12
    ],
-   "desktop": "WASD or the arrow keys swim. Head right.",
-   "touch": "Drag anywhere on the left of the screen to swim. Head right."
+   "desktop": "{move} or the arrow keys swim. Head right, past the paintings on the wall.",
+   "touch": "Drag anywhere on the left of the screen to swim. Head right.",
+   "pad": "{move} swims. Head right, past the paintings on the wall."
   },
   {
    "title": "Dash",
@@ -170,8 +180,9 @@
     15,
     12
    ],
-   "desktop": "Space or Shift dashes. Mid-dash nothing can hurt you: get close, then dash through the urchins.",
-   "touch": "Tap Dash for a burst of speed. Mid-dash nothing can hurt you: get close, then dash through the urchins."
+   "desktop": "{dash+} dashes. Mid-dash nothing can hurt you: get close, then dash through the urchins.",
+   "touch": "Tap Dash for a burst of speed. Mid-dash nothing can hurt you: get close, then dash through the urchins.",
+   "pad": "{dash+} dashes. Mid-dash nothing can hurt you: get close, then dash through the urchins."
   },
   {
    "title": "Ink Jet",
@@ -183,8 +194,9 @@
     24,
     12
    ],
-   "desktop": "Left click squirts ink at the cursor (J or K: straight ahead). It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral.",
-   "touch": "Tap Jet to squirt ink at what is near. It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral."
+   "desktop": "{attack} squirts ink at the cursor ({key:J} or {key:K}: straight ahead). It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral.",
+   "touch": "Tap Jet to squirt ink at what is near. It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral.",
+   "pad": "{attack} squirts ink where {aim} points (let go of the stick: at what is near). It refills slowly, watch the jet on your bar. Shoot the fish bones to open the coral."
   },
   {
    "title": "Grab and throw",
@@ -196,8 +208,9 @@
     38,
     12
    ],
-   "desktop": "F or middle click grabs a pot. Press again to throw it at the cursor, hold to set it down. Throw one at the fish bones. A carried pot takes a hit for you.",
-   "touch": "Stop next to a pot and tap Grab. Tap Throw to fling it the way you swim. Throw one at the fish bones. A carried pot takes a hit for you."
+   "desktop": "{hand+} grabs a pot. Press again to throw it at the cursor, hold to set it down. Throw one at the fish bones. A carried pot takes a hit for you.",
+   "touch": "Stop next to a pot and tap Grab. Tap Throw to fling it the way you swim. Throw one at the fish bones. A carried pot takes a hit for you.",
+   "pad": "{hand} grabs a pot. Press {hand} again to throw it where {aim} points, hold {hand} to set it down. Throw one at the fish bones. A carried pot takes a hit for you."
   },
   {
    "title": "Bomb the floor",
@@ -209,9 +222,10 @@
     54,
     12
    ],
-   "desktop": "Your bomb is picked on the bar. Over the cracked floor press C (or right click on yourself) to drop it, then swim clear. B or X drops one any time. Outside the tutorial a blast kills you.",
+   "desktop": "Your bomb is picked on the bar. Over the cracked floor press {key:C} (or {use} on yourself) to drop it, then swim clear. {key:B} or {key:X} drops one any time. Outside the tutorial a blast kills you.",
    "touch": "Your bomb is picked on the bar. Over the cracked floor tap Bomb to drop it, then swim clear. Outside the tutorial a blast kills you.",
-   "refillBomb": true
+   "refillBomb": true,
+   "pad": "Your bomb is picked on the bar ({select} picks it any time). Over the cracked floor press {use} to drop it, then swim clear. Outside the tutorial a blast kills you."
   },
   {
    "title": "Sticky mine",
@@ -223,8 +237,9 @@
     55,
     32
    ],
-   "desktop": "Point at the cracked wall and right click: the bomb flies there and sticks to the rock. Then back off.",
-   "touch": "Hold the stick toward the cracked wall and tap Bomb: the bomb flies there and sticks to the rock. Then back off."
+   "desktop": "Point at the cracked wall and press {use}: the bomb flies there and sticks to the rock. Then back off.",
+   "touch": "Hold the stick toward the cracked wall and tap Bomb: the bomb flies there and sticks to the rock. Then back off.",
+   "pad": "Aim {aim} at the cracked wall and press {use}: the bomb flies there and sticks to the rock. Then back off."
   },
   {
    "title": "Spells",
@@ -236,8 +251,9 @@
     47,
     32
    ],
-   "desktop": "Q, E, the wheel or 1-9 pick a slot on your bar. Pick Ink Cloud and right click or press C: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
-   "touch": "Tap Spell to puff an Ink Cloud: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell."
+   "desktop": "{key:Q} {key:E}, the wheel or {select} pick a slot on your bar. Pick Ink Cloud and press {use} or {key:C}: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
+   "touch": "Tap Spell to puff an Ink Cloud: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell.",
+   "pad": "{cycle+} pick a slot on your bar. Pick Ink Cloud and press {use}: the piranha loses you in the ink. Spells drink fish juice; the jar refills only at the rest grotto, unless you carry the Siphon Shell."
   },
   {
    "title": "Shop",
@@ -249,7 +265,7 @@
     32,
     32
    ],
-   "desktop": "Swim up to a ware and press F to buy it. Today it is free. In a real shop, carrying off or shooting a ware makes the keeper come for you.",
+   "desktop": "Swim up to a ware and press {hand} to buy it. Today it is free. In a real shop, carrying off or shooting a ware makes the keeper come for you.",
    "touch": "Stop next to a ware and tap Grab to buy it. Today it is free. In a real shop, carrying off or shooting a ware makes the keeper come for you."
   },
   {
@@ -288,7 +304,7 @@
     17,
     32
    ],
-   "desktop": "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up.",
+   "desktop": "Giant clams snap on what swims in; tentacles grab and hold ({dash} to wriggle free). Jets push you up.",
    "touch": "Giant clams snap on what swims in; tentacles grab and hold (dash to wriggle free). Jets push you up."
   },
   {
@@ -301,7 +317,7 @@
     6,
     32
    ],
-   "desktop": "Swim to the whirlpool and press F (or middle click) to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Tab opens your journal, what you carry first.",
+   "desktop": "Swim to the whirlpool and press {hand+} to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. {inventory} opens your journal, what you carry first.",
    "touch": "Swim into the whirlpool and tap Enter to dive. Below, the Beholder hunts slow divers from about 2:30; be quick for a Swift Current shell. Your journal is in the pause menu."
   }
  ],
