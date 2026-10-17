@@ -17,8 +17,8 @@
 // for the aim stick. The last device used wins: a pad press or a stick leaving its deadzone sets the input mode to 'pad'
 // (input.setMode, which fires `modechange`); a key or click sets it back (input.js).
 //
-// The poll runs on its own requestAnimationFrame, not in the game step: the fixed-step loop stops while paused, and Start
-// still has to unpause and the d-pad still has to move through the pause menu.
+// The poll runs once per display frame from loop.js's frame callback (paused or not: Start still has to unpause and the
+// d-pad still has to move through the pause menu), not in the fixed step and not on a second requestAnimationFrame.
 
 export const MOVE_DEADZONE = 0.2;
 export const AIM_DEADZONE = 0.3;
@@ -90,7 +90,6 @@ export function createGamepad(input, hooks = {}) {
   let moveOut = true, aimOut = true; // the sticks were inside their deadzones last poll (a leave sets the mode)
   let padId = '', lastT = 0, inMenu = false;
   let menuDir = '', menuHold = 0, menuNext = 0;
-  let rafId = 0;
   const stats = { polls: 0, connected: false, id: '', style: 'xbox' };
 
   const edge = (n) => down[n] && !was[n] && !latched[n]; // went down this poll
@@ -188,17 +187,15 @@ export function createGamepad(input, hooks = {}) {
     if (edge('up')) input.padSelect(0); // the bomb slot (slot 1 of the bar)
   }
 
+  /** Once per display frame (loop.js everyFrame). */
   function frame(now) {
-    rafId = requestAnimationFrame(frame);
     const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 1 / 60;
     lastT = now;
     poll(dt);
   }
-  function start() { if (!rafId && typeof requestAnimationFrame !== 'undefined') rafId = requestAnimationFrame(frame); }
-  function stop() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
 
   return {
-    poll, start, stop,
+    poll, frame,
     connected() { return stats.connected; },
     style() { return input.pad.style; },
     /** Test / debug read: the last poll's buttons, sticks and state. */

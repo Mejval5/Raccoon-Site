@@ -8,8 +8,10 @@ const MAX_STEPS = 5;
 /**
  * @param {(dt:number)=>void} step  advance simulation by one fixed dt
  * @param {(alpha:number, frameMs:number)=>void} render  draw with interpolation alpha in [0,1)
+ * @param {(now:number)=>void} [everyFrame]  called on every display frame, paused or not, before the steps (the gamepad poll:
+ *   Start must still unpause and the d-pad still move through the pause menu; one rAF for the whole game)
  */
-export function createLoop(step, render) {
+export function createLoop(step, render, everyFrame = null) {
   let acc = 0;
   let last = 0;
   let running = false;
@@ -23,6 +25,7 @@ export function createLoop(step, render) {
   function frame(now) {
     if (!running) return;
     rafId = requestAnimationFrame(frame);
+    if (everyFrame) everyFrame(now);
     if (paused) { last = now; return; }
     if (!last) last = now;
     const dtMs = now - last;

@@ -779,7 +779,6 @@ const pad = createGamepad(input, {
     if (input.mode() === 'pad' && !octo.dead && !loop.paused && !transitioning) { manualPaused = true; applyPaused(); }
   },
 });
-pad.start();
 
 const autoDive = { path: [], recalc: 0 };
 
@@ -1555,7 +1554,7 @@ function deathFocus(w, h) {
 }
 
 let hudStage = V2 ? (MOVETEST ? 'Test room' : stageLabel(run)) : undefined;
-const loop = createLoop(step, render);
+const loop = createLoop(step, render, (now) => pad.frame(now)); // controller Phase 1: the pad is read once per display frame, paused too
 const debug = createDebugOverlay(debugEl, { loop, input });
 
 loop.start();
