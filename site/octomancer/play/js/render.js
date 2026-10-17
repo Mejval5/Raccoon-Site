@@ -1715,7 +1715,7 @@ export function createRenderer(ctx, world) {
     /** v2: how many wall bands are cached / were on screen last frame. */
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
-      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null, skipEnemy = null, skipBomb = null,
+      warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, backWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null, skipEnemy = null, skipBomb = null,
       camRegion = null, overDraw = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
@@ -1781,6 +1781,8 @@ export function createRenderer(ctx, world) {
       // layer, the tilemap on "Map", which renders after "Default" -- i.e.
       // walls were always meant to composite over decor, not the other way
       // round.
+      // Controller Phase 2B: marks painted on the cave's back wall (the tutorial's controls painting), behind plants and rock
+      if (G(1) && backWallDraw) backWallDraw(ctx, camera, canvasW, canvasH);
       if (G(1)) drawPlants(canvasW, canvasH, resident, time, reduced);
       // Otter's alive pass; runes are excluded here and drawn again AFTER
       // drawWalls below (Round-4 fix: runes need to land on top of the rock

@@ -17,6 +17,15 @@ export const ALTAR_JOURNAL = 'place-altar';
 const SEE_R = 9; // tiles: met (journal) this close
 const NEAR_R = 22; // tiles: bodies are only checked while the octopus is this close
 
+// Phase 2B: the sign's words (rich.js tokens: {hand+} is F / MMB on the desktop, A on a pad); its board opens over the post
+const OFFER = {
+  title: 'An offering altar',
+  desktop: 'Lay a body on the stone: grab it with {hand+}, then drop or throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',
+  pad: 'Lay a body on the stone: grab it with {hand}, then drop it (hold {hand}) or throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',
+  touch: 'Lay a body on the stone: Grab it, then drop or Throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',
+};
+const ANGRY = { title: 'The altar is angry', desktop: 'It will take nothing more here.', pad: '', touch: 'It will take nothing more here.' };
+
 export function createAltarLevel(g) {
   const live = { corpses: null, kindName: g.kindName, enemies: null, keepers: null, keeperDead: g.keeperDead };
   const self = {
@@ -72,7 +81,11 @@ export function createAltarLevel(g) {
       const a = self.altar;
       if (!a) return;
       drawAltar(ctx, camera, cw, ch, a, t);
-      if (self.sign) { const o = g.octo(); drawTutorialSigns(ctx, camera, cw, ch, self.sign, o.x, o.y, t); }
+      if (self.sign) {
+        const o = g.octo(), sg = self.sign[0], p = self.prompt();
+        if (p && p.title !== sg.title) { sg.title = p.title; sg.desktop = p.desktop; sg.pad = p.pad; sg.touch = p.touch; } // (an angry altar says so)
+        drawTutorialSigns(ctx, camera, cw, ch, self.sign, o.x, o.y, t, g.signView ? g.signView() : undefined);
+      }
     },
     /** The first-meeting prompt {title, desktop, touch} while the octopus is by the sign's altar, or null. */
     prompt() {
@@ -80,12 +93,7 @@ export function createAltarLevel(g) {
       if (!a || !self.sign) return null;
       const o = g.octo();
       if (Math.hypot(o.x - a.x, o.y - (a.y - 1)) > SIGN_R) return null;
-      if (a.angry) return { title: 'The altar is angry', desktop: 'It will take nothing more here.', touch: 'It will take nothing more here.' };
-      return {
-        title: 'An offering altar',
-        desktop: 'Lay a body on the stone: grab it with F or middle click, then drop or throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',
-        touch: 'Lay a body on the stone: Grab it, then drop or Throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',
-      };
+      return a.angry ? ANGRY : OFFER;
     },
     snapshot() {
       const a = self.altar;
@@ -104,7 +112,8 @@ export function createAltarLevel(g) {
   }
   function signFor(x, y) {
     const s = signSpot(x, y);
-    return [s ? { sign: s, label: 'Offerings', x, y: y - 1, r: SIGN_R } : { x, y: y - 1, r: SIGN_R }];
+    const base = { label: 'Offerings', x, y: y - 1, r: SIGN_R, ...OFFER };
+    return [s ? { sign: s, ...base } : { anchor: [x, y - 2.3], ...base }]; // no floor for a post: the board stands over the stone
   }
 
   function handle(ev) {

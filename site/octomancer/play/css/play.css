@@ -681,6 +681,8 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   .octo-bk-cardname { font-size: 11px; line-height: 1.12; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .octo-bk-entry.has-story .octo-bk-ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 14px; }
   .octo-bk-tabname { font-size: 10px; letter-spacing: 0; }
+  /* Phase 2B: a phone held sideways has room for seven 40 px bookmarks: the Controls one goes (its pages still turn to) */
+  .octo-bk-tab[data-tab="controls"] { display: none; }
   .octo-bk-tab { padding: 0; }
   /* Progress: the two pages are compact, and the 1 / 2 page numbers (they sat on top of the text) are dropped */
   .octo-bk-no { display: none; }

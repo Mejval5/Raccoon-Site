@@ -5,7 +5,7 @@
 // A bot plays the whole tutorial through main.js with the real input: the swim is steered with __octo.input({move}) (an A*
 // path from pathcheck.js, as tests/bot.js does), every action is a real key or mouse press (Space dash, J ink, F hand,
 // C use, a right click for the sticky mine, 1-9 hotbar). Each room's goal must open its door (and nothing else does),
-// a door also opens after a wait, prompts follow the input method (keyboard / touch), the hearts never drop to zero,
+// a door also opens after a wait, the signs follow the input method (keyboard / touch; the pad: signs-cdp.js), the hearts never drop to zero,
 // and finishing unlocks the dive in the hub. Frames of every room at 1440x900 and 412x915 go to shotDir (tutorial-*.png).
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
@@ -106,7 +106,7 @@ async function toScreen(page, x, y) {
     check('room 2: door 1 still shut before any ink', (await T(p)).doors[1] > 0);
     r = await go(p, 30.6, 9.6, 0.4);
     t = await T(p);
-    check('room 2: the ink prompt names left click and J', /Left click/.test(t.prompt) && /\bJ\b/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 2: the ink sign names the left mouse button and J', /LMB/.test(t.prompt) && /\bJ\b/.test(t.prompt), t.prompt.slice(0, 80));
     await shot(p, 'ink-desktop');
     for (let k = 0; k < 6 && (await T(p)).doors[1] > 0; k++) {
       await hold(p, 0.15, -1, 2);         // face up (the J jet goes the way you last swam)
@@ -121,7 +121,7 @@ async function toScreen(page, x, y) {
     r = await go(p, 39.4, 12.2, 0.45);
     await hold(p, 0, 0, 25);              // stop: the hand's target is in reach
     t = await T(p);
-    check('room 3: the hand prompt names F and the middle click', /F or middle click/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 3: the hand sign names F and the middle button', /F\/MMB grabs/.test(t.prompt), t.prompt.slice(0, 80));
     await key(p, 'KeyF', 2);
     let hd = await p.evaluate(() => __octo.hand());
     check('room 3: F picks up a pot', hd.held === 'pot', JSON.stringify(hd));
@@ -156,7 +156,7 @@ async function toScreen(page, x, y) {
     // 4b the sticky mine: a right click at the cracked wall
     await go(p, 55.5, 31, 0.5); await hold(p, 0, 0, 20);
     t = await T(p);
-    check('room 4b: the sticky prompt names the right click', /right click/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 4b: the sticky sign names the right button', /press RMB/.test(t.prompt), t.prompt.slice(0, 80));
     await shot(p, 'sticky-desktop');
     for (let k = 0; k < 3 && !(await T(p)).rooms[4].done; k++) {
       await go(p, 55.5, 31, 0.5); await hold(p, 0, 0, 10);
@@ -174,7 +174,7 @@ async function toScreen(page, x, y) {
     check('room 5: door 3 shut before a cast', (await T(p)).doors[3] > 0);
     r = await go(p, 44.5, 30.5, 0.5, 1500);
     t = await T(p);
-    check('room 5: the spell prompt names Q / E and Ink Cloud', /Q, E/.test(t.prompt) && /Ink Cloud/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 5: the spell sign names Q / E and Ink Cloud', /Q E/.test(t.prompt) && /Ink Cloud/.test(t.prompt), t.prompt.slice(0, 80));
     const cloudI = await p.evaluate(() => __octo.juice().hotbar.slots.findIndex((x) => x[0] === 'ink-cloud')); // the HUD order: bombs slot 1, Ink Cloud slot 2
     check('room 5: Ink Cloud is on the bar (slot 2, after the bombs)', cloudI === 1, String(cloudI));
     await key(p, 'Digit' + (cloudI + 1), 1);

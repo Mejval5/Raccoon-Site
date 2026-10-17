@@ -249,17 +249,21 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
       await pf.evaluateOnNewDocument("try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,tutorialDone:false,journal:[]}))}catch(e){}");
       await pf.evaluateOnNewDocument(STUB);
       await pf.goto(BASE + '?seed=7', { waitUntil: 'networkidle0', timeout: 60000 });
-      await pf.waitForFunction(() => window.__octo && __octo.hubSeal && __octo.hubSeal().offer, { timeout: 30000 });
-      await P(pf, {}); await P(pf, {}, 9);
-      s = await S(pf);
-      check('the tutorial offer takes the pad (focus on its yes)', s.menu && (await pf.evaluate(() => document.activeElement === document.querySelector('.octo-offer-yes'))), JSON.stringify([s.menu, s.mode, s.focus]));
-      await P(pf, { a: true }); await P(pf, {});
+      await pf.waitForFunction(() => window.__octo && __octo.hubSeal && !__octo.transitioning(), { timeout: 30000 });
+      await sleep(600);
+      // Phase 2B: no offer card; the welcome board points at the ring, the ring takes A
+      await P(pf, { lx: 0.6 }); await sleep(150); await P(pf, {}); await sleep(250);
+      const sg = await pf.evaluate(() => __octo.signs());
+      check('a fresh save: no offer card, the welcome board over the start names A', !sg.popup && sg.scheme === 'pad' && sg.open && sg.open.glyphs.includes('A'), JSON.stringify(sg.open));
+      const ring = await pf.evaluate(() => __octo.hubSeal());
+      await pf.evaluate((x, y) => { for (let n = 0; n < 6; n++) { __octo.teleport(x, y); __octo.stepDraw(1); } }, ring.tutorialX + 0.5, ring.tutorialY + 0.3);
+      await P(pf, { a: true }); await sleep(150); await P(pf, {});
       await sleep(400);
       const off = await pf.evaluate(() => __octo.hubSeal().offer);
-      await pf.waitForFunction(() => !__octo.level().transitioning, { timeout: 20000 }).catch(() => {});
+      await pf.waitForFunction(() => __octo.level().stage === 'Tutorial' && !__octo.level().transitioning, { timeout: 20000 }).catch(() => {}); // (the dive-in takes a moment)
       await sleep(500);
       const stg = await pf.evaluate(() => __octo.level().stage);
-      check('A takes the tutorial', !off && /tutorial/i.test(stg), stg);
+      check('A at the tutorial ring takes the tutorial', !off && /tutorial/i.test(stg), stg);
       check('offer: no page errors', errs.length === 0, errs.join(' | '));
       await pf.close();
     }

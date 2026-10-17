@@ -7,12 +7,17 @@
 //   controlsLine(scheme, style?)  -> { text, parts: [{ name, glyphs: [glyph ...], note }] }
 //   drawGlyph(ctx, g, x, y, r)    -> draws g centred at (x, y), r = the icon's half height in px
 //
-// scheme: 'keyboard' | 'mouse' | 'pad' | 'touch' (input.mode()); style: 'xbox' | 'ps' for a pad (input.padStyle()).
+// scheme: 'keyboard' | 'mouse' | 'pad' | 'touch' (input.mode()), or 'desktop' (Phase 2B: signs and paintings, which must not
+// flip between F and MMB as the player alternates keys and clicks: the one keyboard+mouse set, each action on its usual
+// key or button first: F, LMB, RMB, Space ...); style: 'xbox' | 'ps' for a pad (input.padStyle()).
 // Actions: move aim dash attack use hand cycle prev next select inventory pause bomb confirm back.
+//
+// Phase 2B: drawGlyph takes an optional `look` (fill, line, text, key, face tints) so the same glyphs can be burnt into a
+// wooden sign (LOOK_WOOD) or painted on the rock in ochre and charcoal (LOOK_PAINT) instead of the HUD's dark ink.
 
-const INK = 'rgba(14, 30, 34, 0.82)';  // the icon's fill: the HUD's dark sea ink
-const BONE = '#e6ddc9';                 // letters and plain rims: old bone
-const SEA = '#9fd8c4';                  // the HUD's pale sea green
+const INK0 = 'rgba(14, 30, 34, 0.82)';  // the icon's fill: the HUD's dark sea ink
+const BONE = '#e6ddc9', BONE0 = BONE;    // letters and plain rims: old bone
+const SEA0 = '#9fd8c4';                  // the HUD's pale sea green
 // face buttons, muted to stones and weed rather than toy colours
 const TINT = { a: '#8fbf8a', b: '#c98f7c', x: '#88a7c9', y: '#c9bb8c' };
 
@@ -47,11 +52,21 @@ const KEY_MAP = {
   select: ['1'], bomb: ['B'], inventory: ['Tab'], pause: ['Esc'], confirm: ['Enter'], back: ['Esc'], aim: [],
 };
 const MOUSE_MAP = { attack: ['LMB'], use: ['RMB'], hand: ['MMB'], cycle: ['Wheel'], aim: ['Cursor'] };
+// Phase 2B: the desktop set for signs and paintings ('m:' = a mouse button), the usual one first
+const DESKTOP_MAP = {
+  move: ['WASD'], aim: ['m:Cursor'], attack: ['m:LMB', 'J'], use: ['m:RMB', 'C'], hand: ['F', 'm:MMB'], dash: ['Space', 'Shift'],
+  cycle: ['Q', 'E', 'm:Wheel'], prev: ['Q'], next: ['E'], select: ['1-9'], bomb: ['B', 'X'], inventory: ['Tab', 'I'], pause: ['Esc'],
+  confirm: ['Enter'], back: ['Esc'],
+};
+/** The scheme signs and paintings use for an input mode: 'pad', 'touch', else 'desktop' (keyboard and mouse are one set there). */
+export function signScheme(mode) { return mode === 'pad' ? 'pad' : mode === 'touch' ? 'touch' : 'desktop'; }
 const TOUCH_MAP = {
   move: ['Stick'], dash: ['Dash'], attack: ['Jet'], use: ['Use'], hand: ['Grab'], cycle: ['Bar'], select: ['Bar'], bomb: ['Use'],
   inventory: ['Pause'], pause: ['Pause'], confirm: ['Tap'], back: ['Tap'],
 };
 
+/** A key cap or mouse glyph for a literal key name ('J', 'K', 'Shift', 'LMB' ...): sign text names a second key with {key:J}. */
+export function keyGlyph(k) { return /^(LMB|RMB|MMB|Wheel|Cursor)$/.test(k) ? cached('mouse:' + k, mouseDef(k)) : cached('key:' + k, keyDef(k)); }
 function make(def) {
   const g = { label: def.label, kind: def.kind, tint: def.tint || BONE, sym: def.sym || '', arm: def.arm || '', text: def.label };
   g.draw = (ctx, x, y, r) => drawGlyph(ctx, g, x, y, r);
@@ -73,6 +88,7 @@ export function glyphs(action, scheme, style = 'xbox') {
     return (PAD_MAP[action] || []).map((b) => cached('pad:' + style + ':' + b, set[b]));
   }
   if (scheme === 'touch') return (TOUCH_MAP[action] || []).map((k) => cached('touch:' + k, { label: k, kind: 'wide' }));
+  if (scheme === 'desktop') return (DESKTOP_MAP[action] || []).map((k) => (k.startsWith('m:') ? cached('mouse:' + k.slice(2), mouseDef(k.slice(2))) : cached('key:' + k, keyDef(k))));
   const out = [];
   if (scheme === 'mouse') for (const k of MOUSE_MAP[action] || []) out.push(cached('mouse:' + k, mouseDef(k)));
   for (const k of KEY_MAP[action] || []) out.push(cached('key:' + k, keyDef(k)));
@@ -132,18 +148,39 @@ export function glyphWidth(g, r) {
     default: return 2 * r;
   }
 }
-/** Draw `g` centred at (x, y); r = half the icon's height in px. */
-export function drawGlyph(ctx, g, x, y, r) {
-  const lw = Math.max(1, r * 0.16);
+/**
+ * Looks (Phase 2B): fill = the icon's body, line = rims and outlines, text = letters and marks, key = a key cap's rim,
+ * faces = the face buttons' rim colours by label (else the glyph's own tint), rough = a second offset stroke (a painted hand).
+ */
+export const LOOK_HUD = null;
+export const LOOK_WOOD = {
+  fill: 'rgba(58, 36, 16, 0.10)', line: '#3a2410', text: '#3a2410', key: '#3a2410', rough: 0,
+  faces: { A: '#3f5a2a', B: '#7a2e1c', X: '#2c4258', Y: '#7a5a14', Cross: '#2c4258', Circle: '#7a2e1c', Square: '#5c3050', Triangle: '#3f5a2a' },
+};
+export const LOOK_PAINT = { // red and yellow ochre, charcoal, green earth: what a cave wall was painted with
+  fill: 'rgba(176, 98, 52, 0.16)', line: '#9a4a28', text: '#2a2220', key: '#9a4a28', rough: 0.6,
+  faces: { A: '#6f7d3c', B: '#a8452e', X: '#4a5866', Y: '#b88a2e', Cross: '#4a5866', Circle: '#a8452e', Square: '#7a4a5e', Triangle: '#6f7d3c' },
+};
+/** Draw `g` centred at (x, y); r = half the icon's height in px; `look` (optional) repaints it for a sign or a painting. */
+export function drawGlyph(ctx, g, x, y, r, look = null) {
+  if (look && look.rough) { // a painted hand: a faint second pass, a little off
+    ctx.save(); ctx.globalAlpha *= 0.35; drawGlyphOnce(ctx, g, x + r * 0.07 * look.rough, y + r * 0.05 * look.rough, r, look); ctx.restore();
+  }
+  drawGlyphOnce(ctx, g, x, y, r, look);
+}
+function drawGlyphOnce(ctx, g, x, y, r, look) {
+  const INK = look ? look.fill : INK0, SEA = look ? look.line : SEA0, BONE = look ? look.text : BONE0, KEY = look ? look.key : BONE0;
+  const tint = look ? (look.faces && look.faces[g.label]) || look.line : g.tint;
+  const lw = Math.max(1, r * (look ? 0.14 : 0.16));
   ctx.save();
   ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   const w = glyphWidth(g, r);
   switch (g.kind) {
     case 'face': {
-      ctx.fillStyle = INK; ctx.strokeStyle = g.tint;
+      ctx.fillStyle = INK; ctx.strokeStyle = tint;
       ctx.beginPath(); ctx.arc(x, y, r - lw / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (g.sym) drawPsSymbol(ctx, g.sym, x, y, r * 0.48, g.tint, lw);
-      else letter(ctx, g.label, x, y, r * 1.15, g.tint);
+      if (g.sym) drawPsSymbol(ctx, g.sym, x, y, r * 0.48, look ? BONE : tint, lw);
+      else letter(ctx, g.label, x, y, r * 1.15, look ? BONE : tint);
       break;
     }
     case 'stick': {
@@ -209,7 +246,7 @@ export function drawGlyph(ctx, g, x, y, r) {
     }
     default: { // a key cap: slightly uneven, like the hand-drawn F over portals (hand-draw.js drawKeyHint)
       const h = 2 * r - lw, left = x - w / 2 + lw / 2;
-      ctx.fillStyle = INK; ctx.strokeStyle = BONE;
+      ctx.fillStyle = INK; ctx.strokeStyle = KEY;
       rrect(ctx, left, y - h / 2, w - lw, h, r * 0.38); ctx.fill(); ctx.stroke();
       letter(ctx, g.label, x, y, r * (g.label.length > 2 ? 0.8 : 1.05), BONE);
     }

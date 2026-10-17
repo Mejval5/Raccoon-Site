@@ -74,6 +74,9 @@ import { createInput } from '../js/input.js';
 // --- controller Phase 1: gamepad.js, glyphs.js, the pad's auto-aim cone, menu-nav.js ---
 import { runGamepadTests } from './gamepad.test.js';
 runGamepadTests(assert, approx);
+// --- controller Phase 2B: sign / painting text through glyph tokens, scheme switching, the journal's Controls tab ---
+import { runSignsTests } from './signs.test.js';
+await runSignsTests(assert);
 
 // --- M1 swim tests (octopus.js / physics.js) ---
 import { runSwimTests } from './swim.test.js';
