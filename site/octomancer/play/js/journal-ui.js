@@ -18,6 +18,7 @@ import { artUrl } from './v2-art.js';
 import { carriedList, describe, entryNumbers, entryUse, K_SLOT, K_BOMB, K_ITEM, K_JAR } from './carried.js';
 import { drawRuneBadge } from './spell-icons.js';
 import { resolveSlot, modById } from './spells.js';
+import { padLegend } from './glyph-dom.js';
 
 const COLS = 3;
 const SWIPE_PX = 48;
@@ -38,7 +39,7 @@ function el(tag, className, text) {
  * @param {HTMLElement} root the #hud element
  * @param {ReturnType<import('./journal.js').createJournal>} journal
  * @param {{onClose?:()=>void, onOpen?:()=>void, getStats?:()=>{meta:any, bestRuns:any[]}, getStory?:()=>Record<string, number>, reducedMotion?:()=>boolean,
- *   getCarried?:()=>any, onSwap?:(a:number, b:number)=>void, onSelectSlot?:(i:number)=>void}} handlers
+ *   getCarried?:()=>any, onSwap?:(a:number, b:number)=>void, onSelectSlot?:(i:number)=>void, padStyle?:()=>string}} handlers
  *   getCarried: the carried state (carried.js) for the Carried page; without it that page is hidden.
  */
 export function createJournalScreen(root, journal, handlers = {}) {
@@ -61,7 +62,8 @@ export function createJournalScreen(root, journal, handlers = {}) {
   const nextBtn = el('button', 'octo-bk-turn', '›'); nextBtn.type = 'button'; nextBtn.setAttribute('aria-label', 'Next page');
   const pageLabel = el('div', 'octo-bk-pagelabel');
   const closeBtn = el('button', 'octo-bk-close', 'Close'); closeBtn.type = 'button';
-  foot.append(prevBtn, pageLabel, closeBtn, nextBtn);
+  const padHint = el('div', 'octo-bk-padhint'); // controller Phase 2A: what the pad's buttons do on this page (pad mode only, play.css)
+  foot.append(prevBtn, pageLabel, closeBtn, nextBtn, padHint);
   frame.append(spread, foot);
   const tabsEl = el('div', 'octo-bk-tabs');
   tabsEl.setAttribute('role', 'tablist');
@@ -464,6 +466,105 @@ export function createJournalScreen(root, journal, handlers = {}) {
     const seq = sequencePos();
     prevBtn.disabled = seq.i <= 0; nextBtn.disabled = seq.i >= seq.n - 1;
     book.dataset.tab = tab;
+    renderPadHint();
+  }
+
+  // ------------------------------------------------------------------------------------------ controller Phase 2A
+  // The pad drives the book through main.js padMenu -> menu-nav.js: every pad action comes to padAction first and the ring
+  // sits on padFocus(). Bumpers turn the chapter, the d-pad / stick walks the grid (past its edge the page turns), A opens an
+  // entry (one page at a time) or on the Carried page picks a hotbar slot up and A again swaps it there, Y holds the slot,
+  // X opens its journal page (B comes back), B cancels a pick, then closes.
+  let padKey = '', padBack = null; // padBack: the Carried card that X left from
+  function renderPadHint() {
+    const style = handlers.padStyle ? handlers.padStyle() : 'xbox';
+    const cur = tab === 'carried' ? list().find((x) => x.id === entryId) : null;
+    const slot = !!cur && cur.card.kind === K_SLOT;
+    const pairs = [[['tabprev', 'tabnext'], 'Chapters']];
+    if (tab === 'carried') {
+      if (slot || pickSlot >= 0) pairs.push(['confirm', pickSlot >= 0 ? 'Swap here' : 'Pick up']);
+      if (slot && pickSlot < 0) pairs.push(['menuy', 'Hold']);
+      if (cur && cur.card.journal && entryById(cur.card.journal) && pickSlot < 0) pairs.push(['menux', 'Journal page']);
+    } else if (mode === 'single' && tab !== 'progress' && view === 'grid') pairs.push(['confirm', 'Open']);
+    pairs.push(['back', pickSlot >= 0 ? 'Cancel' : padBack || (mode === 'single' && view === 'entry') ? 'Back' : 'Close']);
+    const key = style + '|' + pairs.map((p) => p[1]).join('|');
+    if (key === padKey) return;
+    padKey = key;
+    padHint.replaceChildren(padLegend(pairs, style));
+  }
+  function chapter(d) {
+    const ord = order(), ti = ord.findIndex((t) => t.id === tab);
+    if (!ord[ti + d]) return;
+    padBack = null;
+    turnTo(ord[ti + d].id, 0, d);
+  }
+  /** The grid of a journal tab on the pad: left / right by one, up / down by a row, inside the page; past a side the page turns. */
+  function moveGrid(dx, dy) {
+    const all = list();
+    if (!all.length) return;
+    const rs = ranges(tab, all);
+    const r = rs[Math.min(gpage, rs.length - 1)];
+    let i = all.findIndex((e) => e.id === entryId);
+    if (i < r.s || i >= r.e) i = r.s;
+    const k = i - r.s, col = k % COLS, row = Math.floor(k / COLS);
+    if (dx) {
+      if ((dx < 0 && col > 0) || (dx > 0 && col < COLS - 1 && i + 1 < r.e)) { entryId = all[i + dx].id; render(); return; }
+      const t0 = tab;
+      if (!turn(dx)) return;
+      if (tab !== t0 || tab === 'progress') return; // a new chapter starts on its first entry
+      // the same chapter: land on the same row, at the near side of the new page
+      const r2 = ranges(tab, all)[gpage];
+      const j = Math.min(r2.e - 1, r2.s + row * COLS + (dx < 0 ? COLS - 1 : 0));
+      entryId = all[Math.max(r2.s, j)].id; render();
+      return;
+    }
+    let j = i + dy * COLS;
+    if (dy > 0 && j >= r.e) j = row < Math.floor((r.e - 1 - r.s) / COLS) ? r.e - 1 : -1; // a short last row: its last card
+    if (j < r.s || j >= r.e) return;
+    entryId = all[j].id; render();
+  }
+  function padAction(a) {
+    if (!open) return false;
+    const single = mode === 'single';
+    if (a === 'tabprev' || a === 'tabnext') { chapter(a === 'tabnext' ? 1 : -1); return true; }
+    if (a === 'back') {
+      if (pickSlot >= 0) { pickSlot = -1; render(); return true; }
+      if (padBack) { const b = padBack; padBack = null; tab = 'carried'; gpage = 0; view = 'grid'; entryId = b; flip(-1); render(); return true; }
+      if (single && view === 'entry' && tab !== 'progress') { view = 'grid'; flip(-1); render(); return true; }
+      return false; // the menu's own back: close the book
+    }
+    const dir = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[a];
+    if (tab === 'carried') {
+      const cur = list().find((x) => x.id === entryId);
+      if (dir) { if (!(single && view === 'entry')) moveCarried(dir[0], dir[1]); else if (dir[0]) turn(dir[0]); return true; }
+      if (a === 'confirm') {
+        if (!cur || cur.card.kind !== K_SLOT) { if (pickSlot >= 0) { pickSlot = -1; render(); } else if (single && view === 'grid' && cur) { view = 'entry'; flip(1); render(); } return true; }
+        if (pickSlot < 0) { pickSlot = cur.card.slot; if (single) view = 'grid'; render(); } else finishPick(cur.card.slot);
+        return true;
+      }
+      if (a === 'y') { if (cur && cur.card.kind === K_SLOT && pickSlot < 0 && handlers.onSelectSlot) { handlers.onSelectSlot(cur.card.slot); render(); } return true; }
+      if (a === 'x') {
+        const row = cur && cur.card.journal ? entryById(cur.card.journal) : null;
+        if (row && pickSlot < 0) { const back = cur.id; if (api.showEntry(row.id)) { padBack = back; renderPadHint(); } }
+        return true;
+      }
+      return true;
+    }
+    if (tab === 'progress') { if (dir && dir[0]) turn(dir[0]); return true; }
+    if (dir) {
+      if (single && view === 'entry') { if (dir[0]) moveEntry(dir[0]); return true; }
+      moveGrid(dir[0], dir[1]);
+      return true;
+    }
+    if (a === 'confirm') { if (single && view === 'grid' && entryId) { view = 'entry'; flip(1); render(); } return true; }
+    return true;
+  }
+  /** Where the pad's ring goes: the selected card, else (Progress, an entry page on a phone) the open chapter's bookmark. */
+  function padFocus() {
+    if (!open) return null;
+    if (!(mode === 'single' && view === 'entry') && entryId) {
+      for (const b of pageL.querySelectorAll('.octo-bk-card')) if (b.dataset.id === entryId) return b;
+    }
+    return tabBtns[tab] || null;
   }
 
   /** The book as one run of pages (every tab's grid pages in order, Progress last): index and length. */
@@ -581,7 +682,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
 
   function hide() {
     if (!open) return;
-    open = false; pickSlot = -1; drag = null;
+    open = false; pickSlot = -1; drag = null; padBack = null;
     overlay.style.display = 'none';
     journal.flush();
     if (handlers.onClose) handlers.onClose();
@@ -594,7 +695,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
   const api = {
     /** Open the book on a tab (default: the first bookmark, the Carried page when the game provides it). */
     show(startTab) {
-      open = true; tab = startTab && order().some((t) => t.id === startTab) ? startTab : order()[0].id; gpage = 0; view = 'grid'; pickSlot = -1;
+      open = true; tab = startTab && order().some((t) => t.id === startTab) ? startTab : order()[0].id; gpage = 0; view = 'grid'; pickSlot = -1; padBack = null;
       preloadArt();
       if (handlers.onOpen) handlers.onOpen();
       overlay.style.display = 'flex';
@@ -605,7 +706,13 @@ export function createJournalScreen(root, journal, handlers = {}) {
     hide,
     isOpen() { return open; },
     /** Switch tab ('carried' | 'places' | 'people' | 'bestiary' | 'items' | 'traps' | 'progress') while open (tests, review). */
-    setTab(t) { if (order().some((x) => x.id === t)) turnTo(t, 0, 1); },
+    setTab(t) { if (order().some((x) => x.id === t)) { padBack = null; turnTo(t, 0, 1); } },
+    /** Controller Phase 2A (main.js padMenu): a pad action ('up' 'down' 'left' 'right' 'confirm' 'back' 'tabprev' 'tabnext' 'x' 'y'); false = not used. */
+    pad: padAction,
+    /** The element the pad's focus ring belongs on. */
+    padFocus,
+    /** Re-draw the pad legend (the pad style changed). */
+    padRestyle() { padKey = ''; if (open) renderPadHint(); },
     /** Open an entry's page by id (tests, review); the tab and grid page follow the entry. */
     showEntry(id) {
       for (const t of TABS) {

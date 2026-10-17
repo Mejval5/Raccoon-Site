@@ -5,6 +5,8 @@
 
 import { SETTING_DEFS, CONTROLS_HELP, cleanSeedText } from './settings.js';
 import { artUrl } from './v2-art.js';
+import { glyphs } from './glyphs.js';
+import { glyphCanvas } from './glyph-dom.js';
 
 function el(tag, className, text) {
   const e = document.createElement(tag);
@@ -136,12 +138,32 @@ export function createSettingsPanel(root, handlers) {
   cur = colC;
   heading('Controls');
   const helpBlocks = {};
+  const padLines = []; // controller Phase 2A: the Controller block's lines lead with the pad's own glyphs (they follow its make)
   for (const c of CONTROLS_HELP) {
     const box = el('div', 'octo-set-help');
     box.appendChild(el('div', 'octo-set-helptitle', c.title));
-    for (const l of c.lines) box.appendChild(el('div', 'octo-set-helpline', l));
+    c.lines.forEach((l, i) => {
+      const line = el('div', 'octo-set-helpline');
+      if (c.glyphs && c.glyphs[i]) {
+        const icons = el('span', 'octo-set-helpglyphs');
+        line.appendChild(icons);
+        padLines.push({ icons, acts: c.glyphs[i] });
+      }
+      line.appendChild(document.createTextNode(l));
+      box.appendChild(line);
+    });
     cur.appendChild(box);
     helpBlocks[c.id] = box;
+  }
+  let padStyleShown = '';
+  function paintPadGlyphs() {
+    const style = handlers.padStyle ? handlers.padStyle() : 'xbox';
+    if (style === padStyleShown) return;
+    padStyleShown = style;
+    for (const { icons, acts } of padLines) {
+      icons.textContent = '';
+      for (const a of acts) for (const g of glyphs(a, 'pad', style)) icons.appendChild(glyphCanvas(g, 8));
+    }
   }
 
   heading('Progress');
@@ -175,7 +197,7 @@ export function createSettingsPanel(root, handlers) {
     confirmText.textContent = ASK;
     confirmYes.style.display = confirmNo.style.display = '';
     // the confirm is taller than the button it replaced and sits at the end of the scroll body: bring it into view
-    if (on) confirmBox.scrollIntoView({ block: 'nearest' });
+    if (on) { confirmBox.scrollIntoView({ block: 'nearest' }); try { confirmNo.focus({ preventScroll: true }); } catch (e) { /* old browsers */ } } // (the safe answer first: a pad's A)
   }
   resetBtn.addEventListener('click', () => showConfirm(true));
   confirmNo.addEventListener('click', () => showConfirm(false));
@@ -201,6 +223,12 @@ export function createSettingsPanel(root, handlers) {
     }
     const mode = handlers.inputMode();
     for (const id of Object.keys(helpBlocks)) helpBlocks[id].classList.toggle('is-current', id === mode);
+    paintPadGlyphs();
+  }
+  /** B / Esc inside the panel: an open reset confirm closes first (back to its button), then the panel. */
+  function back() {
+    if (confirmBox.style.display !== 'none') { showConfirm(false); try { resetBtn.focus({ preventScroll: true }); } catch (e) { /* old browsers */ } return; }
+    hide();
   }
 
   function show() {
@@ -223,5 +251,5 @@ export function createSettingsPanel(root, handlers) {
   closeBtn.addEventListener('click', hide);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) hide(); });
 
-  return { show, hide, toggle() { if (open) hide(); else show(); }, isOpen() { return open; }, refresh, el: overlay };
+  return { show, hide, back, toggle() { if (open) hide(); else show(); }, isOpen() { return open; }, confirmShown() { return open && confirmBox.style.display !== 'none'; }, refresh, el: overlay };
 }

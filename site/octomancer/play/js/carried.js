@@ -3,7 +3,7 @@
 // ordered list of cards; describe(card, state) gives a card's name, numbers (its current effect) and how to use it.
 // journal-ui.js draws them; tests read them as is.
 //
-// state = { slots: [{ids}], sel, items: [item ids], bombs, bombMax, juice, cap, perCast, jetCharge?, touch? } (main.js carriedState()).
+// state = { slots: [{ids}], sel, items: [item ids], bombs, bombMax, juice, cap, perCast, jetCharge?, touch?, pad? } (main.js carriedState()).
 
 import { ITEM_DEFS, FLIPPER_MUL, MAGNET_R, LIGHT_BASE, LIGHT_LANTERN, BOMBBAG_BOMBS, SIPHON_R, itemCount } from './items.js';
 import { spellById, modById, resolveSlot, JUICE, SLOT } from './spells.js';
@@ -11,6 +11,7 @@ import { INKJET } from './inkjet.js';
 import { BOMB_RADIUS, BOMB_START } from './config.js';
 import { BOMB_FUSE_V2, STICKY_ARM_S } from './bomb.js';
 import { SOURCES } from './creature-rules.js';
+import { glyph } from './glyphs.js';
 
 export const K_SLOT = 'slot', K_JET = 'jet', K_BOMB = 'bomb', K_ITEM = 'item', K_JAR = 'jar';
 
@@ -63,7 +64,18 @@ export function carriedJournalIds(state) {
 const f1 = (v) => String(Math.round(v * 10) / 10);
 const casts = (n) => n + (n === 1 ? ' cast' : ' casts');
 // controls 2026-10-08 (V2-PLAN 17): F is the hand; right click / C use the selected hotbar slot; 1-9, Q / E, the wheel pick it
-const KEYS = (touch) => ({
+// controller Phase 2A: with a pad (state.pad = its style, 'xbox' | 'ps') the lines name its buttons (glyphs.js labels)
+function padKeys(style) {
+  const L = (a) => glyph(a, 'pad', style).label;
+  return {
+    slot: L('use') + ' casts it along the right stick; pick the slot with ' + L('next') + ' or the d-pad',
+    jet: L('attack') + ' along the right stick (hold to fire on each refill)',
+    bomb: L('use') + ' on the bomb slot: with the right stick held it throws a sticky mine that way, else it drops one. ' + L('select') + ' picks the bomb slot',
+    item: 'Nothing to press: it works while you carry it',
+    jar: 'Spells drink from it when you cast',
+  };
+}
+const KEYS = (touch, pad) => (pad ? padKeys(pad) : {
   slot: touch ? 'Tap its slot on the bar, then Use (Spell casts your last spell)' : 'Right click or C casts it; pick the slot with 1-9, Q / E or the wheel',
   jet: touch ? 'The Jet button (hold to keep firing)' : 'Left click or J / K (hold to fire on each refill)',
   bomb: touch ? 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick' : 'Right click or C on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. Shortcut: B / X drop one',
@@ -142,7 +154,7 @@ export function jarNumbers(state) {
  * The long description and the counters come from the card's journal entry (journal-ui.js).
  */
 export function describe(card, state) {
-  const touch = !!(state && state.touch), k = KEYS(touch);
+  const touch = !!(state && state.touch), k = KEYS(touch, state && state.pad);
   const out = { name: '', short: '', blurb: '', numbers: [], use: '', slot: card.slot >= 0 ? card.slot + 1 : 0, selected: !!state && card.slot >= 0 && card.slot === state.sel };
   if (card.kind === K_SLOT) {
     const s = spellById(card.id);
@@ -189,8 +201,8 @@ export function entryNumbers(journalId) {
 }
 
 /** How to use the thing an entry describes (Items tab page), or ''. */
-export function entryUse(journalId, touch) {
-  const k = KEYS(touch);
+export function entryUse(journalId, touch, pad = '') {
+  const k = KEYS(touch, pad);
   if (journalId === 'item-inkjet') return k.jet;
   if (journalId === 'item-bomb') return k.bomb;
   if (journalId === 'item-juice') return k.jar;

@@ -10,7 +10,8 @@
 // scheme: 'keyboard' | 'mouse' | 'pad' | 'touch' (input.mode()), or 'desktop' (Phase 2B: signs and paintings, which must not
 // flip between F and MMB as the player alternates keys and clicks: the one keyboard+mouse set, each action on its usual
 // key or button first: F, LMB, RMB, Space ...); style: 'xbox' | 'ps' for a pad (input.padStyle()).
-// Actions: move aim dash attack use hand cycle prev next select inventory pause bomb confirm back.
+// Actions: move aim dash attack use hand cycle prev next select inventory pause bomb confirm back (pad menus also: tabprev
+// tabnext menux menuy).
 //
 // Phase 2B: drawGlyph takes an optional `look` (fill, line, text, key, face tints) so the same glyphs can be burnt into a
 // wooden sign (LOOK_WOOD) or painted on the rock in ochre and charcoal (LOOK_PAINT) instead of the HUD's dark ink.
@@ -45,6 +46,8 @@ export const PAD_MAP = {
   move: ['ls'], aim: ['rs'], attack: ['rt'], use: ['rb'], hand: ['a'], dash: ['b', 'lt'],
   cycle: ['lb', 'lr'], prev: ['left'], next: ['lb'], select: ['up'], bomb: ['up'], inventory: ['back'], pause: ['start'],
   confirm: ['a'], back: ['b'],
+  // menus (Phase 2A): the bumpers turn tabs, X and Y are a screen's own extra verbs
+  tabprev: ['lb'], tabnext: ['rb'], menux: ['x'], menuy: ['y'],
 };
 // --- keyboard and mouse (one desktop scheme: the line lists both, a prompt shows the scheme's own)
 const KEY_MAP = {

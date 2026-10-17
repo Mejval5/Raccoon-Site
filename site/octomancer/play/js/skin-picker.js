@@ -94,16 +94,30 @@ export function createSkinPicker(root, handlers) {
   }
   onOctopusReady(() => { if (open) paintAll(); });
 
+  /** Move the highlight a card sideways (dx) or a row (dy); the arrow keys and the pad's d-pad / stick. */
+  function move(dx, dy) {
+    const cols = Math.max(1, Math.round(grid.clientWidth / ((cards[0] && cards[0].b.offsetWidth) || 120)) || 1);
+    focus = Math.max(0, Math.min(cards.length - 1, focus + dx + dy * cols));
+    mark();
+  }
+  /** Controller Phase 2A (main.js padMenu): directions browse, A wears; B (not used here) is the menu's back, which closes. */
+  function padAction(a) {
+    if (!open) return false;
+    const d = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[a];
+    if (d) { move(d[0], d[1]); return true; }
+    if (a === 'confirm') { wear(focus); return true; }
+    return a !== 'back';
+  }
+
   function onKey(e) {
     if (!open) return;
     if (e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF')) { e.preventDefault(); e.stopPropagation(); return; } // the F that opened it, held
-    const cols = Math.max(1, Math.round(grid.clientWidth / ((cards[0] && cards[0].b.offsetWidth) || 120)) || 1);
     let used = true;
     switch (e.code) {
-      case 'ArrowRight': case 'KeyD': focus = Math.min(cards.length - 1, focus + 1); mark(); break;
-      case 'ArrowLeft': case 'KeyA': focus = Math.max(0, focus - 1); mark(); break;
-      case 'ArrowDown': case 'KeyS': focus = Math.min(cards.length - 1, focus + cols); mark(); break;
-      case 'ArrowUp': case 'KeyW': focus = Math.max(0, focus - cols); mark(); break;
+      case 'ArrowRight': case 'KeyD': move(1, 0); break;
+      case 'ArrowLeft': case 'KeyA': move(-1, 0); break;
+      case 'ArrowDown': case 'KeyS': move(0, 1); break;
+      case 'ArrowUp': case 'KeyW': move(0, -1); break;
       case 'Enter': case 'Space': case 'KeyF': wear(focus); break;
       case 'Escape': hide(); break;
       default: used = false;
@@ -136,5 +150,8 @@ export function createSkinPicker(root, handlers) {
     /** Tests: the cards as {id, unlocked, current, name}. */
     cards() { return cards.map((c) => ({ id: c.r.id, unlocked: c.r.unlocked, current: c.b.classList.contains('is-current'), name: c.b.querySelector('.octo-skin-name').textContent })); },
     wearIndex: wear, focus() { return focus; },
+    pad: padAction,
+    /** The card the pad's focus ring belongs on. */
+    padFocus() { return open && cards[focus] ? cards[focus].b : null; },
   };
 }

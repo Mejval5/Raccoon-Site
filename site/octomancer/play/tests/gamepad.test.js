@@ -219,4 +219,51 @@ export function runGamepadTests(assert, approx) {
     assert('menu-nav: no menu, no taking', nav.handle('confirm') === false && clicks.length === 1);
     root.remove();
   }
+
+  // --- menu-nav, Phase 2A: overlap counts as straight; a screen with its own selection; the browser focus moved by the menu
+  {
+    const R = (l, t, w = 100, h = 40) => ({ left: l, top: t, width: w, height: h });
+    // a wide slider, a small button under its right end, a wide button far below: down goes to the small one
+    const rs = [R(0, 0, 400, 30), R(330, 100, 70, 40), R(0, 300, 400, 40)];
+    assert('menu-nav: a small control under the end of a wide one is straight down from it', pickNeighbour(rs[0], rs, 0, 1, 0) === 1);
+    assert('menu-nav: and up from it is the wide one', pickNeighbour(rs[1], rs, 0, -1, 1) === 0);
+
+    const root = document.createElement('div');
+    root.style.cssText = 'position:fixed;left:0;top:0;width:300px;';
+    const cards = [];
+    for (let i = 0; i < 3; i++) { const b = document.createElement('button'); b.textContent = 'c' + i; b.style.cssText = 'display:inline-block;width:60px;height:30px'; root.appendChild(b); cards.push(b); }
+    document.body.appendChild(root);
+    let sel = 0, backs = 0;
+    const seen = [];
+    const own = { root, back: () => backs++, pad: (a) => { seen.push(a); if (a === 'right') { sel = Math.min(2, sel + 1); return true; } if (a === 'back' && sel > 0) { sel = 0; return true; } return a === 'tabnext'; }, focus: () => cards[sel] };
+    const nav = createMenuNav({ current: () => own, padMode: () => true });
+    nav.sync();
+    assert('menu-nav: a screen with its own selection gets the ring on its focus()', nav.focused() === cards[0] && cards[0].classList.contains('octo-pad-focus'));
+    nav.handle('right');
+    assert("menu-nav: the screen's pad() takes the action and the ring follows its selection", sel === 1 && nav.focused() === cards[1] && !cards[0].classList.contains('octo-pad-focus'));
+    nav.handle('tabnext'); nav.handle('x');
+    assert('menu-nav: every action goes to pad() first (tabnext, x)', seen.includes('tabnext') && seen.includes('x'));
+    nav.handle('back');
+    assert('menu-nav: a back the screen uses does not close it', backs === 0 && sel === 0 && nav.focused() === cards[0]);
+    nav.handle('back');
+    assert("menu-nav: a back it leaves falls through to the menu's back", backs === 1);
+    // the screen rebuilt its cards: the ring moves to the new element on the next sync
+    const fresh = document.createElement('button'); fresh.textContent = 'new'; root.replaceChild(fresh, cards[0]); cards[0] = fresh;
+    nav.sync();
+    assert('menu-nav: a rebuilt selection gets the ring again', fresh.classList.contains('octo-pad-focus'));
+    root.remove();
+
+    // a generic menu that moves the browser focus itself (the settings reset confirm): the ring goes with it
+    const r2 = document.createElement('div');
+    r2.style.cssText = 'position:fixed;left:0;top:0;width:300px;';
+    const a = document.createElement('button'), b = document.createElement('button');
+    a.textContent = 'a'; b.textContent = 'b'; a.style.cssText = b.style.cssText = 'display:block;width:100px;height:30px';
+    r2.append(a, b); document.body.appendChild(r2);
+    const nav2 = createMenuNav({ current: () => ({ root: r2 }), padMode: () => true });
+    nav2.sync();
+    b.focus();
+    nav2.sync();
+    assert('menu-nav: focus() moved by the menu takes the ring along', nav2.focused() === b && b.classList.contains('octo-pad-focus') && !a.classList.contains('octo-pad-focus'));
+    r2.remove();
+  }
 }
