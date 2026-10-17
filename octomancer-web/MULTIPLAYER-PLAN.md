@@ -19,14 +19,13 @@ Daniel's brief: any plugged-in controller can play solo. Players are added and r
 13. **Mouse:** belongs to the keyboard player only. A pad player aims with the stick.
 14. **Tutorial and hub:** goals count any player. The hub village stays a safe zone for all.
 
-## Open holes (need Daniel)
+## Holes closed by Daniel (2026-10-17)
 
-- **Split screen or shared camera?** The plan ships shared first. If you want true split from the start, say so: it changes the renderer work in phase 1.
-- **Friendly fire.** Spelunky has it (bombs and thrown things hurt teammates; the jet does not). Proposal: bombs and throws hurt everyone, Ink Jet and spells do not hurt players. Or no friendly fire at all.
-- **Juice and hearts at the rest grotto:** refill everyone, or split a pool?
-- **Who is "the octopus" for NPC lines, quests and the altar?** Proposal: whoever triggers it; the altar's favour is shared.
-- **Keyboard player 2 while a pad is player 1:** fine, but one person uses the mouse. OK?
-- **Can a ghost still be in the way of the camera cap?** Proposal: ghosts never count for the camera.
+- **Friendly fire:** bombs and thrown things hurt teammates; the Ink Jet and spells do not.
+- **Rest grotto:** refills everyone fully.
+- **"The octopus"** for NPC lines, quests and the altar: whoever triggers it; altar favour is shared.
+- **Mouse:** keyboard+mouse is one player. The mouse and Esc still work for menus (pause, settings, journal) even when no keyboard player has joined.
+- **Camera:** no split screen for now (rendering cost). Shared camera, zoom out up to 1.6x, then follow the main player.
 
 ## Phases
 
