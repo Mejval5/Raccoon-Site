@@ -156,7 +156,7 @@ export function createGamepad(input, hooks = {}) {
     let fresh = (moveIn && !moveOut) || (aimIn && !aimOut);
     for (const n of NAMES) if (down[n] && !was[n] && !latched[n]) fresh = true;
     moveOut = moveIn; aimOut = aimIn;
-    if (fresh && input.mode() !== 'pad') input.setMode('pad');
+    if (fresh && input.mode() !== 'pad') { if (hooks.beforeMode) hooks.beforeMode(input.mode()); input.setMode('pad'); } // (co-op: main.js notes the scheme it leaves)
 
     if (edge('start') && hooks.onPause) hooks.onPause();
     if (edge('back') && hooks.onInventory) hooks.onInventory();

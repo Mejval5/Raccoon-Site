@@ -17,7 +17,7 @@ import { createWorld } from './world.js';
 import { createLevelWorld } from './world-v2.js';
 import { fetchBiome1Bank } from './rooms.js';
 import { setDefaultBank } from './level.js';
-import { createOctopus, stepOctopus, killOctopus, addBomb } from './octopus.js';
+import { createOctopus, stepOctopus, killOctopus, addBomb, hurtOctopus } from './octopus.js';
 import { createRenderer } from './render.js';
 import { screenToWorld, worldToScreen } from './camera.js';
 import { drawBlackHole, farCorner } from './blackhole.js';
@@ -804,10 +804,11 @@ const pad = createGamepad(input, {
   },
   onMenu(a) {
     // local co-op: in solo, the pad's first A in the pause menu while player 1 was on the keyboard adds that pad as a player
-    if (a === 'confirm' && !coop() && pauseMenuUp() && performance.now() - modeAt < 80 && modeBefore !== 'pad' && pad.primaryKey() && tryJoin(pad.primaryKey())) return;
+    if (a === 'confirm' && !coop() && pauseMenuUp() && modeFresh && modeBefore !== 'pad' && pad.primaryKey() && tryJoin(pad.primaryKey())) return;
     menuNav.handle(a);
   },
-  primaryKey() { return coop() ? '' : undefined; }, // local co-op: no merged pad; each pad is its own player's (snapshotOf)
+  primaryKey() { return coop() ? '' : undefined; },
+  beforeMode(m) { modeBefore = m; modeFresh = true; setTimeout(() => { modeFresh = false; }, 0); }, // local co-op: the scheme the primary pad's first press leaves
   isPlayer(key) { return deviceTaken(roster, key); },
   onFree(key, btn) { if ((btn === 'a' || btn === 'start') && pauseMenuUp()) tryJoin(key); },
   onOtherGone(key) { const p = roster.slots.find((q) => q && q.device === key); if (p) removeSlot(p.slot, true); },
@@ -1410,6 +1411,7 @@ function takeHandEvents() {
 const TH = { f: null, i: -1 };
 function thrownHit(x, y, r, vx, vy, dmg, rec) {
   if (shopSt && shopKnock(shopSt, props, x, y, r, vx, vy)) { wareKnocked(); return true; }
+  if (coop() && thrownAtTeammate(x, y, r, vx, vy)) return true; // Daniel 2026-10-17: friendly fire, thrown things hurt teammates
   TH.f = null; TH.i = -1;
   const now = damage.now();
   damage.each((f, i, V) => {
@@ -1425,6 +1427,20 @@ function thrownHit(x, y, r, vx, vy, dmg, rec) {
   handleCreatureEvents(); if (npcs) npcs.drain(onNpcEvent); handleKeeperEvents();
   runStats.thrownHits++;
   return true;
+}
+/** Local co-op friendly fire: a thrown thing that meets another player hurts them (one heart, the usual i-frames), not the thrower. */
+function thrownAtTeammate(x, y, r, vx, vy) {
+  saveCur();
+  for (const p of players()) {
+    if (p === cur) continue;
+    const o = p.octo;
+    if (o.dead || o.hidden || o.sealed || Math.hypot(o.x - x, o.y - y) >= r + o.radius) continue;
+    const sp = Math.hypot(vx, vy) || 1;
+    hurtOctopus(o, x - vx / sp, y - vy / sp, 'thrown');
+    runStats.thrownHits++;
+    return true;
+  }
+  return false;
 }
 /** How many wares still stand on their pedestals. */
 function shelfWares() { let n = 0; if (shopSt) for (let i = 0; i < shopSt.ware.length; i++) if (shopSt.ware[i] === W_SHELF && !shopSt.sold[i]) n++; return n; }
@@ -1798,11 +1814,13 @@ function bringOthers(x, y) {
 }
 
 // --- joining and leaving (pause menu only, plan decisions 3 and 4) ---
-let modeNow = '', modeBefore = '', modeAt = -1e9;
-input.onModeChange((m) => { if (m !== modeNow) { modeBefore = modeNow; modeNow = m; modeAt = performance.now(); } });
+// The scheme before the press that is joining now: a key (a capture listener runs before input.js switches the mode) or the
+// primary pad's first press (gamepad.js beforeMode) may have just switched it.
+let modeBefore = '', modeFresh = false;
+window.addEventListener('keydown', () => { modeBefore = input.mode(); modeFresh = true; setTimeout(() => { modeFresh = false; }, 0); }, true);
 /** The device solo player 1 is on: the one it used last before the press that is joining now. */
 function p1Device() {
-  const m = performance.now() - modeAt < 80 ? modeBefore : (input.mode() || 'keyboard');
+  const m = modeFresh ? modeBefore : (input.mode() || 'keyboard');
   return m === 'pad' && pad.primaryKey() ? pad.primaryKey() : KEYBOARD;
 }
 function pauseMenuUp() { return manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !looksOpen && !journalScreen.isOpen(); }
@@ -1818,7 +1836,7 @@ function tryJoin(dev) {
   p.hand = createHand(); p.inkJet = createInkJet(); p.ragdoll = createRagdoll();
   p.items = rec ? rec.items.slice() : [];
   p.hotbar = rec ? rec.hotbar : null; // null: hotbar() makes the starting bar (bombs in slot 1, Ink Cloud)
-  p.juice = rec ? rec.juice : juiceCap(); // a full jar
+  p.juice = rec ? rec.juice : run.state === S_BIOME || run.state === S_REST ? juiceCap() : run.juice; // a full jar in a dive (the hub and the tutorial: as player 1's)
   p.octo = createOctopus(world.startX, world.startY);
   setupOcto(p);
   const o = p.octo, f = oOf(focusP());
@@ -1826,11 +1844,11 @@ function tryJoin(dev) {
   else { o.hearts = Math.min(o.heartMax, JOIN_HEARTS); o.bombs = JOIN_BOMBS; }
   placeNear(o, f.x, f.y, players().length - 1);
   if (rec && rec.dead) { killOctopus(o, rec.cause || 'unknown'); o.deathTimer = 0; o.gameoverEmitted = true; p.deadSeen = true; p.diedAt = -1; } // out until the next level, as they left
-  if (rec && rec.dead && run.state === S_HUB) { o.dead = false; o.hearts = REVIVE_HEARTS; } // (never: records go at the hub; kept safe)
   p.prevHearts = o.hearts;
   sfx.chime();
   for (let i = 0; i < 4; i++) particles.trailBubble(o.x + (i - 1.5) * 0.2, o.y - 0.3 - i * 0.15);
   refreshRows();
+  coopHud();
   return true;
 }
 /** A player leaves: what they carried is kept under their device for the rest of the run. */
@@ -1846,9 +1864,9 @@ function removeSlot(slot, unplugged = false) {
   rosterRemove(roster, slot, { hearts: o.hearts, heartMax: o.heartMax, bombs: o.bombs, juice: p.juice, hotbar: p.hotbar, items: p.items.slice(), dead: !!o.dead, cause: o.cause || '' });
   PR[slot] = null;
   usePlayer(focusP());
-  dropTints(players().map((q) => PLAYER_COLOURS[q.slot].body).filter(Boolean)); // the leaver's colour sheet goes (built again if they come back)
   if (unplugged && !loop.paused && !everyoneDead()) { manualPaused = true; applyPaused(); }
   refreshRows();
+  coopHud();
   return true;
 }
 function refreshRows() {
@@ -1943,11 +1961,12 @@ function coopCamera(alpha, w, h, frameMs) {
   const ps = players();
   camPts.length = 0; camOctos.length = 0;
   const hub = !!run && run.state === S_HUB;
-  let lead = 0, moved = -1;
+  let lead = 0, moved = -1, p1Framed = false;
   for (const p of ps) {
     const o = p.octo;
     camOctos.push(o);
-    if (o.dead || o.hidden) continue; // the dead (out until the next level) are not framed; the pulled ones are, until they vanish
+    if (o.dead || o.hidden) continue;
+    if (p === ps[0]) p1Framed = true; // the dead (out until the next level) are not framed; the pulled ones are, until they vanish
     const pt = camPool[camPts.length] || (camPool[camPts.length] = { x: 0, y: 0 });
     pt.x = o.prevX + (o.x - o.prevX) * alpha; pt.y = o.prevY + (o.y - o.prevY) * alpha;
     if (hub && p.movedAt > moved) { moved = p.movedAt; lead = camPts.length; } // the hub: the last one who moved leads
@@ -1955,7 +1974,10 @@ function coopCamera(alpha, w, h, frameMs) {
   }
   const k = 1 - Math.exp(-ZOOM_RATE * Math.max(0, frameMs) / 1000);
   if (!camPts.length) { camOut.follow = null; camOut.zoom = camZoom; return camOut; } // everyone is out: the death camera on the last body
-  if (!hub && world.exitX >= 0) lead = leaderIndex(camPts, world.exitX + 0.5, world.exitY + 0.5, 0); // a level: the one nearest the exit leads
+  // Daniel 2026-10-17: past the cap the camera follows the main player (player 1, the first in the roster) while they are framed;
+  // else the leader rule: in a level the one nearest the exit, in the hub the last one who moved
+  if (p1Framed) lead = 0;
+  else if (!hub && world.exitX >= 0) lead = leaderIndex(camPts, world.exitX + 0.5, world.exitY + 0.5, 0);
   const ppu = computePxPerUnit(w, h);
   const fr = cameraFrame(camPts, w / ppu / 2, h / ppu / 2, lead);
   camZoom += (fr.zoom - camZoom) * k;
@@ -2012,7 +2034,7 @@ function coopHooks() {
           items: p.items.slice(), hotbar: p.hotbar ? p.hotbar.slots.map((s) => s.ids.slice()) : null, dead: !!p.octo.dead, hidden: !!p.octo.hidden, sealed: !!p.octo.sealed })),
         records: [...roster.records.entries()].map(([d, r]) => ({ device: d, slot: r.slot, hearts: r.hearts, bombs: r.bombs, dead: r.dead })),
         camera: { zoom: camZoom, x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, solo: computePxPerUnit(canvas.width, canvas.height) },
-        pull: pull ? { t: pull.t } : null, gameOver: ui.isGameOverShown(), primary: pad.primaryKey(), p1: p1Device(), modes: [modeBefore, modeNow, Math.round(performance.now() - modeAt)], others: pad.others(), tints: tintStats(),
+        pull: pull ? { t: pull.t } : null, gameOver: ui.isGameOverShown(), primary: pad.primaryKey(), others: pad.others(), tints: tintStats(),
         rows: [...document.querySelectorAll('.octo-coop-row')].map((r) => r.textContent), add: (document.querySelector('.octo-coop-add') || {}).textContent || '',
         strips: [...document.querySelectorAll('.octo-coop-strip')].filter((e) => e.offsetParent !== null).map((e) => e.textContent),
       };
@@ -2087,6 +2109,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   cur.deadSeen = false; cur.diedAt = 0;
   resetOthers();
   pull = null; camZoom = 1;
+  dropTints(players().map((q) => PLAYER_COLOURS[q.slot].body).filter(Boolean)); // local co-op: a colour nobody plays any more frees its sheet at the next level (a quick leave and rejoin keeps it)
   ui.hideGameOver();
   ui.hideEnd();
   ui.setPrompt(null);
@@ -2913,6 +2936,7 @@ function stepRestSpring() {
       octo.hearts = octo.heartMax; prevHearts = octo.hearts;
       run.juice = juiceCap();
       restSpring.used = true;
+      if (coop()) { saveCur(); for (const p of players()) if (p !== cur && !p.octo.dead) { p.octo.hearts = p.octo.heartMax; p.prevHearts = p.octo.hearts; p.juice = juiceCap(); } } // Daniel: the grotto refills every player fully
       particles.pickupSparkle(octo.x, octo.y, '#bfe8d8'); particles.pickupSparkle(octo.x, octo.y - 0.3, '#a98ad8');
       sfx.chime();
       if (sim.time - restSay.at > 4) { ui.showToast('The spring heals you and fills your jar'); restSay.at = sim.time; }

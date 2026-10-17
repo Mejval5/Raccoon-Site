@@ -36,8 +36,8 @@ const PADS = (p, list, polls = 1) => p.evaluate((l, n) => __octo.pads(l, n), lis
 const C = (p) => p.evaluate(() => __octo.coop());
 const step = (p, n = 1) => p.evaluate((n) => __octo.stepDraw(n), n);
 const waitLevel = (p) => p.waitForFunction(() => !__octo.transitioning(), { timeout: 30000, polling: 100 });
-/** A tap of pad buttons (states by pad index): down for a poll, then up. */
-async function tapPads(p, list) { await PADS(p, list); await PADS(p, list.map(() => ({}))); }
+/** A tap of pad buttons (states by pad index): a neutral poll (a pad that just changed role is read fresh), down for a poll, then up. */
+async function tapPads(p, list) { await PADS(p, list.map(() => ({}))); await PADS(p, list); await PADS(p, list.map(() => ({}))); }
 const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
 /** Is world point (x, y) inside the view of the camera now (CSS px margin `m`)? */
 const inView = (c, x, y, m = 0) => {
@@ -63,7 +63,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     check('solo: pad A swims player 1', c.players[0].x > s0.x + 0.5, s0.x.toFixed(2) + ' -> ' + c.players[0].x.toFixed(2));
     await PADS(page, [{}, { lx: -1 }]); const bx = c.players[0].x; await step(page, 20);
     c = await C(page);
-    check('solo: the idle pad B does not move player 1', Math.abs(c.players[0].x - bx) < 0.6, bx.toFixed(2) + ' -> ' + c.players[0].x.toFixed(2));
+    check('solo: the idle pad B does not swim player 1 (no turn to the left)', c.players[0].x >= bx - 0.05, bx.toFixed(2) + ' -> ' + c.players[0].x.toFixed(2));
     await PADS(page, [{}, {}]); await step(page, 5);
 
     // ---- pause on pad A, pad B presses A: player 2 joins
@@ -81,10 +81,10 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     check('the pause menu shows two player rows', c.rows.length === 2 && /P1/.test(c.rows[0]) && /P2/.test(c.rows[1]), JSON.stringify(c.rows));
     check('co-op: no primary pad (each pad is its own player)', c.primary === '');
     await shot(page, 'pause');
-    // pad B presses A again: it already plays (nothing changes)
-    await tapPads(page, [{}, { a: true }]);
+    // the same pad again: it already plays (its A is a menu press now, so ask the join directly)
+    const again = await page.evaluate((k) => __octo.join(k), c.players[1].device);
     c = await C(page);
-    check('the same pad cannot join twice', c.players.length === 2);
+    check('the same pad cannot join twice', !again && c.players.length === 2);
     await tapPads(page, [{ start: true }, {}]);
     st = await page.evaluate(() => __octo.state().paused);
     check('Start on pad A resumes', !st);
@@ -99,6 +99,8 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     await PADS(page, [{}, {}]); await step(page, 10);
     c = await camInfo(page);
     check('the shared camera frames both', inView(c, c.players[0].x, c.players[0].y, 20) && inView(c, c.players[1].x, c.players[1].y, 20));
+    await page.waitForFunction(() => __octo.coop().tints.ready >= 1, { timeout: 10000, polling: 100 }).catch(() => {}); // the teal sheet builds in a few short tasks
+    await step(page, 1);
     check('two HUD strips, one per player', c.strips.length === 2 && /P1/.test(c.strips[0]) && /P2/.test(c.strips[1]), JSON.stringify(c.strips));
     await shot(page, 'level-two');
 
@@ -106,7 +108,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     const lv = await page.evaluate(() => { const l = __octo.level(); return { w: l.w, h: l.h, tiles: l.tiles, sx: l.startX, sy: l.startY }; });
     const open1 = (x, y) => lv.tiles[Math.floor(y) * lv.w + Math.floor(x)] === 0;
     let far = null;
-    for (let d = 9; d <= 16 && !far; d++) for (const [dx, dy] of [[d, 0], [-d, 0], [0, d * 0.6], [d * 0.7, d * 0.4], [-d * 0.7, d * 0.4]]) { const x = c.players[0].x + dx, y = c.players[0].y + dy; if (open1(x, y) && open1(x, y - 0.4) && open1(x, y + 0.4)) { far = { x, y }; break; } }
+    for (let d = 9; d <= 22 && !far; d++) for (const [dx, dy] of [[0, d * 0.8], [0, -d * 0.8], [d * 1.6, 0], [-d * 1.6, 0], [d, d * 0.6], [-d, d * 0.6]]) { const x = c.players[0].x + dx, y = c.players[0].y + dy; if (open1(x, y) && open1(x, y - 0.4) && open1(x, y + 0.4)) { far = { x, y }; break; } }
     check('found open water away from player 1', !!far);
     if (far) {
       await page.evaluate((f) => __octo.teleportPlayer(1, f.x, f.y), far);
@@ -164,6 +166,8 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     c = await C(page);
     check('the keyboard swims player 3 only', c.players[2].x < k0.x - 0.3 && Math.abs(c.players[0].x - c.players[0].x) < 1e-9, k0.x.toFixed(2) + ' -> ' + c.players[2].x.toFixed(2));
     check('three strips, smaller', c.strips.length === 3);
+    await page.waitForFunction(() => __octo.coop().tints.ready >= 2, { timeout: 10000, polling: 100 }).catch(() => {});
+    await step(page, 1);
     await shot(page, 'level-three');
 
     // ---- the exit pull: player 1 at the whirlpool, the hand: the others are drawn in, then the level changes
@@ -172,10 +176,12 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     const pulled = await page.evaluate(() => __octo.pressHandOf(0));
     c = await C(page);
     check('the hand at the whirlpool starts the pull (co-op)', pulled && !!c.pull && c.players[1].sealed && c.players[2].sealed);
+    const d0 = c.players.slice(1).map((p) => Math.hypot(p.x - ex.x, p.y - ex.y));
     await step(page, 75);
     c = await C(page);
-    const nearExit = c.players.every((p) => p.hidden || Math.hypot(p.x - ex.x, p.y - ex.y) < 1.5);
-    check('after 1.5 s the others are on their way to the whirlpool', !!c.pull && c.players.slice(1).every((p) => Math.hypot(p.x - ex.x, p.y - ex.y) < 12));
+    const d1 = c.players.slice(1).map((p) => Math.hypot(p.x - ex.x, p.y - ex.y));
+    const nearExit = d1.map((d) => d.toFixed(1)).join(',');
+    check('after 1.5 s the others are halfway to the whirlpool', !!c.pull && d1.every((d, i) => d < d0[i] * 0.6 + 0.01), d0.map((d) => d.toFixed(1)) + ' -> ' + nearExit);
     await step(page, 80);
     c = await C(page);
     check('after 3 s they are in and the entry runs', !c.pull && c.players[1].hidden && c.players[2].hidden, JSON.stringify(c.players.map((p) => [p.hidden, p.sealed])) + ' ' + nearExit);
@@ -185,6 +191,23 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     lvl = await page.evaluate(() => __octo.level().run.level);
     c = await C(page);
     check('the pull ends in the next level with all three', lvl === 3 && c.players.length === 3 && c.players.every((p) => !p.hidden), 'level ' + lvl);
+
+    // ---- friendly fire (Daniel 2026-10-17): a bomb blast kills a teammate too; the others, out of reach, are fine
+    {
+      const L = await page.evaluate(() => { const l = __octo.level(); return { w: l.w, tiles: l.tiles }; });
+      const openAt = (x, y) => L.tiles[Math.floor(y) * L.w + Math.floor(x)] === 0 && L.tiles[Math.floor(y - 0.5) * L.w + Math.floor(x)] === 0 && L.tiles[Math.floor(y + 0.5) * L.w + Math.floor(x)] === 0;
+      const p0 = c.players[0];
+      let spot = null;
+      for (let r = 6; r < 14 && !spot; r += 0.5) for (let a = 0; a < 6.28 && !spot; a += 0.3) { const x = p0.x + Math.cos(a) * r, y = p0.y + Math.sin(a) * r; if (openAt(x, y) && c.players.every((q) => Math.hypot(q.x - x, q.y - y) > 5)) spot = { x, y }; }
+      check('found a spot for the friendly-fire bomb', !!spot);
+      if (spot) {
+        await page.evaluate((q) => { __octo.freeze(true); __octo.god(false); __octo.teleportPlayer(1, q.x, q.y); __octo.bombAt(q.x + 0.3, q.y, 0.2); }, spot);
+        await step(page, 40);
+        c = await C(page);
+        check('friendly fire: the bomb kills player 2, players 1 and 3 are fine', c.players[1].dead && !c.players[0].dead && !c.players[2].dead, JSON.stringify(c.players.map((q) => q.dead)));
+        await page.evaluate(() => __octo.god(true));
+      }
+    }
 
     // ---- game over when all are dead
     await page.evaluate(() => { __octo.freeze(true); __octo.killPlayer(0); __octo.killPlayer(1); });
@@ -241,7 +264,11 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     await tapPads(pf, [{ start: true }, {}, {}]);
     c = await C(pf);
     const pl = c.players[0];
-    await pf.evaluate((p) => { __octo.teleportPlayer(1, p.x - 6, p.y); __octo.teleportPlayer(2, p.x + 6, p.y + 2); __octo.teleportPlayer(3, p.x + 2, p.y + 5); }, pl);
+    const L = await pf.evaluate(() => { const l = __octo.level(); return { w: l.w, tiles: l.tiles }; });
+    const openAt = (x, y) => L.tiles[Math.floor(y) * L.w + Math.floor(x)] === 0 && L.tiles[Math.floor(y - 0.5) * L.w + Math.floor(x)] === 0 && L.tiles[Math.floor(y + 0.5) * L.w + Math.floor(x)] === 0;
+    const near = (x, y) => { for (let r = 0; r < 6; r += 0.5) for (let a = 0; a < 6.28; a += 0.4) { const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r; if (openAt(px, py)) return { x: px, y: py }; } return { x: pl.x, y: pl.y }; };
+    const spots = [near(pl.x - 9, pl.y), near(pl.x + 9, pl.y + 4), near(pl.x + 3, pl.y + 7)]; // spread wide: the camera zooms out
+    await pf.evaluate((sp) => sp.forEach((q, i) => __octo.teleportPlayer(i + 1, q.x, q.y)), spots);
     await PADS(pf, [{ lx: 0.5 }, { lx: -0.5 }, { ly: 0.5 }]);
     await sleep(7000);
     const four = await pf.evaluate(() => ({ ...__octo.metrics(), mem: __octo.memory(), z: __octo.coop().camera }));

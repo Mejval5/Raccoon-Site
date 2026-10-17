@@ -74,6 +74,8 @@ import { createInput } from '../js/input.js';
 // --- controller Phase 1: gamepad.js, glyphs.js, the pad's auto-aim cone, menu-nav.js ---
 import { runGamepadTests } from './gamepad.test.js';
 runGamepadTests(assert, approx);
+import { runCoopTests } from './coop.test.js';
+runCoopTests(assert, approx);
 // --- controller Phase 2B: sign / painting text through glyph tokens, scheme switching, the journal's Controls tab ---
 import { runSignsTests } from './signs.test.js';
 await runSignsTests(assert);
