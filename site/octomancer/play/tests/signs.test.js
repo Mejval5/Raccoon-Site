@@ -17,7 +17,7 @@ export async function runSignsTests(assert) {
   assert('glyphs (desktop): F, LMB, RMB, Space first; the second key after it',
     glyph('hand', 'desktop').label === 'F' && glyph('attack', 'desktop').label === 'LMB' && glyph('use', 'desktop').label === 'RMB' && glyph('dash', 'desktop').label === 'Space' &&
     glyphs('attack', 'desktop').map((g) => g.label).join() === 'LMB,J' && glyphs('hand', 'desktop').map((g) => g.label).join() === 'F,MMB' && glyph('attack', 'desktop').kind === 'mouse');
-  assert('glyphs (desktop): every action a pad has, the desktop has too', Object.keys(PAD_MAP).every((a) => glyphs(a, 'desktop').length > 0));
+  assert('glyphs (desktop): every play action a pad has, the desktop has too (the pad menu-only tab / menu moves aside)', Object.keys(PAD_MAP).filter((a) => !/^(tab|menu)/.test(a)).every((a) => glyphs(a, 'desktop').length > 0));
 
   // --- tokens
   assert('rich: {hand} is F on the desktop, A on an Xbox pad, Cross on a DualSense, Grab on a phone',
