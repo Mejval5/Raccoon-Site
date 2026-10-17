@@ -304,6 +304,28 @@ export function autoAim(octo, list, isSolid, facing) {
   return { x: facing >= 0 ? 1 : -1, y: 0 };
 }
 
+/**
+ * Controller Phase 1: the pad's light auto-aim. `dir` is where the octopus faces (the last swim direction); the nearest
+ * targetable creature in range, in sight and inside the cone cos(half-angle) >= `cosHalf` around `dir` bends the aim onto
+ * itself. Nothing there: `dir` itself (unit). It never turns the shot behind or far to the side of where the player looks.
+ */
+export function coneAim(octo, list, isSolid, dir, cosHalf) {
+  const dl = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / dl, uy = dir.y / dl;
+  let best = null, bestD = INKJET.range * INKJET.range;
+  for (let j = 0; j < list.length; j++) {
+    const e = list[j];
+    if (e.dead || e.ghost || e.hp === undefined || e.ambient) continue;
+    const dx = e.x - octo.x, dy = e.y - octo.y, d2 = dx * dx + dy * dy;
+    if (d2 >= bestD || d2 < 1e-6) continue;
+    if ((dx * ux + dy * uy) / Math.sqrt(d2) < cosHalf) continue;
+    if (!hasLineOfSight(isSolid, octo.x, octo.y, e.x, e.y)) continue;
+    best = e; bestD = d2;
+  }
+  if (!best) return { x: ux, y: uy };
+  const d = Math.sqrt(bestD);
+  return { x: (best.x - octo.x) / d, y: (best.y - octo.y) / d };
+}
+
 /** A small, quiet aim reticle: a thin broken ring in ink-blue and pale sea-green at a screen point (canvas px). */
 export function drawReticle(ctx, sx, sy, ppu, time) {
   const r = 0.35 * ppu * (1 + Math.sin(time * 2.2) * 0.05);

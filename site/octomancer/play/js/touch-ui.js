@@ -179,7 +179,7 @@ export function createTouchUI(root, input, field = root) {
     el.addEventListener('pointercancel', endPointer, { passive: true });
   }
 
-  input.onModeChange((mode) => { if (mode === 'keyboard' || mode === 'mouse') hide(); });
+  input.onModeChange((mode) => { if (mode !== 'touch') hide(); }); // keyboard, mouse or a pad: the on-screen buttons go
 
   return { show, hide, setSpell, setHand, setUse, handMode: () => handMode };
 }

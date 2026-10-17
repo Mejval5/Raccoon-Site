@@ -352,6 +352,21 @@ body {
   pointer-events: none;
 }
 
+/* Controller Phase 1: the pad line lays its drawn glyphs (glyphs.js) inline with the words */
+.octo-controls-help[data-scheme="pad"] { max-width: min(92vw, 600px); line-height: 22px; opacity: .75; }
+.octo-ch-part { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; margin-right: 12px; vertical-align: middle; }
+.octo-ch-name { margin-right: 1px; }
+.octo-ch-or { opacity: .6; }
+.octo-ch-note { opacity: .7; font-weight: 500; }
+.octo-glyph { display: inline-block; vertical-align: middle; }
+/* the pad's menu focus (menu-nav.js): a quiet sea-glass ring, the colour of the selected hotbar slot's border */
+.octo-pad-focus { outline: 3px solid #d2fbe6 !important; outline-offset: 3px; box-shadow: 0 0 0 1px var(--ink, #10202c), 0 0 8px rgba(190, 255, 224, 0.35) !important; }
+input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
+.octo-set-row.octo-pad-focus { outline-offset: 1px; }
+#hud.octo-pad-mode .octo-pad-focus input:focus { outline: none; } /* the row wears the ring: no browser box round the track too */
+/* on a pad the key caps after button labels (R, H, Enter, Esc) name keys the player is not using */
+#hud.octo-pad-mode .octo-key { display: none !important; }
+
 /* --- v2 (?v2=1): stage label, tutorial prompts, toasts, journal screen, end screen --- */
 #hud > .octo-prompt {
   position: absolute;
