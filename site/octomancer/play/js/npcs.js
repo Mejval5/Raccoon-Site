@@ -22,6 +22,9 @@ import { createTalk, say, talkStep } from './speech.js';
 import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
 import { octoHit, BLAST_REACH, npcId } from './damage.js';
 import { LURE_ARRIVE } from './infight.js';
+import { pickTarget, octoList } from './players.js';
+
+const ONE = [null]; // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
 export const NPC_IDS = ['', 'marlo', 'pip', 'quill', 'host'];
@@ -319,7 +322,8 @@ export function createNpcs(world, opts = {}) {
   }
 
   // ---- harpoons ---------------------------------------------------------------------------------------------
-  function stepHarpoons(octo, dt) {
+  function stepHarpoons(octoArg, dt) {
+    const octos = octoList(octoArg, ONE);
     for (let h = 0; h < HARPOON_CAP; h++) {
       if (!hp.on[h]) continue;
       const nx = hp.x[h] + hp.vx[h] * dt, ny = hp.y[h] + hp.vy[h] * dt;
@@ -330,8 +334,11 @@ export function createNpcs(world, opts = {}) {
       for (let k = 1; k <= n && !ended; k++) {
         const px = hp.x[h] + (nx - hp.x[h]) * k / n, py = hp.y[h] + (ny - hp.y[h]) * k / n;
         if (world.isSolid(px + c * 0.15, py + s * 0.15) && !crumbleAt(world, px + c * 0.15, py + s * 0.15, CR_HARPOON)) { events.push({ type: 'harpoonHit', x: px, y: py, rock: true }); ended = true; break; } // fish bone crumbles and the harpoon flies on (fragile.js)
-        if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && octoHit(octo, 'harpoon', px - c, py - s, 'harpoon')) {
-          events.push({ type: 'harpoonHit', x: px, y: py, rock: false }); ended = true;
+        for (let o = 0; o < octos.length && !ended; o++) { // the tip hits any octopus it reaches
+          const octo = octos[o];
+          if (!octo.dead && Math.hypot(octo.x - px, octo.y - py) < HARPOON_HIT_R && octoHit(octo, 'harpoon', px - c, py - s, 'harpoon')) {
+            events.push({ type: 'harpoonHit', x: px, y: py, rock: false }); ended = true;
+          }
         }
         // INFIGHT.projectile: the first other body the tip touches takes the harpoon (a fish, a crab, the keeper; never Marlo)
         if (!ended && inf && inf.projectile('harpoon', px, py, 0.15, hp.owner[h]) >= 0) {
@@ -421,9 +428,14 @@ export function createNpcs(world, opts = {}) {
     },
 
     /** One fixed step after the octopus moved. */
-    step(octo, dt) {
-      if (octo.dashedThisStep) dashId++;
-      const fast = octoRams(octo); // only with the Urchin Cap: a bare dash hurts nobody (strikes.js)
+    step(octoArg, dt) {
+      const octos = octoList(octoArg, ONE);
+      let dashed = false, fast = false;
+      for (let o = 0; o < octos.length; o++) {
+        if (octos[o].dashedThisStep) dashed = true;
+        if (octoRams(octos[o])) fast = true; // only with the Urchin Cap: a bare dash hurts nobody (strikes.js)
+      }
+      if (dashed) dashId++;
       for (let i = 0; i < N; i++) {
         if (!d.used[i]) continue;
         if (!d.placed[i] && !d.hostile[i] && !d.fixed[i]) { d.used[i] = 0; continue; } // the owner no longer shows it
@@ -436,16 +448,27 @@ export function createNpcs(world, opts = {}) {
         if (d.prot[i] && !p) d.immune[i] = FREED_GRACE; // freed from the rock / the cage: a second to get clear of the blast
         d.prot[i] = p;
         // dash contact at speed, once per dash; not while sealed / caged, not Pip at your side, not a hub resident who is talking
-        if (fast && d.dashHit[i] !== dashId && Math.hypot(octo.x - d.x[i], octo.y - cyOf(i)) < OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) {
-          const safe = (d.flags[i] & FL_FOLLOWING) || (hub && (d.flags[i] & FL_TALKING) && !d.hostile[i]);
-          if (!safe && !shielded(i)) { d.dashHit[i] = dashId; applyNpcHit(i, 'helmet', octo.x, octo.y); if (!d.used[i]) continue; } // the Urchin Cap's ram (creature-rules.js SOURCES.helmet)
+        if (fast && d.dashHit[i] !== dashId) {
+          for (let o = 0; o < octos.length; o++) { // any octopus that rams with the Cap
+            const ro = octos[o];
+            if (!octoRams(ro) || Math.hypot(ro.x - d.x[i], ro.y - cyOf(i)) >= OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) continue;
+            const safe = (d.flags[i] & FL_FOLLOWING) || (hub && (d.flags[i] & FL_TALKING) && !d.hostile[i]);
+            if (!safe && !shielded(i)) { d.dashHit[i] = dashId; applyNpcHit(i, 'helmet', ro.x, ro.y); break; } // the Urchin Cap's ram (creature-rules.js SOURCES.helmet)
+          }
+          if (!d.used[i]) continue;
         }
         if (!d.hostile[i]) continue;
+        const octo = pickTarget(octos, d.x[i], cyOf(i));
         if (hub) { if (d.state[i] === ST_FLEE) flee(i, octo, dt); else drift(i, dt); continue; }
         if (d.who[i] === NPC_MARLO) marlo(i, octo, dt); else melee(i, octo, dt);
       }
-      if (keeperX > -900 && fast && keeperDash !== dashId && Math.hypot(octo.x - keeperX, octo.y - keeperY) < OCTO_RADIUS + 0.7) { keeperDash = dashId; onKeeper('dash'); }
-      stepHarpoons(octo, dt);
+      if (keeperX > -900 && fast && keeperDash !== dashId) {
+        for (let o = 0; o < octos.length; o++) {
+          const ko = octos[o];
+          if (octoRams(ko) && Math.hypot(ko.x - keeperX, ko.y - keeperY) < OCTO_RADIUS + 0.7) { keeperDash = dashId; onKeeper('dash'); break; }
+        }
+      }
+      stepHarpoons(octos, dt);
     },
 
     /** Hand every pending event to fn, then clear the list (main.js calls this after place/step and after a blast). */

@@ -12,7 +12,7 @@
 
 import { sharedCanvas } from './canvas-pool.js';
 import { decodeBitmap } from './v2-art.js';
-import { skinSheet, skinBodyColor, drawAccessory, skinPreviewBody, ensureSkinAtlas, onSkinArtReady, setWornSkin } from './skin-draw.js';
+import { skinSheet, skinBodyColor, drawAccessory, skinPreviewBody, ensureSkinAtlas, onSkinArtReady, setWornSkin, tintSheet } from './skin-draw.js';
 import { DEFAULT_SKIN, isSkinId } from './skins.js';
 
 // 2026-10-08 skins (skins.js / skin-draw.js): the look the octopus wears. The body frame comes from the skin's tinted sheet once it
@@ -174,7 +174,10 @@ function drawBaked(ctx, o, bakeData) {
 
   ctx.save();
   ctx.scale(1 / squash, squash);
-  const skinImg = wornSkin !== DEFAULT_SKIN ? skinSheet(wornSkin, bakeData) : null; // null while it builds: Milan's own colours
+  // local co-op: players 2-4 wear their colour (o.tint, players.js PLAYER_COLOURS) through the same recolour, no accessory
+  const tint = o.tint || null;
+  const skinImg = tint ? tintSheet(tint, bakeData) : wornSkin !== DEFAULT_SKIN ? skinSheet(wornSkin, bakeData) : null; // null while it builds: Milan's own colours
+  const socket = tint && skinImg ? tint : skinImg ? skinBodyColor(wornSkin) : BODY;
   ctx.drawImage(skinImg || img, frameIndex * cell, 0, cell, cell, -half, -half, worldSize, worldSize);
   ctx.restore();
   // a crushed body (resting as well as flattening) is dark: a bruised ink-violet over the body's own pixels only (drawOctopus
@@ -267,7 +270,7 @@ function drawBaked(ctx, o, bakeData) {
     // the socket before the (smaller) actual eye state draws on top.
     if (eyeState !== 'open') {
       // (a bruised body: the socket patch takes the same dark tint as the body around it, and the X goes pale so it still reads)
-      ctx.fillStyle = bruise > 0 ? bruised(skinImg ? skinBodyColor(wornSkin) : BODY, bruise) : (skinImg ? skinBodyColor(wornSkin) : BODY);
+      ctx.fillStyle = bruise > 0 ? bruised(socket, bruise) : socket;
       ctx.beginPath();
       ctx.ellipse(0, 0, (openWorldW / 2) * 1.05, (openWorldH / 2) * 1.05, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -281,7 +284,7 @@ function drawBaked(ctx, o, bakeData) {
     }
     ctx.restore();
   }
-  if (wornSkin !== DEFAULT_SKIN) drawAccessory(ctx, wornSkin, anchors, cell, toWorld, OPEN_EYE_W(data, anchors));
+  if (!tint && wornSkin !== DEFAULT_SKIN) drawAccessory(ctx, wornSkin, anchors, cell, toWorld, OPEN_EYE_W(data, anchors));
 }
 
 /** The open eye's width in local units for a frame's anchors (the accessories are sized by it). */

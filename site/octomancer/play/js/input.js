@@ -71,6 +71,7 @@ export function createInput(canvas) {
   let cycle = 0, wheelAcc = 0, select = -1;
   const src = { attack: 'key', spell: 'key', bomb: 'key', use: 'key' };
   let cur = ''; // the last device used: '' (none yet) | 'touch' | 'keyboard' | 'mouse' | 'pad'
+  let kbLast = 'keyboard'; // local co-op: the last of keyboard / mouse / touch (the keyboard player's own scheme while a pad drives a menu)
   const listeners = { modechange: [] };
 
   /** The last device used wins; a change fires `modechange` (and `force` re-fires it, e.g. a pad of another make took over). */
@@ -78,7 +79,7 @@ export function createInput(canvas) {
     if (mode !== 'touch' && mode !== 'keyboard' && mode !== 'mouse' && mode !== 'pad') return;
     if (mode === cur && !force) return;
     cur = mode;
-    if (mode !== 'pad') { pad.x = pad.y = pad.ax = pad.ay = 0; pad.aimActive = false; }
+    if (mode !== 'pad') { pad.x = pad.y = pad.ax = pad.ay = 0; pad.aimActive = false; kbLast = mode; }
     emit(mode);
   }
   function emit(mode) { for (const fn of listeners.modechange) fn(mode); }
@@ -240,6 +241,8 @@ export function createInput(canvas) {
     setOverride,
     onModeChange,
     mode() { return cur; },
+    /** Local co-op: the keyboard player's scheme, 'keyboard' | 'mouse' | 'touch' (never 'pad'). */
+    kbMode() { return kbLast; },
     setMode,
     // gamepad.js writes the sticks into `pad` and the buttons through these:
     pad, padButton, padCycle, padSelect,

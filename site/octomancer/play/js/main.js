@@ -4,7 +4,7 @@
 import { createLoop, STEP } from './loop.js';
 import { createInput } from './input.js';
 import { createTouchUI } from './touch-ui.js';
-import { createGamepad, fakePad } from './gamepad.js';
+import { createGamepad, fakePad, padStyleOf } from './gamepad.js';
 import { createMenuNav } from './menu-nav.js';
 import { glyph, drawGlyph } from './glyphs.js';
 import { createDebugOverlay } from './debug.js';
@@ -131,6 +131,12 @@ import { fetchHubRooms, roomStates, applyHubRooms, roomOf, roomAt, kelpPush, ope
 import { drawHubRooms } from './hub-rooms-draw.js';
 import { spriteAspect } from './sprites.js';
 import { artImg } from './v2-art.js';
+// local co-op, Phase 1 (MULTIPLAYER-PLAN.md): the roster and its helpers, the pause rows and HUD strips, the player colours' sheets
+import { createRoster, isSolo, joinDevice, removePlayer as rosterRemove, deviceTaken, clearRecords, PLAYER_COLOURS, KEYBOARD, MAX_PLAYERS, JOIN_HEARTS, JOIN_BOMBS, REVIVE_HEARTS, targetable, cameraFrame, leaderIndex, pullPos, PULL_S } from './players.js';
+import { createCoopUI } from './coop-ui.js';
+import { setDrawColours, dropTints, tintStats } from './skin-draw.js';
+import { computePxPerUnit } from './camera.js';
+import { handDrop } from './hand.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -525,7 +531,7 @@ const ui = createUI(hudEl, {
     location.href = '/octomancer/';
   },
   onTogglePause() {
-    if (octo.dead) return; // no pausing over the game-over overlay
+    if (everyoneDead()) return; // no pausing over the game-over overlay
     manualPaused = !manualPaused;
     applyPaused();
   },
@@ -707,7 +713,8 @@ function applyPaused() {
   const wasPaused = loop.paused;
   const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen || looksOpen;
   const showOverlay = isPaused && !settingsOpen && !inventoryOpen && !looksOpen; // (the looks picker too) // the settings panel and the inventory are their own overlays
-  if (showOverlay && V2) ui.setPauseActions(canQuickRestart(run) && !octo.dead && !transitioning, run.state === S_TUTORIAL && !transitioning); // Restart run in a dive, Leave the tutorial in it
+  if (showOverlay && V2) ui.setPauseActions(canQuickRestart(run) && !everyoneDead() && !transitioning, run.state === S_TUTORIAL && !transitioning); // Restart run in a dive, Leave the tutorial in it
+  if (showOverlay && V2) refreshRows(); // local co-op: the player rows and the Add line
   if (isPaused === wasPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); return; }
   loop.setPaused(isPaused);
   if (isPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); window.dispatchEvent(new CustomEvent('pause')); }
@@ -741,7 +748,9 @@ window.addEventListener('keydown', (e) => {
     const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
     if (!typing && quickKey(e.code === 'KeyR')) { e.preventDefault(); return; }
   }
-  if (e.code !== 'Escape' || octo.dead) return;
+  // local co-op: Enter on the keyboard in the pause menu adds the keyboard player
+  if (V2 && (e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat && pauseMenuUp() && tryJoin(KEYBOARD)) { e.preventDefault(); return; }
+  if (e.code !== 'Escape' || everyoneDead()) return;
   manualPaused = !manualPaused;
   applyPaused();
 });
@@ -773,13 +782,21 @@ const pad = createGamepad(input, {
     if (!m) padMenuFrames = 0;
     return !!m;
   },
-  onMenu(a) { menuNav.handle(a); },
+  onMenu(a) {
+    // local co-op: in solo, the pad's first A in the pause menu while player 1 was on the keyboard adds that pad as a player
+    if (a === 'confirm' && !coop() && pauseMenuUp() && performance.now() - modeAt < 80 && modeBefore !== 'pad' && pad.primaryKey() && tryJoin(pad.primaryKey())) return;
+    menuNav.handle(a);
+  },
+  primaryKey() { return coop() ? '' : undefined; }, // local co-op: no merged pad; each pad is its own player's (snapshotOf)
+  isPlayer(key) { return deviceTaken(roster, key); },
+  onFree(key, btn) { if ((btn === 'a' || btn === 'start') && pauseMenuUp()) tryJoin(key); },
+  onOtherGone(key) { const p = roster.slots.find((q) => q && q.device === key); if (p) removeSlot(p.slot, true); },
   onPause() { // Start (Menu): as Esc
     if (settingsPanel.isOpen()) { settingsPanel.hide(); return; }
     if (looksOpen) { looksPicker.hide(); return; }
     if (V2 && (inventoryOpen || journalScreen.isOpen())) { closeInventory(); return; }
     if (V2 && ui.isOfferShown()) return;
-    if (octo.dead || ui.isEndShown()) return;
+    if (everyoneDead() || ui.isEndShown()) return;
     manualPaused = !manualPaused;
     applyPaused();
   },
@@ -788,7 +805,7 @@ const pad = createGamepad(input, {
     if (inventoryOpen || journalScreen.isOpen()) closeInventory(); else openInventory();
   },
   onDisconnect() { // the pad went away mid-play: pause, as consoles do
-    if (input.mode() === 'pad' && !octo.dead && !loop.paused && !transitioning) { manualPaused = true; applyPaused(); }
+    if (input.mode() === 'pad' && !everyoneDead() && !loop.paused && !transitioning) { manualPaused = true; applyPaused(); }
   },
 });
 
@@ -822,6 +839,7 @@ function beginEntry(ev, tx, ty) {
   entry = {
     ev, cx: c.x, cy: c.y, dirX: d > 1e-6 ? dx / d : 0, dirY: d > 1e-6 ? dy / d : 0, t: 0,
     x: octo.x, y: octo.y, px: octo.x, py: octo.y, rot: octo.angle, prot: octo.angle, sc: 1, psc: 1, wall: performance.now(),
+    p: cur, // local co-op: whose entry it is (the others were pulled in and hidden first)
   };
   octo.entry = entry; octo.sealed = true;
   octo.vx = octo.vy = 0; octo.swimming = false; octo.dashT = 0; octo.squash = 0; octo.hurting = false; octo.hurtTimer = 0; octo.invulnTimer = 0; octo.dashInvuln = 0;
@@ -864,12 +882,22 @@ function endOfStepEntry() {
   const changed = v2Event(ev);
   void fade.offsetWidth;
   fade.style.transition = `opacity ${FADE_MS}ms ease`;
-  if (!changed || !transitioning) { octo.hidden = false; octo.sealed = false; } // no level change after all (the end screen, or a refused event): the octopus is back
+  if (!changed || !transitioning) { // no level change after all (the end screen, or a refused event): the octopus is back (in co-op everyone)
+    octo.hidden = false; octo.sealed = false;
+    if (coop()) { saveCur(); for (const p of players()) { p.octo.hidden = false; p.octo.sealed = false; } }
+  }
 }
 
 function step(dt) {
   sim.time += dt;
-  let snap = input.snapshot();
+  // local co-op (players.js): one fixed step for every player. Solo is the roster with one entry and runs the same sequence as
+  // before co-op existed; with several, each player's own part (input, swim, combat, hand) runs with that player swapped in
+  // (usePlayer) and the world systems get every octopus at once (worldOctos).
+  const ps = players();
+  const solo = ps.length === 1;
+  let snap;
+  if (solo) { usePlayer(ps[0]); snap = input.snapshot(); }
+  else { readSnaps(ps); usePlayer(focusP()); snap = cur.snap; }
   if (handTap) { handTap = false; snap = { ...snap, hand: { pressed: true, held: false } }; } // __octo.pressHand(): one tap of F (tests)
   if (autoDiveOn) {
     // __octo.autoDive(true): a small bounded BFS through the tile grid
@@ -893,19 +921,22 @@ function step(dt) {
     const off = { pressed: false, held: false };
     snap = { move: { x: dx, y: dy }, dash: off, bomb: off, pause: off, attack: off, spell: off, inventory: off, cycle: 0, select: -1, src: { attack: 'key', spell: 'key', bomb: 'key' }, mode: 'keyboard' };
   }
+  cur.snap = snap;
   sim.lastInput = snap;
+  const dashAny = solo ? snap.dash.pressed : ps.some((p) => p.snap.dash.pressed);
 
   // v2 states that freeze the simulation: the fade between levels, the journal, the end screen.
   if (V2) {
-    if (ui.isEndShown()) { if (snap.dash.pressed) v2Event(EV_CONTINUE); return; }
+    if (ui.isEndShown()) { if (dashAny) v2Event(EV_CONTINUE); return; }
     if (transitioning || journalScreen.isOpen() || ui.isOfferShown()) return;
   }
 
   // Game-over overlay is up: Enter/Z/Shift (the dash keys) or a tap on
   // "Swim again" restarts; Esc/pause button do nothing there (handled by
-  // onTogglePause's own `octo.dead` guard).
-  if (octo.dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
-    if (snap.dash.pressed) {
+  // onTogglePause's own `octo.dead` guard). Co-op: only when every player is dead (`octo` is then the last one who died).
+  const dead = solo ? octo.dead : everyoneDead();
+  if (dead && octo.deathTimer === 0 && octo.gameoverEmitted) {
+    if (dashAny) {
       if (V2) { if (canQuickRestart(run)) quickRestart(); else { ui.hideGameOver(); v2Event(EV_DEATH); } return; } // v2: Enter / Space / Shift = 'Restart run' (R too, keydown)
       ui.hideGameOver();
       resetWorld(Math.floor(Math.random() * 1e9));
@@ -917,72 +948,96 @@ function step(dt) {
   }
   // hit-stop: a dash kill freezes the whole sim for 60 ms (the enemy's white ghost stays on screen)
   if (hitStop > 0) { if (entry) hitStop = 0; else { hitStop = Math.max(0, hitStop - dt); return; } } // r45: never during the entry, which runs on its own clock
-  octo.bombNoKill = V2 && !!run && run.state === S_TUTORIAL; // the tutorial's bomb floor never kills (a heart at most); everywhere else a blast does
-  octo.practice = octo.bombNoKill; // the tutorial's practice rooms: a hurt never takes the last heart (octopus.js hurtOctopus)
-  octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
-  if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
-  if (V2 && (run.state === S_BIOME || run.state === S_REST) && !octo.dead) { run.dive.time += dt; levelClock += dt; } // the run summary's clock and the HUD's level clock
-  if (V2 && unlockAnim) { stepUnlock(dt); if (unlockAnim && unlockAnim.t < UNLOCK_INPUT_S) snap = NO_INPUT; } // the dive's unlock moment: the camera visits it, the octopus waits
-  if (entry || octo.hidden) snap = NO_INPUT; // r45: the octopus is going into a whirlpool: no swimming, dashing, bombs or spells
-  if (V2) { // the way a no-direction bomb throw goes: the last swim direction
-    if (Math.abs(snap.move.x) > 0.25) octo.throwDir = snap.move.x > 0 ? 1 : -1;
-    else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
+  for (const p of ps) {
+    usePlayer(p);
+    octo.bombNoKill = V2 && !!run && run.state === S_TUTORIAL; // the tutorial's bomb floor never kills (a heart at most); everywhere else a blast does
+    octo.practice = octo.bombNoKill; // the tutorial's practice rooms: a hurt never takes the last heart (octopus.js hurtOctopus)
+    octo.noKill = godMode; // test hook: traps that kill outright (spikes, a boulder) are skipped too
+    if (godMode && !octo.dead) { octo.invulnTimer = Math.max(octo.invulnTimer, 0.5); octo.noBlink = true; } // test hook: no hurt flicker, so the body never looks see-through in screenshots
   }
-  if (Math.hypot(snap.move.x, snap.move.y) > 0.25) { const l = Math.hypot(snap.move.x, snap.move.y); lastAim = { x: snap.move.x / l, y: snap.move.y / l }; }
-  if (entry) stepEntry(dt); // r45: the scripted entry instead of the swim physics
-  else if (!octo.hidden) { octoPhysSteps++; stepOctopus(octo, snap, dt, world); }
-  if (V2) updateRagdoll();
-  if (V2 && !octo.dead && !entry && !octo.hidden) stepCombat(snap, dt);
-  if (octo.dashedThisStep) {
-    sfx.dash();
-    particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
-  }
-  // M7-1: bubble trail scaled by speed - faster swimming spawns bubbles more
-  // often (TRAIL_BUBBLE_PERIOD_MIN..MAX in config.js), none at rest.
-  if (!octo.dead) {
-    const speed = Math.hypot(octo.vx, octo.vy);
-    const speedFrac = Math.min(1, speed / SWIM_MAX_SPEED);
-    trailTimer -= dt;
-    if (speedFrac > 0.05 && trailTimer <= 0) {
-      trailTimer = TRAIL_BUBBLE_PERIOD_MAX - (TRAIL_BUBBLE_PERIOD_MAX - TRAIL_BUBBLE_PERIOD_MIN) * speedFrac;
-      particles.trailBubble(octo.x, octo.y);
+  usePlayer(solo ? ps[0] : focusP());
+  if (V2 && (run.state === S_BIOME || run.state === S_REST) && !dead) { run.dive.time += dt; levelClock += dt; } // the run summary's clock and the HUD's level clock
+  let lockAll = false;
+  if (V2 && unlockAnim) { stepUnlock(dt); if (unlockAnim && unlockAnim.t < UNLOCK_INPUT_S) lockAll = true; } // the dive's unlock moment: the camera visits it, the octopus waits
+  if (pull) stepPull(dt); // local co-op: the exit pull draws the others to the whirlpool
+  for (const p of ps) {
+    usePlayer(p);
+    let s = lockAll ? NO_INPUT : p.snap;
+    const mine = !!entry && entry.p === p; // r45: this octopus is going into a whirlpool: no swimming, dashing, bombs or spells
+    const pulled = !!pull && octo.sealed; // local co-op: drawn along by the exit pull (or waiting at the whirlpool for it)
+    if (mine || octo.hidden || pulled) s = NO_INPUT;
+    if (V2) { // the way a no-direction bomb throw goes: the last swim direction
+      if (Math.abs(s.move.x) > 0.25) octo.throwDir = s.move.x > 0 ? 1 : -1;
+      else if (Math.abs(octo.vx) > 1) octo.throwDir = octo.vx > 0 ? 1 : -1;
     }
+    if (Math.hypot(s.move.x, s.move.y) > 0.25) { const l = Math.hypot(s.move.x, s.move.y); lastAim = { x: s.move.x / l, y: s.move.y / l }; p.movedAt = sim.time; }
+    if (mine) stepEntry(dt); // r45: the scripted entry instead of the swim physics
+    else if (!octo.hidden && !pulled) { octoPhysSteps++; stepOctopus(octo, s, dt, world); }
+    if (V2) updateRagdoll();
+    if (V2 && !octo.dead && !mine && !octo.hidden && !pulled) stepCombat(s, dt);
+    if (octo.dashedThisStep) {
+      sfx.dash();
+      particles.dashInk(octo.x, octo.y, (octo.angle * Math.PI) / 180);
+    }
+    // M7-1: bubble trail scaled by speed - faster swimming spawns bubbles more
+    // often (TRAIL_BUBBLE_PERIOD_MIN..MAX in config.js), none at rest.
+    if (!octo.dead) {
+      const speed = Math.hypot(octo.vx, octo.vy);
+      const speedFrac = Math.min(1, speed / SWIM_MAX_SPEED);
+      trailTimer -= dt;
+      if (speedFrac > 0.05 && trailTimer <= 0) {
+        trailTimer = TRAIL_BUBBLE_PERIOD_MAX - (TRAIL_BUBBLE_PERIOD_MAX - TRAIL_BUBBLE_PERIOD_MIN) * speedFrac;
+        particles.trailBubble(octo.x, octo.y);
+      }
+    } else if (!p.deadSeen) { p.deadSeen = true; p.diedAt = sim.time; } // local co-op: out until the next level
+    p.snap = s;
   }
+  const fp = solo ? ps[0] : focusP();
+  usePlayer(fp); snap = fp.snap;
   if (!(back && back.inside)) world.update(octo.y); // back rooms: the grotto under the level is no depth reached
-  if (V2 && !octo.dead) { stepV2(snap); stepNpcs(); }
+  if (V2 && !octo.dead) {
+    stepV2(snap);
+    if (!solo) for (const p of ps) if (p !== fp && !p.octo.dead) withP(p, () => stepV2Player(p.snap)); // local co-op: what each player does alone
+    stepNpcs();
+  }
   const resident = world.residentChunks();
-  pickups.update(dt, sim.time, octo.dead ? NOBODY : octo, resident, world); // a dead body collects nothing
+  pickups.update(dt, sim.time, pickupOctos(), resident, world); // a dead body collects nothing
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#e8f1e4' : '#9dffd8'; // r46: pale, natural specks, no gold
     particles.pickupSparkle(ev.x, ev.y, color);
     if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } if (ev.sk === SK_MOON) ui.showToast('A moon shell, +' + ev.value + ' shells'); } }
   }
-  if (octo.hearts < prevHearts) {
-    sfx.hurt();
-    if (V2) { particles.shakeFx(SHAKE_HURT_PX); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); }
+  for (const p of ps) {
+    usePlayer(p);
+    if (octo.hearts < prevHearts) {
+      sfx.hurt();
+      if (V2) { particles.shakeFx(SHAKE_HURT_PX); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); }
+    }
+    if (octo.bodyHits !== prevBodyHits) { // the dead body took a hit (V2-PLAN 14): a puff, a thud, a little shake (none with reduced motion)
+      prevBodyHits = octo.bodyHits;
+      particles.deathPoof(octo.x, octo.y, '#ffd9e0'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12);
+    }
+    if (V2 && octo.bouncedThisStep) { particles.bouncePuff(octo.bounceX, octo.bounceY, octo.bounceNx, octo.bounceNy); particles.shakeFx(1.5, 0.12); }
+    prevHearts = octo.hearts;
   }
-  if (octo.bodyHits !== prevBodyHits) { // the dead body took a hit (V2-PLAN 14): a puff, a thud, a little shake (none with reduced motion)
-    prevBodyHits = octo.bodyHits;
-    particles.deathPoof(octo.x, octo.y, '#ffd9e0'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12);
-  }
-  if (V2 && octo.bouncedThisStep) { particles.bouncePuff(octo.bounceX, octo.bounceY, octo.bounceNx, octo.bounceNy); particles.shakeFx(1.5, 0.12); }
-  prevHearts = octo.hearts;
+  usePlayer(fp);
   decor.update(dt, resident);
   // v2 hub and tutorial: no enemies, and the Beholder timer never runs
-  enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, octo, world, resident, V2 ? props : null);
+  enemies.update(dt, V2 && isSafeState(run) ? 0 : sim.time, worldOctos(), world, resident, V2 ? props : null);
   if (questClear) { // enemies spawn on the first update: keep the quest objective clear of them (silently)
     for (let k = 0; k < questClear.length; k += 2) enemies.despawnNear(questClear[k], questClear[k + 1], QUEST_CLEAR_R);
     questClear = null;
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
-  if (V2) { addBlocks(world.residentChunks()); syncBody(); props.step(dt, world, octo, enemyAll); syncBody(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) { damage.tick(dt); infight.tick(dt); }
   if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
-  if (V2 && !entry && !octo.hidden) stepHandWorld(dt); // the held thing follows the tentacles; thrown things hit what they meet
-  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, octo, world, infight);
+  if (V2) for (const p of ps) { usePlayer(p); if (!(entry && entry.p === p) && !octo.hidden) stepHandWorld(dt, p === ps[0]); } // the held thing follows the tentacles; thrown things hit what they meet
+  usePlayer(fp);
+  if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, worldOctos(), world, infight);
   if (V2 && liveWorld()) {
-    hazards.update(dt, sim.time, octo, world, resident);
+    hazards.update(dt, sim.time, worldOctos(), world, resident);
     for (const ev of hazards.events) {
       if (ev.type === 'rockLanded') particles.bombDebris(ev.x, ev.y);
       else if (ev.type === 'rockImpact') chain.emit('boulder', ev.x, ev.y, ev.chain >= 0 ? ev : null, ev.byOcto); // chain.js: what it hit goes off
@@ -996,35 +1051,26 @@ function step(dt) {
       }
     }
   }
-  if (V2) { spellFx.update(dt, octo); handleSpellFxEvents(); } // Delayed motes, coral growing and crumbling, an Anchor landing
-  if (V2 && liveWorld()) { handleCreatureEvents(); creatures.update(dt, octo, world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
-  if (V2 && liveWorld()) { loot.update(dt, octo, world, resident); handleLootEvents(); embedded.update(dt, octo, world, resident); handleEmbedEvents(); bakeEmbedded(); }
+  if (V2) { spellFx.update(dt, worldOctos()); handleSpellFxEvents(); } // Delayed motes, coral growing and crumbling, an Anchor landing
+  if (V2 && liveWorld()) { handleCreatureEvents(); creatures.update(dt, worldOctos(), world, resident); handleCreatureEvents(); } // first what the hazards and blocks did to them this step
+  if (V2 && liveWorld()) { loot.update(dt, worldOctos(), world, resident); handleLootEvents(); embedded.update(dt, worldOctos(), world, resident); handleEmbedEvents(); bakeEmbedded(); }
   if (autofire) autofire.update(dt, octo, world, enemies);
   // M7-2: continuous swim-whoosh and Beholder-drone levels, driven every
   // step (a no-op until the first input creates the audio nodes).
   const beholder = enemies.beholder();
-  dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - octo.x, beholder.y - octo.y) / DREAD_RANGE) : 0;
+  const bo = beholder && !solo ? oOf(nearP(beholder.x, beholder.y)) : octo; // co-op: the drone is for the player nearest the Beholder
+  dreadLevel = beholder ? Math.max(0, 1 - Math.hypot(beholder.x - bo.x, beholder.y - bo.y) / DREAD_RANGE) : 0;
   if (!transitioning) { // r41: nothing new starts while one level is being torn down
     audio.setSwimIntensity(Math.hypot(octo.vx, octo.vy) / SWIM_MAX_SPEED);
     audio.setBeholderDread(Math.max(dreadLevel, warnDrone()));
   }
   if (V2 && liveWorld()) { chain.step(dt); handleChainEvents(); } // chain.js: links due now go off (a bomb set off here explodes just below)
-  bombs.update(dt, world, octo, V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
+  bombs.update(dt, world, worldOctos(), V2 ? damage : enemies); // v2: the shared damage entry hits every creature body by the table
   if (world.fresh) world.fresh.update(dt);
   blastLog.length = 0;
-  if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below
-    inkPhys.props = props; inkPhys.corpses = corpses; inkResident = resident;
-    inkJet.update(dt, world, inkTargets(), inkHurt, inkPhys); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
-    for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
-    if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
-    if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
-    if (inkJet.events.nSplat && shopSt) inkSplatWares(); // Daniel 2026-10-08: shooting a ware off its pedestal is theft
-    if (quest && inkJet.events.nSplat) for (let i = 0; i < inkJet.events.nSplat; i++) questInk(quest, inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]); // a caged critter's cage breaks
-    if (inkJet.events.nProp && liveWorld()) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
-      let broke = false;
-      for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
-      if (broke) handleLootEvents();
-    }
+  if (V2) { // the ink jet after the enemies' own step: its kills join this step's enemy events below (local co-op: each player's jet)
+    for (const p of ps) { usePlayer(p); stepInkJet(dt, resident); }
+    usePlayer(fp);
     inkClouds.update(dt, currentAt);
     stepJuice(dt);
   }
@@ -1032,7 +1078,8 @@ function step(dt) {
     if (ev.type !== 'exploded') continue;
     blastLog.push(ev.x, ev.y);
     if (V2) { inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); spellFx.blast(ev.x, ev.y, BOMB_RADIUS); } // SPELLS-PICK: a blast blows an ink cloud out and ends a Lure
-    const bd = Math.hypot(ev.x - octo.x, ev.y - octo.y);
+    const near = solo ? octo : oOf(nearP(ev.x, ev.y)); // co-op: the blast feels as loud as it is for the nearest player
+    const bd = Math.hypot(ev.x - near.x, ev.y - near.y);
     particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
     if (V2) particles.blastFeel(ev.x, ev.y, bd);
@@ -1074,21 +1121,45 @@ function step(dt) {
   if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
   if (V2) handleCrumbles(dt);
   particles.update(dt, solidForSight);
-  if (snap.bomb.pressed && !octo.dead && !entry && !octo.hidden) placeBomb(snap, snap.src ? snap.src.bomb : 'key'); // B / X: the keyboard quick bomb (dropped)
+  for (const p of ps) { // B / X: the keyboard quick bomb (dropped)
+    usePlayer(p);
+    const s = p.snap;
+    if (s.bomb.pressed && !octo.dead && !(entry && entry.p === p) && !octo.hidden) placeBomb(s, s.src ? s.src.bomb : 'key');
+  }
+  usePlayer(fp);
 
-  if (V2) syncBody(); // blasts and jets after the props step reached the octopus record: hand them to the body
+  if (V2) syncBodies(); // blasts and jets after the props step reached the octopus record: hand them to the body
+  if (entry) usePlayer(entry.p);
   endOfStepEntry(); // r45: the entry's pose wins over anything that touched the body this step; the level changes here when it is over
+  const lp = solo ? ps[0] : focusP();
+  usePlayer(lp);
 
   const depth = Math.max(0, world.depth() - world.startY);
-  if (!octo.dead) liveScore = computeScore(depth, pickups.totals, runKills); // a sinking corpse scores no depth
+  const allOut = solo ? octo.dead : everyoneDead();
+  if (!allOut) liveScore = computeScore(depth, pickups.totals, runKills); // a sinking corpse scores no depth
 
-  if (octo.dead && !octo.gameoverEmitted && octo.deathTimer === 0) {
+  if (allOut && !octo.gameoverEmitted && octo.deathTimer === 0) {
     octo.gameoverEmitted = true;
     const rec = recordRun(liveScore);
     bestScore = rec.best;
     if (V2) { const q = canQuickRestart(run); ui.setGameOverLabels('The dark took you', q ? 'Restart run' : 'Back to the hub', q ? 'Back to the hub' : undefined); } // the tutorial: back to the hub only
     ui.showGameOver(liveScore, bestScore, V2 ? deathDetail() : undefined);
     window.dispatchEvent(new CustomEvent('gameover', { detail: { time: sim.time, score: liveScore, best: bestScore } }));
+  }
+}
+/** One player's ink jet for this step (local co-op: called with each player swapped in). */
+function stepInkJet(dt, resident) {
+  inkPhys.props = props; inkPhys.corpses = corpses; inkResident = resident;
+  inkJet.update(dt, world, inkTargets(), inkHurt, inkPhys); // enemies, plus the shopkeepers (ink barely scratches them, and angers them)
+  for (let i = 0; i < inkJet.events.nSplat; i++) particles.inkSplat(inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1], inkJet.events.splatDir[i * 2], inkJet.events.splatDir[i * 2 + 1], inkJet.events.splatOn[i] === 1);
+  if (inkJet.events.hits && !prefersReducedMotion()) hitStop = Math.max(hitStop, 0.03); // a hair of freeze on an ink hit
+  if (inkJet.events.nSplat) inkSplatPeople(); // V2-PLAN 16: a blob that splats on a calm person hurts and angers them
+  if (inkJet.events.nSplat && shopSt) inkSplatWares(); // Daniel 2026-10-08: shooting a ware off its pedestal is theft
+  if (quest && inkJet.events.nSplat) for (let i = 0; i < inkJet.events.nSplat; i++) questInk(quest, inkJet.events.splat[i * 2], inkJet.events.splat[i * 2 + 1]); // a caged critter's cage breaks
+  if (inkJet.events.nProp && liveWorld()) { // a blob that hits a pot or a clam breaks it, as a dash or a blast would
+    let broke = false;
+    for (let i = 0; i < inkJet.events.nProp; i++) broke = loot.hitProp(inkJet.events.propHit[i], 'ink') || broke;
+    if (broke) handleLootEvents();
   }
 }
 // --- fragile terrain (fragile.js): fish-bone tiles broken this step by a dash, a projectile, a flung prop, a bomb or a
@@ -1120,7 +1191,7 @@ let ragdoll = createRagdoll();
 function updateRagdoll() {
   ragdoll.update(octo, props);
   // dead: the death screen is laid out now (invisible) so the camera frames the body before the panel shows
-  if (octo.dead && !octo.deathLaidOut) { octo.deathLaidOut = true; if (!ui.isGameOverShown()) ui.prepareGameOver(); }
+  if (octo.dead && !octo.deathLaidOut && everyoneDead()) { octo.deathLaidOut = true; if (!ui.isGameOverShown()) ui.prepareGameOver(); }
 }
 function syncBody(dt = 0) { ragdoll.sync(octo, props, dt); }
 
@@ -1130,7 +1201,7 @@ function syncBody(dt = 0) { ragdoll.sync(octo, props, dt); }
 const DROP_CURSOR_R = 1.0; // tiles: a click this close to the octopus drops the bomb instead of throwing it
 function bombAim(snap, src) {
   if (src === 'pad') return snap.aim && snap.aim.active ? unitOf(snap.aim) : null; // the aim stick throws it, else it drops
-  if (src === 'mouse' && input.mouse.seen) {
+  if (src === 'mouse' && input.mouse.seen && mouseMine()) {
     const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
     const dx = w.x - octo.x, dy = w.y - octo.y, l = Math.hypot(dx, dy);
     return l > DROP_CURSOR_R ? { x: dx / l, y: dy / l } : null;
@@ -1157,7 +1228,7 @@ let hubBombSaidAt = -99;
 /** The way a thrown thing goes: at the cursor with a mouse, along the move keys / stick, else forward (null). */
 function throwAim(snap) {
   if (snap.aim && snap.aim.active) return { x: snap.aim.x, y: snap.aim.y }; // a pad: the aim stick, else the swim stick below
-  if (snap.mode !== 'touch' && snap.mode !== 'pad' && input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen) { // anyone who uses the mouse aims throws with it (F is a key)
+  if (snap.mode !== 'touch' && snap.mode !== 'pad' && (coop() || (input.mode() !== 'touch' && input.mode() !== 'pad')) && input.mouse.seen && mouseMine()) { // anyone who uses the mouse aims throws with it (F is a key)
     const w = cursorWorld();
     if (w && Math.hypot(w.x - octo.x, w.y - octo.y) > 0.3) return { x: w.x - octo.x, y: w.y - octo.y };
   }
@@ -1182,7 +1253,7 @@ function hotbar() { // controls 2026-10-08: bombs are a hotbar stack; Daniel: sl
 }
 /** The cursor as a world point, or null when the mouse has not been seen. */
 function cursorWorld() {
-  if (!input.mouse.seen) return null;
+  if (!input.mouse.seen || !mouseMine()) return null; // local co-op: the mouse belongs to the keyboard player only
   return screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
 }
 const SPELL_REACH = 3; // tiles: a spell aimed with the mouse lands at the cursor, at most this far out (and short of rock)
@@ -1294,8 +1365,8 @@ const handCtx = {
   thrownHit: (x, y, r, vx, vy, dmg, rec) => thrownHit(x, y, r, vx, vy, dmg, rec),
 };
 /** After the physics of the step: the held thing in the tentacles, thrown things in flight, the target for the tell. */
-function stepHandWorld(dt) {
-  if (keeperNotice > 0) keeperNotice = Math.max(0, keeperNotice - dt);
+function stepHandWorld(dt, first = true) {
+  if (first && keeperNotice > 0) keeperNotice = Math.max(0, keeperNotice - dt); // (local co-op: once per step, not per player)
   handAttach(hand, octo, handCtx);
   stepFlying(hand, dt, handCtx);
   takeHandEvents();
@@ -1362,10 +1433,12 @@ function bodyJuice(x, y, kind, n) { juiceDrops.leak(x, y, n); }
 /** Fish juice droplets: pulled in within JUICE.magnetR, poured into the jar on touch (a full jar leaves them be). */
 function stepJuice(dt) {
   slurpCool = Math.max(0, slurpCool - dt);
-  juiceDrops.update(dt, octo, world, juiceCap() - run.juice, currentAt);
+  const co = coop(); // local co-op: each player's own jar
+  juiceDrops.update(dt, co ? worldOctos() : octo, world, co ? juiceRooms() : juiceCap() - run.juice, currentAt);
   const ev = juiceDrops.events;
   if (!ev.collected) return;
-  addJuice(run, ev.collected);
+  if (co) { const ps = players().slice(); for (let k = 0; k < ps.length; k++) if (ev.collectedBy[k]) withP(ps[k], () => addJuice(run, ev.collectedBy[k])); }
+  else addJuice(run, ev.collected);
   for (let i = 0; i < ev.n; i++) particles.pickupSparkle(ev.xy[i * 2], ev.xy[i * 2 + 1], '#a98ad8');
   if (slurpCool <= 0) { sfx.slurp(); slurpCool = 0.09; }
   discover('item-juice'); journal.bump('item-juice', STAT_COLLECTED);
@@ -1445,8 +1518,12 @@ function render(alpha, frameMs) {
   const w = canvas.width, h = canvas.height;
   const resident = world.residentChunks();
   const depth = Math.max(0, world.depth() - world.startY);
+  usePlayer(focusP()); // local co-op: the frame is drawn around the focus player (solo: player 1)
+  renderAlpha = alpha;
   const hv = heldViewFor(alpha), hh = hv ? hand.held : null;
+  const cam = coop() ? coopCamera(alpha, w, h, frameMs) : null;
   renderer.render(w, h, octo, alpha, sim.time, frameMs / 1000, {
+    follow: cam ? cam.follow : null, zoom: cam ? cam.zoom : 1, octos: cam ? cam.octos : null, eachOcto: cam ? colourFor : null,
     skipEnemy: hh && hh.enemy ? hh.enemy : null, skipBomb: hh && hh.bomb ? hh.bomb : null, // the held thing is drawn after the octopus (drawHeld)
     warmOnly: holdDark, warmGroup: holdDark ? warmPhase() : 0, // behind the dark screen: a set-up frame, a frame of the simulation's first run, then one group of the scene, in turn
     resident,
@@ -1514,6 +1591,7 @@ function render(alpha, frameMs) {
   });
   if (V2) {
     hotbarUI.update(hotbarState());
+    coopHud();
     if (++carriedTick % 30 === 0 && !transitioning) noteCarried(); // about twice a second: a new carried thing is discovered and counted for this dive
     const ci = castableIndex(hotbar());
     const price = ci >= 0 ? slotPrice(hotbar().slots[ci].ids) : 0;
@@ -1565,6 +1643,368 @@ function deathFocus(w, h) {
   return { x0: x0 * dpr, y0: y0 * dpr, x1: x1 * dpr, y1: y1 * dpr, strict: ui.isGameOverShown() };
 }
 
+// --- local co-op, Phase 1 (players.js, octomancer-web/MULTIPLAYER-PLAN.md) ----------------------------------------------------
+// The roster says who plays on which device; each player's runtime record below holds what used to be main.js's single octopus
+// state (the octopus, its hand, ink jet, aim, ragdoll body, hotbar, carried items, jar). One player at a time is "current":
+// usePlayer(p) swaps that player's record into the module variables (octo, hand, inkJet, lastAim, ragdoll, prevHearts,
+// prevBodyHits, trailTimer and run.hotbar / run.items / run.juice), so every function written for the one octopus works for
+// whichever player it is called for. Solo is the roster with one entry: usePlayer never swaps and every step runs as before.
+// Outside the step the current player is the focus: the first one alive (solo: player 1), or the last to die.
+const roster = createRoster();
+const PR = [null, null, null, null]; // runtime record per roster slot
+function newRuntime(slot) {
+  return { slot, octo: null, hand: null, inkJet: null, lastAim: { x: 1, y: 0 }, prevHearts: 0, prevBodyHits: 0, trailTimer: 0, ragdoll: null, hotbar: null, items: [], juice: 0, snap: NO_INPUT, movedAt: 0, deadSeen: false, diedAt: 0 };
+}
+PR[0] = newRuntime(0);
+let cur = PR[0];
+saveCur(); // player 1's record holds the state made above
+function saveCur() {
+  const p = cur;
+  p.octo = octo; p.hand = hand; p.inkJet = inkJet; p.lastAim = lastAim; p.prevHearts = prevHearts; p.prevBodyHits = prevBodyHits; p.trailTimer = trailTimer; p.ragdoll = ragdoll;
+  if (run) { p.hotbar = run.hotbar; p.items = run.items; p.juice = run.juice; }
+}
+function usePlayer(p) {
+  if (!p || p === cur) return;
+  saveCur();
+  cur = p;
+  octo = p.octo; hand = p.hand; inkJet = p.inkJet; lastAim = p.lastAim; prevHearts = p.prevHearts; prevBodyHits = p.prevBodyHits; trailTimer = p.trailTimer; ragdoll = p.ragdoll;
+  if (run) { run.hotbar = p.hotbar; run.items = p.items; run.juice = p.juice; }
+}
+/** Run `fn` with player `p` current, then put the one before back (solo: just fn). */
+function withP(p, fn) { const was = cur; usePlayer(p); try { return fn(); } finally { usePlayer(was); } }
+const plist = [];
+/** The players' runtime records in slot order (a shared array: read it, do not keep it). */
+function players() { plist.length = 0; for (let i = 0; i < 4; i++) if (roster.slots[i] && PR[i]) plist.push(PR[i]); return plist; }
+function coop() { return !isSolo(roster); }
+function oOf(p) { return p === cur ? octo : p.octo; }
+const octoArr = [];
+/** What the world systems get: the octopus itself (solo, exactly as before) or every player's octopus. */
+function worldOctos() {
+  const ps = players();
+  if (ps.length === 1) return oOf(ps[0]);
+  saveCur();
+  octoArr.length = 0;
+  for (const p of ps) octoArr.push(p.octo);
+  return octoArr;
+}
+const pickArr = [];
+/** The pickups' view: a dead body collects nothing. */
+function pickupOctos() {
+  const w = worldOctos();
+  if (!Array.isArray(w)) return w.dead ? NOBODY : w;
+  pickArr.length = 0;
+  for (const o of w) pickArr.push(o.dead ? NOBODY : o);
+  return pickArr;
+}
+function everyoneDead() { for (const p of players()) if (!oOf(p).dead) return false; return true; }
+/** The first player alive, else the last one who died (solo: player 1). */
+function focusP() {
+  const ps = players();
+  if (ps.length === 1) return ps[0];
+  let last = null;
+  for (const p of ps) { if (!oOf(p).dead) return p; if (!last || p.diedAt > last.diedAt) last = p; }
+  return last;
+}
+/** The live player nearest (x, y) (solo: player 1). */
+function nearP(x, y) {
+  const ps = players();
+  if (ps.length === 1) return ps[0];
+  let best = null, bd = Infinity;
+  for (const p of ps) { const o = oOf(p); if (!targetable(o)) continue; const d = (o.x - x) * (o.x - x) + (o.y - y) * (o.y - y); if (d < bd) { bd = d; best = p; } }
+  return best || focusP();
+}
+/** Each player's input for this step: the keyboard + mouse snapshot for the keyboard player, each pad's own for a pad player. */
+function readSnaps(ps) {
+  const kb = input.snapshot(); // (in co-op no pad writes into the merged snapshot: gamepad.js has no primary pad then)
+  if (kb.mode !== 'test' && input.mode() === 'pad') kb.mode = input.kbMode();
+  for (const p of ps) {
+    const dev = roster.slots[p.slot].device;
+    p.snap = dev === KEYBOARD ? kb : pad.snapshotOf(dev) || NO_INPUT;
+  }
+}
+/** The mouse belongs to the keyboard player (plan decision 13): solo, or the current player is on the keyboard. */
+function mouseMine() { return !coop() || roster.slots[cur.slot].device === KEYBOARD; }
+const roomArr = [];
+function juiceRooms() { saveCur(); const ps = players(); roomArr.length = ps.length; for (let k = 0; k < ps.length; k++) roomArr[k] = juiceCap() - ps[k].juice; return roomArr; }
+function syncBodies(dt = 0) { const was = cur; for (const p of players()) { usePlayer(p); syncBody(dt); } usePlayer(was); }
+function partyThrows() { saveCur(); let n = 0; for (const p of players()) n += p.hand.throws; return n; }
+const ptsArr = [];
+function partyPts() { saveCur(); ptsArr.length = 0; for (const p of players()) if (!p.octo.dead) ptsArr.push({ x: p.octo.x, y: p.octo.y }); return ptsArr; }
+function partySees() { for (const p of players()) if (oOf(p).seeBuried) return true; return false; }
+
+/** A new octopus's v2 feel, carried items and colour. */
+function setupOcto(p) {
+  const o = p.octo;
+  o.pi = p.slot; o.tint = PLAYER_COLOURS[p.slot].body || null;
+  if (V2) { o.feel = true; o.sink = sinkNow; applyCarried(o, p.items); }
+}
+const START_OFFS = [0.9, -0.9, 1.8, -1.8, 2.7, -2.7];
+/** Put octopus `o` beside (x, y) (the k-th one: a different side each), in open water with no rock between. */
+function placeNear(o, x, y, k) {
+  const n = START_OFFS.length;
+  for (let j = 0; j < n; j++) {
+    const dx = START_OFFS[(k - 1 + j + n) % n], nx = x + dx;
+    if (!world.isSolid(nx, y) && !world.isSolid(nx, y - 0.35) && !world.isSolid(nx, y + 0.35) && !world.isSolid(x + dx / 2, y)) { o.x = o.prevX = nx; o.y = o.prevY = y; return; }
+  }
+  o.x = o.prevX = x; o.y = o.prevY = y;
+}
+/** resetWorld made the first player's octopus: the others get theirs beside the start. */
+function resetOthers() {
+  const ps = players();
+  if (ps.length < 2) return;
+  saveCur();
+  let k = 0;
+  for (const p of ps) {
+    if (p === cur) continue;
+    k++;
+    p.octo = createOctopus(world.startX, world.startY);
+    placeNear(p.octo, world.startX, world.startY, k);
+    p.hand = createHand(); p.inkJet = createInkJet(); p.ragdoll = createRagdoll(); p.lastAim = { x: 1, y: 0 };
+    p.prevBodyHits = 0; p.trailTimer = 0; p.deadSeen = false; p.diedAt = 0;
+    setupOcto(p);
+    p.prevHearts = p.octo.hearts;
+  }
+}
+/** Back rooms with one camera: the others come through the curtain with the player who used it. */
+function bringOthers(x, y) {
+  let k = 0;
+  for (const p of players()) {
+    if (p === cur || p.octo.dead) continue;
+    const o = p.octo;
+    placeNear(o, x, y, ++k); o.vx = o.vy = 0;
+    p.ragdoll.place(o, props, o.x, o.y);
+  }
+}
+
+// --- joining and leaving (pause menu only, plan decisions 3 and 4) ---
+let modeNow = '', modeBefore = '', modeAt = -1e9;
+input.onModeChange((m) => { if (m !== modeNow) { modeBefore = modeNow; modeNow = m; modeAt = performance.now(); } });
+/** The device solo player 1 is on: the one it used last before the press that is joining now. */
+function p1Device() {
+  const m = performance.now() - modeAt < 80 ? modeBefore : (input.mode() || 'keyboard');
+  return m === 'pad' && pad.primaryKey() ? pad.primaryKey() : KEYBOARD;
+}
+function pauseMenuUp() { return manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !looksOpen && !journalScreen.isOpen(); }
+const coopUI = createCoopUI(hudEl, { onRemove: (slot) => removeSlot(slot) });
+/** Device `dev` claims the next free slot (or its own, when it played this run: its record comes back). */
+function tryJoin(dev) {
+  if (!V2 || !run || transitioning || entry || pull || !pauseMenuUp()) return false;
+  saveCur();
+  const r = joinDevice(roster, dev, p1Device());
+  if (!r) return false;
+  const p = PR[r.player.slot] = newRuntime(r.player.slot);
+  const rec = r.record;
+  p.hand = createHand(); p.inkJet = createInkJet(); p.ragdoll = createRagdoll();
+  p.items = rec ? rec.items.slice() : [];
+  p.hotbar = rec ? rec.hotbar : null; // null: hotbar() makes the starting bar (bombs in slot 1, Ink Cloud)
+  p.juice = rec ? rec.juice : juiceCap(); // a full jar
+  p.octo = createOctopus(world.startX, world.startY);
+  setupOcto(p);
+  const o = p.octo, f = oOf(focusP());
+  if (rec) { o.heartMax = Math.max(o.heartMax, rec.heartMax | 0); o.hearts = Math.min(o.heartMax, rec.hearts | 0); o.bombs = rec.bombs | 0; }
+  else { o.hearts = Math.min(o.heartMax, JOIN_HEARTS); o.bombs = JOIN_BOMBS; }
+  placeNear(o, f.x, f.y, players().length - 1);
+  if (rec && rec.dead) { killOctopus(o, rec.cause || 'unknown'); o.deathTimer = 0; o.gameoverEmitted = true; p.deadSeen = true; p.diedAt = -1; } // out until the next level, as they left
+  if (rec && rec.dead && run.state === S_HUB) { o.dead = false; o.hearts = REVIVE_HEARTS; } // (never: records go at the hub; kept safe)
+  p.prevHearts = o.hearts;
+  sfx.chime();
+  for (let i = 0; i < 4; i++) particles.trailBubble(o.x + (i - 1.5) * 0.2, o.y - 0.3 - i * 0.15);
+  refreshRows();
+  return true;
+}
+/** A player leaves: what they carried is kept under their device for the rest of the run. */
+function removeSlot(slot, unplugged = false) {
+  const p = PR[slot];
+  if (!p || !roster.slots[slot] || players().length <= 1) return false;
+  if (p === cur) usePlayer(players().find((q) => q !== p));
+  saveCur();
+  const o = p.octo;
+  if (p.hand && p.hand.held) handDrop(p.hand, o, handCtx);
+  if (o.bodyIdx >= 0) { props.remove(o.bodyIdx); o.bodyIdx = -1; }
+  if (pull) { for (const q of players()) { q.octo.sealed = false; q.octo.hidden = false; } pull = null; } // the pull stops
+  rosterRemove(roster, slot, { hearts: o.hearts, heartMax: o.heartMax, bombs: o.bombs, juice: p.juice, hotbar: p.hotbar, items: p.items.slice(), dead: !!o.dead, cause: o.cause || '' });
+  PR[slot] = null;
+  usePlayer(focusP());
+  dropTints(players().map((q) => PLAYER_COLOURS[q.slot].body).filter(Boolean)); // the leaver's colour sheet goes (built again if they come back)
+  if (unplugged && !loop.paused && !everyoneDead()) { manualPaused = true; applyPaused(); }
+  refreshRows();
+  return true;
+}
+function refreshRows() {
+  saveCur();
+  const rows = players().map((p) => {
+    const o = p.octo, d = roster.slots[p.slot].device;
+    return { slot: p.slot, device: d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
+  });
+  coopUI.setRows(rows, rows.length >= MAX_PLAYERS);
+}
+const hudRows = [];
+let hudCoop = false;
+/** The HUD strips (coop-ui.js), one per player, every frame (the strips write only what changed). */
+function coopHud() {
+  if (!coop()) { if (hudCoop) { hudCoop = false; hudRows.length = 0; coopUI.update(hudRows); } return; }
+  hudCoop = true;
+  saveCur();
+  const ps = players();
+  hudRows.length = ps.length;
+  for (let k = 0; k < ps.length; k++) {
+    const p = ps[k], o = p.octo, r = hudRows[k] || (hudRows[k] = {});
+    r.slot = p.slot; r.hearts = o.hearts; r.dead = !!o.dead; r.bombs = o.bombs; r.casts = castsOf(p.juice);
+    r.slotId = p.hotbar ? selectedSpell(p.hotbar) : START_SPELL;
+  }
+  coopUI.update(hudRows);
+}
+
+// --- the exit pull (plan decision 8): the hand at the whirlpool draws the other live players to it over PULL_S, then the entry
+let pull = null;
+const PP = { x: 0, y: 0 };
+function startPull(pt) {
+  if (pull || entry || transitioning) return false;
+  saveCur();
+  const list = [];
+  for (const p of players()) if (p !== cur && targetable(p.octo)) list.push({ p, x: p.octo.x, y: p.octo.y });
+  if (!list.length) return false;
+  pull = { pt, t: 0, by: cur, list };
+  octo.sealed = true; octo.vx = octo.vy = 0; // the one at the whirlpool waits there, out of harm's way like the entry
+  for (const e of list) { const o = e.p.octo; o.sealed = true; o.vx = o.vy = 0; o.swimming = false; o.dashT = 0; }
+  sfx.slurp();
+  return true;
+}
+function stepPull(dt) {
+  saveCur();
+  const pl = pull;
+  pl.t += dt;
+  for (const e of pl.list) {
+    const o = e.p.octo;
+    if (o.hidden) continue;
+    o.prevX = o.x; o.prevY = o.y;
+    pullPos(e.x, e.y, pl.pt.x, pl.pt.y, pl.t, PP); // a current: it eases in and goes through anything
+    o.x = PP.x; o.y = PP.y; o.vx = o.vy = 0;
+    if (o.bodyIdx >= 0) e.p.ragdoll.place(o, props, o.x, o.y);
+    if (pl.t >= PULL_S) o.hidden = true;
+    else if (((pl.t / dt) | 0) % 6 === 0) particles.trailBubble(o.x, o.y);
+  }
+  const bo = pl.by.octo;
+  bo.vx = bo.vy = 0;
+  if (pl.t >= PULL_S) { pull = null; withP(pl.by, () => { octo.sealed = false; finishPortal(pl.pt); }); }
+}
+
+/** One player's own part of the v2 step (local co-op: every player but the focus, who runs the whole of stepV2). */
+function stepV2Player(snap) {
+  octo.safe = run.state === S_HUB && !MOVETEST;
+  if (entry) return;
+  if (run.state === S_BIOME) stepSiphon();
+  if (run.state === S_REST) stepRestSpring();
+  if (run.state === S_BIOME && back) stepBack(true);
+  if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
+  stepSealed(world.level);
+}
+function stepSiphon() {
+  if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
+    siphonSpot.taken = true;
+    if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
+    particles.pickupSparkle(siphonSpot.x, siphonSpot.y, '#cfe0b0'); sfx.chime();
+  }
+}
+function stepSealed(lv) {
+  const sealedHere = run.state === S_HUB && !MOVETEST && hubSeal() > 0;
+  if (sealedHere && world.reachedExit(octo.x, octo.y)) sealedBump(lv); // the kelp holds the dive shut: bounced back up, the plank and the prompt say why
+}
+
+// --- drawing: the shared camera (plan decision 1), each octopus in its colour, each player's hand and aim
+let camZoom = 1, renderAlpha = 1;
+const camFollow = { prevX: 0, x: 0, prevY: 0, y: 0, vx: 0, vy: 0 };
+const camPts = [], camPool = [], camOctos = [];
+const camOut = { follow: camFollow, zoom: 1, octos: camOctos };
+const ZOOM_RATE = 3; // 1/s: the zoom eases out and in, never snaps
+function coopCamera(alpha, w, h, frameMs) {
+  saveCur();
+  const ps = players();
+  camPts.length = 0; camOctos.length = 0;
+  const hub = !!run && run.state === S_HUB;
+  let lead = 0, moved = -1;
+  for (const p of ps) {
+    const o = p.octo;
+    camOctos.push(o);
+    if (o.dead || o.hidden) continue; // the dead (out until the next level) are not framed; the pulled ones are, until they vanish
+    const pt = camPool[camPts.length] || (camPool[camPts.length] = { x: 0, y: 0 });
+    pt.x = o.prevX + (o.x - o.prevX) * alpha; pt.y = o.prevY + (o.y - o.prevY) * alpha;
+    if (hub && p.movedAt > moved) { moved = p.movedAt; lead = camPts.length; } // the hub: the last one who moved leads
+    camPts.push(pt);
+  }
+  const k = 1 - Math.exp(-ZOOM_RATE * Math.max(0, frameMs) / 1000);
+  if (!camPts.length) { camOut.follow = null; camOut.zoom = camZoom; return camOut; } // everyone is out: the death camera on the last body
+  if (!hub && world.exitX >= 0) lead = leaderIndex(camPts, world.exitX + 0.5, world.exitY + 0.5, 0); // a level: the one nearest the exit leads
+  const ppu = computePxPerUnit(w, h);
+  const fr = cameraFrame(camPts, w / ppu / 2, h / ppu / 2, lead);
+  camZoom += (fr.zoom - camZoom) * k;
+  if (Math.abs(fr.zoom - camZoom) < 1e-3) camZoom = fr.zoom;
+  camFollow.prevX = camFollow.x = fr.x; camFollow.prevY = camFollow.y = fr.y;
+  camOut.follow = camFollow; camOut.zoom = camZoom;
+  return camOut;
+}
+const COLOURS = PLAYER_COLOURS.map((c) => (c.body ? { body: c.body, dark: c.dark } : null));
+/** render.js eachOcto: the code-drawn bits of the octopus being drawn (the hand's arm, gib chunks) take its player's colour. */
+function colourFor(o, on) { setDrawColours(on && o && o.tint ? COLOURS[o.pi] : null); }
+/** Draw something once per player with that player current (their hand, held thing, anchor) and in their colour. Solo: once. */
+function forEachPlayerDraw(fn) {
+  if (!coop()) { fn(); return; }
+  const was = cur;
+  for (const p of players()) { usePlayer(p); heldViewFor(renderAlpha); colourFor(octo, true); fn(); }
+  colourFor(null, false);
+  usePlayer(was); heldViewFor(renderAlpha);
+}
+/** The keyboard player's cursor ring and each pad player's aim ring (2.5 tiles out along the aim stick). */
+function drawCoopReticles(c, camera, cw, ch, t) {
+  for (const p of players()) {
+    const o = oOf(p);
+    if (o.dead || o.hidden) continue;
+    const dev = roster.slots[p.slot].device;
+    if (dev === KEYBOARD) { if (input.mouse.seen && input.kbMode() === 'mouse') drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t); }
+    else if (p.snap && p.snap.aim && p.snap.aim.active) {
+      const a = p.snap.aim, al = Math.hypot(a.x, a.y) || 1;
+      const sp = worldToScreen(camera, cw, ch, o.x + (a.x / al) * 2.5, o.y + (a.y / al) * 2.5);
+      drawReticle(c, sp.x, sp.y, camera.pxPerUnit, t);
+    }
+  }
+}
+
+/** Local co-op test hooks (tests/coop-cdp.js). */
+function coopHooks() {
+  const withSlot = (slot, fn) => { const p = PR[slot]; return p && roster.slots[slot] ? withP(p, fn) : null; };
+  return {
+    /** Several fake standard pads at once: `states` = [state | null, ...] by pad index (gamepad.js fakePad); null unplugs all. */
+    pads(states, polls = 1) {
+      window.__octoFakePads = states ? states.map((st, i) => (st ? fakePad(st, i) : null)) : null;
+      const f = () => (window.__octoFakePads ? window.__octoFakePads : [window.__octoFakePad || null, null, null, null]);
+      f.__octoFake = true;
+      try { Object.defineProperty(navigator, 'getGamepads', { value: f, configurable: true, writable: true }); } catch (e) { navigator.getGamepads = f; }
+      for (let i = 0; i < polls; i++) pad.poll(1 / 60);
+      return pad.others();
+    },
+    /** The roster: each player (slot, device, colour, octopus state, jar, bar), the left players' records, the shared camera. */
+    coop() {
+      saveCur();
+      return {
+        players: players().map((p) => ({ slot: p.slot, device: roster.slots[p.slot].device, colour: PLAYER_COLOURS[p.slot].id, tint: p.octo.tint || null,
+          x: p.octo.x, y: p.octo.y, vx: p.octo.vx, vy: p.octo.vy, hearts: p.octo.hearts, heartMax: p.octo.heartMax, bombs: p.octo.bombs, juice: p.juice,
+          items: p.items.slice(), hotbar: p.hotbar ? p.hotbar.slots.map((s) => s.ids.slice()) : null, dead: !!p.octo.dead, hidden: !!p.octo.hidden, sealed: !!p.octo.sealed })),
+        records: [...roster.records.entries()].map(([d, r]) => ({ device: d, slot: r.slot, hearts: r.hearts, bombs: r.bombs, dead: r.dead })),
+        camera: { zoom: camZoom, x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, solo: computePxPerUnit(canvas.width, canvas.height) },
+        pull: pull ? { t: pull.t } : null, gameOver: ui.isGameOverShown(), primary: pad.primaryKey(), p1: p1Device(), modes: [modeBefore, modeNow, Math.round(performance.now() - modeAt)], others: pad.others(), tints: tintStats(),
+        rows: [...document.querySelectorAll('.octo-coop-row')].map((r) => r.textContent), add: (document.querySelector('.octo-coop-add') || {}).textContent || '',
+        strips: [...document.querySelectorAll('.octo-coop-strip')].filter((e) => e.offsetParent !== null).map((e) => e.textContent),
+      };
+    },
+    join(dev) { return tryJoin(dev); },
+    removePlayer(slot) { return removeSlot(slot); },
+    killPlayer(slot, cause = 'test') { return withSlot(slot, () => { killOctopus(octo, cause); octo.deathTimer = 0; return true; }); },
+    teleportPlayer(slot, x, y) { return withSlot(slot, () => { octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0; ragdoll.place(octo, props, x, y); return { x, y }; }); },
+    setPlayerHearts(slot, n) { return withSlot(slot, () => { octo.hearts = prevHearts = Math.max(1, Math.min(octo.heartMax, n | 0)); return octo.hearts; }); },
+    pressHandOf(slot) { return withSlot(slot, () => { const p = portalAt(octo); return p ? enterPortal(p) : false; }); },
+  };
+}
+
 let hudStage = V2 ? (MOVETEST ? 'Test room' : stageLabel(run)) : undefined;
 const loop = createLoop(step, render, (now) => pad.frame(now)); // controller Phase 1: the pad is read once per display frame, paused too
 const debug = createDebugOverlay(debugEl, { loop, input });
@@ -1578,7 +2018,9 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   resetPortalStates(); // r43: the tinted portal frames of the level that is going
   seed = V2 ? levelSpec(run).seed : newSeed;
   world = prebuilt || makeWorld(seed); // r43: a transition builds the world in an earlier task (during the fade-out)
+  usePlayer(players()[0]); // local co-op: the first player's octopus is made here as always, the others' in resetOthers below
   octo = createOctopus(world.startX, world.startY);
+  octo.pi = cur.slot; octo.tint = PLAYER_COLOURS[cur.slot].body || null;
   hand = createHand(); keeperNotice = 0; // whatever was in the tentacles stays behind
   if (V2) { octo.feel = true; octo.sink = sinkNow; }
   if (V2) applyCarried(octo, run.items);
@@ -1621,6 +2063,9 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   prevHearts = octo.hearts;
   prevBodyHits = 0;
   ragdoll = createRagdoll();
+  cur.deadSeen = false; cur.diedAt = 0;
+  resetOthers();
+  pull = null; camZoom = 1;
   ui.hideGameOver();
   ui.hideEnd();
   ui.setPrompt(null);
@@ -1687,7 +2132,14 @@ function v2Event(ev, cause) {
   if (!V2 || transitioning) return false;
   const prevState = run.state;
   const carry = { hearts: octo.hearts, bombs: octo.bombs };
+  saveCur();
+  const carries = players().map((p) => ({ p, hearts: p.octo.hearts, bombs: p.octo.bombs, dead: !!p.octo.dead })); // local co-op: every player
+  const itemsBefore = run.items;
   if (!runEvent(run, ev, cause, { sameSeed: ev === EV_RESTART && seededRun() })) return false;
+  if (run.items !== itemsBefore) { // a new dive or the hub (run.js): every player's carried things, bar and jar start over, and records go
+    for (const p of players()) if (p !== cur) { p.items = []; p.hotbar = null; p.juice = run.juice; }
+    clearRecords(roster);
+  }
   // Quick restart (EV_RESTART): the dive ends and a new one starts with no hub in between. Everything below that a death -> hub ->
   // dive does happens here too, in the same order (tests/restart-cdp.js compares the two).
   const quick = ev === EV_RESTART;
@@ -1722,7 +2174,10 @@ function v2Event(ev, cause) {
     timed('arrive', () => { if (run.state === S_HUB || quick) arriveInHub(); }); // a quick restart passes through the hub unseen
     if (newDive) { diveStory = { ...story }; diveDone.clear(); people.newDive(); } // a new dive: the story as it stands now
     timed('reset', () => resetWorld(0, nextWorld, true));
-    if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME && !quick) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+    if ((run.state === S_BIOME || run.state === S_REST) && prevState === S_BIOME && !quick) { // hearts and bombs come along; a player who was out revives with REVIVE_HEARTS
+      if (carries.length === 1) { octo.hearts = carry.hearts; octo.bombs = carry.bombs; prevHearts = octo.hearts; }
+      else for (const c of carries) if (PR[c.p.slot] === c.p) withP(c.p, () => { octo.hearts = c.dead ? Math.min(octo.heartMax, REVIVE_HEARTS) : c.hearts; octo.bombs = c.bombs; prevHearts = octo.hearts; });
+    }
     if (run.state === S_HUB && !MOVETEST) villageArrived(); // rooms that open for the first time: who moved in
     if (run.state === S_HUB && run.diveUnlocked) startUnlock(); // the first finished tutorial: the octopus comes out beside the dive and the kelp lets go
     timed('discover', () => discoverStatePlace());
@@ -1885,7 +2340,7 @@ function stepNpcs() {
       npcs.place(who, pl.x, pl.y, 0, hubTalk.who === r.id && talking(hubTalk.talk) ? FL_TALKING : 0);
     }
   }
-  npcs.step(octo, STEP);
+  npcs.step(worldOctos(), STEP);
   npcs.drain(onNpcEvent);
 }
 /** One thing that happened to an NPC: journal, story counters, the encounter, corpses. */
@@ -1931,36 +2386,33 @@ function stepV2(snap) {
   stepSkinGifts();
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
-    questUpdate(quest, octo, world, STEP);
+    if (quest) withP(nearP(quest.cx, quest.cy), () => questUpdate(quest, octo, world, STEP)); else questUpdate(quest, octo, world, STEP); // co-op: the nearest player
     if (quest && quest.status === ST_DONE && !quest.paid) payQuest(); // r3: freed, cage broken (and staying), or met: the outcome now
     if (quest && quest.met) diveDone.add(quest.plan.npc); // r40: once a person has spoken in a dive they are done for it (at most one cage per dive)
     if (quest && quest.met && !quest.said && quest.plan.journal) { quest.said = true; discover(quest.plan.journal); }
     if (shopSt) shopSt.keeperCalm = shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n && keepers.mode[shopSt.keeperIdx] === KM_CALM;
-    const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F (hand-kinds.js 'ware')
-    if (ev) onShopEvent(ev);
-    if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP, false)) onShopEvent(we); }
+    withP(shopSt ? nearP(shopSt.keeperX, shopSt.keeperY) : cur, () => { // local co-op: the stall watches the player nearest to it
+      const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F (hand-kinds.js 'ware')
+      if (ev) onShopEvent(ev);
+      if (shopSt) { wareEvents.length = 0; for (const we of shopWares(shopSt, props, world, octo, run.items, wareEvents, run.shells, STEP, false)) onShopEvent(we); }
+    });
     if (poolSts.length) {
       hazards.setPoolGain(poolSts.some((ps) => ps.state === PL_ACTIVE) ? 1 : POOL_IDLE_VENT); // r40: the vents only blow weakly until a wager runs
       const busy = poolSts.some((ps) => ps.state === PL_ACTIVE); // one wager at a time
-      for (const ps of poolSts) { if (busy && ps.state === PL_IDLE) continue; for (const pe of poolStep(ps, octo, run.shells, STEP)) onPoolEvent(pe, ps); }
+      for (const ps of poolSts) { if (busy && ps.state === PL_IDLE) continue; withP(nearP(ps.plan.x, ps.plan.y), () => { for (const pe of poolStep(ps, octo, run.shells, STEP)) onPoolEvent(pe, ps); }); }
     }
     if (shopSt && (seeTick & 15) === 0 && Math.hypot(octo.x - shopSt.keeperX, octo.y - shopSt.keeperY) < 9) { discover('place-shop'); discover('person-keeper'); }
     if ((seeTick & 15) === 4) for (let i = 0; i < keepers.n; i++) if (keepers.mode[i] !== KM_DEAD && Math.hypot(octo.x - keepers.x[i], octo.y - keepers.y[i]) < 9) discover('person-keeper');
-    tryTakeRune();
-    altarLv.step(STEP);
-    if (siphonSpot && !siphonSpot.taken && Math.hypot(octo.x - siphonSpot.x, octo.y - siphonSpot.y) < 0.8) {
-      siphonSpot.taken = true;
-      if (giveItem(run.items, octo, 'siphon')) { discover('item-siphon'); journal.bump('item-siphon', STAT_COLLECTED); ui.showToast('Found ' + pickupText('siphon')); }
-      particles.pickupSparkle(siphonSpot.x, siphonSpot.y, '#cfe0b0'); sfx.chime();
-    }
+    if (runeSpot) withP(nearP(runeSpot.x, runeSpot.y), () => tryTakeRune()); else tryTakeRune(); // co-op: the player nearest the pedestal
+    withP(altarLv.altar ? nearP(altarLv.altar.x, altarLv.altar.y) : cur, () => altarLv.step(STEP));
+    stepSiphon();
   }
   if (run.state === S_REST) stepRest();
   if (run.state === S_BIOME && back) stepBack();
   if (run.state === S_TUTORIAL) stepTutorial();
   if (run.state === S_BIOME || run.state === S_REST) stepPeople();
   if (run.state === S_BIOME && swift && stepSwift(swift, sim.time, octo)) earnSwift();
-  const sealedHere = run.state === S_HUB && !MOVETEST && hubSeal() > 0;
-  if (sealedHere && world.reachedExit(octo.x, octo.y)) sealedBump(lv); // the kelp holds the dive shut: bounced back up, the plank and the prompt say why
+  stepSealed(lv);
   // Daniel 2026-10-08: a whirlpool is entered only with the hand (F, the middle click, the phone's Enter): the 'portal'
   // interact kind below (portalAt / enterPortal). Swimming into one only shows the tell and the key hint.
   if (entry) return;
@@ -1980,6 +2432,7 @@ function stepV2(snap) {
     if (run.state === S_TUTORIAL) {
       const floorUp = wallIntact(lv);
       tutorialStep(tutState, octo, floorUp || stickyIntact(lv), STEP, floorUp);
+      if (coop() && (floorUp || stickyIntact(lv))) for (const p of players()) if (p !== cur && p.octo.bombs < 1) p.octo.bombs = 1; // everyone has a bomb for the walls
       const inBombRoom = lv.rooms && lv.rooms[tutState.room] && lv.rooms[tutState.room].goal === 'walls';
       if (tutState.hint && inBombRoom) { const bp = lv.prompts.find((p) => p.refillBomb); if (bp) best = bp; }
     }
@@ -2080,8 +2533,8 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
-    drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: !!octo.seeBuried, tileAt: world.tileAt, shown: false });
-    if (octo.seeBuried) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
+    drawEmbedded(c, camera, cw, ch, embedded.data, { goggles: partySees(), tileAt: world.tileAt, shown: false });
+    if (partySees()) drawPocketReveal(c, camera, cw, ch, loot.data, world.level.pockets || null, world.level.nPockets || 0, world.tileAt);
     drawLoot(c, camera, cw, ch, loot.data, t, hh && hh.li !== undefined ? hh.li : -1);
     drawCreaturesBack(c, camera, cw, ch, creatures.data, t); // (wall traps draw in v2PreWall, before the terrain)
     if (shopSt && world.level.shop && visibleAt(cullFlags('shop', 1), 0, world.level.shop.kx, world.level.shop.ky, 9)) drawShop(c, camera, cw, ch, shopSt, run.shells, t, world.tileAt);
@@ -2103,8 +2556,10 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (autofire) autofire.draw(c, camera, w2s, cw, ch);
   drawSpellFx(c, camera, cw, ch, spellFx, octo, t);
   drawJuiceDrops(c, camera, cw, ch, juiceDrops.data, t, JUICE.life);
-  inkJet.draw(c, camera, cw, ch, t);
+  if (coop()) { saveCur(); for (const p of players()) p.inkJet.draw(c, camera, cw, ch, t); } // local co-op: every player's blobs
+  else inkJet.draw(c, camera, cw, ch, t);
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 0); // the thick ink, over the creatures and under the octopus
+  forEachPlayerDraw(() => {
   if (!octo.dead && !octo.hidden && !entry) { // controls 2026-10-08: the tentacle curl toward what F would take, the arm round what it holds
     // the octopus's drawn (interpolated) position: the arm and the held thing move with the body, not with the 50 Hz steps
     const hv = heldView;
@@ -2120,6 +2575,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
       } else if (hy && input.mode() !== 'touch') drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - hy, 'F', t); // (phones: the Spell button reads Enter)
     }
   }
+  });
 }
 // --- controls 2026-10-08: what the hand holds is drawn ON TOP of the octopus (Daniel: "when you grab something ... it must be
 // on top"), and rigidly in its tentacles (Daniel: "the grabbed item jitters as we move"). Its own system skips it in the normal
@@ -2209,11 +2665,14 @@ function v2PreWall(c, camera, cw, ch) {
 /** r40: people (the hub residents, the diver, the caged critter) and their speech are drawn after the octopus, so it never hides them. */
 function v2People(c, camera, w2s, cw, ch) {
   const lv = world.level, t = sim.time;
-  drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
-  drawHeld(c, camera, w2s, cw, ch, t); // what the hand holds: over the body, gripped by its arm
+  forEachPlayerDraw(() => {
+    drawAnchorHeld(c, camera, cw, ch, octo, t); // Anchor: the iron the octopus clutches, over its body
+    drawHeld(c, camera, w2s, cw, ch, t); // what the hand holds: over the body, gripped by its arm
+  });
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
-  if (input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
+  if (coop()) { if (!holdDark) drawCoopReticles(c, camera, cw, ch, t); } // local co-op: the keyboard player's cursor, each pad player's aim
+  else if (input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   else if (input.mode() === 'pad' && input.pad.aimActive && !octo.dead && !holdDark && !octo.hidden) { // the aim stick: the same quiet ring, 2.5 tiles out
     const ax = input.pad.ax, ay = input.pad.ay, al = Math.hypot(ax, ay) || 1;
     const sp = worldToScreen(camera, cw, ch, octo.x + (ax / al) * 2.5, octo.y + (ay / al) * 2.5);
@@ -2225,8 +2684,10 @@ function v2People(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME && !(npcs && (npcs.owns(NPC_HOST) || npcGone('host')))) for (const ps of poolSts) drawPoolHost(c, camera, cw, ch, ps, t, octo.x);
   if (npcs) drawNpcs(c, camera, cw, ch, npcs, t, octo); // the ones that turned on you, their sight lines and the harpoons
   if (run.state === S_BIOME || run.state === S_TUTORIAL) { // V2-PLAN 16: the skewering spikes show through the body, the boulder sits on the pancake
-    if (octo.deathStyle === 'impale') drawImpaleOverlay(c, camera, cw, ch, octo, hazards.data, t, solidForSight);
-    drawSplatRock(c, camera, cw, ch, hazards.data, t, octo);
+    forEachPlayerDraw(() => {
+      if (octo.deathStyle === 'impale') drawImpaleOverlay(c, camera, cw, ch, octo, hazards.data, t, solidForSight);
+      drawSplatRock(c, camera, cw, ch, hazards.data, t, octo);
+    });
   }
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawCreaturesFront(c, camera, cw, ch, creatures.data, t, octo);
   if (run.state === S_BIOME && quest) drawQuestThing(c, camera, cw, ch, t);
@@ -2408,6 +2869,11 @@ let restSpring = null; // {x, y, used}: the rest grotto's spring
 const restSay = { at: -99 };
 /** The rest grotto: swimming into the spring heals every heart and fills the jar (each time you come back to it). */
 function stepRest() {
+  stepRestSpring();
+  withP(shopSt ? nearP(shopSt.keeperX, shopSt.keeperY) : cur, () => { const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); if (ev) onShopEvent(ev); }); // controls 2026-10-08: buying is F
+}
+/** The grotto's spring for the current player (local co-op: each player drinks at it). */
+function stepRestSpring() {
   if (restSpring && springReach(octo.x, octo.y, restSpring.x, restSpring.y)) {
     const healed = octo.hearts < octo.heartMax, filled = run.juice < juiceCap();
     if (healed || filled || !restSpring.used) {
@@ -2420,8 +2886,6 @@ function stepRest() {
       discover('place-rest');
     }
   }
-  const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false); // controls 2026-10-08: buying is F
-  if (ev) onShopEvent(ev);
 }
 
 // --- back rooms (backroom.js, backroom-draw.js; BACKROOMS.md A, CONTROLS-IDEAS.md 5): F at the kelp curtain takes the octopus
@@ -2472,6 +2936,7 @@ function backHop(inside) {
   const cam = renderer.camera; cam.x += tx - octo.x; cam.y += ty - octo.y; // she stays where she was on screen; the camera then eases into the region
   octo.x = octo.prevX = tx; octo.y = octo.prevY = ty; octo.vx = octo.vy = 0;
   ragdoll.place(octo, props, tx, ty);
+  if (coop()) bringOthers(tx, ty); // local co-op: one camera, so the whole party goes through the curtain together
   b.inside = inside; b.hops++;
   hand.target = null;
   if (inside && !b.entered) { b.entered = true; spawnBackContents(); }
@@ -2491,9 +2956,9 @@ function spawnBackContents() {
   }
 }
 /** One step in a level with a grotto: its spring (one heart, or one cast when the hearts are full; once). */
-function stepBack() {
+function stepBack(springOnly = false) {
   const b = back;
-  if (b.openT > 0) b.openT = Math.max(0, b.openT - STEP);
+  if (!springOnly && b.openT > 0) b.openT = Math.max(0, b.openT - STEP);
   if (!b.inside || !b.spring || b.spring.used || octo.dead) return;
   if (!springReach(octo.x, octo.y, b.spring.x, b.spring.y)) return;
   b.spring.used = true;
@@ -2535,9 +3000,11 @@ function openDoor(d, fx) {
 /** One step of the tutorial's rooms: goals open doors, a new room tops up the hearts, the jar never runs dry, the stall works. */
 function stepTutorial() {
   const lv = world.level;
-  const r = tutorialRooms(tutState, lv, { x: octo.x, y: octo.y, throws: hand.throws, casts: runStats.spellsCast, buys: tutBuys, tileAt: world.tileAt }, STEP);
+  const co = coop(); // local co-op: the rooms follow whoever is furthest along, and a goal (a throw, a pass) counts for any player
+  const r = tutorialRooms(tutState, lv, { x: octo.x, y: octo.y, throws: co ? partyThrows() : hand.throws, casts: runStats.spellsCast, buys: tutBuys, tileAt: world.tileAt, pts: co ? partyPts() : undefined }, STEP);
   for (const d of r.open) openDoor(d, true);
   if (r.entered > 0 && !octo.dead && octo.hearts < octo.heartMax) { octo.hearts = octo.heartMax; prevHearts = octo.hearts; } // each room starts with full hearts
+  if (r.entered > 0 && co) for (const p of players().slice()) if (p !== cur) withP(p, () => { if (!octo.dead && octo.hearts < octo.heartMax) { octo.hearts = octo.heartMax; prevHearts = octo.hearts; } });
   if (castsOf(run.juice) < 1) run.juice = juiceCap(); // practice: the jar refills (in a dive it only does at the rest grotto)
   const ev = shopStep(shopSt, octo, run.shells, STEP, run.items, false);
   if (ev) onShopEvent(ev);
@@ -2765,6 +3232,10 @@ function portalAt(o) {
 }
 /** The hand used on a whirlpool: pay what leaving pays, then the Unity-style entry (beginEntry, unchanged). */
 function enterPortal(p) {
+  if (coop() && startPull(p)) return true; // local co-op: the others are drawn to the whirlpool first (stepPull), then the entry
+  return finishPortal(p);
+}
+function finishPortal(p) {
   if (p.ev === EV_EXIT && run.state === S_BIOME) {
     paySwiftShell();
     if (questOnExit(quest)) payQuest();
@@ -3427,6 +3898,7 @@ if (V2) {
 
 // --- Mandatory test hooks (OVERNIGHT.md §2 "Test hooks") ---
 window.__octo = {
+  ...coopHooks(),
   /** Controller Phase 1: plug in / drive a fake standard pad ({lx, ly, rx, ry, a, b, x, y, lb, rb, lt, rt, back, start, up,
    *  down, left, right, id}); null unplugs it. Polls at once (and every frame after) so the next step sees it. Tests may also
    *  stub navigator.getGamepads before load; this replaces that stub with one returning the fake pad. */

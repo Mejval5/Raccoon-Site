@@ -75,8 +75,9 @@ function clampNum(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
  * @param {number} vy
  * @param {number} [aimX] r40: where the camera wants to look (default the octopus); the octopus is still kept within 30% of the centre
  */
-export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt = 1, vx = 0, vy = 0, aimX = targetX, aimY = targetY) {
-  cam.pxPerUnit = computePxPerUnit(canvasW, canvasH);
+export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt = 1, vx = 0, vy = 0, aimX = targetX, aimY = targetY, zoom = 1) {
+  // local co-op (players.js cameraFrame): the shared camera zooms out by `zoom` (1 = the solo view, at most ZOOM_CAP)
+  cam.pxPerUnit = zoom === 1 ? computePxPerUnit(canvasW, canvasH) : computePxPerUnit(canvasW, canvasH) / zoom;
   const halfViewW = (canvasW / cam.pxPerUnit) / 2;
   const halfViewH = (canvasH / cam.pxPerUnit) / 2;
 
@@ -129,8 +130,8 @@ export function updateCamera(cam, canvasW, canvasH, targetX, targetY, worldW, wo
  * rect (before that the camera only eases there). No look-ahead. BoundCam is applied to the free rect rather than the
  * whole view: the free part stays inside the world where it fits, and the covered part may run past the world edge.
  */
-export function updateDeathCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt, focus, strict) {
-  cam.pxPerUnit = computePxPerUnit(canvasW, canvasH);
+export function updateDeathCamera(cam, canvasW, canvasH, targetX, targetY, worldW, worldH, dt, focus, strict, zoom = 1) {
+  cam.pxPerUnit = zoom === 1 ? computePxPerUnit(canvasW, canvasH) : computePxPerUnit(canvasW, canvasH) / zoom;
   const ppu = cam.pxPerUnit;
   // the free rect's edges relative to the camera centre, in world units
   const l = (focus.x0 - canvasW / 2) / ppu, r = (focus.x1 - canvasW / 2) / ppu;

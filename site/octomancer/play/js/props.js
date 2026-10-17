@@ -26,6 +26,9 @@
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
 import { octoHit } from './damage.js';
 import { crumbleAt, CR_PROP, PROP_BREAK_SPEED } from './fragile.js';
+import { octoList } from './players.js';
+
+const ONE = [null]; // octoList scratch: a single octopus handed to step() is wrapped without allocating
 
 export const PK_NONE = 0, PK_BOMB = 1, PK_POT = 2, PK_CLAM = 3, PK_CHEST = 4, PK_RELIC = 5, PK_ROCK = 6, PK_RUBBLE = 7;
 export const PK_FIND = 8; // a shell, bomb or item released from the rock (embed.js)
@@ -571,7 +574,7 @@ export function createProps(cap = DEFAULT_CAP) {
     /** Indices of live props of one kind (tests, drawing). */
     ofKind(k, out = []) { out.length = 0; for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === k) out.push(i); return out; },
 
-    /** One fixed step. `octo` is optional (bombs get pushed by it); `enemies` (optional list of enemy records) are solid to bombs. */
+    /** One fixed step. `octo` (optional; one octopus or an array of them) pushes bombs and blocks; `enemies` (optional list of enemy records) are solid to bombs. */
     step(dt, world, octo, enemies) {
       const v = world.tileVersion;
       if (v !== undefined && v !== lastVersion) {
@@ -591,7 +594,11 @@ export function createProps(cap = DEFAULT_CAP) {
       // a sleeping block whose support slid away (the block under it was shoved off) falls again
       if (blocksAwake) for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === PK_BLOCK && d.state[i] === PS_REST && !blockSupported(i, world)) wake(i);
       if (nAwake > 0) { separate(); separateRubble(); }
-      if (octo) { pushByOctopus(octo); pushBlocksByOctopus(octo, world); }
+      if (octo) { // one octopus or a co-op array: each shoves bombs and blocks in turn (one octopus: exactly the old two calls)
+        const octos = octoList(octo, ONE);
+        for (let k = 0; k < octos.length; k++) { pushByOctopus(octos[k]); pushBlocksByOctopus(octos[k], world); }
+        ONE[0] = null;
+      }
       if (enemies) pushByEnemies(enemies);
       if (blocksAwake) crushBodies();
       // nothing may end inside rock: a landed rock can fill the tile a sleeper lies in

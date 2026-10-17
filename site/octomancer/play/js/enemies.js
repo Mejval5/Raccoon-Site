@@ -36,6 +36,9 @@ import { resolveHit, rowOf, dashKillable, SOURCES, PH_ANCHORED, PH_WALK } from '
 import { octoHit } from './damage.js';
 import { FRENZY_R } from './creature-rules.js';
 import { LURE_ARRIVE } from './infight.js';
+import { pickTarget, leadOf, octoList } from './players.js';
+
+const ONE = [null]; // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -906,17 +909,22 @@ export function createEnemies() {
   }
 
   // ------------------------------------------------------------------------------------------ shots, beholder
-  function updateShots(dt, octo, world, hurtFn) {
+  function updateShots(dt, octoArg, world, hurtFn) {
+    const octos = octoList(octoArg, ONE);
     for (const s of shots) {
       if (s.dead) continue;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       if (world.isSolid(s.x, s.y)) { crumbleAt(world, s.x, s.y, CR_SHOT); s.dead = true; continue; } // fish bone crumbles (fragile.js)
-      if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
-        octoHit(octo, 'shot', s.x, s.y, 'shot');
-        s.dead = true;
-        continue;
+      for (let k = 0; k < octos.length; k++) { // a shot hits any octopus it touches
+        const octo = octos[k];
+        if (dist(s.x, s.y, octo.x, octo.y) < s.radius + octo.radius) {
+          octoHit(octo, 'shot', s.x, s.y, 'shot');
+          s.dead = true;
+          break;
+        }
       }
+      if (s.dead) continue;
       // INFIGHT.projectile: the first other body it touches takes the shot (a fish, a crab, Marlo, the keeper; a spike or a shut
       // shell just stops it); never its own cannon
       if (inf && inf.projectile('shot', s.x, s.y, s.radius, s.owner || 0, s.oc ? true : undefined) >= 0) {
@@ -934,14 +942,17 @@ export function createEnemies() {
       radius: BEHOLDER_RADIUS, dead: false, spawnedAt: time, moving: true, ghostly: true,
     };
   }
-  function updateBeholder(dt, octo, time, world) {
+  function updateBeholder(dt, octoArg, time, world) {
+    const octos = octoList(octoArg, ONE);
     if (!beholder && time >= timing.warn && time > 0) {
       if (warn.state === 0) {
         warn.state = 1;
+        const octo = leadOf(octos); // the entry is planned around the lead octopus
         warn.pref = (Math.floor(octo.x) + Math.floor(octo.y)) & 1; // left or right side first: varies by where you are, still deterministic
         events.push({ type: 'beholderWarn' });
       }
-      const plan = planBeholderEntry(octo.x, octo.y, world, warn.pref);
+      const lead = leadOf(octos);
+      const plan = planBeholderEntry(lead.x, lead.y, world, warn.pref);
       warn.dx = plan.dx; warn.dy = plan.dy;
       warn.p = Math.min(1, (time - timing.warn) / Math.max(1e-6, timing.arrive - timing.warn));
       if (time >= timing.arrive) {
@@ -953,9 +964,13 @@ export function createEnemies() {
     if (!beholder) return;
     beholder.prevX = beholder.x; beholder.prevY = beholder.y;
     if (Number.isNaN(beholder.spawnedAt)) beholder.spawnedAt = time;
-    driftBeholder(beholder, octo.x, octo.y, beholderSpeed(timing, time - beholder.spawnedAt), dt); // time pressure: drifts through rock like Spelunky's ghost
-    if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) { // the shared damage entry (CREATURES.md); dead: it keeps knocking the body about
-      octoHit(octo, 'beholder', beholder.x, beholder.y, 'beholder');
+    const chased = pickTarget(octos, beholder.x, beholder.y);
+    driftBeholder(beholder, chased.x, chased.y, beholderSpeed(timing, time - beholder.spawnedAt), dt); // time pressure: drifts through rock like Spelunky's ghost
+    for (let k = 0; k < octos.length; k++) { // it touches any octopus: the shared damage entry (CREATURES.md); dead: it keeps knocking the body about
+      const octo = octos[k];
+      if (dist(beholder.x, beholder.y, octo.x, octo.y) < beholder.radius + octo.radius) {
+        octoHit(octo, 'beholder', beholder.x, beholder.y, 'beholder');
+      }
     }
   }
 
@@ -983,7 +998,8 @@ export function createEnemies() {
     beholderWarn() { return warn; },
 
     /** One fixed step. `props` (v2, optional): resting bombs make a crab turn around. */
-    update(dt, time, octo, world, resident, props = null) {
+    update(dt, time, octoArg, world, resident, props = null) {
+      const octos = octoList(octoArg, ONE);
       events.length = 0;
       curWorld = world;
       for (let i = ghosts.length - 1; i >= 0; i--) { ghosts[i].t -= dt; if (ghosts[i].t <= 0) ghosts.splice(i, 1); }
@@ -1009,16 +1025,15 @@ export function createEnemies() {
         tileVer = ver;
       }
 
-      const octoSpeed = Math.hypot(octo.vx, octo.vy);
       for (let i = 0; i < stepList.length; i++) {
         const e = stepList[i];
         if (e.dead) continue;
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
         if (e.stun > 0) { stepKnock(e, dt, world); continue; } // knocked about by a blast: no AI, no contact damage
-        if (e.kind === 'piranha') updatePiranha(e, dt, octo, world);
-        else if (e.kind === 'cannon') updateCannon(e, dt, octo, world);
-        else if (e.kind === 'crab') updateCrab(e, dt, octo, world, props);
-        else if (e.kind === 'manta') updateManta(e, dt, octo, world);
+        if (e.kind === 'piranha') updatePiranha(e, dt, pickTarget(octos, e.x, e.y), world);
+        else if (e.kind === 'cannon') updateCannon(e, dt, pickTarget(octos, e.x, e.y), world);
+        else if (e.kind === 'crab') updateCrab(e, dt, pickTarget(octos, e.x, e.y), world, props);
+        else if (e.kind === 'manta') updateManta(e, dt, pickTarget(octos, e.x, e.y), world);
         else if (e.kind === 'urchin' || e.kind === 'horns') {
           // slow spike pulse: the drawn spikes and the contact radius breathe together
           e.ph += dt * TAU / URCHIN_PULSE_PERIOD;
@@ -1029,15 +1044,19 @@ export function createEnemies() {
         if (!e.contactDamage) continue;
         // the dead body (V2-PLAN 14) is still a target: contact hits it (octopus.js hitBody), but a flung corpse never kills
         // (a corpse wedged in a gap narrower than the enemy is still in reach of its nose: +0.25)
-        if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
-          if (e.dashKillable && octoRams(octo)) { // the Urchin Cap (strikes.js): a ram at speed splats it, through the table
-            applyHit(e, 'helmet', octo.x, octo.y, -1, 1, octo.vx * 0.4, octo.vy * 0.4);
-          } else if (octoPhasing(octo)) {
-            // dash i-frames: the contact does nothing to either side (no hurt, no bite recoil, no manta slam)
-          } else {
-            if (e.kind === 'manta' && e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
-            else octoHit(octo, 'bite', e.x, e.y, e.kind);
-            if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
+        for (let k = 0; k < octos.length; k++) { // every octopus touching gets its own check
+          const octo = octos[k];
+          if (dist(e.x, e.y, octo.x, octo.y) < e.radius + octo.radius + (octo.dead ? 0.25 : 0)) {
+            if (e.dashKillable && octoRams(octo)) { // the Urchin Cap (strikes.js): a ram at speed splats it, through the table
+              applyHit(e, 'helmet', octo.x, octo.y, -1, 1, octo.vx * 0.4, octo.vy * 0.4);
+              if (e.dead) break; // splatted: the other octopi find nothing to touch
+            } else if (octoPhasing(octo)) {
+              // dash i-frames: the contact does nothing to either side (no hurt, no bite recoil, no manta slam)
+            } else {
+              if (e.kind === 'manta' && e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
+              else octoHit(octo, 'bite', e.x, e.y, e.kind);
+              if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
+            }
           }
         }
       }
@@ -1053,9 +1072,9 @@ export function createEnemies() {
       // Prune dead enemies out of their chunk lists (dash/bomb kills).
       pruneDead();
 
-      updateShots(dt, octo, world, hurtOctopus);
+      updateShots(dt, octos, world, hurtOctopus);
       if (inf) pruneDead(); // a shot that killed an enemy (INFIGHT.projectile)
-      updateBeholder(dt, octo, time, world);
+      updateBeholder(dt, octos, time, world);
       if (hpMode) {
         liveCache.length = 0;
         for (const list of byChunk.values()) for (let i = 0; i < list.length; i++) if (!list[i].dead) liveCache.push(list[i]);

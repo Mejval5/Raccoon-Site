@@ -9,6 +9,9 @@
 // seen, since a chunk's world position never changes after generation.
 
 import { SK_COWRIE, SK_PEARL, SHELL_VALUE } from './shells.js';
+import { octoList } from './players.js';
+
+const ONE = [null]; // octoList scratch: a single octopus is wrapped without allocating
 
 const COLLECT_RADIUS = 0.55; // world units, added to the octopus's own radius
 const PLANKTON_PULL_RADIUS = 1.0; // "pulled in within 1 unit" (OVERNIGHT.md M2-3)
@@ -18,6 +21,18 @@ const SHELL_DRAG = 4; // 1/s, slows the pop
 const PLANKTON_PULL_SPEED = 3.0; // u/s, drift-toward speed once inside the pull radius
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+
+/** The octopus with a shell magnet in reach of (x, y) that is nearest to it (md > 1e-4 as before), or null. One octopus: it or null. */
+function magnetOf(octos, x, y) {
+  let best = null, bd = Infinity;
+  for (let i = 0; i < octos.length; i++) {
+    const o = octos[i];
+    if (!(o.magnetR > 0)) continue;
+    const md = dist(o.x, o.y, x, y);
+    if (md < o.magnetR && md > 1e-4 && md < bd) { bd = md; best = o; }
+  }
+  return best;
+}
 
 // Round-11 fix (review round 10 leftover, issue 2: "plankton swarm dots
 // drawn inside solid rock / on top of the rim"). The scatter below only ever
@@ -112,6 +127,7 @@ export function createPickups() {
      * existing caller/test that doesn't pass it keeps working unchanged. */
     update(dt, time, octo, resident, world) {
       events.length = 0;
+      const octos = octoList(octo, ONE);
       const liveChunks = new Set(resident.map((r) => r.index));
       for (const ci of [...byChunk.keys()]) {
         if (!liveChunks.has(ci)) byChunk.delete(ci);
@@ -132,17 +148,20 @@ export function createPickups() {
               continue;
             }
             // shell magnet: loose shells within the octopus's magnet radius drift towards it
-            const md = dist(octo.x, octo.y, it.x, it.y);
-            if (octo.magnetR > 0 && md < octo.magnetR && md > 1e-4) {
+            // (co-op: the nearest octopus with a magnet in reach pulls it)
+            const mo = magnetOf(octos, it.x, it.y);
+            if (mo) {
+              const md = dist(mo.x, mo.y, it.x, it.y);
               const t = Math.min(1, (MAGNET_PULL_SPEED * dt) / md);
-              const mx = it.x + (octo.x - it.x) * t, my = it.y + (octo.y - it.y) * t;
+              const mx = it.x + (mo.x - it.x) * t, my = it.y + (mo.y - it.y) * t;
               if (!(world && world.isSolid(mx, my))) { it.x = mx; it.y = my; }
             }
-          } else if (it.type === 'shell' && octo.magnetR > 0 && !it.hidden) {
-            const md = dist(octo.x, octo.y, it.x, it.y);
-            if (md < octo.magnetR && md > 1e-4) {
+          } else if (it.type === 'shell' && !it.hidden) {
+            const mo = magnetOf(octos, it.x, it.y);
+            if (mo) {
+              const md = dist(mo.x, mo.y, it.x, it.y);
               const t = Math.min(1, (MAGNET_PULL_SPEED * dt) / md);
-              const mx = it.x + (octo.x - it.x) * t, my = it.y + (octo.y - it.y) * t;
+              const mx = it.x + (mo.x - it.x) * t, my = it.y + (mo.y - it.y) * t;
               if (!(world && world.isSolid(mx, my))) { it.x = mx; it.y = my; }
             }
           }
@@ -157,11 +176,12 @@ export function createPickups() {
           }
           if (it.type === 'plankton') {
             const prevX = it.x, prevY = it.y;
-            const d = dist(octo.x, octo.y, it.x, it.y);
+            let po = octos[0], d = dist(po.x, po.y, it.x, it.y); // co-op: drawn to the nearest octopus
+            for (let k = 1; k < octos.length; k++) { const dk = dist(octos[k].x, octos[k].y, it.x, it.y); if (dk < d) { d = dk; po = octos[k]; } }
             if (d < PLANKTON_PULL_RADIUS && d > 1e-4) {
               const t = Math.min(1, (PLANKTON_PULL_SPEED * dt) / d);
-              it.x += (octo.x - it.x) * t;
-              it.y += (octo.y - it.y) * t;
+              it.x += (po.x - it.x) * t;
+              it.y += (po.y - it.y) * t;
             } else {
               it.x = it.baseX + Math.sin(time * 1.3 + it.phase) * 0.12;
               it.y = it.baseY + Math.cos(time * 1.1 + it.phase) * 0.12;
@@ -179,12 +199,13 @@ export function createPickups() {
             // only activates once main.js passes it through.
             if (world && world.isSolid(it.x, it.y)) { it.x = prevX; it.y = prevY; }
           }
-          const d = dist(octo.x, octo.y, it.x, it.y);
-          if (d < COLLECT_RADIUS + octo.radius) {
+          let who = -1; // the first octopus (array order) touching it collects it
+          for (let k = 0; k < octos.length; k++) { if (dist(octos[k].x, octos[k].y, it.x, it.y) < COLLECT_RADIUS + octos[k].radius) { who = k; break; } }
+          if (who >= 0) {
             it.collected = true;
             if (it.type === 'shell') totals.shells += it.value || 1;
             else if (it.type === 'plankton') totals.plankton++;
-            events.push(it.type === 'shell' ? { type: 'shell', x: it.x, y: it.y, value: it.value || 1, sk: it.sk || SK_COWRIE } : { type: it.type, x: it.x, y: it.y });
+            events.push(it.type === 'shell' ? { type: 'shell', x: it.x, y: it.y, value: it.value || 1, sk: it.sk || SK_COWRIE, who } : { type: it.type, x: it.x, y: it.y, who });
           }
         }
       }

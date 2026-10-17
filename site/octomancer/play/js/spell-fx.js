@@ -10,6 +10,7 @@ import { MAT_CORAL, MAT_WATER, MAT_BOULDER_BREAKS } from './materials.js';
 import { startAnchor } from './octopus.js';
 import { PK_RUBBLE } from './props.js';
 import { EFFECTS, SLOT } from './spells.js';
+import { leadOf } from './players.js';
 
 export const MAX_CORAL = 24;     // live coral cells; a new wall crumbles the oldest to make room
 export const MAX_RIPTIDES = 2;   // the newest replaces the oldest
@@ -41,13 +42,16 @@ export function createSpellFx(sys) {
     n: MAX_MOTES, live: 0,
     x: new Float32Array(MAX_MOTES), y: new Float32Array(MAX_MOTES), vx: new Float32Array(MAX_MOTES), vy: new Float32Array(MAX_MOTES),
     t: new Float32Array(MAX_MOTES), delay: new Float32Array(MAX_MOTES), dx: new Float32Array(MAX_MOTES), dy: new Float32Array(MAX_MOTES),
-    self: new Uint8Array(MAX_MOTES), alive: new Uint8Array(MAX_MOTES), p: new Array(MAX_MOTES).fill(null),
+    self: new Uint8Array(MAX_MOTES), caster: new Array(MAX_MOTES).fill(null), // caster: the octopus a self mote follows (set at cast time)
+    alive: new Uint8Array(MAX_MOTES), p: new Array(MAX_MOTES).fill(null),
   };
   // ---- Riptides: hazard indices, oldest first
   const rip = new Int32Array(MAX_RIPTIDES).fill(-1);
   /** Things main.js turns into particles and sounds: {type:'coralGrow'|'coralCrumble'|'moteFire'|'anchorCrush'|'anchorSmash'|'riptide', x, y}. */
   const events = [];
-  let octo = null; // the octopus record (set by update; Anchor and self casts read it)
+  let octo = null; // the CASTER (setOcto before a cast; update sets it to the lead octopus): Anchor and self casts read it
+  let list = null; // every octopus (co-op), from the last update; null before the first one
+  const own = [null], one = [null]; // reusable one-slot arrays: a single octopus handed to update / the pre-update occupancy check
   const stats = { riptides: 0, coralCells: 0, crumbled: 0, motes: 0, anchors: 0, crushes: 0, smashes: 0, lures: 0 };
 
   // ---------------------------------------------------------------- Coral Wall
@@ -55,7 +59,8 @@ export function createSpellFx(sys) {
   const occ = { tx: 0, ty: 0, hit: false };
   const occBody = (f, k, V) => { if (!occ.hit && circleInCell(V.x, V.y, V.r * 0.8, occ.tx, occ.ty)) occ.hit = true; };
   function occupied(tx, ty) {
-    if (octo && !octo.hidden && circleInCell(octo.x, octo.y, octo.radius * 0.9, tx, ty)) return true;
+    const L = list || (octo ? (one[0] = octo, one) : null); // a cell with ANY octopus in it refuses coral
+    if (L) for (let k = 0; k < L.length; k++) { const o = L[k]; if (o && !o.hidden && circleInCell(o.x, o.y, o.radius * 0.9, tx, ty)) return true; }
     if (damage) { occ.tx = tx; occ.ty = ty; occ.hit = false; damage.each(occBody); if (occ.hit) return true; }
     if (props) {
       const d = props.data;
@@ -183,18 +188,22 @@ export function createSpellFx(sys) {
   /** After the octopus moved: an anchored body that lands hard crushes what it lands on and smashes a soft tile under it. */
   const crushCirc = { n: 0 };
   function stepAnchorLanding() {
+    if (!list) return;
+    for (let k = 0; k < list.length; k++) anchorLanding(list[k], k);
+  }
+  function anchorLanding(octo, who) {
     if (!octo || !(octo.anchorT > 0) || octo.dead) return;
     const v = octo.anchorVy;
     if (v >= ANCHOR_CRUSH_SPEED && damage) {
       const n = damage.circle('anchor', octo.x, octo.y + octo.radius * 0.6, octo.radius * 0.7, true, 1.0);
-      if (n) { stats.crushes += n; events.push({ type: 'anchorCrush', x: octo.x, y: octo.y + octo.radius }); }
+      if (n) { stats.crushes += n; events.push({ type: 'anchorCrush', x: octo.x, y: octo.y + octo.radius, who }); }
       crushCirc.n = n;
     }
     if (v >= ANCHOR_SMASH_SPEED && octo.landedThisStep) {
       const fy = Math.floor(octo.y + octo.radius + 0.12);
       for (const fx of [Math.floor(octo.x), Math.floor(octo.x - octo.radius * 0.6), Math.floor(octo.x + octo.radius * 0.6)]) {
         if (!MAT_BOULDER_BREAKS[world.tileAt(fx, fy)]) continue;
-        if (world.smashTile(fx, fy)) { stats.smashes++; events.push({ type: 'anchorSmash', x: fx + 0.5, y: fy + 0.5 }); octo.vy = Math.max(octo.vy, v * 0.6); break; }
+        if (world.smashTile(fx, fy)) { stats.smashes++; events.push({ type: 'anchorSmash', x: fx + 0.5, y: fy + 0.5, who }); octo.vy = Math.max(octo.vy, v * 0.6); break; }
       }
     }
   }
@@ -241,7 +250,7 @@ export function createSpellFx(sys) {
     mo.alive[i] = 1; mo.live++;
     mo.x[i] = ctx.x; mo.y[i] = ctx.y; mo.vx[i] = (ctx.vx || 0) * 0.35; mo.vy[i] = (ctx.vy || 0) * 0.35;
     mo.dx[i] = ctx.dirX || 1; mo.dy[i] = ctx.dirY || 0; mo.t[i] = 0; mo.delay[i] = p.delay;
-    mo.self[i] = p.spell.self ? 1 : 0; mo.p[i] = p;
+    mo.self[i] = p.spell.self ? 1 : 0; mo.p[i] = p; mo.caster[i] = octo; // the caster is whoever setOcto named
     stats.motes++;
     return true;
   }
@@ -251,7 +260,8 @@ export function createSpellFx(sys) {
     for (let i = 0; i < MAX_MOTES; i++) {
       if (!mo.alive[i]) continue;
       mo.t[i] += dt;
-      if (mo.self[i] && octo) { mo.x[i] = octo.x; mo.y[i] = octo.y - 0.7; }
+      const cs = mo.caster[i] || octo; // a self mote follows the octopus that cast it
+      if (mo.self[i] && cs) { mo.x[i] = cs.x; mo.y[i] = cs.y - 0.7; }
       else {
         const f = hazards && hazards.forceAt ? hazards.forceAt(mo.x[i], mo.y[i]) : null;
         if (f) { mo.vx[i] += f.fx * MOTE_CARRY * dt; mo.vy[i] += f.fy * MOTE_CARRY * dt; }
@@ -264,7 +274,10 @@ export function createSpellFx(sys) {
       mo.alive[i] = 0; mo.live--; mo.p[i] = null;
       fireCtx.clouds = sys.clouds; fireCtx.fx = api; fireCtx.x = mo.x[i]; fireCtx.y = mo.y[i];
       fireCtx.vx = mo.vx[i]; fireCtx.vy = mo.vy[i]; fireCtx.dirX = mo.dx[i]; fireCtx.dirY = mo.dy[i];
+      const lead = octo; if (cs) octo = cs; // the effect (Anchor) lands on the octopus that cast it
       EFFECTS[p.spell.effect](p, fireCtx);
+      octo = lead;
+      mo.caster[i] = null;
       events.push({ type: 'moteFire', x: mo.x[i], y: mo.y[i] });
     }
   }
@@ -280,7 +293,8 @@ export function createSpellFx(sys) {
     /** One fixed step (after the octopus and the hazards moved). */
     update(dt, o) {
       events.length = 0;
-      octo = o;
+      if (Array.isArray(o)) list = o; else { own[0] = o; list = own; }
+      octo = leadOf(o);
       stepMotes(dt);
       stepLure(dt);
       stepCoral(dt);

@@ -23,6 +23,9 @@ import { hashSeed2, mulberry32 } from './rng.js';
 import { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY, octoDashing } from './shop-aggro.js';
 import { resolveHit, rowOf } from './creature-rules.js';
 import { octoHit, keeperId } from './damage.js';
+import { pickTarget, octoList } from './players.js';
+
+const ONE = [null]; // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
 
 export { HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY };
 export const KM_CALM = 0, KM_WAIT = 1, KM_ANGRY = 2, KM_DEAD = 3;
@@ -230,12 +233,14 @@ const DIR = { x: 0, y: 0 };
  * One fixed step of every keeper and claw. Hits on the octopus go through keeperStrike (cause 'shopkeeper');
  * a dash into a keeper glances off him (HIT_DASH) and bounces the octopus back.
  */
-export function stepKeepers(k, dt, octo, world, inf = null) { // inf: infight.js (v2): his claws hit anything in the way
+export function stepKeepers(k, dt, octoArg, world, inf = null) { // inf: infight.js (v2): his claws hit anything in the way
+  const octos = octoList(octoArg, ONE); // one octopus or an array of them (co-op)
   const isSolid = (x, y) => world.isSolid(x, y);
   for (let i = 0; i < k.n; i++) {
     const m = k.mode[i];
     k.flash[i] = Math.max(0, k.flash[i] - dt); k.shrug[i] = Math.max(0, k.shrug[i] - dt); k.roused[i] = Math.max(0, k.roused[i] - dt);
     if (m === KM_DEAD) continue;
+    const octo = pickTarget(octos, k.x[i], k.y[i]); // the one he sights, rouses to, aims at and chases
     const ox = octo.x - k.x[i], oy = octo.y - k.y[i], od = Math.hypot(ox, oy);
     if (Math.abs(ox) > 0.3 && m !== KM_CALM) k.face[i] = ox > 0 ? 1 : -1;
     if (m === KM_CALM || m === KM_WAIT) {
@@ -289,15 +294,19 @@ export function stepKeepers(k, dt, octo, world, inf = null) { // inf: infight.js
       k.x[i] += k.vx[i] * dt; k.y[i] += k.vy[i] * dt;
       collide(k, i, world);
     }
-    // body contact: a dash glances off him; an angry keeper's body hurts
-    if (!octo.dead && Math.hypot(octo.x - k.x[i], octo.y - k.y[i]) < KEEPER_R + (octo.radius || 0.45)) {
-      if (octoRams(octo) && octoDashing(octo) && k.shrug[i] <= 0) { // with the Urchin Cap only (strikes.js); once per dash (the shrug lasts longer than the overlap)
-        const nx = (octo.x - k.x[i]) / (od || 1), ny = (octo.y - k.y[i]) / (od || 1);
-        applyKeeperHit(k, i, 'helmet', octo.x, octo.y); // the Urchin Cap's ram (creature-rules.js SOURCES.helmet): a glance off his shell
-        const vn = octo.vx * nx + octo.vy * ny;
-        if (vn < 0) { octo.vx -= 1.6 * vn * nx; octo.vy -= 1.6 * vn * ny; } // bounced off his shell
+    // body contact: a dash glances off him; an angry keeper's body hurts (each octopus touching him gets its own check)
+    for (let o = 0; o < octos.length; o++) {
+      const bo = octos[o];
+      if (!bo.dead && Math.hypot(bo.x - k.x[i], bo.y - k.y[i]) < KEEPER_R + (bo.radius || 0.45)) {
+        if (octoRams(bo) && octoDashing(bo) && k.shrug[i] <= 0) { // with the Urchin Cap only (strikes.js); once per dash (the shrug lasts longer than the overlap)
+          const bd = bo === octo ? od : Math.hypot(bo.x - k.x[i], bo.y - k.y[i]);
+          const nx = (bo.x - k.x[i]) / (bd || 1), ny = (bo.y - k.y[i]) / (bd || 1);
+          applyKeeperHit(k, i, 'helmet', bo.x, bo.y); // the Urchin Cap's ram (creature-rules.js SOURCES.helmet): a glance off his shell
+          const vn = bo.vx * nx + bo.vy * ny;
+          if (vn < 0) { bo.vx -= 1.6 * vn * nx; bo.vy -= 1.6 * vn * ny; } // bounced off his shell
+        }
+        if (k.mode[i] === KM_ANGRY && k.stun[i] <= 0 && keeperStrike(bo, k.x[i], k.y[i])) k.events.push({ type: 'octoHit', i, how: 'body', x: bo.x, y: bo.y, who: o });
       }
-      if (k.mode[i] === KM_ANGRY && k.stun[i] <= 0 && keeperStrike(octo, k.x[i], k.y[i])) k.events.push({ type: 'octoHit', i, how: 'body', x: octo.x, y: octo.y });
     }
   }
   // claws
@@ -310,10 +319,17 @@ export function stepKeepers(k, dt, octo, world, inf = null) { // inf: infight.js
     if (st === 1) {
       k.cx[c] += k.cvx[c] * dt; k.cy[c] += k.cvy[c] * dt;
       k.cd[c] = Math.hypot(k.cx[c] - sx, k.cy[c] - sy);
-      if (!octo.dead && Math.hypot(octo.x - k.cx[c], octo.y - k.cy[c]) < CLAW_R + (octo.radius || 0.45)) {
-        if (keeperStrike(octo, k.cx[c], k.cy[c] - k.cvy[c] * 0.02)) k.events.push({ type: 'octoHit', i, how: 'claw', x: octo.x, y: octo.y });
-        k.cst[c] = 2;
-      } else if (inf && inf.strike('claw', 'claw', k.cx[c], k.cy[c], CLAW_R, keeperId(i)) >= 0) {
+      let clawed = false;
+      for (let o = 0; o < octos.length; o++) { // the claw hits the first octopus it reaches
+        const co = octos[o];
+        if (!co.dead && Math.hypot(co.x - k.cx[c], co.y - k.cy[c]) < CLAW_R + (co.radius || 0.45)) {
+          if (keeperStrike(co, k.cx[c], k.cy[c] - k.cvy[c] * 0.02)) k.events.push({ type: 'octoHit', i, how: 'claw', x: co.x, y: co.y, who: o });
+          k.cst[c] = 2;
+          clawed = true;
+          break;
+        }
+      }
+      if (clawed) { /* reeled back in */ } else if (inf && inf.strike('claw', 'claw', k.cx[c], k.cy[c], CLAW_R, keeperId(i)) >= 0) {
         // INFIGHT.claw: anything in the way takes the claw (a fish, Marlo, another keeper); it is reeled back in
         k.cst[c] = 2;
         k.events.push({ type: 'clawHit', i, x: k.cx[c], y: k.cy[c] });

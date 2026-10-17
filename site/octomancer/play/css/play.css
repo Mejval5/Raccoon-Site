@@ -857,3 +857,33 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   .octo-skin-cv { width: 64px; height: 64px; }
   .octo-skins-sub { display: none; }
 }
+
+/* --- local co-op, Phase 1 (coop-ui.js): the pause menu's player rows and the per-player HUD strips. Natural colours, flat,
+   no gloss: a coloured dot or a band of the player's colour on the same dark sea-glass panel as the rest of the HUD. --- */
+.octo-coop { width: 100%; display: flex; flex-direction: column; gap: 6px; margin: 2px 0; }
+.octo-coop-rows { display: flex; flex-direction: column; gap: 4px; }
+.octo-coop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 10px; background: rgba(255,255,255,0.05); font: 600 14px 'Quicksand', sans-serif; text-align: left; }
+.octo-coop-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #10202c; flex: none; }
+.octo-coop-name { font-weight: 700; min-width: 22px; }
+.octo-coop-dev { flex: 1; opacity: .8; font-weight: 500; }
+.octo-coop-state { display: inline-flex; align-items: center; gap: 3px; min-width: 52px; justify-content: flex-end; }
+.octo-coop-state .octo-coop-heart { width: 14px; height: 14px; }
+.octo-coop-remove { border: 1.5px solid rgba(255,255,255,0.35); background: transparent; color: #eafffa; border-radius: 999px; padding: 3px 10px; font: 600 12px 'Quicksand', sans-serif; cursor: pointer; }
+.octo-coop-add { font-size: 13px; opacity: .75; }
+.octo-coop-hud { position: absolute; top: calc(6px + var(--safe-t)); left: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: var(--hb-max-w); pointer-events: none; z-index: 3; }
+.octo-coop-strip { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 4px; border-radius: 10px; background: rgba(10, 28, 42, 0.78); border-left: 6px solid var(--coop); box-shadow: inset 0 -2px 0 var(--coop-dark); font: 700 16px 'Quicksand', sans-serif; color: #eafffa; }
+.octo-coop-tag { min-width: 24px; padding: 0 4px; color: var(--coop); text-shadow: 0 1px 0 #10202c; }
+.octo-coop-strip .octo-coop-heart { width: 20px; height: 20px; }
+.octo-coop-icon { width: 24px; height: 24px; }
+.octo-coop-n { min-width: 12px; margin-right: 4px; }
+.octo-coop-jar { font-size: 13px; color: #c9b4e8; margin-right: 2px; }
+.octo-coop-slot { border: 1.5px solid rgba(210, 251, 230, 0.45); border-radius: 6px; width: 26px; height: 26px; }
+.octo-coop-out { opacity: .55; }
+.octo-coop-small .octo-coop-strip { font-size: 13px; padding: 2px 6px 2px 3px; }
+.octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
+.octo-coop-small .octo-coop-icon { width: 19px; height: 19px; }
+.octo-coop-small .octo-coop-jar { font-size: 11px; }
+/* co-op: the strips replace player 1's own hotbar row (each player's selected slot is in their strip) */
+#hud.octo-coop-on > .octo-hotbar { display: none; }
+/* and its hearts, bombs, jar and dash timer (per player, in the strips); the shared shells, clocks and level stay in the column */
+#hud.octo-coop-on .octo-hud-hearts, #hud.octo-coop-on .octo-hud-bombs, #hud.octo-coop-on .octo-hud-jar, #hud.octo-coop-on .octo-hud-timers { display: none; }

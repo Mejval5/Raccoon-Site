@@ -71,7 +71,9 @@ export function tutorialRooms(st, level, s, dt) {
   const rooms = level.rooms || [];
   const res = { open: [], entered: -1 };
   if (st.walls0 < 0) { st.walls0 = countSolid(level.walls || [], s.tileAt); st.sticky0 = countSolid(level.sticky || [], s.tileAt); }
-  const cur = roomAt(rooms, s.x, s.y);
+  // local co-op: `s.pts` = every player's {x, y}; the rooms follow the player furthest along, and a goal counts for any player
+  let cur = roomAt(rooms, s.x, s.y);
+  if (s.pts) for (const p of s.pts) cur = Math.max(cur, roomAt(rooms, p.x, p.y));
   st.room = cur;
   if (cur > st.maxRoom) { st.maxRoom = cur; res.entered = cur; }
   if (cur >= 0) {
@@ -91,6 +93,7 @@ export function tutorialRooms(st, level, s, dt) {
       else if (r.goal === 'buy') ok = !!b && s.buys > b.buys;
       else if (r.goal === 'walls') ok = countSolid(level.walls || [], s.tileAt) < st.walls0;
       else if (r.goal === 'sticky') ok = countSolid(level.sticky || [], s.tileAt) < st.sticky0;
+      if (r.goal === 'pass' && !ok && b && s.pts) for (const p of s.pts) if ((r.dir || 1) > 0 ? p.x > r.goalX : p.x < r.goalX) ok = true;
       if (ok) st.done[i] = 1;
     }
     if (r.door && !st.open[r.door] && (st.done[i] || st.roomT[i] >= DOOR_WAIT_S)) { st.open[r.door] = 1; res.open.push(r.door); }

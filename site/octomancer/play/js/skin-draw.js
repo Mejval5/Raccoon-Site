@@ -29,7 +29,11 @@ export function setWornSkin(id) {
 }
 export function wornSkinId() { return worn; }
 /** {body, dark}: the worn look's colours (Milan's pink and its shade by default). */
-export function wornColors() { return wornCol; }
+export function wornColors() { return drawCol || wornCol; }
+let drawCol = null; // local co-op: the colours of the player being drawn now (setDrawColours), or null for the worn look's
+/** The colours of the octopus being drawn now: a player's own (co-op) for the code-drawn bits (the hand's arm, gib chunks), or
+ *  the worn look's. main.js sets it around one player's drawing; null goes back to the worn look. */
+export function setDrawColours(c) { drawCol = c; }
 
 /** The colour the body-coloured socket patch under a closed eye takes for this skin (octopus-draw.js paints it). */
 export function skinBodyColor(id) {
@@ -249,4 +253,58 @@ export function skinPreviewBody(id, bake) {
   if (s.body) tintCell(g, img, data, frame, s, 0, 0); else g.drawImage(img, frame * cell, 0, cell, cell, 0, 0, cell, cell);
   previews.set(id, c);
   return c;
+}
+
+// --- local co-op (players.js PLAYER_COLOURS): one tinted sheet per player colour ---------------------------------------------
+// Players 2-4 wear their colour over Milan's sheet through the same recolour as a skin (no pattern, no accessory). Each colour's
+// sheet is built once, offscreen, a few cells per task (FRAMES_PER_TICK), like a skin's, and kept as one ImageBitmap while that
+// player plays (about 4.3 MB: 42 cells of 160 px). Nothing is tinted per frame and the game canvas is never read.
+const tints = new Map(); // body colour -> { bitmap | null, canvasReady, canvas, next, cancel }
+let tintBuilt = 0;
+/** The sheet in colour `body` (a '#rrggbb'), or null while it builds (Milan's colours meanwhile). */
+export function tintSheet(body, bake) {
+  if (!body || !bake) return null;
+  let st = tints.get(body);
+  if (st) return st.bitmap || st.canvasReady || null;
+  const { img, data } = bake;
+  const frames = data.frameCount, s = { body, pattern: null };
+  const c = document.createElement('canvas');
+  c.width = frames * data.cellSize; c.height = data.cellSize;
+  const rec = { bitmap: null, canvasReady: null, canvas: c, next: 0, cancel: false };
+  tints.set(body, rec);
+  const g = c.getContext('2d');
+  const tick = () => {
+    if (rec.cancel) return;
+    const end = Math.min(frames, rec.next + FRAMES_PER_TICK);
+    for (; rec.next < end; rec.next++) tintCell(g, img, data, rec.next, s, rec.next * data.cellSize, 0);
+    if (rec.next < frames) { setTimeout(tick, 0); return; }
+    tintBuilt++;
+    const done = (b) => {
+      if (rec.cancel) { if (b && b.close) b.close(); return; }
+      rec.bitmap = b; rec.canvasReady = null; c.width = 0; c.height = 0; rec.canvas = null;
+    };
+    if (typeof createImageBitmap === 'function') { rec.canvasReady = c; createImageBitmap(c).then(done, () => { rec.canvasReady = c; }); } else rec.canvasReady = c;
+  };
+  setTimeout(tick, 0);
+  return null;
+}
+/** Free the sheets of colours nobody plays now (`keep` = the body colours in play). */
+export function dropTints(keep) {
+  for (const [body, rec] of tints) {
+    if (keep && keep.includes(body)) continue;
+    rec.cancel = true;
+    if (rec.bitmap && rec.bitmap.close) rec.bitmap.close();
+    if (rec.canvas) { rec.canvas.width = 0; rec.canvas.height = 0; }
+    tints.delete(body);
+  }
+}
+/** Tests / memory: the player colour sheets kept and their bytes. */
+export function tintStats() {
+  let bytes = 0, ready = 0;
+  for (const rec of tints.values()) {
+    const src = rec.bitmap || rec.canvas;
+    if (src) bytes += src.width * src.height * 4;
+    if (rec.bitmap || rec.canvasReady) ready++;
+  }
+  return { sheets: tints.size, ready, bytes, built: tintBuilt };
 }

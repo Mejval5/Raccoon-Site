@@ -16,6 +16,9 @@
 import { mulberry32, hashSeed2 } from './rng.js';
 import { ITEM_IDS } from './items.js';
 import { PK_FIND } from './props.js';
+import { octoList } from './players.js';
+
+const ONE = [null]; // octoList scratch
 
 export const EK_NONE = 0, EK_SHELL = 1, EK_BOMB = 2, EK_ITEM = 3;
 export const EMBED_NAMES = ['', 'shell', 'bomb', 'item'];
@@ -188,6 +191,7 @@ export function createEmbedded(props = null) {
 
     /** One fixed step: load the level's records once, release finds whose tile is gone, move and collect loose ones. */
     update(dt, octo, world, resident) {
+      const octos = octoList(octo, ONE); // one octopus or the co-op array
       if (!loaded && resident) {
         loaded = true;
         for (const { chunk } of resident) for (const s of chunk.spawns) if (s.type === 'embed') add(s);
@@ -204,17 +208,23 @@ export function createEmbedded(props = null) {
           const pd = props.data;
           d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
           // the shell magnet tugs loose shells along (as it does the other shells)
-          if (d.ek[i] === EK_SHELL && octo.magnetR > 0 && !octo.dead) {
-            const dx = octo.x - d.x[i], dy = octo.y - d.y[i], m = Math.hypot(dx, dy);
-            if (m < octo.magnetR && m > 1e-4) { props.wake(pid); pd.vx[pid] += dx / m * MAGNET_PULL * dt; pd.vy[pid] += dy / m * MAGNET_PULL * dt; }
+          if (d.ek[i] === EK_SHELL) for (let k = 0; k < octos.length; k++) { // every octopus with a magnet in reach tugs (they add up)
+            const o = octos[k];
+            if (!(o.magnetR > 0) || o.dead) continue;
+            const dx = o.x - d.x[i], dy = o.y - d.y[i], m = Math.hypot(dx, dy);
+            if (m < o.magnetR && m > 1e-4) { props.wake(pid); pd.vx[pid] += dx / m * MAGNET_PULL * dt; pd.vy[pid] += dy / m * MAGNET_PULL * dt; }
           }
         }
         if (d.delay[i] > 0) { d.delay[i] = Math.max(0, d.delay[i] - dt); continue; }
-        if (octo.dead) continue;
-        if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < FIND_R + octo.radius * 0.7) {
+        let who = -1; // the first living octopus (array order) touching it takes it
+        for (let k = 0; k < octos.length; k++) {
+          const o = octos[k];
+          if (!o.dead && Math.hypot(d.x[i] - o.x, d.y[i] - o.y) < FIND_R + o.radius * 0.7) { who = k; break; }
+        }
+        if (who >= 0) {
           d.state[i] = ES_TAKEN;
           if (props && pid >= 0) { props.remove(pid); d.pid[i] = -1; }
-          events.push({ type: 'take', i, ek: d.ek[i], sub: d.sub[i], x: d.x[i], y: d.y[i] });
+          events.push({ type: 'take', i, ek: d.ek[i], sub: d.sub[i], x: d.x[i], y: d.y[i], who });
         }
       }
     },

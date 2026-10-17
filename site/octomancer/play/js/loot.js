@@ -17,10 +17,12 @@
 import { addBomb } from './octopus.js';
 import { octoHit } from './damage.js';
 import { hasLineOfSight } from './pathfind.js';
+import { leadOf, octoList } from './players.js';
 import { DASH_KILL_SPEED, HEART_MAX, BOMB_RADIUS } from './config.js';
 import { ITEM_IDS, itemFromCode } from './items.js';
 import { PK_POT, PK_CLAM, PK_CHEST, PK_RELIC, PK_ROCK, PS_FREE, PS_HELD, PS_CARRY, PROP_RADIUS } from './props.js';
 
+const ONE = [null]; // octoList's reusable 1-slot array: a single octopus passed to update() rides in it
 const PROP_KIND = [0, PK_CLAM, PK_POT, PK_CHEST, 0, PK_RELIC]; // loot kind -> props.js kind (pockets are rock tiles)
 
 export const LK_NONE = 0, LK_CLAM = 1, LK_POT = 2, LK_CHEST = 3, LK_POCKET = 4, LK_RELIC = 5;
@@ -202,8 +204,9 @@ export function createLoot(props = null) {
     }
   }
 
-  function updateChase(dt, octo, world) {
+  function updateChase(dt, octos, world) {
     if (d.chase > 0) {
+      const octo = leadOf(octos); // the rocks are dropped over the lead octopus
       d.chase = Math.max(0, d.chase - dt);
       d.chaseSpawn -= dt;
       if (d.chaseSpawn <= 0 && !octo.dead) {
@@ -235,8 +238,13 @@ export function createLoot(props = null) {
         if (pid < 0) { d.rstate[i] = 3; continue; }
         const pd = props.data;
         d.rx[i] = pd.x[pid]; d.ry[i] = pd.y[pid]; d.rt[i] -= dt;
-        if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85 && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
-          if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+        if (Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) {
+          for (let k = 0; k < octos.length; k++) {
+            const octo = octos[k];
+            if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
+              if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i], who: k });
+            }
+          }
         }
         if (dmg && Math.hypot(pd.vx[pid], pd.vy[pid]) > 1.5) dmg.circle('boulder', d.rx[i], d.ry[i], ROCK_RADIUS, true, 1.5); // her trap: every creature it lands on too
         if ((pd.grounded[pid] && Math.hypot(pd.vx[pid], pd.vy[pid]) < 1.5) || pd.state[pid] !== PS_FREE || d.rt[i] <= 0) {
@@ -246,8 +254,11 @@ export function createLoot(props = null) {
       } else if (d.rstate[i] === 2) {
         d.rv[i] = Math.min(ROCK_MAXV, d.rv[i] + ROCK_GRAV * dt);
         d.ry[i] += d.rv[i] * dt;
-        if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
-          if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i] });
+        for (let k = 0; k < octos.length; k++) {
+          const octo = octos[k];
+          if (Math.hypot(d.rx[i] - octo.x, d.ry[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
+            if (octoHit(octo, 'boulder', d.rx[i], d.ry[i], 'rock')) events.push({ type: 'hurt', x: d.rx[i], y: d.ry[i], who: k });
+          }
         }
         if (dmg) dmg.circle('boulder', d.rx[i], d.ry[i], ROCK_RADIUS, true, 1.5);
         if (world.tileAt(Math.floor(d.rx[i]), Math.floor(d.ry[i] + ROCK_RADIUS)) !== 0) {
@@ -266,7 +277,7 @@ export function createLoot(props = null) {
   }
 
   let dmg = null; // 2026-10-08: the shared damage entry (damage.js): a trap's rock and spike burst hit every creature body too
-  let lastOcto = null; // the octopus of the last update (a trap a chain springs can still catch her)
+  let lastOcto = null; // the octopus list of the last update (a trap a chain springs can still catch any of them)
   const api = {
     /** main.js: the shared damage entry (damage.js); null: the traps only reach the octopus. */
     setDamage(dm) { dmg = dm || null; },
@@ -302,8 +313,9 @@ export function createLoot(props = null) {
     },
 
     /** One fixed step (after the octopus moved). Picks up the loot records of every resident chunk once. */
-    update(dt, octo, world, resident) {
-      lastOcto = octo;
+    update(dt, octoArg, world, resident) {
+      const octos = octoList(octoArg, ONE); // one octopus or the co-op list
+      lastOcto = octos;
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -312,7 +324,6 @@ export function createLoot(props = null) {
         }
       }
       if (props) syncProps(world);
-      const speed = Math.hypot(octo.vx, octo.vy);
       for (let i = 0; i < d.n; i++) {
         const k = d.kind[i], st = d.state[i];
         if (k === LK_POCKET) {
@@ -323,23 +334,29 @@ export function createLoot(props = null) {
           }
           continue;
         }
-        if (octo.dead) continue;
-        const near = Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y);
-        if (k === LK_CLAM || k === LK_POT) {
-          const carried = props && d.pid[i] >= 0 && props.data.state[d.pid[i]] === PS_CARRY; // in the octopus's hand (hand.js): a dash does not break it
-          if (st === ST_INTACT && !carried && near < (k === LK_CLAM ? CLAM_R : POT_R) + octo.radius * 0.85 && speed >= DASH_KILL_SPEED) breakObject(i, 'dash');
-        } else if (k === LK_CHEST) {
-          if (st === ST_INTACT && near < CHEST_R + octo.radius * 0.5) {
-            d.state[i] = ST_DONE;
-            events.push({ type: 'chest', x: d.x[i], y: d.y[i], shells: d.count[i], trap: d.aux[i], carry: itemFromCode(d.item[i]) });
-            if (d.aux[i] === TRAP_SPIKES) { d.state[i] = ST_RATTLE; d.t[i] = SPIKE_RATTLE; }
-            else if (d.aux[i] === TRAP_SWARM) events.push({ type: 'trap', trap: TRAP_SWARM, x: d.x[i], y: d.y[i] - 0.3, n: SWARM_SIZE });
-          }
-        } else if (k === LK_RELIC) {
-          if (st === ST_INTACT && near < RELIC_R + octo.radius * 0.5) {
-            d.state[i] = ST_DONE; dropProp(i);
-            events.push({ type: 'relic', x: d.x[i], y: d.y[i], shells: d.count[i] });
-            startChase();
+        if (st !== ST_INTACT || k === LK_NONE) continue; // only an intact clam / pot / chest / relic is touched (st read once: the first octopus to touch it takes it)
+        for (let w = 0; w < octos.length; w++) {
+          const octo = octos[w];
+          if (octo.dead) continue;
+          const near = Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y);
+          if (k === LK_CLAM || k === LK_POT) {
+            const carried = props && d.pid[i] >= 0 && props.data.state[d.pid[i]] === PS_CARRY; // in the octopus's hand (hand.js): a dash does not break it
+            if (!carried && near < (k === LK_CLAM ? CLAM_R : POT_R) + octo.radius * 0.85 && Math.hypot(octo.vx, octo.vy) >= DASH_KILL_SPEED) { breakObject(i, 'dash'); break; }
+          } else if (k === LK_CHEST) {
+            if (near < CHEST_R + octo.radius * 0.5) {
+              d.state[i] = ST_DONE;
+              events.push({ type: 'chest', x: d.x[i], y: d.y[i], shells: d.count[i], trap: d.aux[i], carry: itemFromCode(d.item[i]), who: w });
+              if (d.aux[i] === TRAP_SPIKES) { d.state[i] = ST_RATTLE; d.t[i] = SPIKE_RATTLE; }
+              else if (d.aux[i] === TRAP_SWARM) events.push({ type: 'trap', trap: TRAP_SWARM, x: d.x[i], y: d.y[i] - 0.3, n: SWARM_SIZE });
+              break;
+            }
+          } else if (k === LK_RELIC) {
+            if (near < RELIC_R + octo.radius * 0.5) {
+              d.state[i] = ST_DONE; dropProp(i);
+              events.push({ type: 'relic', x: d.x[i], y: d.y[i], shells: d.count[i], who: w });
+              startChase();
+              break;
+            }
           }
         }
       }
@@ -351,8 +368,11 @@ export function createLoot(props = null) {
           if (d.t[i] <= 0) {
             d.state[i] = ST_BURST; d.t[i] = SPIKE_BURST_TIME;
             events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i] });
-            if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
-              if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
+            for (let k = 0; k < octos.length; k++) {
+              const octo = octos[k];
+              if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
+                if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i], who: k });
+              }
             }
             if (dmg) dmg.circle('trap', d.x[i], d.y[i], SPIKE_RADIUS - 0.5, true); // the burst reaches every creature close by too (she opened it)
           }
@@ -363,14 +383,19 @@ export function createLoot(props = null) {
       }
       // items from pockets
       for (let i = 0; i < d.ni; i++) {
-        if (d.itaken[i] || octo.dead) continue;
-        if (Math.hypot(d.ix[i] - octo.x, d.iy[i] - octo.y) >= ITEM_R + octo.radius * 0.6) continue;
-        if (d.ikind[i] === POCKET_HEART) { if (octo.hearts >= (octo.heartMax || HEART_MAX)) continue; octo.hearts++; }
-        else if (d.ikind[i] === POCKET_BOMB) addBomb(octo);
-        d.itaken[i] = 1;
-        events.push({ type: 'item', item: d.ikind[i], x: d.ix[i], y: d.iy[i], carry: d.ikind[i] === POCKET_ITEM ? itemFromCode(d.iid[i]) : '' });
+        if (d.itaken[i]) continue;
+        for (let k = 0; k < octos.length; k++) { // the item goes to the first octopus that touches it (and can take it)
+          const octo = octos[k];
+          if (octo.dead) continue;
+          if (Math.hypot(d.ix[i] - octo.x, d.iy[i] - octo.y) >= ITEM_R + octo.radius * 0.6) continue;
+          if (d.ikind[i] === POCKET_HEART) { if (octo.hearts >= (octo.heartMax || HEART_MAX)) continue; octo.hearts++; }
+          else if (d.ikind[i] === POCKET_BOMB) addBomb(octo);
+          d.itaken[i] = 1;
+          events.push({ type: 'item', item: d.ikind[i], x: d.ix[i], y: d.iy[i], carry: d.ikind[i] === POCKET_ITEM ? itemFromCode(d.iid[i]) : '', who: k });
+          break;
+        }
       }
-      updateChase(dt, octo, world);
+      updateChase(dt, octos, world);
     },
 
     /**
@@ -387,9 +412,13 @@ export function createLoot(props = null) {
       d.aux[i] = TRAP_NONE;
       if (trap === TRAP_SWARM) { events.push({ type: 'trap', trap: TRAP_SWARM, x: d.x[i], y: d.y[i] - 0.3, n: SWARM_SIZE, chain: true }); return true; }
       events.push({ type: 'trap', trap: TRAP_SPIKES, x: d.x[i], y: d.y[i], chain: true });
-      const octo = lastOcto;
-      if (octo && !octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
-        if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i] });
+      if (lastOcto) {
+        for (let k = 0; k < lastOcto.length; k++) { // a trap a chain springs catches any octopus close by
+          const octo = lastOcto[k];
+          if (octo && !octo.dead && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < SPIKE_RADIUS + octo.radius * 0.5) {
+            if (octoHit(octo, 'trap', d.x[i], d.y[i], 'chest')) events.push({ type: 'hurt', x: d.x[i], y: d.y[i], who: k });
+          }
+        }
       }
       if (dmg) dmg.circle('trap', d.x[i], d.y[i], SPIKE_RADIUS - 0.5, !!(ctx && ctx.byOcto));
       return true;

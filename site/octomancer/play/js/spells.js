@@ -8,6 +8,10 @@
 //
 // Data-oriented: droplets and ink clouds are fixed pools of typed arrays (struct of arrays), no allocation per frame.
 
+import { octoList } from './players.js';
+
+const ONE = [null]; // octoList scratch (juice drops)
+
 const res = await fetch(new URL('../data/spells.json', import.meta.url));
 if (!res.ok) throw new Error('spells.json ' + res.status);
 const json = await res.json();
@@ -152,7 +156,8 @@ export function createJuiceDrops() {
   let cursor = 0, rng = 12345, leakNext = 0;
   const rnd = () => { rng = (Math.imul(rng, 1103515245) + 12345) >>> 0; return rng / 4294967296; };
   /** `collected` this step (droplets that went into the jar), and the spots (x, y pairs) for the sparkle. */
-  const events = { collected: 0, xy: new Float32Array(MAX_DROPS * 2), n: 0 };
+  // `collectedBy[k]`: how many of them octopus k drank (co-op: the caller adds them to that octopus's jar); `collected` is the total.
+  const events = { collected: 0, collectedBy: [0], xy: new Float32Array(MAX_DROPS * 2), n: 0 };
   return {
     data: d,
     events,
@@ -181,30 +186,47 @@ export function createJuiceDrops() {
     /**
      * One fixed step. `room` = droplets the jar can still take (0: a full jar neither pulls nor takes any). Only an octopus with the
      * Siphon Shell (octo.siphonR > 0) pulls droplets in within that reach and drinks them; for anyone else they just dissolve.
+     * Co-op: `octo` may be an array of octopi and `room` a number (one octopus) or an array parallel to it (each jar's own room); each
+     * octopus with a Siphon drinks into its own room, a droplet goes to the first one in array order that reaches it and is pulled by
+     * the nearest one that can. `events.collectedBy[k]` is what octopus k drank.
      */
     update(dt, octo, world, room, force = null) { // force(x, y): the current at a point (jets, Riptides) carries droplets too
+      const octos = octoList(octo, ONE), no = octos.length, rooms = typeof room === 'number' ? null : room;
       events.collected = 0; events.n = 0;
+      const by = events.collectedBy;
+      while (by.length < no) by.push(0);
+      by.length = no;
+      for (let k = 0; k < no; k++) by[k] = 0;
       for (let j = 0; j < LEAKS; j++) {
         if (!lk.left[j]) continue;
         lk.t[j] -= dt;
         if (lk.t[j] <= 0) { this.spawn(lk.x[j], lk.y[j] - 0.1, 1, 0); lk.left[j]--; lk.t[j] = lk.gap[j]; }
       }
-      if (!d.live) return;
-      const mR = octo.siphonR || 0, reach = mR > 0 ? octo.radius + JUICE.collectR : -1;
+      if (!d.live) { ONE[0] = null; return; }
       for (let i = 0; i < MAX_DROPS; i++) {
         if (!d.alive[i]) continue;
         d.age[i] += dt;
         if (d.age[i] >= JUICE.life || world.isSolid(d.x[i], d.y[i])) { d.alive[i] = 0; d.live--; continue; } // dissolved into the water (or leaked into rock)
-        const dx = octo.x - d.x[i], dy = octo.y - d.y[i], dist = Math.hypot(dx, dy);
-        const ready = d.age[i] >= JUICE.pickupDelay && !octo.dead && room - events.collected > 0;
-        if (ready && dist < reach) {
+        const aged = d.age[i] >= JUICE.pickupDelay;
+        let drunk = -1, pull = null, pdist = Infinity, pdx = 0, pdy = 0, pmR = 0;
+        if (aged) for (let q = 0; q < no; q++) {
+          const o = octos[q], mR = o.siphonR || 0;
+          if (o.dead) continue;
+          const r = rooms ? rooms[q] : room;
+          if (!(r - by[q] > 0)) continue; // a full jar neither pulls nor takes any
+          const dx = o.x - d.x[i], dy = o.y - d.y[i], dist = Math.hypot(dx, dy);
+          if (dist < (mR > 0 ? o.radius + JUICE.collectR : -1)) { drunk = q; break; }
+          if (dist < mR && dist > 1e-4 && dist < pdist) { pull = o; pdist = dist; pdx = dx; pdy = dy; pmR = mR; }
+        }
+        if (drunk >= 0) {
           d.alive[i] = 0; d.live--;
           if (events.n < MAX_DROPS) { events.xy[events.n * 2] = d.x[i]; events.xy[events.n * 2 + 1] = d.y[i]; events.n++; }
-          events.collected++;
+          events.collected++; by[drunk]++;
           continue;
         }
-        if (ready && dist < mR && dist > 1e-4) {
+        if (pull) {
           // pulled in: faster the closer it is
+          const dist = pdist, dx = pdx, dy = pdy, mR = pmR;
           const k = JUICE.pullSpeed * (0.45 + 0.55 * (1 - dist / mR));
           const blend = Math.min(1, dt * 9);
           d.vx[i] += ((dx / dist) * k - d.vx[i]) * blend;
@@ -220,6 +242,7 @@ export function createJuiceDrops() {
         else if (!world.isSolid(d.x[i], ny)) { d.y[i] = ny; d.vx[i] = 0; }
         else { d.vx[i] = 0; d.vy[i] = 0; }
       }
+      ONE[0] = null;
     },
     count() { return d.live; },
   };

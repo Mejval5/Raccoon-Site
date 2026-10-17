@@ -10,6 +10,7 @@
 // Neither is solid for the A* check (a clam shell bonks, a tentacle only grabs), so no blockers are listed.
 
 import { killOctopus } from './octopus.js';
+import { pickTarget, octoList } from './players.js';
 import { hasLineOfSight } from './pathfind.js';
 import { PEARL_VALUE } from './shells.js';
 import { inCameraView } from './cull.js';
@@ -121,6 +122,9 @@ export function createCreatures() {
   };
   const events = []; // {type:'pearl'|'pearlDrop'|'killed'|'snap'|'grab'|'grabCreature'|'release'|'eaten'|'wake'|'strike'|'bonk'|'tremble', ...}
   const loaded = new Set();
+  const heldO = new Array(CAP).fill(null); // tentacle: the octopus it holds (co-op: any of them), parallel to the typed arrays
+  const heldK = new Int8Array(CAP);         // ...and its index in the list update() got (the `who` of the grab / release / eaten events)
+  const ONE = [null];                      // octoList's reusable 1-slot array for a single octopus
   let inf = null; // infight.js (v2): the INFIGHT rules (snap, grab); null = they only ever attack the octopus
   let curWorld = null;
   const solidAt = (tx, ty) => curWorld.isSolid(tx, ty);
@@ -179,7 +183,7 @@ export function createCreatures() {
     d.hp[i] -= o.dmg;
     if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB) d.ink[i] += o.dmg;
     if (d.hp[i] <= 0 || o.kill) {
-      if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB && octo) release(i, octo, false);
+      if (d.kind[i] === CR_TENTACLE && d.state[i] === TN_GRAB && (octo || heldO[i])) release(i, octo, false); // lets go of the octopus it HOLDS, whichever one `octo` is
       let dx = d.x[i] - fx, dy = d.y[i] - fy;
       const l = Math.hypot(dx, dy);
       if (l < 1e-4) { dx = 0; dy = 0; } else { dx /= l; dy /= l; }
@@ -189,7 +193,8 @@ export function createCreatures() {
   }
 
   function releaseNear(i, x, y, R, octo) {
-    if (d.kind[i] !== CR_TENTACLE || d.state[i] !== TN_GRAB || !octo || !d.alive[i]) return false;
+    if (d.kind[i] !== CR_TENTACLE || d.state[i] !== TN_GRAB || !(octo || heldO[i]) || !d.alive[i]) return false;
+    octo = heldO[i] || octo; // the held one, not whichever octopus the caller passed
     const near = Math.max(0, Math.hypot(d.x[i] - x, d.y[i] - y) - bodyR(i) * 0.5) <= R || Math.hypot(octo.x - x, octo.y - y) <= R + 0.5;
     if (near) release(i, octo, false);
     return near;
@@ -208,8 +213,9 @@ export function createCreatures() {
     d.chain[i] = -1; d.cdepth[i] = 0;
   }
 
-  function updateClam(i, dt, octo, world) {
+  function updateClam(i, dt, octos, world) {
     const st = d.state[i], cx = d.x[i], fy = d.fy[i];
+    const octo = pickTarget(octos, cx, fy); // it wakes for the nearest octopus
     const near = !octo.dead && Math.hypot(octo.x - cx, octo.y - fy) < CLAM_WAKE_R;
     switch (st) {
       case CL_SHUT:
@@ -237,12 +243,14 @@ export function createCreatures() {
         if (d.t[i] >= CLAM_TREMBLE_T) {
           d.state[i] = CL_SNAP; d.t[i] = 0;
           let kill = false;
-          if (!octo.dead && inMouth(i, octo)) {
-            // the body ends up pinned in the seam (side s = hinge side): head towards the hinge, arms trailing out of the front edge
-            const s = d.side[i];
-            const px = cx + s * 0.12, py = fy - 0.42;
-            kill = killOctopus(octo, 'clam', 'clam', px, py, 90 * s);
-            if (kill) d.fed[i] = 1;
+          for (let k = 0; k < octos.length; k++) { // any octopus in the mouth is caught
+            const o = octos[k];
+            if (!o.dead && inMouth(i, o)) {
+              // the body ends up pinned in the seam (side s = hinge side): head towards the hinge, arms trailing out of the front edge
+              const s = d.side[i];
+              const px = cx + s * 0.12, py = fy - 0.42;
+              if (killOctopus(o, 'clam', 'clam', px, py, 90 * s)) { kill = true; d.fed[i] = 1; }
+            }
           }
           // INFIGHT.snap: the lid crushes whatever else is in the mouth too
           const caught = inf !== null ? inf.box('snap', 'snap', cx - CLAM_MOUTH_HALF_W, fy - CLAM_MOUTH_H, cx + CLAM_MOUTH_HALF_W, fy - 0.1, creatureId(i)) : 0;
@@ -256,20 +264,23 @@ export function createCreatures() {
         break;
       }
     }
-    if (octo.dead || octo.held > 0) return;
     const sn = d.state[i];
-    // the pearl: taken while the shell is open (or trembling)
-    if (d.pearl[i] && (sn === CL_OPEN || sn === CL_TREMBLE || (sn === CL_OPENING && d.ang[i] > 0.5))) {
-      if (Math.hypot(octo.x - cx, octo.y - (fy - 0.38)) < PEARL_R + octo.radius * 0.8) {
-        d.pearl[i] = 0;
-        events.push({ type: 'pearl', x: cx, y: fy - 0.38, value: PEARL_VALUE });
+    for (let k = 0; k < octos.length; k++) { // the pearl and the bonk are for every octopus
+      const o = octos[k];
+      if (o.dead || o.held > 0) continue;
+      // the pearl: taken while the shell is open (or trembling)
+      if (d.pearl[i] && (sn === CL_OPEN || sn === CL_TREMBLE || (sn === CL_OPENING && d.ang[i] > 0.5))) {
+        if (Math.hypot(o.x - cx, o.y - (fy - 0.38)) < PEARL_R + o.radius * 0.8) {
+          d.pearl[i] = 0;
+          events.push({ type: 'pearl', x: cx, y: fy - 0.38, value: PEARL_VALUE, who: k });
+        }
       }
+      // a shut shell is a solid mound: swimming or dashing into it just bonks (no damage), the octopus is pushed out
+      if (sn === CL_SHUT || sn === CL_SNAP || (sn === CL_OPENING && d.ang[i] < 0.25)) bonk(i, o, world, k);
     }
-    // a shut shell is a solid mound: swimming or dashing into it just bonks (no damage), the octopus is pushed out
-    if (sn === CL_SHUT || sn === CL_SNAP || (sn === CL_OPENING && d.ang[i] < 0.25)) bonk(i, octo, world);
   }
 
-  function bonk(i, octo, world) {
+  function bonk(i, octo, world, who = 0) {
     const cx = d.x[i], top = d.fy[i] - CLAM_SHUT_H, r = octo.radius * 0.8;
     const hx = CLAM_HALF_W + r;
     const lx = octo.x - cx;
@@ -286,7 +297,7 @@ export function createCreatures() {
       octo.y = top - r; octo.prevY = octo.y;
       octo.vy = -Math.max(Math.abs(octo.vy) * 0.3, BONK_PUSH);
     }
-    if (speedIn > 3) events.push({ type: 'bonk', x: octo.x, y: octo.y });
+    if (speedIn > 3) events.push({ type: 'bonk', x: octo.x, y: octo.y, who });
   }
 
   // ------------------------------------------------------------ tentacle
@@ -299,7 +310,9 @@ export function createCreatures() {
 
   /** Let go of the octopus and fling it away from the shell. */
   function release(i, octo, stun) {
-    if (octo.held > 0) {
+    const hold = heldO[i];
+    if (hold) octo = hold; // always the octopus this tentacle holds
+    if (octo && octo.held > 0) {
       octo.held = 0;
       let ux = octo.x - d.mx[i], uy = octo.y - d.my[i];
       let l = Math.hypot(ux, uy);
@@ -307,8 +320,9 @@ export function createCreatures() {
       octo.vx = ux / l * TENT_FLING; octo.vy = uy / l * TENT_FLING;
       octo.invulnTimer = Math.max(octo.invulnTimer, 0.6);
       octo.dashCooldown = Math.max(octo.dashCooldown, 0.3);
-      events.push({ type: 'release', x: octo.x, y: octo.y });
+      events.push({ type: 'release', x: octo.x, y: octo.y, who: heldK[i] });
     }
+    heldO[i] = null; heldK[i] = 0;
     d.squeeze[i] = 0; d.ink[i] = 0;
     d.cd[i] = TENT_REGRAB_CD;
     d.state[i] = stun ? TN_STUN : TN_RETRACT; d.t[i] = 0;
@@ -316,14 +330,15 @@ export function createCreatures() {
 
   function startRetract(i, cd) { d.state[i] = TN_RETRACT; d.t[i] = 0; if (cd > d.cd[i]) d.cd[i] = cd; }
 
-  function updateTentacle(i, dt, octo, world) {
+  function updateTentacle(i, dt, octos, world) {
     const mx = d.mx[i], my = d.my[i];
+    const octo = pickTarget(octos, mx, my); // it reaches for the nearest octopus (a held one is looked after by grab)
     if (d.cd[i] > 0) d.cd[i] = Math.max(0, d.cd[i] - dt);
     const st = d.state[i];
     const dist = Math.hypot(octo.x - mx, octo.y - my);
     const solidT = (tx, ty) => world.isSolid(tx, ty);
     if (st === TN_FED) { d.tipx[i] = mx; d.tipy[i] = my; return; }
-    if (st === TN_GRAB) { grab(i, dt, octo, world); return; }
+    if (st === TN_GRAB) { grab(i, dt, heldO[i] || octo, world); return; }
     let aware = !octo.dead && dist < TENT_LOSE_R && hasLineOfSight(solidT, mx, my, octo.x, octo.y);
     // INFIGHT.grab: the octopus first; while she is not in reach a tentacle hunts any free creature it can reach (d.tg = 1)
     if (d.tg[i] && aware && dist < TENT_WAKE_R && (st === TN_WAKE || st === TN_REACH)) d.tg[i] = 0; // she came close: back to her
@@ -391,7 +406,8 @@ export function createCreatures() {
         if (!prey && !octo.dead && !(octo.dashInvuln > 0) && d.cd[i] <= 0 && Math.hypot(octo.x - d.tipx[i], octo.y - d.tipy[i]) < TENT_TIP_R + octo.radius * 0.8) { // dash i-frames: it cannot grab
           d.state[i] = TN_GRAB; d.t[i] = 0; d.ink[i] = 0; d.squeeze[i] = 0;
           octo.held = 1; octo.struggles = 0; octo.stunT = 0; octo.spin = 0; octo.vx = octo.vy = 0;
-          events.push({ type: 'grab', x: octo.x, y: octo.y });
+          heldO[i] = octo; heldK[i] = octos.indexOf(octo); // this tentacle now holds THIS octopus
+          events.push({ type: 'grab', x: octo.x, y: octo.y, who: heldK[i] });
           break;
         }
         if (d.t[i] >= TENT_STRIKE_T) { d.tg[i] = 0; startRetract(i, TENT_MISS_CD); } // a miss
@@ -430,7 +446,7 @@ export function createCreatures() {
   function grab(i, dt, octo, world) {
     const mx = d.mx[i], my = d.my[i];
     if (octo.dead || octo.held <= 0) { // something else ended it (it died, or a test freed it)
-      d.squeeze[i] = 0; startRetract(i, 1);
+      d.squeeze[i] = 0; startRetract(i, 1); heldO[i] = null; heldK[i] = 0;
       return;
     }
     d.t[i] += dt;
@@ -456,7 +472,8 @@ export function createCreatures() {
       const ang = Math.atan2(-d.mdx[i], d.mdy[i]) * 180 / Math.PI; // head into the shell, arms trailing out of the mouth
       if (killOctopus(octo, 'tentacle', 'eaten', px, py, ang)) {
         d.state[i] = TN_FED; d.fed[i] = 1; d.squeeze[i] = 0;
-        events.push({ type: 'eaten', x: px, y: py });
+        events.push({ type: 'eaten', x: px, y: py, who: heldK[i] });
+        heldO[i] = null; heldK[i] = 0;
       } else release(i, octo, true); // a test hook (godMode) refuses styled kills
     }
   }
@@ -470,8 +487,9 @@ export function createCreatures() {
     setInfight(x) { inf = x; },
     count() { return d.n; },
     /** One fixed step (after the octopus moved). Picks up the creature records of every resident chunk once. */
-    update(dt, octo, world, resident) {
+    update(dt, octoArg, world, resident) {
       events.length = 0;
+      const octos = octoList(octoArg, ONE); // one octopus or the co-op list
       curWorld = world;
       if (resident) {
         for (const { index, chunk } of resident) {
@@ -482,7 +500,7 @@ export function createCreatures() {
       }
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
-        if (d.kind[i] === CR_GCLAM) updateClam(i, dt, octo, world); else updateTentacle(i, dt, octo, world);
+        if (d.kind[i] === CR_GCLAM) updateClam(i, dt, octos, world); else updateTentacle(i, dt, octos, world);
       }
     },
     /** A bomb blast of radius R at (x, y), by the table (damage.js blast): a body whose edge is inside takes the bomb; a held

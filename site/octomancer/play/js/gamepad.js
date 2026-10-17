@@ -88,7 +88,7 @@ export function createGamepad(input, hooks = {}) {
   for (const n of NAMES) { down[n] = was[n] = latched[n] = false; }
   const mv = { x: 0, y: 0 }, am = { x: 0, y: 0 };
   let moveOut = true, aimOut = true; // the sticks were inside their deadzones last poll (a leave sets the mode)
-  let padId = '', lastT = 0, inMenu = false;
+  let padId = '', primaryKeyNow = '', padStillThere = false, lastT = 0, inMenu = false;
   let menuDir = '', menuHold = 0, menuNext = 0;
   const stats = { polls: 0, connected: false, id: '', style: 'xbox' };
 
@@ -114,18 +114,28 @@ export function createGamepad(input, hooks = {}) {
     stats.polls++;
     let list = null;
     try { list = getPads(); } catch (e) { list = null; }
-    const gp = pickPad(list);
+    // local co-op (players.js): which connected pad is the primary one (today's single pad: the merged snapshot, the menus),
+    // and every other connected pad is read on its own (pollOthers): a player's own snapshot, or a free pad that may join
+    const want = hooks.primaryKey ? hooks.primaryKey() : undefined;
+    const gp = want === undefined ? pickPad(list) : want === '' ? null : padByKey(list, want);
+    padStillThere = !!(primaryKeyNow && padByKey(list, primaryKeyNow));
+    pollOthers(list, gp, dt);
+    pollPrimary(gp, dt, want !== undefined);
+  }
+  function pollPrimary(gp, dt, chosen = false) {
     if (!gp) {
       if (padId) {
-        padId = ''; stats.connected = false; stats.id = '';
+        padId = ''; primaryKeyNow = ''; stats.connected = false; stats.id = '';
         for (const n of NAMES) { was[n] = down[n] = latched[n] = false; }
         releaseGame();
-        if (hooks.onDisconnect) hooks.onDisconnect();
+        // co-op: a pad that stops being the primary one (main.js chose another, or none) has not gone away
+        if (hooks.onDisconnect && !(chosen && padStillThere)) hooks.onDisconnect();
       }
       return;
     }
-    if (gp.id !== padId) {
-      padId = gp.id || 'pad'; stats.connected = true; stats.id = padId;
+    const gkey = keyOf(gp, gp.index | 0);
+    if (gkey !== primaryKeyNow) {
+      padId = gp.id || 'pad'; primaryKeyNow = gkey; stats.connected = true; stats.id = padId;
       const style = padStyleOf(gp.id);
       stats.style = style;
       const restyled = input.pad.style !== style;
@@ -196,8 +206,122 @@ export function createGamepad(input, hooks = {}) {
     poll(dt);
   }
 
+  // --- local co-op: every connected pad other than the primary one ----------------------------------------------------------
+  // A pad bound to a player (hooks.isPlayer(key)) gets its own snapshot (snapshotOf(key), read once per fixed step by main.js);
+  // in a menu it moves the cursor like the primary pad and Start / View pause and open the book. A free pad (no player) only
+  // reports its presses (hooks.onFree(key, button, info)): A or Start in the pause menu is how it joins. The same rules as the
+  // primary pad: what is held when it appears or when a menu opens or closes waits for its release.
+  const others = new Map(); // key -> per-pad record
+  function padByKey(list, key) {
+    if (!list) return null;
+    for (let i = 0; i < list.length; i++) { const g = list[i]; if (g && g.connected !== false && keyOf(g, i) === key) return g; }
+    return null;
+  }
+  function keyOf(g, i) { return String(g.id || 'pad') + '#' + (g.index !== undefined ? g.index : i); }
+  function newBtn() { return { pressed: false, held: false, released: false }; }
+  function setBtn(b, on) { if (on) { if (!b.held) b.pressed = true; b.held = true; } else { if (b.held) b.released = true; b.held = false; } }
+  function otherRec(key, g) {
+    const r = { key, id: g.id || 'pad', index: g.index | 0, style: padStyleOf(g.id), down: {}, was: {}, latched: {}, mv: { x: 0, y: 0 }, am: { x: 0, y: 0 }, inMenu: false, menuDir: '', menuHold: 0, menuNext: 0, seen: true,
+      snap: { x: 0, y: 0, ax: 0, ay: 0, aimActive: false, dash: newBtn(), attack: newBtn(), use: newBtn(), hand: newBtn(), cycle: 0, select: -1 } };
+    for (const n of NAMES) { r.down[n] = btnDown(g, BTN[n]); r.was[n] = r.down[n]; r.latched[n] = r.down[n]; }
+    return r;
+  }
+  function releaseOther(r) { const s = r.snap; setBtn(s.dash, false); setBtn(s.attack, false); setBtn(s.use, false); setBtn(s.hand, false); s.x = s.y = s.ax = s.ay = 0; s.aimActive = false; }
+  function pollOthers(list, primary, dt) {
+    for (const r of others.values()) r.seen = false;
+    if (list) for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      if (!g || g.connected === false || g === primary) continue;
+      const key = keyOf(g, i);
+      let r = others.get(key);
+      if (!r) { r = otherRec(key, g); others.set(key, r); if (hooks.onOtherConnect) hooks.onOtherConnect(key, r.style); continue; }
+      r.seen = true;
+      pollOther(r, g, dt);
+    }
+    for (const [key, r] of others) {
+      if (r.seen || (list && padByKey(list, key) && padByKey(list, key) === primary)) { if (!r.seen) others.delete(key); continue; }
+      others.delete(key);
+      if (hooks.onOtherGone) hooks.onOtherGone(key);
+    }
+  }
+  function pollOther(r, g, dt) {
+    const { down, was, latched } = r;
+    for (const n of NAMES) { was[n] = down[n]; down[n] = btnDown(g, BTN[n]); if (latched[n] && !down[n]) latched[n] = false; }
+    const ed = (n) => down[n] && !was[n] && !latched[n];
+    const hd = (n) => down[n] && !latched[n];
+    const ax = g.axes || [];
+    radialDeadzone(ax[0] || 0, ax[1] || 0, MOVE_DEADZONE, r.mv);
+    radialDeadzone(ax[2] || 0, ax[3] || 0, AIM_DEADZONE, r.am);
+    const player = !!(hooks.isPlayer && hooks.isPlayer(r.key));
+    let fresh = false;
+    for (const n of NAMES) if (ed(n)) fresh = true;
+    if (fresh && hooks.onOtherActivity) hooks.onOtherActivity(r.key);
+    if (!player) { // a free pad: only its presses, for joining from the pause menu
+      for (const n of ['a', 'start', 'b', 'back']) if (ed(n) && hooks.onFree) hooks.onFree(r.key, n, { id: r.id, index: r.index, style: r.style });
+      releaseOther(r);
+      return;
+    }
+    if (ed('start') && hooks.onPause) hooks.onPause(r.key);
+    if (ed('back') && hooks.onInventory) hooks.onInventory(r.key);
+    const menu = !!(hooks.menuActive && hooks.menuActive());
+    if (menu !== r.inMenu) {
+      r.inMenu = menu;
+      for (const n of NAMES) if (down[n]) latched[n] = true;
+      releaseOther(r);
+      r.menuDir = ''; r.menuHold = 0;
+      return;
+    }
+    if (menu) {
+      if (fresh && input.mode() !== 'pad') input.setMode('pad'); // the ring shows for the pad that drives the menu
+      const send = (a) => { if (hooks.onMenu) hooks.onMenu(a, r.key); };
+      if (ed('a')) send('confirm');
+      if (ed('b')) send('back');
+      if (ed('lb')) send('tabprev');
+      if (ed('rb')) send('tabnext');
+      if (ed('x')) send('x');
+      if (ed('y')) send('y');
+      let d = '';
+      if (down.up) d = 'up'; else if (down.down) d = 'down'; else if (down.left) d = 'left'; else if (down.right) d = 'right';
+      else { const x = ax[0] || 0, y = ax[1] || 0; if (Math.hypot(x, y) >= MENU_STICK) d = Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up'); }
+      if (d && latched[d]) { /* held over the switch */ }
+      else if (d !== r.menuDir) { r.menuDir = d; r.menuHold = 0; r.menuNext = REPEAT_FIRST; if (d) send(d); }
+      else if (d) { r.menuHold += dt; if (r.menuHold >= r.menuNext) { r.menuNext += REPEAT_NEXT; send(d); } }
+      return;
+    }
+    const s = r.snap;
+    s.x = r.mv.x; s.y = r.mv.y; s.ax = r.am.x; s.ay = r.am.y; s.aimActive = r.am.x !== 0 || r.am.y !== 0;
+    setBtn(s.dash, hd('b') || hd('lt'));
+    setBtn(s.attack, hd('rt'));
+    setBtn(s.use, hd('rb'));
+    setBtn(s.hand, hd('a'));
+    if (ed('lb')) s.cycle += 1;
+    if (ed('left')) s.cycle -= 1;
+    if (ed('right')) s.cycle += 1;
+    if (ed('up')) s.select = 0;
+  }
+  const NOB = { pressed: false, held: false };
+  const rd = (b) => ({ pressed: b.pressed, held: b.held });
+  /** A player pad's input for one fixed step, in the shape of input.js snapshot() (clears its one-shot edges), or null. */
+  function snapshotOf(key) {
+    const r = others.get(key);
+    if (!r) return null;
+    const s = r.snap;
+    const out = {
+      move: { x: s.x, y: s.y }, aim: { x: s.ax, y: s.ay, active: s.aimActive },
+      dash: rd(s.dash), bomb: NOB, pause: NOB, attack: rd(s.attack), spell: NOB, use: rd(s.use), hand: rd(s.hand), inventory: NOB,
+      cycle: s.cycle, select: s.select, src: { attack: 'pad', spell: 'touch', bomb: 'pad', use: 'pad' }, mode: 'pad',
+    };
+    for (const b of [s.dash, s.attack, s.use, s.hand]) { b.pressed = false; b.released = false; }
+    s.cycle = 0; s.select = -1;
+    return out;
+  }
+
   return {
-    poll, frame,
+    poll, frame, snapshotOf,
+    /** Local co-op: the connected pads other than the primary one ({key, id, index, style}). */
+    others() { return [...others.values()].map((r) => ({ key: r.key, id: r.id, index: r.index, style: r.style })); },
+    /** The key (players.js padKey) of the primary pad now, or ''. */
+    primaryKey() { return padId ? primaryKeyNow : ''; },
     connected() { return stats.connected; },
     style() { return input.pad.style; },
     /** Test / debug read: the last poll's buttons, sticks and state. */

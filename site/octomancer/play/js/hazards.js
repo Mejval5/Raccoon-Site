@@ -14,6 +14,7 @@ import { hasLineOfSight } from './pathfind.js';
 import { IMPALE_DEPTH } from './config.js';
 import { PK_ROCK, PK_BOMB, PK_POT, PK_RELIC, PK_RUBBLE, PK_FIND, PS_FREE, PS_HELD } from './props.js';
 import { inCameraView } from './cull.js';
+import { octoList } from './players.js';
 
 export const HZ_NONE = 0, HZ_JET = 1, HZ_SPIKES = 2, HZ_ROCK = 3, HZ_EEL = 4, HZ_ANEMONE = 5;
 export const HAZARD_NAMES = ['', 'jet', 'spikes', 'rock', 'eel', 'anemone'];
@@ -66,6 +67,8 @@ const span = { lo: 0, hi: 0 };
 let spanWorld = null;
 const spanSolid = (a, b) => spanWorld.isSolid(a + 0.5, b + 0.5);
 const jetOut = { fx: 0, fy: 0 };
+const ONE = [null]; // octoList's reusable 1-slot array: a single octopus passed to update() rides in it (no allocation)
+let whoIdx = 0;     // which octopus (index in the list update() was given) the hazard code is working on: the `who` of its events
 const forceOut = { fx: 0, fy: 0 };
 
 /**
@@ -233,6 +236,7 @@ export function createHazards(props = null) {
   // (damage.js, injected by main.js; null in tests that only drive the octopus). No kind is special-cased here: the creature
   // table (creature-rules.js) says what spikes, a boulder, a jet, a shock or an anemone does to each.
   let dmg = null;
+  const splatO = new Array(CAP).fill(null); // rock: the octopus it splatted (stepSplat carries that one), parallel to the typed arrays
 
   function add(rec) {
     if (d.n >= CAP) return -1;
@@ -246,7 +250,7 @@ export function createHazards(props = null) {
     d.r[i] = 0; d.x0[i] = rec.x; d.y0[i] = rec.y;
     d.pid[i] = -1; d.hit[i] = 0; d.cause[i] = 0; d.pool[i] = rec.set === 'pool' ? 1 : 0;
     d.temp[i] = 0; d.pw[i] = 1; d.hw[i] = JET_HALF_WIDTH;
-    d.chain[i] = -1; d.cdepth[i] = 0; d.surge[i] = 0; d.imp[i] = 0;
+    d.chain[i] = -1; d.cdepth[i] = 0; d.surge[i] = 0; d.imp[i] = 0; splatO[i] = null;
     if (props && rec.hk === HZ_ROCK) {
       const pid = props.add(PK_ROCK, rec.x, rec.y, 0, 0, { radius: ROCK_RADIUS, ref: i });
       if (pid >= 0) { d.pid[i] = pid; props.hold(pid, Math.floor(rec.x), Math.floor(rec.y) - 1); } // hangs from the tile above
@@ -257,13 +261,13 @@ export function createHazards(props = null) {
   // the creature-table source of each hazard kind (what it does to the octopus and to every creature)
   const HZ_SOURCE = ['', 'jet', 'spikes', 'boulder', 'shock', 'anemone'];
   function hurt(octo, i, fx, fy) {
-    if (octoHit(octo, HZ_SOURCE[d.kind[i]], fx, fy, HZ_CAUSE[d.kind[i]])) { events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }); return true; }
+    if (octoHit(octo, HZ_SOURCE[d.kind[i]], fx, fy, HZ_CAUSE[d.kind[i]])) { events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy, who: whoIdx }); return true; }
     return false;
   }
   /** V2-PLAN 16: a shock (ring or body) is an incapacitation: one heart, EEL_STUN_S of limp body (creature-rules.js SOURCES.shock). */
   function shockOcto(octo, i, fx, fy) {
     if (octoHit(octo, 'shock', fx, fy, HZ_CAUSE[d.kind[i]])) {
-      events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy }, { type: 'shocked', x: octo.x, y: octo.y });
+      events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx, y: fy, who: whoIdx }, { type: 'shocked', x: octo.x, y: octo.y, who: whoIdx });
     }
   }
   /** A boulder coming down on the octopus (fast, its centre above) flattens it: the body is pinned under the rock and the death is instant. */
@@ -275,11 +279,14 @@ export function createHazards(props = null) {
     if (!killOctopus(octo, 'rock', 'splat', octo.x, octo.y, 0)) return false;
     d.state[i] = 5; d.hit[i] = 1;
     octo.flat = 0.75; // already crushed on the impact frame (the hit-stop holds it on screen)
-    events.push({ type: 'splat', x: octo.x, y: Math.min(octo.y, d.y[i] + ROCK_RADIUS), rockX: d.x[i], rockY: d.y[i] });
+    splatO[i] = octo; // the boulder pins THIS octopus
+    events.push({ type: 'splat', x: octo.x, y: Math.min(octo.y, d.y[i] + ROCK_RADIUS), rockX: d.x[i], rockY: d.y[i], who: whoIdx });
     return true;
   }
   /** One step of a splat: the rock keeps falling, the body is carried under it and gets squashed between it and the floor; at rest it is a pancake. */
-  function stepSplat(i, dt, octo) {
+  function stepSplat(i, dt) {
+    const octo = splatO[i];
+    if (!octo) return;
     d.t[i] += dt;
     const resting = d.state[i] === 6;
     const avail = d.b[i] - (d.y[i] + ROCK_RADIUS); // room left between the boulder's underside and the floor
@@ -317,13 +324,16 @@ export function createHazards(props = null) {
    * that roams (cause 0: a boulder a creature triggered never angers a shopkeeper or an NPC). Item 6: only while the boulder is inside the camera
    * view, so nothing drops from off-screen. True when it was triggered (the shake starts).
    */
-  function underRock(i, octo, world) {
+  function underRock(i, octos, world) {
     const x = d.x[i], y = d.y[i];
     if (!inCameraView(x, y)) return false;
     const tx = Math.floor(x), ya = Math.floor(y) + 1, bottom = d.a[i] + 1.5;
     let who = 0;
-    if (Math.abs(octo.x - x) < ROCK_TRIGGER_HALF && octo.y > y + 0.8 && octo.y < bottom && lineClear(world, tx, ya, Math.floor(octo.y))) who = 1;
-    else if (dmg) {
+    for (let k = 0; k < octos.length; k++) {
+      const octo = octos[k];
+      if (Math.abs(octo.x - x) < ROCK_TRIGGER_HALF && octo.y > y + 0.8 && octo.y < bottom && lineClear(world, tx, ya, Math.floor(octo.y))) { who = 1; break; }
+    }
+    if (!who && dmg) {
       trig.x = x; trig.y = y; trig.bottom = bottom; trig.tx = tx; trig.ya = ya; trig.world = world; trig.who = 0;
       dmg.each(trigBody);
       who = trig.who;
@@ -413,16 +423,23 @@ export function createHazards(props = null) {
     }
   }
 
-  function updateJet(i, dt, octo) {
-    if (octo.anchorT > 0) return; // Anchor (spells): nothing throws the octopus about
-    const f = jetForceAt(d, i, octo.x, octo.y);
-    if (!f) return;
-    octo.vx += f.fx * dt;
-    octo.vy += f.fy * dt;
+  function updateJet(i, dt, octos) {
+    for (let k = 0; k < octos.length; k++) {
+      const octo = octos[k];
+      if (octo.anchorT > 0) continue; // Anchor (spells): nothing throws the octopus about
+      const f = jetForceAt(d, i, octo.x, octo.y);
+      if (!f) continue;
+      octo.vx += f.fx * dt;
+      octo.vy += f.fy * dt;
+    }
   }
 
   /** V2-PLAN 16: the spikes kill outright. Touching the strip pins the body on the tips (IMPALE_DEPTH past the face), belly to the face. */
-  function updateSpikes(i, octo, world) {
+  function updateSpikes(i, octos, world) {
+    for (let k = 0; k < octos.length; k++) { whoIdx = k; spikesOne(i, octos[k], world); }
+    whoIdx = 0;
+  }
+  function spikesOne(i, octo, world) {
     const dx = d.dx[i], dy = d.dy[i], tx = -dy, ty = dx;
     const fx = d.x[i] - dx * 0.5, fy = d.y[i] - dy * 0.5; // centre of the face
     const rx = octo.x - fx, ry = octo.y - fy;
@@ -437,13 +454,13 @@ export function createHazards(props = null) {
     // belly to the face: the head points away from the rock, with a little lean towards the side it hit
     const ang = Math.atan2(dx, -dy) * RAD2DEG + (c / SPIKE_HALF_LEN) * 16 * (dy !== 0 ? 1 : -1);
     if (octo.dead) { // V2-PLAN 14: a corpse thrown onto the spikes is knocked off them (a hit on the body), not skewered
-      if (hitBody(octo, fx + tx * c, fy + ty * c)) events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx + tx * c, y: fy + ty * c });
+      if (hitBody(octo, fx + tx * c, fy + ty * c)) events.push({ type: 'hazardHurt', kind: d.kind[i], x: fx + tx * c, y: fy + ty * c, who: whoIdx });
       return;
     }
-    if (killOctopus(octo, HZ_CAUSE[d.kind[i]], 'impale', px, py, ang)) events.push({ type: 'impaled', x: px, y: py, dx, dy });
+    if (killOctopus(octo, HZ_CAUSE[d.kind[i]], 'impale', px, py, ang)) events.push({ type: 'impaled', x: px, y: py, dx, dy, who: whoIdx });
   }
 
-  function updateRockProp(i, dt, octo, world) {
+  function updateRockProp(i, dt, octos, world) {
     const pid = d.pid[i], pd = props.data, st = d.state[i];
     if (st === 0 || st === 1) {
       if (pd.state[pid] !== PS_HELD) { // its ceiling was bombed away: it comes loose now, no warning
@@ -456,15 +473,23 @@ export function createHazards(props = null) {
         if (d.t[i] <= 0) { d.state[i] = 2; props.release(pid); pd.vy[pid] = 0.5; }
         return;
       }
-      underRock(i, octo, world);
+      underRock(i, octos, world);
       return;
     }
     if (st !== 2 && st !== 4 && st !== 5 && st !== 6) return;
     d.x[i] = pd.x[pid]; d.y[i] = pd.y[pid];
     const sp = Math.hypot(pd.vx[pid], pd.vy[pid]);
-    if (st === 6) { stepSplat(i, dt, octo); return; } // resting on the pancake: the boulder stays a prop, never a rock tile
-    if (st === 2 && sp > 1.5 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
-      if (octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
+    if (st === 6) { stepSplat(i, dt); return; } // resting on the pancake: the boulder stays a prop, never a rock tile
+    if (st === 2 && sp > 1.5) {
+      for (let k = 0; k < octos.length; k++) {
+        const octo = octos[k];
+        if (d.state[i] !== 2) break; // it splatted an octopus this step: that one is pinned, the impact is spent
+        if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
+          whoIdx = k;
+          if (octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
+        }
+      }
+      whoIdx = 0;
     }
     if (st === 2) crushUnder(i, d.x[i], d.y[i], sp);
     // chain.js: the first hard stop of a drop (on the floor, on a bomb, on a clam) is its impact: it sets off what it hit
@@ -481,12 +506,15 @@ export function createHazards(props = null) {
     const landed = (pd.grounded[pid] && sp < 1.5) || pd.state[pid] !== PS_FREE;
     if (d.state[i] === 5) { // splatting: carry the body down with the boulder
       if (landed) d.state[i] = 6;
-      stepSplat(i, dt, octo);
+      stepSplat(i, dt);
       return;
     }
     if (!landed) return;
     // never settle on top of the octopus: wait (state 4) until it swims clear
-    if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
+    for (let k = 0; k < octos.length; k++) {
+      const octo = octos[k];
+      if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; return; }
+    }
     const tx = Math.floor(d.x[i]), ty = Math.floor(d.y[i]);
     // a boulder balanced on a ledge corner (its middle over the drop) must not turn into a rock tile hanging in the water: it
     // rolls off instead, towards the middle of the cell it is in, and settles lower down
@@ -507,34 +535,45 @@ export function createHazards(props = null) {
     events.push({ type: 'rockImpact', x: d.x[i], y: d.y[i], i, chain: d.chain[i], depth: d.cdepth[i], byOcto: d.cause[i] === 1 });
   }
 
-  function updateRock(i, dt, octo, world) {
-    if (props && d.pid[i] >= 0) { updateRockProp(i, dt, octo, world); return; }
+  function updateRock(i, dt, octos, world) {
+    if (props && d.pid[i] >= 0) { updateRockProp(i, dt, octos, world); return; }
     const st = d.state[i];
     if (st === 0) {
-      underRock(i, octo, world);
+      underRock(i, octos, world);
     } else if (st === 1) {
       d.t[i] -= dt;
       if (d.t[i] <= 0) { d.state[i] = 2; d.v[i] = 0; }
     } else if (st === 6) {
-      stepSplat(i, dt, octo);
+      stepSplat(i, dt);
     } else if (st === 2 || st === 4 || st === 5) {
       if (st === 2 || st === 5) {
         d.v[i] = Math.min(ROCK_MAX_FALL, d.v[i] + ROCK_GRAVITY * dt);
         d.y[i] = Math.min(d.a[i], d.y[i] + d.v[i] * dt);
-        if (st === 2 && Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
-          if (octo.dead || !trySplat(i, octo, world, d.v[i])) hurtByRock(octo, i, world);
+        if (st === 2) {
+          for (let k = 0; k < octos.length; k++) {
+            const octo = octos[k];
+            if (d.state[i] !== 2) break; // it splatted an octopus this step: that one is pinned, the impact is spent
+            if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
+              whoIdx = k;
+              if (octo.dead || !trySplat(i, octo, world, d.v[i])) hurtByRock(octo, i, world);
+            }
+          }
+          whoIdx = 0;
         }
         if (st === 2) crushUnder(i, d.x[i], d.y[i], d.v[i]);
       }
       if (d.state[i] === 5) { // splatting: the boulder carries the body down and stays where it lands (no rock tile)
-        stepSplat(i, dt, octo);
+        stepSplat(i, dt);
         if (d.y[i] >= d.a[i]) d.state[i] = 6;
         return;
       }
       if (d.y[i] >= d.a[i] && !d.imp[i] && d.v[i] > ROCK_IMPACT_SPEED) impact(i);
       if (d.y[i] >= d.a[i]) {
         // never settle on top of the octopus: wait (state 4) until it swims clear
-        if (Math.hypot(d.x[i] - octo.x, d.a[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; d.y[i] = d.a[i]; return; }
+        for (let k = 0; k < octos.length; k++) {
+          const octo = octos[k];
+          if (Math.hypot(d.x[i] - octo.x, d.a[i] - octo.y) < ROCK_RADIUS + octo.radius + 0.1) { d.state[i] = 4; d.y[i] = d.a[i]; return; }
+        }
         d.state[i] = 3; d.y[i] = d.a[i];
         const tx = Math.floor(d.x[i]), ty = Math.floor(d.a[i]);
         if (world.placeRock && world.tileAt(tx, ty) === 0) world.placeRock(tx, ty); // becomes breakable rock where it lands
@@ -543,7 +582,7 @@ export function createHazards(props = null) {
     }
   }
 
-  function updateEel(i, dt, octo, world) {
+  function updateEel(i, dt, octos, world) {
     // patrol the shaft
     const y0 = d.a[i], y1 = d.b[i];
     d.y[i] += d.v[i] * dt;
@@ -562,16 +601,26 @@ export function createHazards(props = null) {
       if (d.r[i] > EEL_RING_MAX) d.r[i] = 0;
     }
     const ex = d.x[i], ey = d.y[i];
-    const dist = Math.hypot(octo.x - ex, octo.y - ey);
-    if (d.r[i] > 0 && Math.abs(dist - d.r[i]) < 0.3 + octo.radius * 0.8 && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), ex, ey, octo.x, octo.y)) shockOcto(octo, i, ex, ey);
-    // the body itself
-    const py = Math.max(ey - EEL_HALF_BODY, Math.min(ey + EEL_HALF_BODY, octo.y));
-    if (Math.hypot(octo.x - ex, octo.y - py) < 0.3 + octo.radius * 0.8) shockOcto(octo, i, ex, ey);
+    for (let k = 0; k < octos.length; k++) {
+      const octo = octos[k];
+      whoIdx = k;
+      const dist = Math.hypot(octo.x - ex, octo.y - ey);
+      if (d.r[i] > 0 && Math.abs(dist - d.r[i]) < 0.3 + octo.radius * 0.8 && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), ex, ey, octo.x, octo.y)) shockOcto(octo, i, ex, ey);
+      // the body itself
+      const py = Math.max(ey - EEL_HALF_BODY, Math.min(ey + EEL_HALF_BODY, octo.y));
+      if (Math.hypot(octo.x - ex, octo.y - py) < 0.3 + octo.radius * 0.8) shockOcto(octo, i, ex, ey);
+    }
+    whoIdx = 0;
     if (dmg) shockBodies(i, world, d.r[i]);
   }
 
-  function updateAnemone(i, octo) {
-    if (Math.hypot(octo.x - d.x[i], octo.y - (d.y[i] + 0.1)) < ANEMONE_R + octo.radius * 0.6) hurt(octo, i, d.x[i], d.y[i] + 0.3);
+  function updateAnemone(i, octos) {
+    for (let k = 0; k < octos.length; k++) {
+      const octo = octos[k];
+      whoIdx = k;
+      if (Math.hypot(octo.x - d.x[i], octo.y - (d.y[i] + 0.1)) < ANEMONE_R + octo.radius * 0.6) hurt(octo, i, d.x[i], d.y[i] + 0.3);
+    }
+    whoIdx = 0;
     if (dmg) stingBodies(i);
   }
 
@@ -584,8 +633,9 @@ export function createHazards(props = null) {
     /** r40: the Challenge Pool's vents push with this fraction of a jet's force (weak while the pool is idle, full during a wager). */
     setPoolGain(g) { d.gain = g; },
     /** One fixed step (after the octopus moved). Picks up the hazard records of every resident chunk once. */
-    update(dt, time, octo, world, resident) {
+    update(dt, time, octoArg, world, resident) {
       events.length = 0;
+      const octos = octoList(octoArg, ONE); // one octopus or the co-op list; solo runs the same single checks as before
       if (resident) {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
@@ -596,11 +646,11 @@ export function createHazards(props = null) {
       for (let i = 0; i < d.n; i++) {
         if (d.temp[i] && d.kind[i] === HZ_JET) { d.t[i] += dt; if (d.t[i] >= d.v[i]) { d.kind[i] = HZ_NONE; continue; } } // a Riptide runs out
         switch (d.kind[i]) {
-          case HZ_JET: if (d.surge[i] > 0) d.surge[i] = Math.max(0, d.surge[i] - dt); updateJet(i, dt, octo); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
-          case HZ_SPIKES: updateSpikes(i, octo, world); if (dmg) spikeBodies(i, world); break;
-          case HZ_ROCK: updateRock(i, dt, octo, world); break;
-          case HZ_EEL: updateEel(i, dt, octo, world); break;
-          case HZ_ANEMONE: updateAnemone(i, octo); break;
+          case HZ_JET: if (d.surge[i] > 0) d.surge[i] = Math.max(0, d.surge[i] - dt); updateJet(i, dt, octos); break; // the dead body too (V2-PLAN 14): jets shove it, spikes and anemones hit it
+          case HZ_SPIKES: updateSpikes(i, octos, world); if (dmg) spikeBodies(i, world); break;
+          case HZ_ROCK: updateRock(i, dt, octos, world); break;
+          case HZ_EEL: updateEel(i, dt, octos, world); break;
+          case HZ_ANEMONE: updateAnemone(i, octos); break;
           default: break;
         }
       }

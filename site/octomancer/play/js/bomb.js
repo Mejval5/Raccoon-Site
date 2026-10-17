@@ -18,6 +18,7 @@
 import { BOMB_FUSE, BOMB_RADIUS } from './config.js';
 import { tryUseBomb, hurtOctopus } from './octopus.js';
 import { octoHit } from './damage.js';
+import { octoList } from './players.js';
 import { PK_BOMB, PK_RUBBLE, PROP_RADIUS, THROW_SPEED, BM_PLAIN, BM_HEAVY, BM_STICKY, PS_HELD, PS_CARRY } from './props.js';
 
 export const BOMB_FUSE_V2 = 1.6;
@@ -32,6 +33,8 @@ export const RUBBLE_MIN = 4, RUBBLE_MAX = 8;
 // no aim direction (Space / X with no move key, the Bomb button with no stick): a short toss forward and a little
 // down, along the last swim direction, never up onto the octopus's own head
 export const IDLE_TOSS_X = 0.25, IDLE_TOSS_Y = 0.2;
+
+const ONE = [null]; // octoList scratch
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
@@ -86,15 +89,21 @@ export function createBombs(props = null) {
     // Daniel 2026-10-08: inside the radius the blast kills her outright (SOURCES.bomb.octo = kill; i-frames do not help); the tutorial
     // sets octo.bombNoKill, so its bomb floor only costs a heart. A dead body takes a hit (flash, knock).
     // (octo.noKill: the god-mode test hook; a dead body: hurtOctopus hits it away from the blast)
-    if (dist(octo.x, octo.y, b.x, b.y) <= r) { if (octo.bombNoKill || octo.noKill || octo.dead) hurtOctopus(octo, b.x, b.y, 'bomb'); else octoHit(octo, 'bomb', b.x, b.y, 'bomb'); }
-    if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
-      const d = dist(octo.x, octo.y, b.x, b.y), reach = r * BLAST_REACH;
-      if (d < reach && !(octo.anchorT > 0)) { // Anchor (spells): a blast still hurts, but does not throw the octopus
-        const f = (1 - d / reach) * OCTO_BLAST_IMPULSE;
-        const nx = d > 1e-4 ? (octo.x - b.x) / d : 0, ny = d > 1e-4 ? (octo.y - b.y) / d : -1;
-        octo.vx += nx * f; octo.vy += ny * f;
+    // Co-op: the blast reaches every octopus the same way (one octopus: the single code it always was).
+    const octos = octoList(octo, ONE);
+    for (let oi = 0; oi < octos.length; oi++) {
+      const o = octos[oi];
+      if (dist(o.x, o.y, b.x, b.y) <= r) { if (o.bombNoKill || o.noKill || o.dead) hurtOctopus(o, b.x, b.y, 'bomb'); else octoHit(o, 'bomb', b.x, b.y, 'bomb'); }
+      if (props) { // the live octopus and the dead body alike (props.blast skips PK_BODY)
+        const d = dist(o.x, o.y, b.x, b.y), reach = r * BLAST_REACH;
+        if (d < reach && !(o.anchorT > 0)) { // Anchor (spells): a blast still hurts, but does not throw the octopus
+          const f = (1 - d / reach) * OCTO_BLAST_IMPULSE;
+          const nx = d > 1e-4 ? (o.x - b.x) / d : 0, ny = d > 1e-4 ? (o.y - b.y) / d : -1;
+          o.vx += nx * f; o.vy += ny * f;
+        }
       }
     }
+    ONE[0] = null;
     if (props) {
       props.blast(b.x, b.y, r);
       spawnRubble(props, broken, nb, b.x, b.y);

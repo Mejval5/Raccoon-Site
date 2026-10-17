@@ -1716,7 +1716,7 @@ export function createRenderer(ctx, world) {
     wallBandStats() { const rowsLive = new Set(); for (const k of bandCache.keys()) rowsLive.add(Math.floor(k / CELL_KEY)); return { live: rowsLive.size, cells: bandCache.size, bakes: bandBakes, maxBakeMs: +bandBakeMaxMs.toFixed(2), lastBakeMs: +bandBakeLastMs.toFixed(2) }; },
     render(canvasW, canvasH, octo, alpha, time, frameDt, {
       warmOnly = false, warmGroup = 0, resident, pickups, bubbles, critters = [], depth, enemies = [], shots = [], bombs = [], particles = null, shakeOffset, shakePx: shakePxIn = null, preEnemyDraw = null, preWallDraw = null, dreadLevel = 0, beholderWarn = null, extraDraw = null, postOctoDraw = null, followBias = null, lightR = 0, deathFocus = null, skipEnemy = null, skipBomb = null,
-      camRegion = null, overDraw = null,
+      camRegion = null, overDraw = null, follow = null, zoom = 1, octos = null, eachOcto = null,
     }) {
       // Drop wall-bake canvases for chunks the world has evicted, or their
       // offscreen canvases (48px/unit x 32x24 units each) leak for the life
@@ -1731,8 +1731,10 @@ export function createRenderer(ctx, world) {
       // even though everything it looks at (the octopus sprite) was already
       // smoothly interpolating -- a visible camera jitter independent of the
       // octopus's own.
-      const followX = octo.prevX + (octo.x - octo.prevX) * alpha;
-      const followY = octo.prevY + (octo.y - octo.prevY) * alpha;
+      // local co-op: `follow` = the shared camera's frame point ({prevX, x, prevY, y, vx, vy}, main.js), `zoom` its zoom-out
+      const fo = follow || octo;
+      const followX = fo.prevX + (fo.x - fo.prevX) * alpha;
+      const followY = fo.prevY + (fo.y - fo.prevY) * alpha;
       // r40: an optional lean of the camera target (the pool keeps its pedestal in view); the octopus's own pull-back clamp still applies
       const camX = followBias ? followX + (followBias.x - followX) * followBias.k : followX;
       const camY = followBias ? followY + (followBias.y - followY) * followBias.k : followY;
@@ -1742,8 +1744,8 @@ export function createRenderer(ctx, world) {
       const rx = camRegion ? camRegion.x0 : 0, ry = camRegion ? camRegion.y0 : 0;
       const rw = camRegion ? camRegion.x1 - camRegion.x0 : world.width, rh = camRegion ? camRegion.y1 - camRegion.y0 : world.height;
       camera.x -= rx; camera.y -= ry;
-      if (deathFocus) updateDeathCamera(camera, canvasW, canvasH, followX - rx, followY - ry, rw, rh, frameDt, deathFocus, deathFocus.strict);
-      else updateCamera(camera, canvasW, canvasH, followX - rx, followY - ry, rw, rh, frameDt, octo.vx, octo.vy, camX - rx, camY - ry);
+      if (deathFocus) updateDeathCamera(camera, canvasW, canvasH, followX - rx, followY - ry, rw, rh, frameDt, deathFocus, deathFocus.strict, zoom);
+      else updateCamera(camera, canvasW, canvasH, followX - rx, followY - ry, rw, rh, frameDt, fo.vx, fo.vy, camX - rx, camY - ry, zoom);
       camera.x += rx; camera.y += ry;
       outerAll = !!deathFocus;
       if (warmOnly && warmGroup < 0) return; // r44: a frame behind the dark screen that main.js uses to run the simulation's first updates: nothing to set up or draw
@@ -1812,7 +1814,12 @@ export function createRenderer(ctx, world) {
       if (G(3)) drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time, skipBomb);
       if (G(4) && extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       if (G(4) && particles) drawParticles(ctx, camera, worldToScreen, canvasW, canvasH, particles);
-      if (G(5)) drawOcto(octo, alpha, canvasW, canvasH, time);
+      if (G(5)) {
+        if (octos) { // local co-op: every player's octopus (eachOcto(o, true/false) sets that player's colours around its draw)
+          for (let i = 0; i < octos.length; i++) { if (eachOcto) eachOcto(octos[i], true); drawOcto(octos[i], alpha, canvasW, canvasH, time); }
+          if (eachOcto) eachOcto(null, false);
+        } else drawOcto(octo, alpha, canvasW, canvasH, time);
+      }
       if (G(5) && postOctoDraw) postOctoDraw(ctx, camera, worldToScreen, canvasW, canvasH);
       cullEnd();
       ctx.restore();
