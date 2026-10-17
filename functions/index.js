@@ -418,7 +418,9 @@ async function maybeAlertFioTokenBroken(message) {
 // handling below).
 async function runDarySync() {
   const database = getDb();
-  const token = FIO_TOKEN.value();
+  // Trimmed: a token pasted into `secrets:set` easily picks up a trailing
+  // newline, which ends up in the URL and makes Fio answer 500.
+  const token = (FIO_TOKEN.value() || "").trim();
 
   if (!isFioTokenConfigured(token)) {
     await DARY_STATE_REF().set(
