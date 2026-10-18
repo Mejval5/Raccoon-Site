@@ -3095,6 +3095,11 @@ function handleEmbedEvents() {
     } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
   }
 }
+/** Local co-op: run fn as the player whose octopus is index `who` of worldOctos() (loot.js / pickups.js `who`); solo, or no who: as is. */
+function asOpener(who, fn) {
+  const ps = players(), p = who >= 0 && ps.length > 1 ? ps[who] : null;
+  return p ? withP(p, fn) : fn();
+}
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
     switch (ev.type) {
@@ -3107,7 +3112,7 @@ function handleLootEvents() {
         particles.pickupSparkle(ev.x, ev.y - 0.3, '#c8f5e6'); sfx.chime();
         dropShells(ev.shells, ev.x, ev.y - 0.4);
         discover('loot-chest');
-        if (ev.carry) takeCarried(ev.carry, ev.x, ev.y - 0.3);
+        if (ev.carry) asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y - 0.3)); // co-op: into the opener's pack, not the focus player's
         if (ev.trap) ui.showToast('It was trapped!');
         break;
       case 'trap':
@@ -3123,7 +3128,7 @@ function handleLootEvents() {
         ui.showToast('A hidden pocket!');
         break;
       case 'item':
-        if (ev.carry) { takeCarried(ev.carry, ev.x, ev.y); break; }
+        if (ev.carry) { asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y)); break; }
         particles.pickupSparkle(ev.x, ev.y, ev.item === 2 ? '#ff8a9a' : '#cfe8ff'); sfx.chime();
         discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
         break;
@@ -4351,6 +4356,10 @@ window.__octo = {
   },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
+  /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */
+  droppedShells() { return pickups.visible(world.residentChunks()).filter((it) => it.type === 'shell' && it.dropped); },
+  /** Test hook (chest-cdp.js): set loot record i's state (0 intact, 1 done, ...) to compare how it is drawn; returns the old state. */
+  setLootState(i, st) { const d = loot.data, was = d.state[i]; if (i >= 0 && i < d.n) d.state[i] = st; return was; },
   /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
   tileAt(tx, ty) { return world.tileAt(tx, ty); },
   setLevelTime(t) { sim.time = +t || 0; return sim.time; },
