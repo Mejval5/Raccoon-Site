@@ -92,8 +92,9 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       await page.evaluate(() => { __octo.god(false); __octo.kill('crab'); }); await sleep(1500);
       const d0 = await H(page); await sleep(800); const d1 = await H(page);
       check('death: both clocks stop', d0.levelClock === d1.levelClock && d0.runClock === d1.runClock);
-      const row = await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay .octo-summary-row')].map((r) => r.textContent).find((t) => /Time/.test(t)) || '');
-      check('death: the summary shows level / run time as on the strip', row.includes(d1.level + ' / ' + d1.run), row);
+      // night batch 2: the summary splits the time into a Level time and a Run time row
+      const row = await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay .octo-summary-row')].map((r) => r.textContent).filter((t) => /time/i.test(t)).join(' | '));
+      check('death: the summary shows the level and run times as on the strip', row.includes('Level time' + d1.level) && row.includes('Run time' + d1.run), row);
       if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'hud-1440-death.png') });
       // a new run: the run clock starts again
       await page.evaluate(() => __octo.runEvent('death'));
