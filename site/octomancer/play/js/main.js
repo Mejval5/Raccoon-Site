@@ -98,7 +98,7 @@ import { createChain } from './chain.js';
 import { drawChain } from './chain-draw.js';
 import { TRIGGERS, TRIGGER_TARGET_NAMES as TRIGGER_NAMES_, INFIGHT_KILL } from './creature-rules.js';
 import { createInfight } from './infight.js';
-import { CREATURES, SOURCES, resolveHit, HAZARD_COOL } from './creature-rules.js';
+import { CREATURES, SOURCES, resolveHit, HAZARD_COOL, isSafeZone } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares, drawWare } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
@@ -461,13 +461,16 @@ const diveDone = new Set(); // people whose scene was finished in this dive (nob
 // owners round 3 (quests rework, people.js): meetings owed further down the dive, grudges, and this level's visitors with a reward
 const people = createPeople();
 let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
-const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [] }; // what a hub resident is saying now
+const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [], bump: false }; // what a hub resident is saying now
 // V2-PLAN 16 point 5 (npcs.js): the friendly NPCs can be hurt, killed and turned against you. npcMoods is the per-dive record of who
 // turned on you (reset when a dive starts or the hub is entered); the story counters goneX / killedX / angeredX outlive the dive.
 const npcMoods = createMoods();
 let npcs = null; // this level's NPC slots (setupLevelExtras)
 const capName = (id) => id.charAt(0).toUpperCase() + id.slice(1);
 const npcGone = (id) => (story['gone' + capName(id)] | 0) > 0; // killed: absent until the end of the next dive
+/** This level as creature-rules.js SAFE_ZONES keys it: the hub and the rest grotto are safe zones (nobody is harmed there). */
+const zoneOf = (r) => (!r || MOVETEST ? '' : r.state === S_HUB ? 'hub' : r.state === S_REST ? 'rest' : r.state === S_BIOME ? 'biome' : r.state === S_TUTORIAL ? 'tutorial' : '');
+const inSafeZone = () => isSafeZone(zoneOf(run));
 const PERSON_ENTRY = ['', 'person-diver', 'person-critter', 'person-collector', 'person-host'];
 /** Back in the hub: the Collector moves in after the first dive; Marlo's ring exists once he was freed in three runs. */
 function arriveInHub() {
@@ -1119,7 +1122,7 @@ function step(dt) {
     questClear = null;
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
-  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); blockLandingFx(); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) { damage.tick(dt); infight.tick(dt); }
   if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
@@ -1196,6 +1199,7 @@ function step(dt) {
     if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type === 'shotHit') { particles.deathPoof(ev.x, ev.y, '#f4efe4'); continue; } // a cannon shot hit another creature (INFIGHT.projectile)
+    if (ev.type === 'mantaSlam') { particles.siltPuff(ev.x, ev.y); if (Math.hypot(ev.x - octo.x, ev.y - octo.y) < 14) sfx.thud(); continue; } // the glider hit the floor (enemies.js MA_DIVE)
     if (ev.type !== 'enemyKilled') continue;
     // enemy infighting: a kill by another creature's attack (a frenzy bite, a shot, a claw, a snap, a grab) is not hers: no score, no journal kill
     const hers = !INFIGHT_KILL[ev.reason];
@@ -1404,7 +1408,10 @@ function castSelected(snap, forceAt = null, src = null, slotIds = null) {
     if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_USED); }
     for (const m of p.mods) { discover('rune-' + m); journal.bump('rune-' + m, STAT_USED); }
   } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); ui.shakeJar(); sfx.emptyJar(); runStats.empty++; }
-  else if (r === -1 && sp.effect === 'coral') runStats.refused++; // no cell could grow: nothing was paid
+  else if (r === -1) { // the effect could not happen (a Lure in rock, no room for coral): nothing was paid; the slot's tile shakes
+    hotbarUI.shakeSlot(hotbar().slots.findIndex((sl) => sl.ids === ids));
+    if (sp.effect === 'coral') runStats.refused++;
+  }
   return r;
 }
 /** `d` tiles along (ux, uy) from the octopus, stopping short of the first rock. */
@@ -2060,7 +2067,7 @@ function stepPull(dt) {
 
 /** One player's own part of the v2 step (local co-op: every player but the focus, who runs the whole of stepV2). */
 function stepV2Player(snap) {
-  octo.safe = run.state === S_HUB && !MOVETEST;
+  octo.safe = zoneOf(run) === 'hub'; // the hub: nothing hurts any player (octopus.js hurtOctopus / killOctopus). The rest grotto keeps its dangers for players (a ghost is made and revived there), only its people are safe
   if (entry) return;
   if (run.state === S_BIOME) stepSiphon();
   if (run.state === S_REST) stepRestSpring();
@@ -2337,6 +2344,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
   sim.time = 0;
+  if (run) run.castLockUntil = 0; // the cast lock is on the level clock: a new level starts unlocked (spells.js castLocked)
   levelClock = 0;
   entry = null;
   if (back) { releaseBack(); back = null; } // back rooms: the old level's grotto and its copies of the screen (setupLevelExtras makes the new one)
@@ -2602,13 +2610,15 @@ if (V2) registerNpcCorpses(setCorpseArt);
 function makeNpcs() {
   const lines = {};
   for (const n of questTable.npcs) lines[n.id] = { hurt: n.hurt || [], angry: n.angry || [] };
-  const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, lines });
+  const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, safe: inSafeZone(), lines }); // safe: hits only knock people about
   sys.setInfight(infight); // enemy infighting: harpoons hit any creature; lures
   return sys;
 }
-/** The hub residents that are here and calm: not killed (gone for a run) and not turned on you. */
+/** The hub residents: everyone who moved in. 2026-10-18: residents are never persisted as dead (the hub is a safe zone, and a
+ *  person killed in a dive, or in the hub by an older build, story goneX, is home again when the hub is rebuilt); goneX only
+ *  keeps them out of the next dive. */
 function activeResidents() {
-  return hubResidents(questTable, story).filter((r) => !npcGone(r.id) && !(npcs && npcs.owns(npcByName(r.id))));
+  return hubResidents(questTable, story).filter((r) => !(npcs && npcs.owns(npcByName(r.id))));
 }
 let npcTick = 0;
 /** Each step after the octopus moved: tell npcs.js where the calm NPCs are, step it, apply what happened. */
@@ -2666,10 +2676,33 @@ function onNpcEvent(ev) {
       if (!ev.hub) people.noteGrudge(ev.who, true); // r3: dead for the rest of the dive (owed meetings never come)
       break;
     }
+    case 'bumped': npcBumped(ev); break; // a safe zone: knocked about, never harmed (creature-rules.js SAFE_ZONES)
     case 'harpoon': sfx.harpoon(); break; // impact pass: its own sound (sfx.js, #5)
     case 'harpoonHit': particles.deathPoof(ev.x, ev.y, ev.rock ? '#d9cdb8' : '#f4efe4'); break;
     default: break;
   }
+}
+/** Safe zones: someone was knocked about. A short 'hey!' line (quests.json `bumped`) through their own speech bubble, unless
+ *  they are already speaking. */
+function npcBumped(ev) {
+  const n = questTable.npcById.get(ev.name), pool = n && n.bumped;
+  if (!pool || !pool.length) return;
+  const line = pool[(npcBumpN++) % pool.length];
+  if (run.state === S_HUB) {
+    if (talking(hubTalk.talk)) return;
+    say(hubTalk.talk, [line]);
+    hubTalk.who = ev.name; hubTalk.undo = []; hubTalk.far = false; hubTalk.bump = true;
+    return;
+  }
+  const v = people.visitors.find((p) => p.who === ev.who && p.idx === ev.idx);
+  if (v && !v.talk.text) say(v.talk, [line]);
+}
+let npcBumpN = 0;
+/** Where a hub resident is drawn: its spot (hubPlace) plus the bump a safe-zone hit gave it (npcs.js offset). */
+function hubDrawPlace(lv, id, t) {
+  const pl = hubPlace(lv, id, t);
+  if (npcs) { const o = npcs.offset(npcByName(id), 0); pl.x += o.x; pl.y += o.y; }
+  return pl;
 }
 /** A dive ended (a death or a biome clear): whoever was killed has one dive end less to stay away. */
 function endOfDiveNpcs() {
@@ -2680,7 +2713,7 @@ function endOfDiveNpcs() {
 /** v2 per-step logic after the octopus moved: exit, hub residents, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
-  octo.safe = run.state === S_HUB && !MOVETEST; // the hub village: nothing hurts the octopus (octopus.js hurtOctopus / killOctopus)
+  octo.safe = zoneOf(run) === 'hub'; // the hub village: nothing hurts the octopus (octopus.js hurtOctopus / killOctopus); in the rest grotto only the people are safe (creature-rules.js SAFE_ZONES)
   stepSkinGifts();
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
@@ -2955,6 +2988,17 @@ function addBlocks(resident) {
     for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
   }
 }
+let blockLands = 0; // test hook: hard block landings so far (thud and dust)
+/** A block that came down hard (props.js blockLandings, after each props step): a thud and a puff of dust off the floor. */
+function blockLandingFx() {
+  const L = props.blockLandings();
+  for (let k = 0; k < L.length; k += 3) {
+    blockLands++;
+    particles.bouncePuff(L[k], L[k + 1] - 0.05, 0, -1);
+    sfx.thud();
+    if (L[k + 2] > 3.5) particles.shakeFx(1.5, 0.12);
+  }
+}
 function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); if (buildGame) buildGame.drawBack(c, camera, cw, ch); }
 /** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
 function v2PreWall(c, camera, cw, ch) {
@@ -3123,6 +3167,11 @@ function handleEmbedEvents() {
     } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
   }
 }
+/** Local co-op: run fn as the player whose octopus is index `who` of worldOctos() (loot.js / pickups.js `who`); solo, or no who: as is. */
+function asOpener(who, fn) {
+  const ps = players(), p = who >= 0 && ps.length > 1 ? ps[who] : null;
+  return p ? withP(p, fn) : fn();
+}
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
     switch (ev.type) {
@@ -3135,7 +3184,7 @@ function handleLootEvents() {
         particles.pickupSparkle(ev.x, ev.y - 0.3, '#c8f5e6'); sfx.chime();
         dropShells(ev.shells, ev.x, ev.y - 0.4);
         discover('loot-chest');
-        if (ev.carry) takeCarried(ev.carry, ev.x, ev.y - 0.3);
+        if (ev.carry) asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y - 0.3)); // co-op: into the opener's pack, not the focus player's
         if (ev.trap) ui.showToast('It was trapped!');
         break;
       case 'trap':
@@ -3151,7 +3200,7 @@ function handleLootEvents() {
         ui.showToast('A hidden pocket!');
         break;
       case 'item':
-        if (ev.carry) { takeCarried(ev.carry, ev.x, ev.y); break; }
+        if (ev.carry) { asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y)); break; }
         particles.pickupSparkle(ev.x, ev.y, ev.item === 2 ? '#ff8a9a' : '#cfe8ff'); sfx.chime();
         discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
         break;
@@ -3763,8 +3812,8 @@ function inkV16Targets(list) {
 // critters and the foliage's hover fish (the little greenranha). Built only while a blob is in flight; never auto-aimed.
 const ambPool = [], hoverOut = [];
 function ambProxy(n, kind, bx, by, phase, t, reduced) {
-  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false });
-  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false;
+  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false, inkPierce: 0 });
+  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false; p.inkPierce = 0; // a pooled stand-in: a new fish, not pierced yet
   ambientPos(kind, bx, by, phase, t, reduced, p);
   return p;
 }
@@ -4026,10 +4075,10 @@ function drawQuestThing(c, camera, cw, ch, t) {
 function drawPeopleExtras(c, camera, cw, ch, t) {
   for (const v of people.visitors) {
     if (v.hostile || (npcs && npcs.owns(v.who))) continue;
-    const lift = idleLift(v.idle);
-    drawPerson(c, camera, cw, ch, v.npc, v.variant, v.x, v.y, t, v.idle.face, lift, { wave: !!v.talk.text });
+    const lift = idleLift(v.idle), bo = npcs ? npcs.offset(v.who, v.idx) : null, vx = v.x + (bo ? bo.x : 0), vy = v.y + (bo ? bo.y : 0); // a safe zone's bump
+    drawPerson(c, camera, cw, ch, v.npc, v.variant, vx, vy, t, v.idle.face, lift, { wave: !!v.talk.text });
     const head = v.npc === 'pip' ? (v.variant === 'mama' ? 0.95 : 0.7) : v.npc === 'marlo' ? 1.35 : 1.45;
-    if (v.talk.text) drawSpeech(c, camera, cw, ch, v.x, v.y - head - lift, v.talk.text, talkAlpha(v.talk), v.name);
+    if (v.talk.text) drawSpeech(c, camera, cw, ch, vx, vy - head - lift, v.talk.text, talkAlpha(v.talk), v.name);
   }
   if (run.state === S_BIOME && !(npcs && npcs.owns(NPC_HOST))) for (const ps of poolSts) {
     if (ps.talk && ps.talk.text) drawSpeech(c, camera, cw, ch, ps.plan.x - 1.7, ps.plan.floorY + 1 - 1.3, ps.talk.text, talkAlpha(ps.talk), 'The Host');
@@ -4076,7 +4125,7 @@ function hubStep(lv) {
     hubTalk.cool[who] = sim.time + 3; hubTalk.who = ''; hubTalk.undo = [];
   }
   talkStep(hubTalk.talk, STEP);
-  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; hubTalk.undo = []; hubTalk.far = false; }
+  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + (hubTalk.bump ? 1.5 : 7); hubTalk.who = ''; hubTalk.undo = []; hubTalk.far = false; hubTalk.bump = false; }
   if (talking(hubTalk.talk)) return;
   const t = sim.time;
   // the nearest resident in range (off their cool-down) takes the turn
@@ -4094,7 +4143,7 @@ function hubStep(lv) {
     const visit = hubTalk.visits[r.id] | 0;
     const v = hubVisit(questTable, story, r.id, visit);
     say(hubTalk.talk, v.lines);
-    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id; hubTalk.far = false;
+    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id; hubTalk.far = false; hubTalk.bump = false;
     hubTalk.undo = v.set.filter(([k]) => k.startsWith('said')).map(([k]) => [k, story[k] | 0]);
     for (const [k, n] of v.set) { if (/^(gift|boon)/.test(k)) setStoryExact(k, n); else setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
     if (v.gift) { sfx.chime(); particles.pickupSparkle(octo.x, octo.y, '#c8f5e6'); } // r3: a gift for the next dive
@@ -4185,7 +4234,7 @@ function villageStep(lv) {
 function drawVillageFolk(c, camera, cw, ch, lv, t) {
   if (!lv.village) return;
   const nook = roomOf(lv, 'pip');
-  if (nook && nook.open && (story.mamaPip | 0) >= 1 && !npcGone('pip')) drawCritter(c, camera, cw, ch, nook.ax - 2.4 + Math.sin(t * 0.4) * 0.5, nook.ay + 1.7 + Math.sin(t * 1.1) * 0.2, true, t, 0, 'mama');
+  if (nook && nook.open && (story.mamaPip | 0) >= 1) drawCritter(c, camera, cw, ch, nook.ax - 2.4 + Math.sin(t * 0.4) * 0.5, nook.ay + 1.7 + Math.sin(t * 1.1) * 0.2, true, t, 0, 'mama');
   const den = keeperHome(lv);
   if (!den) return;
   const kp = keeperSpot(den), img = artImg('keeper'), ppu = camera.pxPerUnit;
@@ -4204,7 +4253,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
   const fl = cullFlags('hubPeople', 8);
   let k = 0;
   for (const r of activeResidents()) {
-    const pl = hubPlace(lv, r.id, t);
+    const pl = hubDrawPlace(lv, r.id, t);
     if (!visibleAt(fl, k++ & 7, pl.x, pl.y, 3)) continue; // r43: a resident far from the camera is not animated or drawn (its bubble below still is)
     const idl = idleOf(r.id);
     if (r.id === 'marlo') drawPerson(c, camera, cw, ch, 'marlo', '', pl.x, pl.y, t, idl.face, idleLift(idl), { wave: true });
@@ -4214,7 +4263,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
   }
   drawVillageFolk(c, camera, cw, ch, lv, t);
   if (hubTalk.who && hubTalk.talk.text) {
-    const pl = hubPlace(lv, hubTalk.who, t);
+    const pl = hubDrawPlace(lv, hubTalk.who, t);
     drawSpeech(c, camera, cw, ch, pl.x, pl.y - pl.head, hubTalk.talk.text, talkAlpha(hubTalk.talk), questTable.npcById.get(hubTalk.who).name);
   }
 }
@@ -4378,8 +4427,15 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) if (d.alive[i]) out.push({ i, kind: PROP_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx: d.vx[i], vy: d.vy[i], r: d.radius[i], state: d.state[i], timer: d.timer[i] });
     return out;
   },
+  /** Test hook: a pushable block at (x, y) (it settles onto what is under it); returns its prop index. `blockLands`: hard landings so far. */
+  addBlock(x, y) { return props.add(PK_BLOCK, x, y); },
+  blockLands() { return blockLands; },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
+  /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */
+  droppedShells() { return pickups.visible(world.residentChunks()).filter((it) => it.type === 'shell' && it.dropped); },
+  /** Test hook (chest-cdp.js): set loot record i's state (0 intact, 1 done, ...) to compare how it is drawn; returns the old state. */
+  setLootState(i, st) { const d = loot.data, was = d.state[i]; if (i >= 0 && i < d.n) d.state[i] = st; return was; },
   /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
   tileAt(tx, ty) { return world.tileAt(tx, ty); },
   setLevelTime(t) { sim.time = +t || 0; return sim.time; },
@@ -4780,6 +4836,7 @@ window.__octo = {
       points: lv.points, keeper: keeperHome(lv) ? keeperSpot(keeperHome(lv)) : null, keeperSays: village.keeperTalk.text,
       round: { on: village.roundOn, hits: village.hits, wonAt: village.wonAt, hitAt: village.targetHitAt }, talk: { who: hubTalk.who, text: hubTalk.talk.text },
       story: { hubRooms: story.hubRooms | 0, hubSecret: story.hubSecret | 0, hubPractice: story.hubPractice | 0, boonBombs: story.boonBombs | 0 }, safe: !!octo.safe,
+      cam: { x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, w: canvas.width, h: canvas.height }, // the last frame's view (device px), to sample pixels at a world point
     };
   },
   /** Hub building (HUB-BUILDING.md): the hoard, the build, the spots, the picker; open the picker at a spot; pick a card. */

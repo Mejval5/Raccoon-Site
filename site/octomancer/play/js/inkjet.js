@@ -17,8 +17,14 @@
 // (no push, a block is heavy); any other loose prop (a bomb, pot, rock, find, rubble) and every corpse is shoved along the
 // flight (props.nudge / corpses.nudge, INK_PUSH u/s per unit mass) and the blob splats on it; a prop held on its wall stays.
 // A creature is hit through the caller's `hurt(e, damage)`, the single damage call site (main.js inkHurt).
+//
+// Piercing (2026-10-18): a WEAK target (creature-rules.js PIERCE / pierces(): a pot, a loot clam, a background fish, a corpse,
+// rubble, a find, a fish-bone tile) takes its hit, gets a splash, and the blob flies on unchanged (same direction, speed, full
+// damage, same range). A strong one stops it as before. Each weak target is hit once per blob: props and corpses are kept in
+// the blob's own row of `hitIds` (PIERCE_MAX slots), target-list objects get stamped with the blob's serial (`e.inkPierce`).
 import { hasLineOfSight } from './pathfind.js';
-import { PK_BLOCK, PK_BODY } from './props.js';
+import { PK_BLOCK, PK_BODY, PK_POT, PK_CLAM, PK_RUBBLE, PK_FIND, PROP_NAMES } from './props.js';
+import { pierces } from './creature-rules.js';
 import { crumbleAt, CR_INK } from './fragile.js';
 import { cullView, cullFlags, visibleAt } from './cull.js';
 
@@ -42,6 +48,15 @@ export const SPLAT_LIFE = 8;  // s a stain stays on the rock (it fades over the 
 const SPLAT_FADE = 3;
 export const STAIN_LIFE = 4;  // s an enemy stays inked after a hit (enemy-draw.js fades it over the last 1.5)
 const MAX_STAINED = 16;
+export const PIERCE_MAX = 12; // weak props / corpses one blob remembers having hit (past that it still pierces, unrecorded)
+// per props kind (PK_*): does the jet fly on through it (read once from the table: no lookup on the hot path)
+const PROP_PIERCE = new Uint8Array(PROP_NAMES.length);
+PROP_PIERCE[PK_POT] = pierces('pot') ? 1 : 0;
+PROP_PIERCE[PK_CLAM] = pierces('lootclam') ? 1 : 0;
+PROP_PIERCE[PK_RUBBLE] = pierces('rubble') ? 1 : 0;
+PROP_PIERCE[PK_FIND] = pierces('find') ? 1 : 0;
+const CORPSE_PIERCE = pierces('corpse'), AMBIENT_PIERCE = pierces('ambient'), BONE_PIERCE = pierces('bone');
+let serialNext = 0; // module-wide, so blobs of every jet (co-op players) never share a serial
 
 export function createInkJet() {
   const data = {
@@ -49,10 +64,12 @@ export function createInkJet() {
     vx: new Float32Array(POOL), vy: new Float32Array(POOL),
     life: new Float32Array(POOL), // seconds of flight left
     alive: new Uint8Array(POOL),
+    serial: new Uint32Array(POOL), // this flight's id (stamped on the target-list objects it pierced)
+    nHit: new Uint8Array(POOL), hitIds: new Int32Array(POOL * PIERCE_MAX), // pierced props (j) and corpses (-1 - j)
   };
   // splat: x, y pairs; splatDir: the blob's flight direction (unit) at the hit; splatOn: 1 on a creature, 0 on rock
   const events = {
-    hits: 0, kills: 0, pushes: 0, blocked: 0, nSplat: 0, nProp: 0, propHit: new Int32Array(MAX_SPLAT), // propHit: props hit this step (main.js: a pot or clam breaks)
+    hits: 0, kills: 0, pushes: 0, blocked: 0, pierced: 0, nSplat: 0, nProp: 0, propHit: new Int32Array(MAX_SPLAT), // propHit: props hit this step (main.js: a pot or clam breaks)
     splat: new Float32Array(MAX_SPLAT * 2),
     splatDir: new Float32Array(MAX_SPLAT * 2), splatOn: new Uint8Array(MAX_SPLAT),
   };
@@ -107,12 +124,24 @@ export function createInkJet() {
     data.vx[i] = dx * INKJET.speed; data.vy[i] = dy * INKJET.speed;
     data.life[i] = INKJET.range / INKJET.speed;
     data.alive[i] = 1;
+    data.serial[i] = ++serialNext; data.nHit[i] = 0;
     cd = INKJET.cooldown;
     return true;
   }
 
-  /** The first loose prop or corpse the blob at (x, y) touches: shove it and return true (the blob splats). */
-  function hitPhys(phys, x, y, ux, uy) {
+  /** Has blob i already pierced id (a prop j, a corpse -1 - j)? */
+  function pierced(i, id) {
+    const b = i * PIERCE_MAX, m = data.nHit[i];
+    for (let k = 0; k < m; k++) if (data.hitIds[b + k] === id) return true;
+    return false;
+  }
+  function remember(i, id) { const m = data.nHit[i]; if (m < PIERCE_MAX) { data.hitIds[i * PIERCE_MAX + m] = id; data.nHit[i] = m + 1; } }
+
+  /**
+   * The loose props and corpses blob i at (x, y) touches: each is shoved (and a pot / clam reported in propHit). A weak one
+   * (PROP_PIERCE, CORPSE_PIERCE) gets a splash and the blob flies on; returns true at the first strong one (the blob splats).
+   */
+  function hitPhys(i, phys, x, y, ux, uy) {
     const R = INKJET.radius;
     const P = phys.props;
     if (P) {
@@ -127,9 +156,12 @@ export function createInkJet() {
           continue;
         }
         if (dx * dx + dy * dy > rr * rr) continue;
+        const weak = PROP_PIERCE[k] === 1;
+        if (weak && pierced(i, j)) continue;
         if (P.nudge(j, ux, uy, INK_PUSH)) events.pushes++;
         if (events.nProp < MAX_SPLAT) events.propHit[events.nProp++] = j;
-        return true;
+        if (!weak) return true;
+        remember(i, j); events.pierced++; splat(x, y, ux, uy, true);
       }
     }
     const C = phys.corpses;
@@ -139,15 +171,17 @@ export function createInkJet() {
         if (!d.alive[j]) continue;
         const dx = d.x[j] - x, dy = d.y[j] - y, rr = d.radius[j] + R;
         if (dx * dx + dy * dy > rr * rr) continue;
+        if (CORPSE_PIERCE && pierced(i, -1 - j)) continue;
         if (C.nudge(j, ux, uy, INK_PUSH_CORPSE)) events.pushes++;
-        return true;
+        if (!CORPSE_PIERCE) return true;
+        remember(i, -1 - j); events.pierced++; splat(x, y, ux, uy, true);
       }
     }
     return false;
   }
 
   function update(dt, world, list, hurt, phys = null) {
-    events.hits = 0; events.kills = 0; events.pushes = 0; events.blocked = 0; events.nSplat = 0; events.nProp = 0;
+    events.hits = 0; events.kills = 0; events.pushes = 0; events.blocked = 0; events.pierced = 0; events.nSplat = 0; events.nProp = 0;
     if (cd > 0) cd -= dt;
     n = 0;
     if (nStains) for (let i = 0; i < SPLAT_CAP; i++) if (son[i] && (sage[i] += dt) >= SPLAT_LIFE) { son[i] = 0; nStains--; }
@@ -168,14 +202,22 @@ export function createInkJet() {
         const px = data.x[i], py = data.y[i];
         const x = px + data.vx[i] * sdt, y = py + data.vy[i] * sdt;
         if (world.isSolid(x, y)) { // splat at the last free spot, so it sits on the wall face
-          crumbleAt(world, x, y, CR_INK); // a fish-bone block crumbles under the blob (fragile.js); the blob is spent either way
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
-          splat(px, py, data.vx[i] / sp, data.vy[i] / sp, false); data.alive[i] = 0; done = true; break;
+          // a fish-bone block crumbles under the blob (fragile.js): with BONE_PIERCE the blob splashes there and flies on;
+          // without it (Daniel 2026-10-18: one tile per shot) it splashes without a stain, since the rock is gone, and stops
+          if (crumbleAt(world, x, y, CR_INK)) {
+            if (BONE_PIERCE && !world.isSolid(x, y)) { events.pierced++; splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); }
+            else { splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); data.alive[i] = 0; done = true; break; }
+          }
+          else { splat(px, py, data.vx[i] / sp, data.vy[i] / sp, false); data.alive[i] = 0; done = true; break; }
         }
         data.x[i] = x; data.y[i] = y;
+        const ser = data.serial[i];
         for (let j = 0; j < list.length; j++) {
           const e = list[j];
           if (e.dead || e.ghost) continue;
+          const weak = AMBIENT_PIERCE && e.ambient === true;
+          if (weak && e.inkPierce === ser) continue; // this blob went through it already
           const rr = (e.radius || 0.4) + R, ex = e.x - x, ey = e.y - y;
           if (ex * ex + ey * ey > rr * rr) continue;
           if (e.hp !== undefined) {
@@ -185,11 +227,13 @@ export function createInkJet() {
           }
           if (!e.dead) stain(e);
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
-          splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); data.alive[i] = 0; done = true; break;
+          splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true);
+          if (weak) { e.inkPierce = ser; events.pierced++; continue; } // a background fish: it takes the hit, the blob flies on
+          data.alive[i] = 0; done = true; break;
         }
         if (!done && phys) {
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1, ux = data.vx[i] / sp, uy = data.vy[i] / sp;
-          if (hitPhys(phys, x, y, ux, uy)) { splat(x, y, ux, uy, true); data.alive[i] = 0; done = true; }
+          if (hitPhys(i, phys, x, y, ux, uy)) { splat(x, y, ux, uy, true); data.alive[i] = 0; done = true; }
         }
       }
       if (done) continue;
@@ -272,7 +316,7 @@ export function createInkJet() {
     /** Enemies currently inked. */
     stainedCount() { return nStained; },
     clear() {
-      data.alive.fill(0); n = 0; cd = 0; events.hits = events.kills = events.pushes = events.blocked = events.nSplat = 0;
+      data.alive.fill(0); data.nHit.fill(0); n = 0; cd = 0; events.hits = events.kills = events.pushes = events.blocked = events.pierced = events.nSplat = 0;
       son.fill(0); nStains = 0; shead = 0;
       for (let k = 0; k < nStained; k++) { stained[k].inkStain = 0; stained[k] = null; }
       nStained = 0;

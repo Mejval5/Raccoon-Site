@@ -7,7 +7,11 @@
 //   - the Ink Jet practice target: three hits in the window win a round (the host calls it);
 //   - the fish bone hides the keepsake: a dash crumbles it, the keepsake gives a bomb for the next dive, once;
 //   - the hub is safe: no bomb from the keys, a bomb set off beside the octopus does not hurt it;
-//   - the hub loads fast (the authored world step) and stays inside the canvas budget.
+//   - 2026-10-18, the safe zone: Marlo jetted 20 times in his workshop is alive and calm, only knocked about, and says only his
+//     hub lines; a resident killed in an old save (story goneMarlo) is home again.
+//   - the hub loads fast (the authored world step) and stays inside the canvas budget;
+//   - swimming down into the dive chamber, its two hanging lamps stay drawn and the octopus is drawn in every frame (plain, a worn
+//     skin, after a death).
 // Frames go to octomancer-web/night/hub-*.png.
 //   node hub-cdp.js [port | baseUrl]      (serve with python -m http.server <port> --directory site)
 const path = require('path');
@@ -94,9 +98,9 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       h = await R(p2);
       const bits = h.story.hubRooms;
       await p2.close();
-      const p3 = await open(browser, { ...SAVES.mid, story: { ...SAVES.mid.story, quill: 0, goneQuill: 1, hubRooms: bits } });
+      const p3 = await open(browser, { ...SAVES.mid, meta: { dives: 0, clears: 0 }, story: { ...SAVES.mid.story, quill: 0, saidQuill: 0, hubRooms: bits } });
       h = await R(p3);
-      check('persistence: the grotto, seen open before, stays open after Quill is gone (story.hubRooms)', room(h, 'grotto').open && !h.residents.some((r) => r.id === 'quill'));
+      check('persistence: the grotto, seen open before, stays open while its condition no longer holds (Quill not met: story.hubRooms)', room(h, 'grotto').open && !h.residents.some((r) => r.id === 'quill'));
       await p3.reload({ waitUntil: 'networkidle0' });
       await p3.waitForFunction(() => window.__octo && !__octo.transitioning() && __octo.hubRooms(), { timeout: 60000 });
       h = await R(p3);
@@ -171,6 +175,115 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       h = await R(p);
       check('secret: the keepsake gives its bomb only once', h.story.boonBombs === b1);
       check('full: no page errors', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
+    // ================================================================== the safe zone: jet Marlo 20 times; he only ever says hub lines
+    {
+      const p = await open(browser, 'full');
+      await p.evaluate(() => __octo.freeze(true));
+      let h = await R(p);
+      const m = h.residents.find((r) => r.id === 'marlo');
+      // his hub lines: every stage's, the thank-yous, the bumped lines and the gifts he can hand over (data/quests.json)
+      const hubLines = await p.evaluate(async () => {
+        const q = await (await fetch('data/quests.json')).json(), n = q.npcs.find((x) => x.id === 'marlo');
+        const out = [...Object.values(n.hub).flat(), ...Object.values(n.thanks), ...(n.bumped || [])];
+        for (const r of q.quests) if (r.npc === 'marlo') for (const o of r.outcomes || []) if (o.next) out.push(...o.next.lines);
+        return out;
+      });
+      const story0 = (await R(p)).story;
+      await p.evaluate((x, y) => { __octo.teleport(x - 2.4, y - 0.8); __octo.stepDraw(20); }, m.x, m.y);
+      const res = await p.evaluate((n) => {
+        const said = new Set(), mx = [];
+        let maxOff = 0;
+        for (let k = 0; k < n; k++) {
+          const o = __octo.state().octopus, mm = __octo.npcs().find((x) => x.who === 'marlo');
+          if (mm) __octo.fireInk(mm.x - o.x, mm.cy - o.y); // straight at him
+          for (let s = 0; s < 80; s++) { // the jet's cooldown is 1.5 s
+            __octo.stepDraw(1);
+            const t = __octo.hubRooms().talk; if (t.who === 'marlo' && t.text) said.add(t.text);
+            const r = __octo.hubRooms().residents.find((x) => x.id === 'marlo'), q = __octo.npcs().find((x) => x.who === 'marlo');
+            if (r && q) maxOff = Math.max(maxOff, Math.hypot(q.x - r.x, q.y - r.y));
+          }
+          mx.push(__octo.npcs().find((x) => x.who === 'marlo'));
+        }
+        return { said: [...said], maxOff, last: __octo.npcs().find((x) => x.who === 'marlo'), mood: __octo.npcMood(), residents: __octo.hubRooms().residents.map((r) => r.id), hearts: __octo.state().octopus.hearts };
+      }, 20);
+      h = await R(p);
+      check('safe zone: Marlo jetted 20 times in his workshop is alive, calm and unhurt', !!res.last && !res.last.hostile && res.last.hp === 6 && res.mood.dead[1] === 0 && res.mood.hostile[1] === 0 && res.residents.includes('marlo'), JSON.stringify({ last: res.last, mood: res.mood }));
+      check('safe zone: ... the jet knocks him about (off his spot, never out of his room)', res.maxOff > 0.05 && res.maxOff <= 1.45, res.maxOff.toFixed(2));
+      check('safe zone: ... nothing was counted against her (no angered / killed story)', (h.story.angeredMarlo | 0) === (story0.angeredMarlo | 0) && (h.story.killedMarlo | 0) === (story0.killedMarlo | 0) && !(h.story.goneMarlo | 0));
+      check('safe zone: ... he speaks only his hub lines (no "meet me at the hub")', res.said.length > 0 && res.said.every((l) => hubLines.includes(l) && !/meet me|find me|at the hub/i.test(l)), JSON.stringify(res.said));
+      await shot(p, 'safe-jet');
+      check('safe zone: no page errors', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
+      await p.close();
+      // an older build let the hub kill him: a save with his room open and goneMarlo set brings him home on the hub rebuild
+      const p2 = await open(browser, { ...SAVES.full, story: { ...SAVES.full.story, goneMarlo: 1, killedMarlo: 1, angeredMarlo: 1 } });
+      h = await R(p2);
+      check('safe zone: a resident killed in an old save is home again (residents are never persisted as dead)', room(h, 'workshop').open && h.residents.some((r) => r.id === 'marlo') && (await p2.evaluate(() => __octo.npcMood().dead[1])) === 0, JSON.stringify(h.residents.map((r) => r.id)));
+      await p2.close();
+    }
+
+    // ================================================================== the dive chamber: its lamps and the octopus stay drawn on the way down
+    // (Daniel 2026-10-18: "these lights in the bottom of the hub disappear when I come near". The plaza's two lamps over the dive
+    // chamber hang 12 tiles below the plaza's floor and were culled with the plaza's own area.) The octopus swims down the shaft
+    // into the chamber; at every half tile the pixels at both lamps' shells are sampled, and every frame the pixels at the octopus.
+    // Solo player 1 with Milan's own colours, with a worn skin, and back in the hub after a death.
+    for (const sc of ['plain', 'skin', 'death']) {
+      const p = await open(browser, sc === 'skin' ? { ...SAVES.full, skins: ['octo', 'pip', 'marlo'], skin: 'pip' } : 'full');
+      if (sc === 'death') {
+        await p.evaluate(() => __octo.runEvent('enter'));
+        await sleep(400); await p.waitForFunction(() => !__octo.transitioning(), { timeout: 30000 }); await sleep(300);
+        await p.evaluate(() => __octo.runEvent('death'));
+        await sleep(400); await p.waitForFunction(() => !__octo.transitioning() && __octo.hubRooms(), { timeout: 30000 }); await sleep(800);
+      }
+      await p.evaluate(() => __octo.freeze(true));
+      const res = await p.evaluate(async () => {
+        const table = await (await fetch('data/hub-rooms.json')).json();
+        const h = __octo.hubRooms(), pl = h.rooms.find((r) => r.id === 'plaza'), def = table.rooms.find((r) => r.id === 'plaza');
+        const lamps = def.furnish.filter((f) => f.kind === 'lamp' && f.dy > 6).map((f) => [pl.ax + 0.5 + f.dx, pl.ay + f.dy]); // the two over the dive chamber
+        const g = document.getElementById('game').getContext('2d', { willReadFrequently: true });
+        // count pixels in a box (world units round a world point) that pass `test`
+        const count = (cam, wx, wy, rx, ry, test) => {
+          const sx = Math.round(cam.w / 2 + (wx - cam.x) * cam.ppu), sy = Math.round(cam.h / 2 + (wy - cam.y) * cam.ppu);
+          const hw = Math.max(2, Math.round(rx * cam.ppu)), hh = Math.max(2, Math.round(ry * cam.ppu));
+          const x0 = sx - hw, y0 = sy - hh, x1 = sx + hw, y1 = sy + hh;
+          if (x0 < 0 || y0 < 0 || x1 > cam.w || y1 > cam.h) return -1; // not wholly on the screen: not sampled
+          const d = g.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+          let n = 0;
+          for (let i = 0; i < d.length; i += 4) if (test(d[i], d[i + 1], d[i + 2])) n++;
+          return n;
+        };
+        const shell = (r, gg, b) => r > 140 && r > b + 25; // the beige snail shell and its amber light (the water and the rock are blue-green)
+        const body = (r, gg, b) => r > 90 && r > b + 30; // Milan's red body or a skin's warm colours (the water and the rock are bluer than red)
+        __octo.teleport(36.5, 19.5); __octo.stepDraw(30);
+        const lampMiss = [], octoMiss = [];
+        let frames = 0, lastHalf = -1, lampSamples = 0;
+        __octo.input({ move: { x: 0, y: 1 } });
+        for (let f = 0; f < 240; f++) {
+          __octo.stepDraw(1); frames++;
+          const d = __octo.drawnOcto(), cam = __octo.hubRooms().cam, o = __octo.state().octopus;
+          const onBody = d ? count(cam, d.x, d.y - 0.1, 0.3, 0.3, body) : 0;
+          if (!d || onBody < 15) octoMiss.push([f, +o.y.toFixed(2), !!d, onBody]);
+          const half = Math.floor(o.y * 2);
+          if (half !== lastHalf) {
+            lastHalf = half;
+            for (const [lx, ly] of lamps) {
+              const n = count(cam, lx, ly - 0.55, 0.6, 0.55, shell);
+              if (n < 0) continue; // that lamp is off the screen at this point
+              lampSamples++;
+              if (n < 20) lampMiss.push([+o.y.toFixed(1), lx, ly, n]);
+            }
+          }
+        }
+        __octo.input(null);
+        return { lamps, frames, lampSamples, lampMiss, octoMiss, endY: __octo.state().octopus.y };
+      });
+      check(`dive chamber (${sc}): the octopus swims down into the chamber`, res.endY > 34, `y ${res.endY.toFixed(2)}`);
+      check(`dive chamber (${sc}): both chamber lamps stay drawn at every half tile of the approach`, res.lamps.length === 2 && res.lampSamples >= 10 && res.lampMiss.length === 0, JSON.stringify({ samples: res.lampSamples, miss: res.lampMiss.slice(0, 4) }));
+      check(`dive chamber (${sc}): the octopus is drawn in every hub frame`, res.octoMiss.length === 0, `${res.frames} frames, missing ${JSON.stringify(res.octoMiss.slice(0, 4))}`);
+      await shot(p, `dive-chamber-${sc}`);
+      check(`dive chamber (${sc}): no page errors`, p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
       await p.close();
     }
 

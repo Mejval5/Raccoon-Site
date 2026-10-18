@@ -242,7 +242,7 @@ nearest lure that covers a point. Who follows it:
 - A **patrolling piranha** within r swims to it (A* when the line is blocked) and hovers there instead of its beat.
 - A **crab** with the lure about its level (within 3 tiles up or down) walks its ledge toward it and waits under it. Walls and
   ledges still turn it.
-- A **manta's** glide line drifts to the lure.
+- A **manta's** glide loop drifts to the lure (section 7).
 - A **hostile NPC that cannot see the octopus** (Marlo out of sight, Pip / Quill / the host with rock between) swims to it.
 - Not the keeper, the clam, the tentacle, the cannon or the static spikes. A creature that sees the octopus still goes for
   her, so a lure draws the patrolling and the lost.
@@ -313,3 +313,57 @@ adapters and queues one link per target, each due after its delay (nearer = soon
 
 What changed in play: a bomb no longer drops every hanging boulder in its reach at once (`hazards.blast`, no longer called by
 main.js); each one rumbles and drops as a link. A boulder whose ceiling a bomb removed still falls at once.
+
+## 6. Piercing: weak targets do not stop the ink (2026-10-18)
+
+Daniel: "the smaller and weaker objects, like easy-to-crash vases, the background fish, and such should not stop the ink.
+They should take damage and let the ink continue."
+
+A source with `pierce` (`SOURCES.ink`, the Ink Jet; a spell may join later) flies on through every **weak** target. The
+target takes the hit exactly as before, the blob splashes there (`particles.inkSplat`, no rock stain), and it keeps its
+direction, speed and full damage (no falloff). Its range is unchanged, so it still ends at its full distance or on the
+first **strong** target. One blob hits a weak target at most once. The table is `PIERCE` in `js/creature-rules.js`, read
+through `pierces(kind, src = 'ink')`; `js/inkjet.js` reads it once at load (`PROP_PIERCE` per props kind, three booleans).
+
+| Weak (the blob flies on) | What the hit does |
+|---|---|
+| pot / vase (`pot`) | breaks and spills its shells (`loot.hitProp(pid, 'ink')`) |
+| loot clam (`lootclam`), also one held on its wall | breaks (the giant clam is a strong creature) |
+| background fish (`ambient`: decor fish, greenranha) | dies, a small corpse sinks |
+| corpse (`corpse`) | is shoved along the flight |
+| rubble chip (`rubble`), a find out of the rock (`find`) | is shoved |
+| juice droplet (`droplet`), loose shell (`pickup`) | nothing: the jet never touched them |
+
+| Strong (the blob stops, as before) |
+|---|
+| enemies with health (piranha, crab, manta, cannon) and hazards (urchin, horns, the Beholder) (`enemy`) |
+| the giant clam (`gclam`), the tentacle (`tentacle`), shopkeepers (`keeper`), people calm or hostile (`npc`) |
+| a ware on its pedestal (`ware`), the hub's practice target (`target`) |
+| a fish-bone block (`bone`): one tile crumbles and the blob stops there (Daniel 2026-10-18, so bone shortcuts stay work) |
+| rock, bedrock, timber, masonry (`wall`), a push block (`block`), a bomb (`bomb`), a boulder (`rock`), a chest (`chest`), the relic (`relic`) |
+
+Once per blob, without allocation: props and corpses go in the blob's own row of `data.hitIds` (`PIERCE_MAX` = 12 slots,
+corpse j stored as `-1 - j`); target-list objects (the background-fish stand-ins) get the blob's serial stamped as
+`e.inkPierce` (main.js `ambProxy` clears it when it reuses a pooled stand-in). `events.pierced` counts the pierces of a step.
+Tests: `tests/actions.test.js` (pierce section), `node tests/actions-cdp.js <baseUrl>` (one blob through a pot into a piranha).
+
+## 7. Manta: the glider (2026-10-18)
+
+Daniel: "the green guy needs a bit different mechanic, it's just like the other black and red guy". The piranha notices you
+and lunges; the manta now never chases and never bites. It is a hazard you read from below, Spelunky style: **don't be under it.**
+
+| State | `st` | What it does | Timing |
+|---|---|---|---|
+| glide | `MA_GLIDE` 0 | Slow figure-eight loop around its home (half width up to 4.5 tiles, half height 1.3, shrunk to fit the water and to stay clear of urchins, horns and cannons). It steers after a point running along the loop, heading turning at most 1.8 rad/s, so every turn is a curve. It ignores the octopus. Touching it does nothing. | 2.2 u/s |
+| bank (the tell) | `MA_TELL` 1 (`MA_BANK`) | The octopus passes underneath: within 1.6 tiles sideways, 0.8 to 5.5 tiles below, clear line, not in ink. It slows to a hover, wings spread (x1.16), body squashed (x0.84), and its shadow grows on the floor where the slam will land, following her. No glow, no flicker, no mark. | 0.6 s |
+| dive (the slam) | `MA_DIVE` 2 | Locks the line to where she is at the end of the bank (it must be steep: at least ~57 degrees down, else it sweeps on) and slams straight along it to the floor. Contact is the `slam` source: one heart and limp for `STUN_S` (1.25 s), as before. | 9 u/s, at most 1.2 s |
+| rest | `MA_REST` 4 | On the floor: a sandy silt puff rolls out (`particles.siltPuff`, event `mantaSlam`, a thud) and hides the ray for most of a second. It lies stunned (`e.stun`): no AI, harmless to touch, the hand can pick it up, jets carry it, the Ink Jet and anything else kill it as usual. | 1.5 s |
+| lift-off | `MA_RISE` 3 | Climbs up and forward on a curve, easing back to glide speed, then glides back to its home loop. No new bank for 3 s after it wakes. | 0.9 s |
+
+- **Ink Cloud:** an octopus hidden by ink never sets off the bank; if she inks during the bank it sweeps on without diving.
+- **Lure:** the loop's centre drifts to the lure point (1.2 u/s).
+- **Stuck:** if rock stops it for 0.8 s the loop is re-laid around where it is, running back the way it came.
+- Unchanged: health 16, mass 1.5, `oneHitSplat` (an Urchin Cap ram kills it), the `slam` row (`octoOnly`), spawn rules.
+- Code: `js/enemies.js` manta section (`updateManta`, `fitLoop`, `mantaSteer`, `mantaWake`); drawing `js/enemy-draw.js`
+  (`drawMantaShadow`); tests `tests/manta.test.js` (on the test page) and `node tests/manta-cdp.js [baseUrl] [shotDir]`
+  (a manta slams an octopus lying under it, never bites while gliding; saves `night/manta-*.png` and `night/manta-strip.png`).

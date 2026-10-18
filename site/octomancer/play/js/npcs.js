@@ -6,7 +6,11 @@
 //   calm      the owner of the NPC (quests.js state, the hub, the pool plan) says where it is: main.js calls place() each step
 //   hostile   this module moves it. Marlo keeps 4-7 tiles away, AIMS for 0.7 s (a dashed sight line, his gun raised) and fires a
 //             harpoon (heavy hit, 2 hearts). Pip, Quill and the host chase, wind up for 0.35 s and lunge to bite (one heart).
-//             In the hub nobody fights back: a hurt resident flees, refuses to talk and can still be killed.
+//             In a safe zone (the hub, the rest grotto: creature-rules.js SAFE_ZONES) nobody fights back: one who is angry
+//             already (a dive's grudge) keeps away; nothing hurts, angers or kills anyone there (safeZoneHit).
+//   bumped    in a safe zone a hit only knocks the NPC about: a calm one is shoved off its spot and springs back (a short
+//             wobble, never more than BUMP_MAX tiles: no jet, blast or ghost moves a resident out of its room) and says
+//             a 'bumped' line (event 'bumped', at most once per BUMP_SAY_S)
 //   dead      one 'killed' event {kind, x, y, vx, vy, face} (main.js turns it into a corpse); no drops
 //
 // Data-oriented: one slot per present NPC in typed arrays (CAP 8), a few harpoons in their own arrays, no allocation per step.
@@ -19,12 +23,13 @@ import { DASH_KILL_SPEED, OCTO_RADIUS } from './config.js';
 import { shopAggro } from './shop-aggro.js';
 import { crumbleAt, CR_HARPOON } from './fragile.js';
 import { createTalk, say, talkStep } from './speech.js';
-import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
+import { resolveHit, rowOf, SOURCES, safeZoneHit } from './creature-rules.js';
 import { octoHit, BLAST_REACH, npcId } from './damage.js';
 import { LURE_ARRIVE } from './infight.js';
 import { pickTarget, octoList } from './players.js';
 
-const ONE = [null]; // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
+const ONE = [null];
+const OFFSET = { x: 0, y: 0 }; // offset()'s reusable answer // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
 
 export const NPC_MARLO = 1, NPC_PIP = 2, NPC_QUILL = 3, NPC_HOST = 4;
 export const NPC_IDS = ['', 'marlo', 'pip', 'quill', 'host'];
@@ -61,6 +66,11 @@ const FLEE_SPEED = 2.8;
 export const FREED_GRACE = 1.0;  // s of immunity after the protection (the rock pocket, the cage) goes
 const KNOCK = 4;                 // u/s a hit pushes the NPC
 const MAX_ANGRY_SAY = 3;
+// safe zones: the bump (a calm NPC shoved off its spot springs back to it)
+export const BUMP_MAX = 1.4;     // tiles a bump may carry an NPC from its spot
+const BUMP_K = 16, BUMP_C = 3.2; // spring (1/s^2) and damping (1/s): an underdamped wobble, settled in about a second
+export const BUMP_SAY_S = 2.5;   // s between two 'bumped' events of one NPC
+const BUMP_DASH_SPEED = 5;       // u/s an octopus must swim at for its body to bump someone in a safe zone
 
 /** Per-run mood record: who was angered, how hurt they are (-1 = untouched), who died. Index = NPC_* id. */
 export function createMoods() { return { hostile: new Uint8Array(5), dead: new Uint8Array(5), angered: new Uint16Array(5), hp: new Float32Array(5).fill(-1) }; }
@@ -69,12 +79,14 @@ export function npcByName(name) { return NPC_IDS.indexOf(name); }
 
 /**
  * @param {{isSolid:(x:number,y:number)=>boolean}} world
- * @param {{moods?:any, hub?:boolean, lines?:Record<string,{hurt?:string[],angry?:string[]}>, onKeeper?:(reason:string)=>void}} [opts]
+ * safe: a safe zone (creature-rules.js isSafeZone: the hub, the rest grotto); default = hub
+ * @param {{moods?:any, hub?:boolean, safe?:boolean, lines?:Record<string,{hurt?:string[],angry?:string[]}>, onKeeper?:(reason:string)=>void}} [opts]
  *   lines: speech by npc id (data/quests.json 'hurt' / 'angry'); onKeeper defaults to shop-aggro.js shopAggro (tests inject their own)
  */
 export function createNpcs(world, opts = {}) {
   const moods = opts.moods || createMoods();
   const hub = !!opts.hub;
+  const safe = opts.safe === undefined ? hub : !!opts.safe;
   const lines = opts.lines || {};
   const onKeeper = opts.onKeeper || shopAggro;
   const N = NPC_CAP;
@@ -87,6 +99,9 @@ export function createNpcs(world, opts = {}) {
     fixed: new Uint8Array(N), dashHit: new Int32Array(N), attacks: new Uint8Array(N), lastX: new Float32Array(N), lastY: new Float32Array(N),
     blocked: new Float32Array(N), lungeX: new Float32Array(N), lungeY: new Float32Array(N), biteDone: new Uint8Array(N),
     hzCool: new Float64Array(N), blame: new Float64Array(N), // damage.js: hazard cooldown and octopus-blame (sim time stamps)
+    // safe zones: the spot place() gave (ax, ay), the bump offset from it and its velocity, the bump line / body-bump cooldowns
+    ax: new Float32Array(N), ay: new Float32Array(N), ox: new Float32Array(N), oy: new Float32Array(N),
+    ovx: new Float32Array(N), ovy: new Float32Array(N), bumpSay: new Float32Array(N), bodyCool: new Float32Array(N),
   };
   const talks = []; for (let i = 0; i < N; i++) talks.push(createTalk());
   const hp = { // harpoons in flight
@@ -135,13 +150,14 @@ export function createNpcs(world, opts = {}) {
     d.hostile[i] = 0; d.state[i] = ST_CALM; d.t[i] = 0; d.reload[i] = 0.6; d.aimT[i] = 0; d.aimAng[i] = 0; d.aimLen[i] = 0; d.face[i] = 1;
     d.flash[i] = 0; d.immune[i] = 0; d.flags[i] = 0; d.prot[i] = 0; d.placed[i] = 1; d.fixed[i] = fixed ? 1 : 0; d.dashHit[i] = -1; d.attacks[i] = 0;
     d.blocked[i] = 0; d.biteDone[i] = 0; angrySaid[i] = 0; d.hzCool[i] = 0; d.blame[i] = 0;
+    d.ax[i] = x; d.ay[i] = anchorY; d.ox[i] = d.oy[i] = d.ovx[i] = d.ovy[i] = 0; d.bumpSay[i] = 0; d.bodyCool[i] = 0;
     const tk = talks[i]; tk.q.length = 0; tk.left = 0; tk.text = ''; tk.total = 0;
     if (hostile || moods.hostile[who]) setHostile(i, false);
     return i;
   }
   function setHostile(i, announce) {
     const w = d.who[i];
-    d.hostile[i] = 1; d.state[i] = hub ? ST_FLEE : ST_MOVE; d.t[i] = 0; d.reload[i] = Math.max(d.reload[i], 0.9);
+    d.hostile[i] = 1; d.state[i] = safe ? ST_FLEE : ST_MOVE; d.t[i] = 0; d.reload[i] = Math.max(d.reload[i], 0.9);
     if (announce) {
       moods.hostile[w] = 1; moods.angered[w]++;
       events.push({ type: 'angered', who: w, name: NPC_IDS[w], x: d.x[i], y: cyOf(i), hub });
@@ -171,6 +187,7 @@ export function createNpcs(world, opts = {}) {
     if (o.ignore) return 0;
     let dx = d.x[i] - fx, dy = cyOf(i) - fy, L = Math.hypot(dx, dy);
     if (L < 1e-3) { dx = 0; dy = -1; L = 1; }
+    if (safe) { bump(i, safeZoneHit(o), dx / L, dy / L, knockScale, src); return 0; } // a safe zone: knocked about, never harmed
     const kick = Math.max(o.knock * Math.max(0, knockScale), o.dmg > 0 ? KNOCK * 0.5 : 0);
     d.vx[i] += dx / L * kick; d.vy[i] += dy / L * kick;
     if (o.dmg <= 0) return 0;
@@ -192,6 +209,33 @@ export function createNpcs(world, opts = {}) {
   }
 
   function protOf(i) { return d.flags[i] & (FL_SEALED | FL_CAGED); }
+
+  /** Safe zones: a hit's shove (o from safeZoneHit) along the unit (ux, uy). A calm NPC is pushed off its spot (it springs back
+   *  in settle()); one the module moves (already angry from a dive) is pushed like anyone. One 'bumped' event per BUMP_SAY_S. */
+  function bump(i, o, ux, uy, knockScale, src) {
+    const kick = o.knock * Math.max(0.25, Math.min(1, knockScale));
+    if (d.hostile[i]) { d.vx[i] += ux * kick; d.vy[i] += uy * kick; }
+    else { d.ovx[i] += ux * kick; d.ovy[i] += uy * kick; }
+    d.flash[i] = 0.22;
+    if (d.bumpSay[i] > 0) return;
+    d.bumpSay[i] = BUMP_SAY_S;
+    events.push({ type: 'bumped', who: d.who[i], idx: d.idx[i], name: NPC_IDS[d.who[i]], x: d.x[i], y: cyOf(i), src, hub });
+  }
+  /** Safe zones: a calm NPC's bump offset springs back to its spot; it never leaves BUMP_MAX of it nor enters rock. */
+  function settle(i, dt) {
+    const ox = d.ox[i], oy = d.oy[i];
+    let vx = d.ovx[i], vy = d.ovy[i];
+    if (ox === 0 && oy === 0 && vx === 0 && vy === 0) return;
+    vx += (-BUMP_K * ox - BUMP_C * vx) * dt; vy += (-BUMP_K * oy - BUMP_C * vy) * dt;
+    let nx = ox + vx * dt, ny = oy + vy * dt;
+    const L = Math.hypot(nx, ny);
+    if (L > BUMP_MAX) { nx *= BUMP_MAX / L; ny *= BUMP_MAX / L; vx *= 0.3; vy *= 0.3; }
+    const r = NPC_RADIUS[d.who[i]] * 0.8, cy0 = d.ay[i] + NPC_CENTER_DY[d.who[i]];
+    if (!free(d.ax[i] + nx, cy0 + ny, r) && free(d.ax[i] + ox, cy0 + oy, r)) { nx = ox; ny = oy; vx *= -0.3; vy *= -0.3; } // rock: bounce off it
+    if (Math.abs(nx) + Math.abs(ny) < 0.002 && Math.abs(vx) + Math.abs(vy) < 0.02) nx = ny = vx = vy = 0;
+    d.ox[i] = nx; d.oy[i] = ny; d.ovx[i] = vx; d.ovy[i] = vy;
+    d.x[i] = d.ax[i] + nx; d.y[i] = d.ay[i] + ny;
+  }
 
   // ---- hostile movement -------------------------------------------------------------------------------------
   function advance(i, dt) {
@@ -362,9 +406,17 @@ export function createNpcs(world, opts = {}) {
       if (i < 0) return false;
       d.placed[i] = 1; d.flags[i] = flags;
       if (d.hostile[i]) return false;
-      d.x[i] = x; d.y[i] = anchorY;
+      d.ax[i] = x; d.ay[i] = anchorY; d.x[i] = x + d.ox[i]; d.y[i] = anchorY + d.oy[i]; // safe zones: drawn at the spot + its bump
       return true;
     },
+    /** Safe zones: how far a bump has knocked this NPC off its spot right now ({x, y} reused; 0, 0 when none). */
+    offset(who, idx = 0) {
+      const i = find(who, idx), O = OFFSET, on = i >= 0 && !d.hostile[i];
+      O.x = on ? d.ox[i] : 0; O.y = on ? d.oy[i] : 0;
+      return O;
+    },
+    /** Is this a safe zone (nothing harms the NPCs here)? */
+    safe,
     /** Has this module taken the NPC over (angry or dead, in this level or earlier in the dive)? */
     owns(who) { return !!(moods.hostile[who] || moods.dead[who]); },
     isDead(who) { return !!moods.dead[who]; },
@@ -392,7 +444,7 @@ export function createNpcs(world, opts = {}) {
         if (!clear(x, y, d.x[i], cyOf(i))) continue;
         if (applyNpcHit(i, 'bomb', x, y, dist <= R ? -1 : 0, 1 - dist / reach, true) > 0) n++;
       }
-      if (keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= R && clear(x, y, keeperX, keeperY)) onKeeper('bomb');
+      if (!safe && keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= R && clear(x, y, keeperX, keeperY)) onKeeper('bomb');
       return n;
     },
     /** The Ink Jet hook: a hit disc at (x, y) radius r. src 'ink' | 'dash' | 'bomb'. Returns how many things were hit. */
@@ -404,7 +456,7 @@ export function createNpcs(world, opts = {}) {
         if (!clear(x, y, d.x[i], cyOf(i))) continue;
         if (applyNpcHit(i, src, x, y, dmg, 1, true) > 0) n++;
       }
-      if (keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= r + 0.6 && clear(x, y, keeperX, keeperY)) { onKeeper(src); n++; }
+      if (!safe && keeperX > -900 && Math.hypot(keeperX - x, keeperY - y) <= r + 0.6 && clear(x, y, keeperX, keeperY)) { onKeeper(src); n++; }
       return n;
     },
     /** Test hook: hurt one NPC directly. */
@@ -423,7 +475,10 @@ export function createNpcs(world, opts = {}) {
         return true;
       },
       apply(i, src, fx, fy, dmg, knockScale, byOcto) { return applyNpcHit(i, src, fx, fy, dmg, knockScale, byOcto); },
-      push(i, ax, ay, mode) { if (mode === 'knock') { d.vx[i] += ax; d.vy[i] += ay; } else { d.x[i] += ax; d.y[i] += ay; } },
+      push(i, ax, ay, mode) {
+        if (safe && !d.hostile[i]) { if (mode === 'knock') { d.ovx[i] += ax; d.ovy[i] += ay; } else { d.ox[i] += ax; d.oy[i] += ay; } return; } // springs back (settle)
+        if (mode === 'knock') { d.vx[i] += ax; d.vy[i] += ay; } else { d.x[i] += ax; d.y[i] += ay; }
+      },
       setTimers(i, cool, blame) { if (cool >= 0) d.hzCool[i] = cool; if (blame >= 0) d.blame[i] = blame; },
     },
 
@@ -444,11 +499,21 @@ export function createNpcs(world, opts = {}) {
         if (d.flash[i] > 0) d.flash[i] = Math.max(0, d.flash[i] - dt);
         if (d.immune[i] > 0) d.immune[i] = Math.max(0, d.immune[i] - dt);
         if (d.reload[i] > 0) d.reload[i] = Math.max(0, d.reload[i] - dt);
+        if (d.bumpSay[i] > 0) d.bumpSay[i] = Math.max(0, d.bumpSay[i] - dt);
+        if (d.bodyCool[i] > 0) d.bodyCool[i] = Math.max(0, d.bodyCool[i] - dt);
+        if (safe && d.bodyCool[i] <= 0 && !shielded(i)) { // a safe zone: an octopus swimming fast into someone bumps them (no harm)
+          for (let o = 0; o < octos.length; o++) {
+            const bo = octos[o];
+            if (bo.dead || bo.hidden || Math.hypot(bo.vx || 0, bo.vy || 0) < BUMP_DASH_SPEED || Math.hypot(bo.x - d.x[i], bo.y - cyOf(i)) >= OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) continue;
+            d.bodyCool[i] = 0.4; applyNpcHit(i, octoRams(bo) ? 'helmet' : 'dash', bo.x, bo.y); break;
+          }
+        }
+        if (safe && !d.hostile[i]) settle(i, dt);
         const p = protOf(i);
         if (d.prot[i] && !p) d.immune[i] = FREED_GRACE; // freed from the rock / the cage: a second to get clear of the blast
         d.prot[i] = p;
         // dash contact at speed, once per dash; not while sealed / caged, not Pip at your side, not a hub resident who is talking
-        if (fast && d.dashHit[i] !== dashId) {
+        if (fast && !safe && d.dashHit[i] !== dashId) {
           for (let o = 0; o < octos.length; o++) { // any octopus that rams with the Cap
             const ro = octos[o];
             if (!octoRams(ro) || Math.hypot(ro.x - d.x[i], ro.y - cyOf(i)) >= OCTO_RADIUS + NPC_RADIUS[d.who[i]] + 0.1) continue;
@@ -459,10 +524,10 @@ export function createNpcs(world, opts = {}) {
         }
         if (!d.hostile[i]) continue;
         const octo = pickTarget(octos, d.x[i], cyOf(i));
-        if (hub) { if (d.state[i] === ST_FLEE) flee(i, octo, dt); else drift(i, dt); continue; }
+        if (safe) { if (d.state[i] === ST_FLEE) flee(i, octo, dt); else drift(i, dt); continue; } // nobody fights in a safe zone
         if (d.who[i] === NPC_MARLO) marlo(i, octo, dt); else melee(i, octo, dt);
       }
-      if (keeperX > -900 && fast && keeperDash !== dashId) {
+      if (!safe && keeperX > -900 && fast && keeperDash !== dashId) {
         for (let o = 0; o < octos.length; o++) {
           const ko = octos[o];
           if (octoRams(ko) && Math.hypot(ko.x - keeperX, ko.y - keeperY) < OCTO_RADIUS + 0.7) { keeperDash = dashId; onKeeper('dash'); break; }
