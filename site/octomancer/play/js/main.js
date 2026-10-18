@@ -1379,7 +1379,10 @@ function castSelected(snap, forceAt = null, src = null, slotIds = null) {
     if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_USED); }
     for (const m of p.mods) { discover('rune-' + m); journal.bump('rune-' + m, STAT_USED); }
   } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); ui.shakeJar(); sfx.emptyJar(); runStats.empty++; }
-  else if (r === -1 && sp.effect === 'coral') runStats.refused++; // no cell could grow: nothing was paid
+  else if (r === -1) { // the effect could not happen (a Lure in rock, no room for coral): nothing was paid; the slot's tile shakes
+    hotbarUI.shakeSlot(hotbar().slots.findIndex((sl) => sl.ids === ids));
+    if (sp.effect === 'coral') runStats.refused++;
+  }
   return r;
 }
 /** `d` tiles along (ux, uy) from the octopus, stopping short of the first rock. */
@@ -2312,6 +2315,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
   sim.time = 0;
+  if (run) run.castLockUntil = 0; // the cast lock is on the level clock: a new level starts unlocked (spells.js castLocked)
   levelClock = 0;
   entry = null;
   if (back) { releaseBack(); back = null; } // back rooms: the old level's grotto and its copies of the screen (setupLevelExtras makes the new one)
