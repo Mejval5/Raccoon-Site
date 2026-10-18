@@ -791,7 +791,7 @@ function padMenu() {
   if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), back: () => { manualPaused = false; applyPaused(); } };
   return null;
 }
-const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' });
+const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad', audio }); // night batch 5: menu sounds (ui-sfx.js)
 let padMenuFrames = 0;
 const pad = createGamepad(input, {
   menuActive() {

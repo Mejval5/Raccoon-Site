@@ -308,6 +308,10 @@ await runBackroomTests(assert);
 import { runAltarTests } from './altar.test.js';
 await runAltarTests(assert);
 
+// --- night batch 5: the sound modules (voice pool and cap, cooldown, jitter, ducks, the unlock on a pad press, menu sounds) ---
+import { runAudioTests } from './audio.test.js';
+runAudioTests(assert);
+
 const pass = results.filter(r => r.pass).length;
 const total = results.length;
 const lines = results.map(r => `${r.pass ? 'PASS' : 'FAIL'} ${r.name}`);
