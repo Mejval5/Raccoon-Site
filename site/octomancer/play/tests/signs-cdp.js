@@ -182,6 +182,26 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
       const rs = D.boardRects();
       return { ok: rs.length === 1 && rs.every((r) => !targets.some((t) => S.rectsHit(r, t)) && !S.rectHitsDisc(r, o.x, o.y, S.OCTO_CLEAR)), rs: JSON.stringify(rs) };
     }, which);
+    // Daniel 2026-10-18: the hub's welcome board hangs on ropes from the rock, a fixture: it never slides or clamps into view.
+    for (const vp of ['desktop', 'phone']) {
+      const tag = vp === 'phone' ? '412' : '1440';
+      const hb = await open(browser, vp, '?seed=7');
+      const rect = () => hb.evaluate(async () => { const D = await import('/octomancer/play/js/signs-draw.js'); const r = D.boardRects()[0]; return r ? [r.title, r.x0, r.y0, r.x1, r.y1] : null; });
+      const start = await hb.evaluate(() => { const o = __octo.state().octopus; return [o.x, o.y]; });
+      await at(hb, start[0], start[1], 20);
+      const r0 = await rect();
+      await shot(hb, 'board-hub-start-' + tag);
+      const drift = [];
+      for (let i = 1; i <= 6; i++) { // swim down and right, still inside the sign's reach (9 tiles)
+        await at(hb, start[0] + i * 0.9, start[1] + i * 1.0, 12);
+        drift.push(await rect());
+      }
+      await shot(hb, 'board-hub-away-' + tag);
+      const same = !!r0 && drift.every((r) => !r || (r[0] === r0[0] && Math.abs(r[1] - r0[1]) < 1e-6 && Math.abs(r[2] - r0[2]) < 1e-6 && Math.abs(r[3] - r0[3]) < 1e-6));
+      check(tag + ' hub: the hung welcome board stays at its anchor while the octopus swims away', same && drift.some((r) => r), JSON.stringify({ r0, drift }));
+      check(tag + ' hub board: no page errors', hb.errs.length === 0, hb.errs.slice(0, 3).join(' | '));
+      await hb.close();
+    }
     for (const vp of ['desktop', 'phone']) {
       const tag = vp === 'phone' ? '412' : '1440';
       const b = await open(browser, vp, '?at=tutorial&seed=7');
