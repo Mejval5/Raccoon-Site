@@ -313,3 +313,36 @@ adapters and queues one link per target, each due after its delay (nearer = soon
 
 What changed in play: a bomb no longer drops every hanging boulder in its reach at once (`hazards.blast`, no longer called by
 main.js); each one rumbles and drops as a link. A boulder whose ceiling a bomb removed still falls at once.
+
+## 6. Piercing: weak targets do not stop the ink (2026-10-18)
+
+Daniel: "the smaller and weaker objects, like easy-to-crash vases, the background fish, and such should not stop the ink.
+They should take damage and let the ink continue."
+
+A source with `pierce` (`SOURCES.ink`, the Ink Jet; a spell may join later) flies on through every **weak** target. The
+target takes the hit exactly as before, the blob splashes there (`particles.inkSplat`, no rock stain), and it keeps its
+direction, speed and full damage (no falloff). Its range is unchanged, so it still ends at its full distance or on the
+first **strong** target. One blob hits a weak target at most once. The table is `PIERCE` in `js/creature-rules.js`, read
+through `pierces(kind, src = 'ink')`; `js/inkjet.js` reads it once at load (`PROP_PIERCE` per props kind, three booleans).
+
+| Weak (the blob flies on) | What the hit does |
+|---|---|
+| pot / vase (`pot`) | breaks and spills its shells (`loot.hitProp(pid, 'ink')`) |
+| loot clam (`lootclam`), also one held on its wall | breaks (the giant clam is a strong creature) |
+| background fish (`ambient`: decor fish, greenranha) | dies, a small corpse sinks |
+| corpse (`corpse`) | is shoved along the flight |
+| rubble chip (`rubble`), a find out of the rock (`find`) | is shoved |
+| juice droplet (`droplet`), loose shell (`pickup`) | nothing: the jet never touched them |
+
+| Strong (the blob stops, as before) |
+|---|
+| enemies with health (piranha, crab, manta, cannon) and hazards (urchin, horns, the Beholder) (`enemy`) |
+| the giant clam (`gclam`), the tentacle (`tentacle`), shopkeepers (`keeper`), people calm or hostile (`npc`) |
+| a ware on its pedestal (`ware`), the hub's practice target (`target`) |
+| a fish-bone block (`bone`): one tile crumbles and the blob stops there (Daniel 2026-10-18, so bone shortcuts stay work) |
+| rock, bedrock, timber, masonry (`wall`), a push block (`block`), a bomb (`bomb`), a boulder (`rock`), a chest (`chest`), the relic (`relic`) |
+
+Once per blob, without allocation: props and corpses go in the blob's own row of `data.hitIds` (`PIERCE_MAX` = 12 slots,
+corpse j stored as `-1 - j`); target-list objects (the background-fish stand-ins) get the blob's serial stamped as
+`e.inkPierce` (main.js `ambProxy` clears it when it reuses a pooled stand-in). `events.pierced` counts the pierces of a step.
+Tests: `tests/actions.test.js` (pierce section), `node tests/actions-cdp.js <baseUrl>` (one blob through a pot into a piranha).

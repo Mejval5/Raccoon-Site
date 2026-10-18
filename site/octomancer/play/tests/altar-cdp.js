@@ -80,7 +80,7 @@ const layOn = (page, kind, a) => page.evaluate((kind, a) => { __octo.addCorpse(k
     check('beside it its sign opens and explains the altar (F to grab, never a person or a bomb), no floating box', prompt.shown && !prompt.popup && /altar/i.test(prompt.title) && /\bF\b/.test(prompt.text) && prompt.glyphs.includes('F') && /person/.test(prompt.text) && /bomb/.test(prompt.text), JSON.stringify(prompt));
     await page.evaluate(() => { __octo.pad({ a: false, lx: 0.5 }); __octo.stepDraw(1); __octo.pad({}); __octo.stepDraw(2); });
     const sgp = await page.evaluate(() => __octo.signs());
-    check('with a pad its sign names A, not F', sgp.scheme === 'pad' && sgp.open && sgp.open.glyphs.includes('A') && !/\bF\b/.test(sgp.open.text), JSON.stringify(sgp.open));
+    check('with a pad its sign names LB (the hand), not F', sgp.scheme === 'pad' && sgp.open && sgp.open.glyphs.includes('LB') && !/\bF\b/.test(sgp.open.text), JSON.stringify(sgp.open));
     await page.keyboard.press('KeyQ'); await page.keyboard.press('KeyE'); await page.evaluate(() => __octo.stepDraw(3)); // (a key: back to the keyboard; the pad stays plugged in, an unplug pauses)
     const j = await page.evaluate(() => __octo.journal ? __octo.journal() : null);
     check('meeting it writes the journal page', j && (j.found || j).includes ? (j.found || j).includes('place-altar') : JSON.stringify(j).includes('place-altar'));

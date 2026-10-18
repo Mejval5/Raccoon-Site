@@ -2,7 +2,7 @@
 // controls. A sign, a cave painting or an object prompt is written once with tokens, and every token is drawn as the active
 // scheme's glyph (glyphs.js), so a pad player reads A / RT / RB and a desktop player F / LMB / RMB:
 //
-//   {hand}     the action's first glyph in the scheme ('F' on the desktop, 'A' on a pad, 'Grab' on a phone)
+//   {hand}     the action's first glyph in the scheme ('F' on the desktop, 'LB' on a pad, 'Grab' on a phone)
 //   {dash+}    every glyph of the action, one after another with a small '/' (desktop: Space / Shift; pad: B / LT)
 //   {key:J}    a literal key or mouse button (a second key in desktop text: '{key:J} or {key:K}')
 //
