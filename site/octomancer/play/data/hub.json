@@ -54,8 +54,8 @@
    "r": 9,
    "when": "sealed",
    "title": "Welcome to the village",
-   "desktop": "The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left: swim into it and press {hand}.",
-   "touch": "The dive is sealed with kelp until you finish the tutorial. Its ring is on the stone stage to your left: swim to it and tap Enter.",
+   "desktop": "Kelp seals the dive until you finish the tutorial. Its whirlpool is a short swim down to the left: press {hand} in it.",
+   "touch": "Kelp seals the dive until you finish the tutorial. Its whirlpool is a short swim down to the left: tap Enter in it.",
    "label": "Welcome",
    "hang": [
     33,
@@ -69,8 +69,8 @@
    "r": 9,
    "when": "open",
    "title": "Welcome to the village",
-   "desktop": "The dive whirlpool is down the shaft: press {hand} in it to dive. {inventory} opens your journal. The people you help move into the empty rooms.",
-   "touch": "The dive whirlpool is down the shaft: tap Enter in it to dive. Tap pause, then Journal, for your journal. The people you help move into the empty rooms.",
+   "desktop": "The dive whirlpool is down the shaft: press {hand} in it. The people you help move into the empty rooms, and {inventory} opens your journal.",
+   "touch": "The dive whirlpool is down the shaft: tap Enter in it. The people you help move into the empty rooms, and Pause opens your journal.",
    "label": "Welcome",
    "hang": [
     33,
