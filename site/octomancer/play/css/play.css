@@ -123,7 +123,7 @@ body {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.octo-hud-num { align-self: flex-end; margin: 0 0 -3px -7px; font-size: 19px; line-height: 1; } /* on the icon's lower right corner */
+.octo-hud-num { position: relative; z-index: 1; align-self: flex-end; margin: 0 0 -3px -7px; font-size: 19px; line-height: 1; } /* on the icon's lower right corner, painted over it (the icon's drop-shadow filter makes it a layer of its own, which would otherwise paint over the number) */
 .octo-hud-hearts .octo-hud-num { color: #ffd9d0; }
 .octo-hud-hearts.is-low .octo-hud-num { color: #f2a493; }
 .octo-hud-bombs.is-empty .octo-hud-icon, .octo-hud-jar.is-empty .octo-hud-icon { opacity: .55; }
@@ -936,7 +936,7 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 .octo-coop-tag { min-width: 24px; padding: 0 4px; color: var(--coop); text-shadow: 0 1px 0 #10202c; }
 .octo-coop-strip .octo-coop-heart { width: 20px; height: 20px; }
 .octo-coop-icon { width: 24px; height: 24px; }
-.octo-coop-n { min-width: 12px; margin-right: 4px; }
+.octo-coop-n { position: relative; z-index: 1; min-width: 12px; margin-right: 4px; } /* counts paint over the icons */
 .octo-coop-hb { display: inline-flex; align-items: center; gap: 4px; }
 .octo-coop-jarc { width: 18px; height: 24px; }
 .octo-coop-jarc.is-empty { opacity: .55; }

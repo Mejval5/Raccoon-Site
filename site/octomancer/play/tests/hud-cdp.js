@@ -17,6 +17,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:1,muted:true,tutorialDone:true,journal:['place-hub']}))}catch(e){}";
 const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); return String(Math.floor(d / 600)).padStart(2, '0') + ':' + String(Math.floor(d / 10) % 60).padStart(2, '0') + '.' + (d % 10); };
 
+const numsOnTop = (page, badgeSel, numSel, iconSel) => page.evaluate((b, n, i) => {
+  const st = document.createElement('style'); st.textContent = '#hud, #hud * { pointer-events: auto !important; }'; document.head.append(st);
+  const bad = [];
+  for (const badge of document.querySelectorAll(b)) {
+    if (getComputedStyle(badge).display === 'none' || !badge.offsetParent) continue;
+    const num = badge.querySelector(n), nb = num.getBoundingClientRect();
+    const icons = [...badge.querySelectorAll(i)].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect());
+    const ov = icons.find((ib) => ib.left < nb.right && nb.left < ib.right && ib.top < nb.bottom && nb.top < ib.bottom);
+    const x = ov ? (Math.max(ov.left, nb.left) + Math.min(ov.right, nb.right)) / 2 : (nb.left + nb.right) / 2;
+    const y = ov ? (Math.max(ov.top, nb.top) + Math.min(ov.bottom, nb.bottom)) / 2 : (nb.top + nb.bottom) / 2;
+    const hit = document.elementFromPoint(x, y);
+    if (!(hit === num || num.contains(hit))) bad.push(badge.className + ' -> ' + (hit && hit.className));
+  }
+  st.remove();
+  return bad;
+}, badgeSel, numSel, iconSel);
+
 (async () => {
   const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
   const fails = [], errs = [];
@@ -201,6 +218,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       r.touch.forEach((x, i) => { if (ov(x, r.hotbar)) hits.push('hotbar x touch control ' + i); });
       check(`${tag}: nothing overlaps the buttons, the touch controls, the hotbar or each other`, hits.length === 0, hits.join('; '));
       check(`${tag}: the pause / mute / settings buttons stay 44 px`, !r.small);
+      { const bad = await numsOnTop(page, '.octo-hud-badge', '.octo-hud-num', '.octo-hud-icon'); check(`${tag}: each count paints over its icon (heart, bomb, jar, shell)`, bad.length === 0, bad.join('; ')); }
       check(`${tag}: every badge reads on one line`, await page.evaluate(() => [...document.querySelectorAll('.octo-hud-badge')].filter((b) => getComputedStyle(b).display !== 'none').every((b) => { const n = b.querySelector('.octo-hud-num'); return n.getBoundingClientRect().height <= parseFloat(getComputedStyle(n).fontSize) * 1.3 + 1; })));
       check(`${tag}: a long run reads 59:5x and shells 14500, five perks`, /01:0[56]\.\d/.test(r.times) && /59:5\d\.\d/.test(r.times) && (await H(page)).shells === '14500' && (await H(page)).items === 5, r.times);
       // a perk's tooltip on a tap / hover
