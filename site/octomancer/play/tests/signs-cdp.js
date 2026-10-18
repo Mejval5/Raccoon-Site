@@ -102,7 +102,7 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     await p.evaluate(() => __octo.openJournal('controls'));
     await sleep(500);
     const jk = await p.evaluate(() => ({ tab: __octo.journal().tab, cards: [...document.querySelectorAll('.octo-bk-card .octo-bk-cardname')].map((e) => e.textContent) }));
-    check('journal: a Controls tab with the nine controls', jk.tab === 'controls' && jk.cards.join() === 'Swim,Aim,Ink jet,Use slot,Hand,Dash,Hotbar,Journal,Pause', JSON.stringify(jk));
+    check('journal: a Controls tab with the nine controls', jk.tab === 'controls' && jk.cards.join() === 'Swim,Aim,Ink Jet,Use slot,Hand,Dash,Hotbar,Journal,Pause', JSON.stringify(jk));
     await p.screenshot({ path: OUT + 'journal-keyboard-1440.png' });
     const before = await p.evaluate(() => document.querySelector('.octo-bk-card canvas').toDataURL().length);
     await p.evaluate(() => { __octo.pad({ lx: 0.6 }); __octo.pad({}); });

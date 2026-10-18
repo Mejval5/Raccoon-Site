@@ -66,7 +66,7 @@ export function createHotbarUI(root, handlers = {}) {
   const jetShade = el('span', 'octo-hb-jetshade');
   const jetKey = el('span', 'octo-hb-key octo-hb-key-jet', 'J');
   jetSlot.append(jetCv.c, jetShade, jetKey);
-  jetSlot.title = 'Ink Jet (left click / J)';
+  jetSlot.title = 'Ink Jet (left click / J / K)';
   let jetShown = -1;
   const jarEl = el('div', 'octo-hb-jar');
   const jarCv = makeCanvas(JAR_W, JAR_H);
@@ -155,7 +155,7 @@ export function createHotbarUI(root, handlers = {}) {
         const host = barBomb || bombSlot, count = barBomb ? barBomb.querySelector('.octo-hb-count') : bombCount;
         bombTextShown = setText(count, bombTextShown, bk);
         host.classList.toggle('is-empty', state.bombs <= 0);
-        host.title = 'Bombs ' + bk + (barBomb ? ' (right click or C: drop under you, or throw at the cursor; B / X: drop)' : ' (B / X)');
+        host.title = 'Bombs ' + bk + (barBomb ? ' (right click or C: drop under you, or throw at the cursor)' : ' (B or X)');
       }
       const jk = state.juice + '|' + state.cap + '|' + state.perCast;
       if (jk !== jarKeyShown) {

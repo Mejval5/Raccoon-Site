@@ -82,13 +82,13 @@ let deskCache = null;
 function deskKeys() {
   if (deskCache) return deskCache;
   const L = (a) => glyphs(a, 'desktop').map((g) => g.label);
-  const use = L('use'), jet = L('attack'), cyc = L('cycle'), sel = L('select'), bomb = L('bomb');
+  const use = L('use'), jet = L('attack'), cyc = L('cycle'), sel = L('select');
   const useW = said(use[0]) + ' or ' + use.slice(1).join(' / ');
   const pick = 'pick the slot with ' + sel.join(' / ') + ', ' + cyc.filter((l) => !MOUSE_WORDS[l]).join(' / ') + ' or ' + cyc.filter((l) => MOUSE_WORDS[l]).map(said).join(' / ');
   deskCache = {
     slot: useW + ' casts it; ' + pick,
     jet: said(jet[0]) + ' or ' + jet.slice(1).concat(['K']).join(' / ') + ' (hold to fire on each refill)',
-    bomb: useW + ' on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. Shortcut: ' + bomb.join(' / ') + ' drop one',
+    bomb: useW + ' on the bomb slot: on you it drops one, at the cursor it throws a sticky mine', // (B / X still drop one: listed once, in Settings)
     item: 'Nothing to press: it works while you carry it',
     jar: 'Spells drink from it when you cast',
   };

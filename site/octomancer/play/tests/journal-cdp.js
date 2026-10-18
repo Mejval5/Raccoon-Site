@@ -259,7 +259,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
       const slotKeys = bar.map((_, i) => 'slot:' + i);
       check('the Carried grid lists every hotbar slot, the Ink Jet, the jar and item:flippers, and the bombs exactly once', slotKeys.concat(['jet', 'jar', 'item:flippers']).every((k) => ids.includes(k)) && ids.filter((k) => k === 'bomb' || k === bombKey).length === 1 && ids.length === slotKeys.length + 3 + (bombKey === 'bomb' ? 1 : 0), JSON.stringify(ids));
       const bombTxt = await ev((k) => { __octo.journalSelect(k); return document.querySelector('.octo-bk-entry.octo-bk-carried').textContent; }, bombKey);
-      check('the bomb card shows its count, fuse, the sticky mine, blast radius and its keys', /Bombs/.test(bombTxt) && /Carried\s*\d+ of \d+/.test(bombTxt) && /Fuse/.test(bombTxt) && /Mine/.test(bombTxt) && /Blast/.test(bombTxt) && /right click or C/i.test(bombTxt) && /B \/ X/.test(bombTxt), bombTxt.slice(0, 300));
+      check('the bomb card shows its count, fuse, the sticky mine, blast radius and its keys', /Bombs/.test(bombTxt) && /Carried\s*\d+ of \d+/.test(bombTxt) && /Fuse/.test(bombTxt) && /Mine/.test(bombTxt) && /Blast/.test(bombTxt) && /right click or C/i.test(bombTxt) && !/B \/ X/.test(bombTxt), bombTxt.slice(0, 300));
 
       // 2. highlight shows details
       await pg.hover('.octo-bk-ccard[data-id="jet"]'); await sleep(200);

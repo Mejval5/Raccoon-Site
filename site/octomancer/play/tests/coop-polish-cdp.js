@@ -230,6 +230,21 @@ const RED = '#c05060', TEAL = '#4fa39b';
     check('1b a save with both lines retired shows neither', L.scheme === 'pad' && !L.shown);
     await r2.close();
 
+    // ================================================================ IMPROVEMENTS.md 6: the controls line is one line at 1440 and 1024
+    for (const [w, ht] of [[1440, 900], [1024, 768]]) {
+      const q = await open(browser, '?at=1&seed=5', { helpDone: false });
+      await q.setViewport({ width: w, height: ht });
+      await PADS(q, [{}]);
+      await q.keyboard.press('KeyD'); await step(q, 2); await sleep(100);
+      const kh = await q.evaluate(() => { const e = document.querySelector('.octo-controls-help'); const r = e.getBoundingClientRect(); return { h: r.height, w: r.width, t: e.textContent.length }; });
+      check(`6i ${w}x${ht}: the keyboard line is one line (under 110 characters)`, kh.h < 26 && kh.t <= 110, JSON.stringify(kh));
+      await PADS(q, [{ lx: 0.8 }], 3); await PADS(q, [{}]); await step(q, 2); await sleep(100);
+      const ph = await q.evaluate(() => { const e = document.querySelector('.octo-controls-help'); const r = e.getBoundingClientRect(); return { h: r.height, w: r.width, scheme: e.dataset.scheme }; });
+      check(`6i ${w}x${ht}: the pad line is one line`, ph.scheme === 'pad' && ph.h < 32, JSON.stringify(ph));
+      if (w === 1440) await shot(q, 'line-short-pad');
+      await q.close();
+    }
+
     // ================================================================ 6. back rooms: gather the party
     const finder = await open(browser, '?at=1&seed=1');
     const seed = await finder.evaluate(async () => {

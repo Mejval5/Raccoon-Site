@@ -47,7 +47,7 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     const page = await open(browser, '?at=1&seed=5');
     await page.evaluate(() => { __octo.god(true); __octo.freeze(true); });
     let s = await S(page);
-    check('no pad yet: the controls line is the keyboard one', s.help.scheme === 'keyboard' && /Hand: F/.test(s.help.text) && s.help.glyphs.length === 0, JSON.stringify(s.help).slice(0, 120));
+    check('no pad yet: the controls line is the keyboard one', s.help.scheme === 'keyboard' && /Hand F/.test(s.help.text) && s.help.glyphs.length === 0, JSON.stringify(s.help).slice(0, 120));
     // plug in: nothing changes until the pad is used
     s = await P(page, {});
     check('a pad plugged in is seen (standard mapping, Xbox glyphs)', s.connected && s.style === 'xbox');
@@ -60,7 +60,7 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     s = await S(page);
     check('the left stick swims (right)', o1.x > o0.x + 0.8, `${o0.x.toFixed(2)} -> ${o1.x.toFixed(2)}`);
     check('using the pad switches the input mode to pad', s.mode === 'pad');
-    check('the controls line shows pad glyphs (LS, RS, RT, RB, A, B / LT, LB, View, Menu)', s.help.scheme === 'pad' && ['LS', 'RS', 'RT', 'RB', 'A', 'B', 'LT', 'LB', 'View', 'Menu'].every((g) => s.help.glyphs.includes(g)) && !/Hand: F/.test(s.help.text), s.help.glyphs.join(','));
+    check('the controls line shows pad glyphs (LS, RS, RT, RB, A, B, LB, View, Menu)', s.help.scheme === 'pad' && ['LS', 'RS', 'RT', 'RB', 'A', 'B', 'LB', 'View', 'Menu'].every((g) => s.help.glyphs.includes(g)) && !/Hand F/.test(s.help.text), s.help.glyphs.join(','));
     await P(page, { lx: 0.1, ly: 0.1 }); await step(page, 1);
     check('a stick inside its 0.2 deadzone does not move the octopus', (await page.evaluate(() => __octo.state().input.move.x)) === 0);
     await P(page, {}); await step(page, 30);
@@ -194,7 +194,7 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     // ---- the keyboard takes over again: the line follows
     await page.keyboard.press('KeyW'); await step(page, 2);
     s = await S(page);
-    check('a key flips the scheme back to keyboard (the line names keys again)', s.mode === 'keyboard' && s.help.scheme === 'keyboard' && /Hand: F/.test(s.help.text) && s.help.glyphs.length === 0);
+    check('a key flips the scheme back to keyboard (the line names keys again)', s.mode === 'keyboard' && s.help.scheme === 'keyboard' && /Hand F/.test(s.help.text) && s.help.glyphs.length === 0);
     await shot(page, 'line-keyboard');
     await P(page, { a: true }); await P(page, {}); await step(page, 1);
     check('the pad takes it back on a press', (await S(page)).help.scheme === 'pad');

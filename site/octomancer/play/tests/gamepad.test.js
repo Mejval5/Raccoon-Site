@@ -7,7 +7,7 @@ import { glyph, glyphs, controlsLine, drawGlyph, PAD_MAP } from '../js/glyphs.js
 import { coneAim } from '../js/inkjet.js';
 import { createMenuNav, pickNeighbour } from '../js/menu-nav.js';
 
-export function runGamepadTests(assert, approx) {
+export async function runGamepadTests(assert, approx) {
   // --- deadzones
   {
     const o = radialDeadzone(0.15, 0.1, MOVE_DEADZONE);
@@ -142,10 +142,16 @@ export function runGamepadTests(assert, approx) {
   {
     const pl = controlsLine('pad');
     const kl = controlsLine('keyboard'), ml = controlsLine('mouse');
-    assert('controlsLine: the pad line has its parts and glyphs (no key names)', pl.scheme === 'pad' && pl.parts.length === 10 && /Hand: A/.test(pl.text) && !/WASD/.test(pl.text));
-    assert('controlsLine: keyboard and mouse share the desktop line (Hand: F, left-click)', kl.text === ml.text && /Hand: F/.test(kl.text) && /left-click/.test(kl.text) && kl.parts.length === 0);
+    assert('controlsLine: the pad line has its parts and glyphs (no key names)', pl.scheme === 'pad' && pl.parts.length === 9 && /Hand A/.test(pl.text) && /Journal View/.test(pl.text) && !/WASD/.test(pl.text));
+    assert('controlsLine: keyboard and mouse share the desktop line (Hand F, Jet LMB, Journal Tab)', kl.text === ml.text && /Hand F/.test(kl.text) && /Jet LMB/.test(kl.text) && /Journal Tab/.test(kl.text) && kl.parts.length === 0);
     assert('controlsLine: touch has no line', controlsLine('touch').text === '');
-    assert('controlsLine: a DualSense line uses its names', /Hand: Cross/.test(controlsLine('pad', 'ps').text));
+    // IMPROVEMENTS.md 6: no stale key names in code ("Inventory: Tab" is the journal, "B/X drops one" is gone, "Ink Jet" everywhere)
+    const srcs = await Promise.all(['glyphs', 'settings', 'carried', 'hotbar-ui', 'inventory-ui', 'signs'].map((f) => fetch(new URL('../js/' + f + '.js', import.meta.url)).then((r) => r.text()).then((t) => [f, t])));
+    const stale = srcs.filter(([, t]) => /Inventory: Tab|B\/X drops|Ink jet/.test(t)).map(([f]) => f);
+    assert('key names: no "Inventory: Tab", "B/X drops" or "Ink jet" left in glyphs, settings, carried, hotbar-ui, inventory-ui, signs', stale.length === 0, stale.join());
+    assert('controlsLine: a DualSense line uses its names', /Hand Cross/.test(controlsLine('pad', 'ps').text));
+    // IMPROVEMENTS.md 6: one short line per scheme, essentials only
+    assert('controlsLine: the desktop and pad lines are at most 110 characters, no bracketed notes', [kl, pl, controlsLine('pad', 'ps')].every((l) => l.text.length <= 110 && !/[()]/.test(l.text)), [kl, pl].map((l) => l.text.length).join(' / '));
   }
   {
     let ok = true;

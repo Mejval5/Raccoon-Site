@@ -60,7 +60,7 @@ export function placeSigns(prompts, solid) {
 export const CONTROL_ROWS = [
   ['move', 'Swim', 'Through the water, any way you like.'],
   ['aim', 'Aim', 'Where the ink and the spells go.'],
-  ['attack', 'Ink jet', 'Squirts ink; it refills slowly.'],
+  ['attack', 'Ink Jet', 'Squirts ink; it refills slowly.'],
   ['use', 'Use slot', 'Casts the spell or throws the bomb picked on the bar.'],
   ['hand', 'Hand', 'Grab, talk, buy, dive; again throws, hold drops.'],
   ['dash', 'Dash', 'A burst of speed; nothing hurts you mid-dash.'],

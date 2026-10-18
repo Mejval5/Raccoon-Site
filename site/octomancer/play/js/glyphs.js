@@ -104,12 +104,13 @@ export function glyph(action, scheme, style = 'xbox') {
 }
 
 // --- the bottom-left line
+// IMPROVEMENTS.md 6: one short line per scheme (under 110 characters, essentials only, no notes); Settings lists everything
 const PAD_LINE = [
-  ['Swim', 'move'], ['Aim', 'aim'], ['Ink jet', 'attack'], ['Use slot', 'use'], ['Hand', 'hand', 'hold drops'],
-  ['Dash', 'dash'], ['Hotbar', 'cycle'], ['Bombs', 'select'], ['Inventory', 'inventory'], ['Pause', 'pause'],
+  ['Swim', 'move'], ['Aim', 'aim'], ['Jet', 'attack'], ['Use', 'use'], ['Hand', 'hand'],
+  ['Dash', 'dash'], ['Bar', 'cycle'], ['Journal', 'inventory'], ['Pause', 'pause'],
 ];
-// the desktop line names keys and buttons in words (the long-standing text; spells-cdp checks it)
-const DESKTOP_TEXT = 'Swim: WASD/arrows | Dash: Space/Shift | Hand: F or middle-click (grab, talk, buy; again throws, hold drops) | Ink jet: left-click or J/K | Use slot: right-click or C (bombs: pick their slot; B/X drops one) | Hotbar: wheel, Q/E, 1-9 | Inventory: Tab/I';
+// the desktop line names keys and mouse buttons in words (keyboard and mouse are one set)
+const DESKTOP_TEXT = 'Swim WASD · Aim mouse · Jet LMB · Use RMB · Hand F · Dash Space · Bar Q/E · Journal Tab · Pause Esc';
 const DESKTOP_TEXT_V1 = 'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X';
 
 /**
@@ -118,8 +119,8 @@ const DESKTOP_TEXT_V1 = 'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X';
  */
 export function controlsLine(scheme, style = 'xbox', v2 = true) {
   if (scheme === 'pad') {
-    const parts = PAD_LINE.map(([name, action, note]) => ({ name, glyphs: glyphs(action, 'pad', style), note: note || '' }));
-    const text = parts.map((p) => p.name + ': ' + p.glyphs.map((g) => g.label).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' | ');
+    const parts = PAD_LINE.map(([name, action, note]) => ({ name, glyphs: glyphs(action, 'pad', style).slice(0, 1), note: note || '' })); // (the first button of each)
+    const text = parts.map((p) => p.name + ' ' + p.glyphs.map((g) => g.label).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' · ');
     return { scheme, text, parts };
   }
   if (scheme === 'touch') return { scheme, text: '', parts: [] };

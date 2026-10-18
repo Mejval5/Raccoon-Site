@@ -344,7 +344,11 @@ body {
   position: absolute;
   left: calc(12px + var(--safe-l));
   bottom: calc(10px + var(--safe-b));
-  max-width: min(92vw, 560px);
+  max-width: min(calc(100vw - 24px), 640px);
+  /* IMPROVEMENTS.md 6: one short line, on a soft dark backing so it reads over rock */
+  padding: 2px 9px;
+  border-radius: 9px;
+  background: rgba(6, 18, 26, 0.5);
   font: 600 11px/1.4 'Quicksand', sans-serif;
   color: #baffea;
   opacity: .65;
@@ -353,8 +357,9 @@ body {
 }
 
 /* Controller Phase 1: the pad line lays its drawn glyphs (glyphs.js) inline with the words */
-.octo-controls-help[data-scheme="pad"] { max-width: min(92vw, 600px); line-height: 22px; opacity: .75; }
-.octo-ch-part { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; margin-right: 12px; vertical-align: middle; }
+.octo-controls-help[data-scheme="pad"] { line-height: 22px; opacity: .75; }
+.octo-ch-part { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; margin-right: 10px; vertical-align: middle; }
+.octo-ch-part:last-child { margin-right: 0; }
 .octo-ch-name { margin-right: 1px; }
 .octo-ch-or { opacity: .6; }
 .octo-ch-note { opacity: .7; font-weight: 500; }
