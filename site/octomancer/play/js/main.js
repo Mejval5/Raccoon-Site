@@ -667,7 +667,7 @@ const looksPicker = createSkinPicker(hudEl, {
 let buildOpen = false;
 const buildGame = V2 && hubBuildTable ? createHubBuildGame({
   hudEl, table: hubBuildTable, buildJson: authoredJson.hub.build, level: () => world.level, inHub: () => !!run && run.state === S_HUB && !MOVETEST,
-  octos: () => (coop() ? players().map(oOf) : [octo]), ctx: () => hubRoomCtx(), toast: (text) => ui.showToast(text, 3000, true), sfx,
+  octos: () => (coop() ? players().map(oOf) : [octo]), ctx: () => hubRoomCtx(), toast: (text) => ui.showToast(text, 3000), sfx, // (the player just built: shown at once, never dropped from a full queue)
   discover: (id) => discover(id), found: (id) => journal.has(id), bump: (id) => journal.bump(id, STAT_USED), viewNear: (x, y) => viewNear(x, y),
   onOpen() { buildOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
   onClose() { buildOpen = false; applyPaused(); syncModal(); },

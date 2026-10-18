@@ -283,15 +283,23 @@ function paintMosaic(c, wPx, hPx, motif) {
 const bakes = new Map(); // key -> {c, ox, oy, w, h} (ox, oy = the anchor inside the canvas, px)
 let bakeScale = 0;
 const BAKE_MAX = 48;
+const slotCanvas = {};
+const BAKES_PER_FRAME = 2;
+let bakeBudget = BAKES_PER_FRAME;
 function bucket(ppu) { return Math.max(24, Math.min(112, Math.round(ppu / 4) * 4)); }
 function bake(key, wT, hT, ax, ay, s, paint) {
   if (bakeScale !== s) { bakes.clear(); bakeScale = s; }
   let b = bakes.get(key);
   if (b) return b;
+  if (bakeBudget <= 0) return null; // at most BAKES_PER_FRAME new paintings a frame (a hub arrival never paints them all in one task)
+  bakeBudget--;
   if (bakes.size >= BAKE_MAX) bakes.clear();
+  // the pile and the tally stone change with the balance: they keep one canvas each for good, repainted (no growth over visits)
+  const slot = key.startsWith('pile:') ? 'pile' : key.startsWith('tally:') ? 'tally' : '';
+  if (slot) for (const k of [...bakes.keys()]) if (k.startsWith(slot + ':')) bakes.delete(k);
   const m = 0.15; // margin (tiles): outlines and leaves past the box
-  const c = document.createElement('canvas');
-  c.width = Math.ceil((wT + m * 2) * s); c.height = Math.ceil((hT + m * 2) * s);
+  const c = slot ? (slotCanvas[slot] || (slotCanvas[slot] = document.createElement('canvas'))) : document.createElement('canvas');
+  c.width = Math.ceil((wT + m * 2) * s); c.height = Math.ceil((hT + m * 2) * s); // (setting the size clears a reused canvas)
   const g = c.getContext('2d');
   const ox = (m + wT * ax) * s, oy = (m + hT * ay) * s;
   g.translate(ox, oy);
@@ -366,6 +374,7 @@ function drawPiece(ctx, camera, cw, ch, spot, deco, t) {
       blit();
     } else { // stands on a little shelf
       const sb = shelfBake(s);
+      if (!sb) { ctx.restore(); return; } // (painted next frame)
       ctx.translate(SX, SY + 0.32 * ppu);
       ctx.save(); if (dir < 0) ctx.scale(-1, 1); ctx.drawImage(sb.c, -sb.ox * k, -sb.oy * k, sb.c.width * k, sb.c.height * k); ctx.restore();
       ctx.translate(dir * 0.42 * ppu, 0);
@@ -389,6 +398,7 @@ export function drawHubBuildBack(ctx, camera, cw, ch, pieces) {
   for (const { spot, deco } of pieces) {
     if (spot.type !== 'mural' || deco.art !== 'mosaic' || !inView(camera, cw, ch, spot.x, spot.y, spot.w)) continue;
     const b = bake('m:' + deco.id + ':' + spot.w + 'x' + spot.h, spot.w, spot.h, 0.5, 0.5, s, (g, u) => { g.translate(-spot.w * u / 2, -spot.h * u / 2); paintMosaic(g, spot.w * u, spot.h * u, deco.motif); });
+    if (!b) continue;
     ctx.save();
     ctx.globalAlpha *= 0.72; // set into the far wall: quieter than the pieces in the water
     ctx.drawImage(b.c, cw / 2 + (spot.x - camera.x) * ppu - b.ox * k, ch / 2 + (spot.y - camera.y) * ppu - b.oy * k, b.c.width * k, b.c.height * k);
@@ -428,15 +438,16 @@ export function drawHubBuild(ctx, camera, cw, ch, table, t, s) {
   const B = s.build;
   if (!B || !buildArtReady()) return;
   const ppu = camera.pxPerUnit, sc = bucket(ppu), k = ppu / sc;
+  if (!slotCanvas.pile) for (const n of ['pile', 'tally']) slotCanvas[n] = document.createElement('canvas'); // both for good, on the first hub frame
   if (B.pile && inView(camera, cw, ch, B.pile.x, B.pile.y, 3)) {
     const st = pileStage(table, s.shells);
     const b = bake('pile:' + st, 2.6, 1.3, 0.5, 1, sc, (g, u) => paintPile(g, u, st));
-    ctx.drawImage(b.c, cw / 2 + (B.pile.x - camera.x) * ppu - b.ox * k, ch / 2 + (B.pile.y - camera.y) * ppu - b.oy * k, b.c.width * k, b.c.height * k);
+    if (b) ctx.drawImage(b.c, cw / 2 + (B.pile.x - camera.x) * ppu - b.ox * k, ch / 2 + (B.pile.y - camera.y) * ppu - b.oy * k, b.c.width * k, b.c.height * k);
   }
   if (B.tally && inView(camera, cw, ch, B.tally.x, B.tally.y, 2)) {
     const marks = Math.min(15, Math.max(1, Math.ceil(Math.sqrt(s.shells | 0))));
     const b = bake('tally:' + marks, 0.6, 0.7, 0.5, 1, sc, (g, u) => paintTally(g, u, marks));
-    ctx.drawImage(b.c, cw / 2 + (B.tally.x - camera.x) * ppu - b.ox * k, ch / 2 + (B.tally.y - camera.y) * ppu - b.oy * k, b.c.width * k, b.c.height * k);
+    if (b) ctx.drawImage(b.c, cw / 2 + (B.tally.x - camera.x) * ppu - b.ox * k, ch / 2 + (B.tally.y - camera.y) * ppu - b.oy * k, b.c.width * k, b.c.height * k);
   }
   for (const p of s.pieces) if (p.spot.type !== 'mural' && inView(camera, cw, ch, p.spot.x, p.spot.y, 3)) drawPiece(ctx, camera, cw, ch, p.spot, p.deco, t);
   for (const sp of B.spots) {
@@ -445,6 +456,7 @@ export function drawHubBuild(ctx, camera, cw, ch, table, t, s) {
     for (const o of s.octos) { const px = sp.type === 'hook' ? sp.x : sp.x, py = sp.type === 'hook' ? sp.y + 1.2 : sp.y - 0.4; d = Math.min(d, Math.hypot(o.x - px, o.y - py) - (sp.type === 'mural' ? Math.min(sp.w, sp.h) / 2 : 0)); }
     if (d < OUTLINE_NEAR) drawOutline(ctx, camera, cw, ch, sp, Math.min(1, (OUTLINE_NEAR - d) / 1.2), t);
   }
+  bakeBudget = BAKES_PER_FRAME; // (the next frame may paint again)
 }
 
 /** A picker card's preview: the decoration fitted into a `w` x `h` canvas (a hanging piece with a short rope). */

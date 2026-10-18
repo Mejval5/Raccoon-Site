@@ -17,7 +17,7 @@ export const VILLAGE_JOURNAL = 'place-village';
 export function createHubBuildGame(env) {
   const table = env.table;
   let hubBuild = getHubBuild();
-  let pieces = [], piecesLevel = null, dirty = true;
+  let pieces = [], piecesLevel = null, dirty = true, shellsNow = 0; // (read from the save only when something changed, not per frame)
   const drawState = { build: null, pieces, shells: 0, octos: [], hubBuild };
 
   const picker = createBuildPicker(env.hudEl, {
@@ -33,7 +33,7 @@ export function createHubBuildGame(env) {
   function refresh() {
     const lv = env.level();
     if (!dirty && piecesLevel === lv) return;
-    hubBuild = getHubBuild();
+    hubBuild = getHubBuild(); shellsNow = getHoard().shells;
     pieces = builtPieces(table, lv && lv.build, hubBuild);
     piecesLevel = lv; dirty = false;
   }
@@ -81,7 +81,7 @@ export function createHubBuildGame(env) {
       if (!env.inHub()) return;
       refresh();
       const lv = env.level();
-      drawState.build = lv && lv.build; drawState.pieces = pieces; drawState.shells = getHoard().shells; drawState.octos = env.octos(); drawState.hubBuild = hubBuild;
+      drawState.build = lv && lv.build; drawState.pieces = pieces; drawState.shells = shellsNow; drawState.octos = env.octos(); drawState.hubBuild = hubBuild;
       drawHubBuild(c, camera, cw, ch, table, t, drawState);
     },
     /** The back-wall pass (main.js paintPass): the mosaics. */
@@ -90,13 +90,14 @@ export function createHubBuildGame(env) {
     tags(out, handTarget) {
       const lv = env.level();
       if (!env.inHub() || !lv || !lv.build || picker.isOpen()) return out;
+      refresh();
       const T = lv.build.tally;
       if (T && env.octos().some((o) => !o.dead && Math.hypot(o.x - T.x, o.y - (T.y - 0.4)) < TALLY_NEAR)) {
-        const n = getHoard().shells;
+        const n = shellsNow;
         out.push({ id: 'tally', x: T.x, y: T.y - 1.15, text: n + (n === 1 ? ' shell' : ' shells') + ' in the hoard', view: env.viewNear(T.x, T.y) });
       }
       if (handTarget && handTarget.kind === 'build' && handTarget.spot) {
-        const s = handTarget.spot, p = spotPoint(s), v = env.viewNear(p.x, p.y), built = !!getHubBuild()[s.id];
+        const s = handTarget.spot, p = spotPoint(s), v = env.viewNear(p.x, p.y), built = !!hubBuild[s.id];
         const y = s.type === 'hook' ? p.y + 0.9 : s.type === 'mural' ? s.y - s.h / 2 - 0.3 : s.type === 'niche' ? p.y - 0.9 : p.y - 1.0;
         out.push({ id: 'build', x: p.x, y, text: v.scheme === 'touch' ? (built ? 'Stay still, tap {use}: change' : 'Stay still, tap {use}: build') : (built ? '{hand} change' : '{hand} build'), view: v });
       }
