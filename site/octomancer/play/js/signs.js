@@ -71,9 +71,10 @@ export const CONTROL_ROWS = [
 
 // --- Night batch 1 (IMPROVEMENTS.md #1): where an open board goes. The board is drawn above the actors (main.js postOctoDraw ->
 // signs-draw.js drawSignBoards), so it must keep clear of what it explains (the whirlpool, the altar, the wares), of the
-// octopus that reads it and of the other posts. It still hangs on its own post / ropes: it prefers to open straight up from
-// the post top (or down from the rope ends); when that spot is taken it slides aside, rises higher on a longer cord, or
-// flips, and it stays inside the view. All in world tiles; pure, so the tests place boards with the real level data.
+// octopus that reads it and of the other posts. A post-mounted board prefers to open straight up from the post top; when that
+// spot is taken it slides aside, rises higher on a longer cord, or flips, and it stays inside the view. A board hung on ropes
+// from the rock (`hang`, the hub's welcome) is a fixture and never moves (hungBoardRect). All in world tiles; pure, so the
+// tests place boards with the real level data.
 
 /** Rects {x0, y0, x1, y1} (tiles) of what a sign's board must not hide on an authored or generated level: its whirlpools and
  *  their key hint, the shop's wares and their "buy" tag, the mirror shell; the tutorial's controls painting as a `soft` one
@@ -134,6 +135,10 @@ export function boardView(cx, cy, ppu, cw, ch, k = 1) {
     ],
   };
 }
+
+/** A rope-hung board (`hang`) is a fixture (Daniel 2026-10-18): its rect is fixed under its rope ends, whatever the camera or
+ *  the octopus. `a` = {x, y, w, h} (the rope ends' middle, the board size in tiles). */
+export function hungBoardRect(a) { return { x0: a.x - a.w / 2, y0: a.y, x1: a.x + a.w / 2, y1: a.y + a.h }; }
 
 const SCRATCH = { x0: 0, y0: 0, x1: 0, y1: 0 }; // the candidate rect (no allocation per candidate)
 export const OCTO_CLEAR = 1.2; // tiles: the disc round each octopus a board keeps clear of
