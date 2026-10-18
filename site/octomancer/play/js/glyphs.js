@@ -121,7 +121,7 @@ const DESKTOP_TEXT_V1 = 'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X';
 export function controlsLine(scheme, style = 'xbox', v2 = true) {
   if (scheme === 'pad') {
     const parts = PAD_LINE.map(([name, action, note]) => ({ name, glyphs: glyphs(action, 'pad', style).slice(0, 1), note: note || '' })); // (the first button of each)
-    const text = parts.map((p) => p.name + ' ' + p.glyphs.map((g) => g.label).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' · ');
+    const text = parts.map((p) => p.name + ' ' + p.glyphs.map((g) => (g.arm === 'lr' ? 'D-pad' : g.label)).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' · ');
     return { scheme, text, parts };
   }
   if (scheme === 'touch') return { scheme, text: '', parts: [] };
