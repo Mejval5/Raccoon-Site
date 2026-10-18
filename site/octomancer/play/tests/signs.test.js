@@ -4,8 +4,11 @@
 // that a scheme switch repaints (new board / painting), and that every authored sign text resolves.
 import { richSegments, plainText, glyphLabels, layoutRich, drawRichLayout } from '../js/rich.js';
 import { glyph, glyphs, signScheme, drawGlyph, LOOK_WOOD, LOOK_PAINT, PAD_MAP } from '../js/glyphs.js';
-import { signText, pickPrompt, placeSigns, CONTROL_ROWS } from '../js/signs.js';
-import { drawSigns, drawAnchorTag, boardCacheSize } from '../js/signs-draw.js';
+import { signText, pickPrompt, placeSigns, CONTROL_ROWS, placeBoard, levelSignTargets, signPosts, rectHitsDisc, rectsHit, OCTO_CLEAR, boardView } from '../js/signs.js';
+import { drawSigns, drawSignBoards, drawAnchorTag, boardCacheSize, boardSize, boardRects } from '../js/signs-draw.js';
+import { parseAuthoredMap } from '../js/authored.js';
+import { computePxPerUnit } from '../js/camera.js';
+import { ALTAR_W } from '../js/altar.js';
 import { drawCavePainting, paintingCacheKeys, drawControlCard } from '../js/cave-paint.js';
 import { createJournal, TABS, CONTROL_ENTRIES, completion, ENTRIES, entryById } from '../js/journal.js';
 import { setArtScheme, entryArt, onArtReady, hasArt } from '../js/journal-art.js';
@@ -80,24 +83,87 @@ export async function runSignsTests(assert) {
     const cam = { x: 5, y: 5, pxPerUnit: 60 };
     const prompts = [{ title: 'Grab', label: 'Grab', x: 5, y: 5, r: 4, sign: [5, 6], desktop: '{hand} grabs a pot.', touch: 'Tap Grab.' }];
     const n0 = boardCacheSize();
-    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'desktop', style: 'xbox' }, 0);
-    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'desktop', style: 'xbox' }, 1);
+    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'desktop', style: 'xbox' }, 0); drawSignBoards(g, cam, 640, 360);
+    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'desktop', style: 'xbox' }, 1); drawSignBoards(g, cam, 640, 360);
     const n1 = boardCacheSize();
     const desk = g.getImageData(0, 0, 640, 360).data.slice();
     g.clearRect(0, 0, 640, 360);
-    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'pad', style: 'xbox' }, 2);
+    drawSigns(g, cam, 640, 360, prompts, prompts[0], { scheme: 'pad', style: 'xbox' }, 2); drawSignBoards(g, cam, 640, 360);
     const n2 = boardCacheSize();
     const pad = g.getImageData(0, 0, 640, 360).data;
     let diff = 0; for (let i = 0; i < pad.length; i += 4) if (Math.abs(pad[i] - desk[i]) > 40) diff++;
     assert('signs: the open board is drawn once per scheme (cached), and a pad switch draws a new one that looks different', n1 === n0 + 1 && n2 === n1 + 1 && diff > 20 && prompts[0]._open === 1);
     let ok = true;
-    try { drawAnchorTag(g, cam, 640, 360, 5, 4, '{hand} change your look', { scheme: 'pad', style: 'ps' }, 0); drawSigns(g, cam, 640, 360, [{ title: 'Hung', label: 'Hi', x: 5, y: 5, r: 3, hang: [5, 2], desktop: 'x' }, { title: 'Fixed', x: 5, y: 5, r: 3, anchor: [5, 4], desktop: 'y' }], null, { scheme: 'desktop', style: 'xbox' }, 0); } catch (e) { ok = false; }
+    try { drawAnchorTag(g, cam, 640, 360, 5, 4, '{hand} change your look', { scheme: 'pad', style: 'ps' }, 0); drawSigns(g, cam, 640, 360, [{ title: 'Hung', label: 'Hi', x: 5, y: 5, r: 3, hang: [5, 2], desktop: 'x' }, { title: 'Fixed', x: 5, y: 5, r: 3, anchor: [5, 4], desktop: 'y' }], null, { scheme: 'desktop', style: 'xbox' }, 0); drawSignBoards(g, cam, 640, 360); } catch (e) { ok = false; }
     assert('signs: an object prompt, a hung board and an anchored one draw', ok);
     const spec = { rect: [1, 1, 9, 4], cols: 3 };
     drawCavePainting(g, cam, 640, 360, spec, { scheme: 'desktop', style: 'xbox' });
     drawCavePainting(g, cam, 640, 360, spec, { scheme: 'pad', style: 'xbox' });
     const keys = paintingCacheKeys();
     assert('cave painting: painted once per scheme (desktop, then pad on a switch)', keys.some((k) => k.startsWith('desktop|')) && keys.some((k) => k.startsWith('pad|xbox')));
+  }
+
+  // --- night batch 1 (IMPROVEMENTS.md #1): an open board never hides what it explains, the octopus reading it or another post
+  {
+    const load = async (f) => (await fetch(new URL('../data/' + f, import.meta.url))).json();
+    const levels = [];
+    for (const f of ['tutorial.json', 'hub.json', 'rest.json']) levels.push({ name: f, lv: parseAuthoredMap(await load(f)) });
+    // the altar: a stone on a flat floor, its sign two tiles to the left (altar-level.js signFor), the first-meeting words
+    {
+      const W = 40, H = 30, tiles = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) tiles[y * W + x] = x < 2 || y < 2 || x >= W - 2 || y >= 21 ? 1 : 0;
+      const ax = 20, ay = 21;
+      const lv = { w: W, h: H, tiles, exitX: -1, prompts: [{ title: 'An offering altar', label: 'Offerings', x: ax, y: ay - 1, r: 3.6, sign: [ax - 2, ay - 1],
+        desktop: 'Lay a body on the stone: grab it with {hand+}, then drop or throw it here. Each hollow that lights is a gift. Never a person, never a bomb.' }] };
+      const H2 = ALTAR_W * 200 / 322;
+      levels.push({ name: 'altar', lv, extra: [{ x0: ax - 1.6, y0: ay - 2.5, x1: ax + 1.6, y1: ay + 0.1 }], altar: { x0: ax - ALTAR_W / 2, y0: ay - H2, x1: ax + ALTAR_W / 2, y1: ay } });
+    }
+    const bad = [];
+    let n = 0;
+    for (const [vw, vh] of [[1440, 900], [412, 915]]) {
+      const ppu = computePxPerUnit(vw, vh);
+      for (const L of levels) {
+        const lv = L.lv, solid = (x, y) => x < 0 || y < 0 || x >= lv.w || y >= lv.h || lv.tiles[y * lv.w + x] !== 0;
+        const targets = levelSignTargets(lv, L.extra || null);
+        for (const p of lv.prompts) {
+          for (const scheme of ['desktop', 'touch']) {
+            const sz = boardSize(p, scheme, 'xbox', ppu, vw);
+            const at = p.sign ? { x: p.sign[0] + 0.5, y: p.sign[1] + 0.42, dir: 'up' } : p.hang ? { x: p.hang[0] + 0.5, y: p.hang[1] + (p.hang[2] || 0.7), dir: 'down' } : { x: p.anchor[0], y: p.anchor[1], dir: 'up' };
+            const posts = signPosts(lv.prompts, p, (q) => q.when === 'open'); // the hub shows one of its two welcome boards
+            // every water spot the sign is open from (the octopus reads it from there), half a tile apart
+            for (let oy = Math.floor(p.y - p.r); oy <= p.y + p.r; oy += 0.5) for (let ox = Math.floor(p.x - p.r); ox <= p.x + p.r; ox += 0.5) {
+              if (Math.hypot(ox - p.x, oy - p.y) >= p.r || solid(Math.floor(ox), Math.floor(oy))) continue;
+              const cam = { x: Math.max(vw / 2 / ppu, Math.min(lv.w - vw / 2 / ppu, ox)), y: Math.max(vh / 2 / ppu, Math.min(lv.h - vh / 2 / ppu, oy)) };
+              const bv = boardView(cam.x, cam.y, ppu, vw, vh), all = targets.concat(bv.hud);
+              const r = placeBoard({ ...at, w: sz.w, h: sz.h }, all, posts, [{ x: ox, y: oy }], bv.view, solid);
+              n++;
+              const hit = all.some((t) => !t.soft && rectsHit(r, t)) || rectHitsDisc(r, ox, oy, OCTO_CLEAR) || (L.altar && rectsHit(r, L.altar));
+              if (hit || !r.clear) bad.push(L.name + ' ' + vw + ' ' + p.title + ' ' + scheme + ' @' + ox + ',' + oy);
+            }
+          }
+        }
+      }
+    }
+    assert('signs (night 1): from every spot a sign opens, its board keeps clear of the whirlpool, the wares, the altar, the octopus and the HUD corners (tutorial, hub, grotto, altar; 1440x900 and 412x915)',
+      n > 2000 && bad.length === 0, n + ' spots; ' + bad.length + ' hidden: ' + bad.slice(0, 6).join(' | '));
+    // the board prefers to sit on its post, and stays clear of another post where it can
+    const open = placeBoard({ x: 10, y: 10, dir: 'up', w: 5, h: 2 }, [], [], [], null, null);
+    assert('signs (night 1): with nothing round it the board sits straight on its post', open.x0 === 7.5 && open.y1 === 10 && open.clear);
+    const aside = placeBoard({ x: 10, y: 10, dir: 'up', w: 5, h: 2 }, [{ x0: 7, y0: 7.5, x1: 10.5, y1: 11 }], [], [], null, null);
+    assert('signs (night 1): a whirlpool beside the post: the board slides off it or rises, and keeps an anchor (its post under its span or one cord away)', !rectsHit(aside, { x0: 7, y0: 7.5, x1: 10.5, y1: 11 }) && aside.x0 <= 10.5 && aside.x1 >= 9.5);
+    const wall = placeBoard({ x: 10, y: 10, dir: 'up', w: 5, h: 2 }, [], [], [], { x0: 9, y0: 0, x1: 30, y1: 30 }, null);
+    assert('signs (night 1): by the edge of the view the board stays inside it', wall.x0 >= 9);
+    // in a frame: drawSigns queues the open board, drawSignBoards places and draws it, the rect is readable for the cdp test
+    const c = document.createElement('canvas'); c.width = 1440; c.height = 900;
+    const g = c.getContext('2d'), ppu = computePxPerUnit(1440, 900);
+    const tut = levels[0].lv, dive = tut.prompts.find((p) => p.title === 'Dive');
+    const cam = { x: 12, y: 28, pxPerUnit: ppu };
+    for (let i = 0; i < 20; i++) {
+      drawSigns(g, cam, 1440, 900, tut.prompts, dive, { scheme: 'desktop', style: 'xbox' }, 10 + i * 0.05);
+      drawSignBoards(g, cam, 1440, 900, () => ({ targets: levelSignTargets(tut), discs: [{ x: dive.x, y: dive.y }], solid: (x, y) => tut.tiles[y * tut.w + x] !== 0 }));
+    }
+    const br = boardRects(tut.prompts);
+    assert('signs (night 1): the tutorial Dive board, drawn in a frame, is off the whirlpool and the octopus', br.length === 1 && br[0].clear && !levelSignTargets(tut).some((t) => !t.soft && rectsHit(br[0], t)) && !rectHitsDisc(br[0], dive.x, dive.y, OCTO_CLEAR), JSON.stringify(br));
   }
 
   // --- the journal's Controls tab
