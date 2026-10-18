@@ -70,6 +70,7 @@ const FRAME = 1000 / 60;
       const shelf = solid(45, 26) && solid(46, 26) && !solid(47, 26) && !solid(47, 25) && !solid(45, 25);
       let col = true; for (let y = 25; y < 38; y++) if (solid(47, y)) col = false;
       const i = __octo.addBlock(45.5, 25.5);
+      __octo.watchBlock(i);
       __octo.teleport(42.6, 25.4);
       __octo.frames(40, FRAME, true); // the block settles, the camera arrives
       const b = __octo.props().find((p) => p.i === i);
@@ -86,7 +87,8 @@ const FRAME = 1000 / 60;
         __octo.input({ move: steer === 'down' ? { x: 0.45, y: 1 } : { x: steer && b0.y < 26 ? 1 : 0, y: 0 }, dash: false });
         __octo.frames(1, FRAME, true);
         const s = __octo.state(), b = __octo.props().find((p) => p.i === i);
-        rec.push({ cx: s.camera.x, cy: s.camera.y, ox: s.octopus.x, ovx: s.octopus.vx, bx: b.x, by: b.y, bvx: b.vx, bvy: b.vy, st: b.state });
+        const w = __octo.blockDrawn();
+        rec.push({ cx: s.camera.x, cy: s.camera.y, ox: s.octopus.x, ovx: s.octopus.vx, bx: b.x, by: b.y, bvx: b.vx, bvy: b.vy, st: b.state, dx: w.x, dy: w.y, df: w.frames });
       }
       return rec;
     }, n, steer, setup.i, FRAME);
@@ -126,6 +128,31 @@ const FRAME = 1000 / 60;
     check('it lands in the next column, on the tile grid (x 47.5, bottom 38)', end.bx === 47.5 && Math.abs(end.by + 0.47 - 38) < 0.02, JSON.stringify(end));
     const lands = await page.evaluate(() => __octo.blockLands());
     check('the landing plays the block thud', lands === setup.lands + 1, `${setup.lands} -> ${lands}`);
+
+    // 2026-10-18 follow-up (Daniel: "the blocks when falling or pushing are still jittery"): the block's DRAWN position, every
+    // rendered 60 Hz frame (blocks-draw.js, interpolated between the 50 Hz steps): it never moves backwards and each frame's step
+    // is within 0.5x..1.5x of the median (push) / of its neighbours' median (fall, which accelerates). Raw step positions drawn
+    // at 60 Hz fail this: every sixth frame the block does not move.
+    const spacing = (from, to, axis, local) => {
+      const steps = [];
+      for (let f = Math.max(2, from + 1); f < to; f++) if (rec[f].df === rec[f - 1].df + 1 && rec[f - 1].df === rec[f - 2].df + 1) steps.push(rec[f][axis] - rec[f - 1][axis]);
+      const med = (a) => { const s = [...a].sort((p, q) => p - q); return s[s.length >> 1]; };
+      let back = 0, bad = 0;
+      const m = med(steps);
+      for (let k = 0; k < steps.length; k++) {
+        if (steps[k] < -1e-6) back++;
+        const ref = local ? med(steps.slice(Math.max(0, k - 3), k + 4)) : m;
+        if (steps[k] > ref * 1.5 + 1e-6 || steps[k] < ref * 0.5 - 1e-6) bad++;
+      }
+      return { n: steps.length, back, bad, med: +m.toFixed(4), min: +Math.min(...steps).toFixed(4), max: +Math.max(...steps).toFixed(4) };
+    };
+    const ps = spacing(start + 2, lost - 1, 'dx', false);
+    check('pushing: the drawn block moves forward every frame, evenly (no step backwards, none outside 0.5x..1.5x the median)', ps.n > 40 && ps.back === 0 && ps.bad === 0, JSON.stringify(ps));
+    const landF = rec.findIndex((r, k) => k > off && r.by >= 37.5);
+    const fs2 = spacing(lost + 4, landF - 1, 'dy', true);
+    check('falling: the drawn block moves down every frame, evenly (no step back up, none outside 0.5x..1.5x of its neighbours)', fs2.n > 40 && fs2.back === 0 && fs2.bad === 0, JSON.stringify(fs2));
+    const xd = new Set(rec.slice(lost + 4, landF).filter((r, k, a) => k > 0 && r.df !== a[k - 1].df).map((r) => r.dx));
+    check('falling: the drawn block stays in its column (one drawn x)', xd.size === 1, [...xd].join(','));
 
     if (SHOTS) {
       const imgs = shots.map((p) => 'data:image/png;base64,' + fs.readFileSync(p).toString('base64'));

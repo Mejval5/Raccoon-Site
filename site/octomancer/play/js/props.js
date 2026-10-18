@@ -92,6 +92,7 @@ export function createProps(cap = DEFAULT_CAP) {
     cap, n: 0, live: 0,
     alive: new Uint8Array(cap), kind: new Uint8Array(cap), state: new Uint8Array(cap),
     x: new Float32Array(cap), y: new Float32Array(cap), vx: new Float32Array(cap), vy: new Float32Array(cap),
+    px: new Float32Array(cap), py: new Float32Array(cap), // blocks: position at the start of the last step (the draw interpolates, like the octopus)
     radius: new Float32Array(cap),
     timer: new Float32Array(cap),   // bomb: fuse left; other: unused (rubble lives until it is recycled, see RUBBLE_CAP)
     born: new Uint32Array(cap),     // rubble: spawn serial, the smallest is the oldest
@@ -127,7 +128,7 @@ export function createProps(cap = DEFAULT_CAP) {
     else return -1;
     if (kind === PK_RUBBLE) { rubbleLive++; d.born[i] = ++serial; }
     d.alive[i] = 1; d.kind[i] = kind; d.state[i] = PS_FREE;
-    d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy;
+    d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy; d.px[i] = x; d.py[i] = y;
     d.radius[i] = opts && opts.radius ? opts.radius : PROP_RADIUS[kind];
     d.timer[i] = opts && opts.timer !== undefined ? opts.timer : 0;
     d.rest[i] = 0; d.grace[i] = opts && opts.grace ? opts.grace : 0; d.grounded[i] = 0; d.sup[i] = 0;
@@ -150,7 +151,7 @@ export function createProps(cap = DEFAULT_CAP) {
   /** Someone else moves prop i from now on (the hand, a mine on a creature): no physics until release(i). */
   function carry(i) { if (d.alive[i]) { d.state[i] = PS_CARRY; d.vx[i] = d.vy[i] = 0; d.rest[i] = 0; } }
   /** Put a carried prop at (x, y) with velocity (vx, vy) (what it leaves with when it is let go). */
-  function place(i, x, y, vx = 0, vy = 0) { d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy; }
+  function place(i, x, y, vx = 0, vy = 0) { d.x[i] = x; d.y[i] = y; d.vx[i] = vx; d.vy[i] = vy; d.px[i] = x; d.py[i] = y; }
   /** A sticky bomb clings to the rock tile (tx, ty). */
   function stick(i, tx, ty) { hold(i, tx, ty); d.stuck[i] = 1; }
 
@@ -658,6 +659,7 @@ export function createProps(cap = DEFAULT_CAP) {
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
         if (d.grace[i] > 0) d.grace[i] = Math.max(0, d.grace[i] - dt);
+        if (d.kind[i] === PK_BLOCK) { d.px[i] = d.x[i]; d.py[i] = d.y[i]; } // where the draw interpolates from (blocks-draw.js)
         if (d.state[i] !== PS_FREE) continue;
         awake[nAwake++] = i;
         if (d.kind[i] === PK_BLOCK) blocksAwake = true;

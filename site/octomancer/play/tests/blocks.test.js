@@ -188,6 +188,42 @@ export async function runBlocksTests(assert) {
     assert(`blocks: pushed by the real swim the block slides at a steady speed (worst |vx - 1.6| ${worstBv.toFixed(4)}) and the octopus speed does not stop-go (worst step change ${worstDv.toFixed(4)})`, contactF >= 0 && worstBv < 1e-4 && worstDv < 0.05);
     assert(`blocks: ... the camera follows smoothly while pushing (${back} frames moving back, worst per-frame move ${maxD.toFixed(4)} vs swim ${(5.5 / 60).toFixed(4)})`, back === 0 && maxD <= 5.5 / 60);
   }
+  {
+    // 2026-10-18 follow-up ("the blocks when falling or pushing are still jittery"): the drawn position (blocks-draw.js: px/py
+    // -> x/y by the render alpha, as the octopus) at a 60 Hz display over the 50 Hz step moves evenly, pushed and falling;
+    // the raw step position (what used to be drawn) stands still every sixth frame
+    const world = room(60, 40, (x, y) => (x < 30 ? y >= 14 : y >= 34));
+    const sim = createBotSim(world), d = sim.props.data;
+    const i = sim.props.add(PK_BLOCK, 26.5, 13.5);
+    for (let k = 0; k < 40; k++) sim.props.step(STEP, world, null);
+    place(sim, 23.5, 13.5);
+    let acc = 0;
+    const drawn = [], raw = [];
+    for (let f = 0; f < 60 * 14 && !(d.state[i] === PS_REST && d.y[i] > 30); f++) {
+      acc += 1 / 60;
+      while (acc >= STEP) { tick(sim, d.y[i] < 14 && d.vx[i] >= 0 && d.x[i] < 30.5 ? 1 : 0, 0); acc -= STEP; }
+      const a = acc / STEP;
+      drawn.push([d.px[i] + (d.x[i] - d.px[i]) * a, d.py[i] + (d.y[i] - d.py[i]) * a, d.vx[i], d.y[i]]);
+      raw.push([d.x[i], d.y[i]]);
+    }
+    const even = (pts, from, to, ax, local) => {
+      const st = [];
+      for (let k = from + 1; k < to; k++) st.push(pts[k][ax] - pts[k - 1][ax]);
+      const med = (s) => { const q = [...s].sort((p, r) => p - r); return q[q.length >> 1]; };
+      let bad = 0, back = 0;
+      for (let k = 0; k < st.length; k++) {
+        const ref = local ? med(st.slice(Math.max(0, k - 3), k + 4)) : med(st);
+        if (st[k] < -1e-6) back++;
+        if (st[k] > ref * 1.5 + 1e-6 || st[k] < ref * 0.5 - 1e-6) bad++;
+      }
+      return { n: st.length, bad, back };
+    };
+    const p0 = drawn.findIndex((p) => p[2] > 0) + 2, p1 = drawn.findIndex((p, k) => k > p0 && p[2] === 0) - 1;
+    const f0 = p1 + 6, f1 = drawn.findIndex((p, k) => k > f0 && p[3] >= 33.5) - 1;
+    const push = even(drawn, p0, p1, 0, false), fall = even(drawn, f0, f1, 1, true), rawPush = even(raw, p0, p1, 0, false);
+    assert(`blocks: the drawn block moves evenly while pushed (${push.n} frames, ${push.bad} uneven, ${push.back} backwards) and falling (${fall.n} frames, ${fall.bad} uneven, ${fall.back} back up); the raw step position does not (${rawPush.bad} uneven)`,
+      push.n > 40 && push.bad === 0 && push.back === 0 && fall.n > 40 && fall.bad === 0 && fall.back === 0 && rawPush.bad > 0);
+  }
 
   // ---- it cannot be pushed into rock: the next column must be free ----
   {
