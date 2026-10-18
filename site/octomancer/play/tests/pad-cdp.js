@@ -268,6 +268,37 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
       await pf.close();
     }
 
+    // ---- rumble (impact pass, IMPROVEMENTS.md 2026-10-18 #4): the stub pad's fake vibrationActuator (gamepad.js fakeRumbleLog)
+    // records a 'dual-rumble' when a piranha bites; with screen shake off nothing is sent
+    {
+      const pr = await open(browser, '?at=1&seed=5');
+      await P(pr, {}); await P(pr, { lx: 1 }); await P(pr, {}); // the pad is the input in use
+      const rr = await pr.evaluate(async () => {
+        const g = await import('./js/gamepad.js'), c = await import('./js/config.js');
+        __octo.freeze(true);
+        const bite = () => {
+          g.fakeRumbleLog.length = 0; __octo.setHearts(3);
+          const o = __octo.state().octopus;
+          for (let k = 0; k < 3; k++) __octo.spawn('piranha', o.x + 1.2 + k * 0.3, o.y - 0.2 + k * 0.2, 'water');
+          let hurt = 0;
+          for (let i = 0; i < 500 && !hurt; i++) { const h0 = __octo.state().octopus.hearts; __octo.step(1); if (__octo.state().octopus.hearts < h0) hurt = i + 1; }
+          __octo.step(1);
+          return { hurt, log: g.fakeRumbleLog.slice() };
+        };
+        const on = bite();
+        __octo.step(150); // the hurt i-frames run out
+        c.setMotionSettings(false, false);
+        const off = bite();
+        c.setMotionSettings(null, true);
+        __octo.freeze(false);
+        return { on, off };
+      });
+      check('rumble: a bite sends one dual-rumble to the pad (hurt 0.8 / 0.4 x the 0.7 cap, 120 ms)', rr.on.hurt > 0 && rr.on.log.some((e) => e.type === 'dual-rumble' && e.duration === 120 && Math.abs(e.weakMagnitude - 0.56) < 1e-6 && Math.abs(e.strongMagnitude - 0.28) < 1e-6), JSON.stringify(rr.on));
+      check('rumble: with screen shake off a bite sends none', rr.off.hurt > 0 && rr.off.log.length === 0, JSON.stringify(rr.off));
+      check('rumble: no page errors', pr.errs.length === 0, pr.errs.join(' | '));
+      await pr.close();
+    }
+
     // ---- a DualSense shows its own glyphs
     const pp = await open(browser, '?at=1&seed=5');
     const DS = 'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)';

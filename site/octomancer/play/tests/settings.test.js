@@ -6,7 +6,7 @@ import { OCTO_IDLE_SINK, setMotionSettings, prefersReducedMotion, shakeEnabled }
 import { createRun, runEvent, nextDiveSeed, levelTitle, EV_ENTER_DIVE } from '../js/run.js';
 import { createLevelWorld } from '../js/world-v2.js';
 import { createShopState, shopBlast, shopStep } from '../js/shop.js';
-import { createParticles } from '../js/particles.js';
+import { createParticles, blastHitStop } from '../js/particles.js';
 import { drawContactShadows } from '../js/feel-draw.js';
 
 const desc0 = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -56,6 +56,18 @@ export async function runSettingsTests(assert) {
     const p = createParticles(); setMotionSettings(false, false); p.shakeFx(4); p.blastFeel(1, 1, 0);
     const m = p.shakePx();
     assert('motion: shake off means no screen shake at all', m.x === 0 && m.y === 0);
+    setMotionSettings(null, true);
+  }
+  // ---- impact pass: reduced motion gives no blast hit-stop and no shake; shake off gives no shake (the freeze stays: it is not motion)
+  {
+    setMotionSettings(true, true);
+    const p = createParticles(); p.blastFeel(1, 1, 0); p.shakeFx(5, 0.2);
+    const m = p.shakePx(Math.PI / 2 / 0.06);
+    assert('motion: reduced motion means 0 blast hit-stop and 0 shake', blastHitStop(0) === 0 && blastHitStop(1) === 0 && m.x === 0 && m.y === 0);
+    setMotionSettings(false, false);
+    const q = createParticles(); q.blastFeel(1, 1, 0); q.shakeFx(5, 0.2);
+    const n = q.shakePx(Math.PI / 2 / 0.06);
+    assert('motion: shake off means 0 shake from a blast or a hurt', n.x === 0 && n.y === 0);
     setMotionSettings(null, true);
   }
 
