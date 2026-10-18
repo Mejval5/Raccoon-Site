@@ -1,7 +1,8 @@
 // Node script (not part of tests/index.html): controller Phase 1 (octomancer-web/CONTROLLER-PLAN.md) in real Chrome against a
 // running copy of the game, with a fake standard gamepad: navigator.getGamepads is stubbed before the page loads
 // (evaluateOnNewDocument) and __octo.pad(state) drives the stub. Plays Shallows 1-1 with it: swim, aim the ink jet with the
-// right stick and by the light auto-aim cone, the bomb from its slot (dropped and thrown), the hand (grab, throw), dash on B and
+// right stick and by the light auto-aim cone, the bomb from its slot (dropped and thrown), the hand on LB (grab and throw with the
+// aim stick held; A still works), the hotbar on the d-pad, dash on B and
 // LT, Start pauses and unpauses, the menu cursor on the pause menu and settings (a slider), the death screen's Restart run on A,
 // the clear screen, the controls line switching between pad and keyboard glyphs, an unplug pausing the game, and a DualSense
 // showing its own glyphs. Frames: octomancer-web/night/pad-*.png (1440x900).
@@ -60,7 +61,7 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     s = await S(page);
     check('the left stick swims (right)', o1.x > o0.x + 0.8, `${o0.x.toFixed(2)} -> ${o1.x.toFixed(2)}`);
     check('using the pad switches the input mode to pad', s.mode === 'pad');
-    check('the controls line shows pad glyphs (LS, RS, RT, RB, A, B, LB, View, Menu)', s.help.scheme === 'pad' && ['LS', 'RS', 'RT', 'RB', 'A', 'B', 'LB', 'View', 'Menu'].every((g) => s.help.glyphs.includes(g)) && !/Hand F/.test(s.help.text), s.help.glyphs.join(','));
+    check('the controls line shows pad glyphs (LS, RS, RT, RB, LB for the hand, B, the d-pad for the bar, View, Menu)', s.help.scheme === 'pad' && ['LS', 'RS', 'RT', 'RB', 'LB', 'B', 'D-pad left / right', 'View', 'Menu'].every((g) => s.help.glyphs.includes(g)) && s.help.glyphs.join() === 'LS,RS,RT,RB,LB,B,D-pad left / right,View,Menu' && !/Hand F/.test(s.help.text), s.help.glyphs.join(','));
     await P(page, { lx: 0.1, ly: 0.1 }); await step(page, 1);
     check('a stick inside its 0.2 deadzone does not move the octopus', (await page.evaluate(() => __octo.state().input.move.x)) === 0);
     await P(page, {}); await step(page, 30);
@@ -103,32 +104,51 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     bl = await page.evaluate(() => __octo.bombsLive());
     check('RB with the aim stick throws the bomb that way', bl.length === 2 && bl.some((b) => b.vx < -2), JSON.stringify(bl.map((b) => [b.vx.toFixed(1), b.vy.toFixed(1)])));
     await step(page, 200);
-    // the hotbar cycle: LB and d-pad right / left
+    // the hotbar cycle: d-pad right / left only (2026-10-18: LB is the hand now)
     j = await page.evaluate(() => __octo.juice().hotbar);
-    await tap(page, { lb: true });
+    await tap(page, { right: true });
     const sel1 = (await page.evaluate(() => __octo.juice().hotbar)).sel;
     await tap(page, { left: true });
     const sel2 = (await page.evaluate(() => __octo.juice().hotbar)).sel;
-    check('LB steps the hotbar forward, d-pad left back', sel1 !== j.sel && sel2 === j.sel, `${j.sel} -> ${sel1} -> ${sel2}`);
+    check('d-pad right steps the hotbar forward, d-pad left back', sel1 !== j.sel && sel2 === j.sel, `${j.sel} -> ${sel1} -> ${sel2}`);
+    await tap(page, { lb: true });
+    check('LB no longer steps the hotbar', (await page.evaluate(() => __octo.juice().hotbar)).sel === sel2);
 
-    // ---- the hand on A: grab a pot, throw it (back at the start: open water all round)
+    // ---- the hand on LB: grab a pot and throw it with the right thumb on the aim stick the whole time (back at the start:
+    // open water all round). 2026-10-18, Daniel: "LB should grab on controller so I can throw while aiming".
     await page.evaluate((o) => __octo.teleport(o.x, o.y), o0); await step(page, 10);
     o = await octoAt(page);
     await page.evaluate((o) => __octo.addLoot('pot', o.x - 0.8, o.y), o);
     await step(page, 4);
     let h = await page.evaluate(() => __octo.hand());
     check('a pot in reach is the hand target', !!h.target && h.target.kind === 'pot');
-    await tap(page, { a: true });
+    await P(page, { rx: -1 }); await step(page, 1); // the aim stick is held from here to the throw
+    await P(page, { rx: -1, lb: true }); await step(page, 2);
+    await P(page, { rx: -1 }); await step(page, 2);
     h = await page.evaluate(() => __octo.hand());
-    check('A grabs the pot', h.held === 'pot');
+    check('LB grabs the pot while the aim stick is held', h.held === 'pot');
     const throws0 = h.throws;
-    await P(page, { rx: -1 }); await step(page, 1);
-    await P(page, { rx: -1, a: true }); await step(page, 2);
+    await P(page, { rx: -1, lb: true }); await step(page, 2);
     await P(page, { rx: -1 }); await step(page, 1); // a tap throws on its release (a hold drops)
     h = await page.evaluate(() => __octo.hand());
     const pot = await page.evaluate(() => Math.min(...__octo.props().filter((p) => p.kind === 'pot').map((p) => p.vx)));
     await P(page, {}); await step(page, 2);
-    check('A again throws it along the aim stick', h.held === '' && h.throws === throws0 + 1 && pot < -1, `vx ${pot}`);
+    check('LB again throws it along the aim stick', h.held === '' && h.throws === throws0 + 1 && pot < -1, `vx ${pot}`);
+    await step(page, 60);
+    // A is still a hand button in play
+    await page.evaluate((o) => __octo.teleport(o.x, o.y), o0); await step(page, 10);
+    o = await octoAt(page);
+    await page.evaluate((o) => __octo.addLoot('pot', o.x + 0.8, o.y), o);
+    await step(page, 4);
+    await tap(page, { a: true });
+    h = await page.evaluate(() => __octo.hand());
+    check('A still grabs (a second hand button)', h.held === 'pot');
+    await P(page, { rx: 1 }); await step(page, 1);
+    await P(page, { rx: 1, a: true }); await step(page, 2);
+    await P(page, { rx: 1 }); await step(page, 1);
+    h = await page.evaluate(() => __octo.hand());
+    await P(page, {}); await step(page, 2);
+    check('A still throws along the aim stick', h.held === '' && h.throws === throws0 + 2);
     await step(page, 60);
 
     // ---- dash on B and on LT
@@ -254,16 +274,16 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
       // Phase 2B: no offer card; the welcome board points at the ring, the ring takes A
       await P(pf, { lx: 0.6 }); await sleep(150); await P(pf, {}); await sleep(250);
       const sg = await pf.evaluate(() => __octo.signs());
-      check('a fresh save: no offer card, the welcome board over the start names A', !sg.popup && sg.scheme === 'pad' && sg.open && sg.open.glyphs.includes('A'), JSON.stringify(sg.open));
+      check('a fresh save: no offer card, the welcome board over the start names LB (the hand)', !sg.popup && sg.scheme === 'pad' && sg.open && sg.open.glyphs.includes('LB'), JSON.stringify(sg.open));
       const ring = await pf.evaluate(() => __octo.hubSeal());
       await pf.evaluate((x, y) => { for (let n = 0; n < 6; n++) { __octo.teleport(x, y); __octo.stepDraw(1); } }, ring.tutorialX + 0.5, ring.tutorialY + 0.3);
-      await P(pf, { a: true }); await sleep(150); await P(pf, {});
+      await P(pf, { lb: true }); await sleep(150); await P(pf, {});
       await sleep(400);
       const off = await pf.evaluate(() => __octo.hubSeal().offer);
       await pf.waitForFunction(() => __octo.level().stage === 'Tutorial' && !__octo.level().transitioning, { timeout: 20000 }).catch(() => {}); // (the dive-in takes a moment)
       await sleep(500);
       const stg = await pf.evaluate(() => __octo.level().stage);
-      check('A at the tutorial ring takes the tutorial', !off && /tutorial/i.test(stg), stg);
+      check('LB at the tutorial ring takes the tutorial', !off && /tutorial/i.test(stg), stg);
       check('offer: no page errors', errs.length === 0, errs.join(' | '));
       await pf.close();
     }
@@ -304,7 +324,7 @@ const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
     const DS = 'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)';
     await P(pp, { id: DS }); await P(pp, { id: DS, lx: 1 }); await P(pp, { id: DS });
     s = await S(pp);
-    check('a DualSense: PlayStation glyphs on the line (R2, R1, Cross, Options)', s.style === 'ps' && ['R2', 'R1', 'Cross', 'Options'].every((g) => s.help.glyphs.includes(g)), s.help.glyphs.join(','));
+    check('a DualSense: PlayStation glyphs on the line (R2, R1, L1 for the hand, Options)', s.style === 'ps' && ['R2', 'R1', 'L1', 'Options'].every((g) => s.help.glyphs.includes(g)), s.help.glyphs.join(','));
     await shot(pp, 'line-ps');
     check('DualSense: no page errors', pp.errs.length === 0, pp.errs.join(' | '));
     await pp.close();

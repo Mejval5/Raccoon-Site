@@ -58,6 +58,7 @@ export async function runCarriedTests(assert) {
   const onBar = carriedList({ ...st, slots: hb.slots.concat([{ ids: ['bomb'] }]) });
   assert('carried: bombs on the hotbar (the controls branch) are a slot, not a second card', onBar.filter((c) => c.journal === 'item-bomb').length === 1 && onBar.find((c) => c.journal === 'item-bomb').kind === K_SLOT);
   assert('collection: entry pages have numbers and a use line from the same tables', entryNumbers('item-flippers').length === 1 && entryNumbers('item-inkjet')[0][1].includes('1 shot') && entryNumbers('rune-heavy').some((r) => r[0] === 'Size') && entryNumbers('spell-lure').length >= 2 && entryUse('spell-lure', false).length > 5 && entryNumbers('creature-crab').length === 0);
+  assert('collection: with a pad the slot How line picks the slot on the d-pad (LB is the hand, not the bar)', /RB casts it/.test(entryUse('spell-lure', false, 'xbox')) && /d-pad/.test(entryUse('spell-lure', false, 'xbox')) && !/\bLB\b/.test(entryUse('spell-lure', false, 'xbox')));
 
   // ---------------------------------------------------------------- hotbar swap
   const h2 = createHotbar(); addSpell(h2, 'riptide'); addSpell(h2, 'lure'); selectIndex(h2, 2);

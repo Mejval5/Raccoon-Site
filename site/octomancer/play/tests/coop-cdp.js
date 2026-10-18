@@ -107,7 +107,7 @@ async function checkLayout(p, tag, n) {
     let st = await page.evaluate(() => __octo.state().paused);
     check('Start on pad A pauses', st);
     c = await C(page);
-    check('the pause menu offers Add player', /^Add player/.test(c.add) && /Menu on a free pad, or A \/ Enter here/.test(c.add), c.add);
+    check('the pause menu offers Add player (pad A plays: another pad, or the keyboard)', /^Add player/.test(c.add) && /Menu on another pad, or A \/ Enter here/.test(c.add), c.add);
     await tapPads(page, [{}, { start: true }]);
     c = await C(page);
     check('the Add line now asks for another pad (pad A plays) and still offers the keyboard', /Menu on another pad, or A \/ Enter here/.test(c.add), c.add);

@@ -14,7 +14,7 @@
 //   touch     stick on the left half; Jet (auto-aims), Dash, Use (the selected slot) and Spell (it turns into Grab /
 //             Throw when something is in reach) buttons bottom right (touch-ui.js).
 //   pad       gamepad.js (controller Phase 1, CONTROLLER-PLAN.md) writes `pad` below once per frame: left stick swims, right
-//             stick aims (`aim`), RT ink jet, RB use, A hand, B / LT dash, LB / d-pad cycle, d-pad up the bomb slot.
+//             stick aims (`aim`), RT ink jet, RB use, LB (or A) hand, B / LT dash, d-pad left / right cycle, d-pad up the bomb slot.
 // `mode` is the last device used ('keyboard' | 'mouse' | 'touch' | 'pad'); every change fires `modechange`.
 // `src` says where the last attack / spell / use / bomb press came from ('mouse' | 'key' | 'touch'), so main.js knows
 // whether to aim at the cursor, along the facing / swim direction, or at the nearest enemy.
@@ -179,7 +179,7 @@ export function createInput(canvas) {
     if (down) { pressButton(b); if (name === 'attack' || name === 'use') src[name] = 'pad'; if (name === 'use') src.bomb = 'pad'; }
     else releaseButton(b);
   }
-  /** gamepad.js: hotbar steps (LB / d-pad left-right) and a slot pick (d-pad up = the bomb slot). */
+  /** gamepad.js: hotbar steps (d-pad left-right) and a slot pick (d-pad up = the bomb slot). */
   function padCycle(n) { cycle += n; }
   function padSelect(i) { select = i; }
 

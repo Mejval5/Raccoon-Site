@@ -22,6 +22,24 @@ export function furnishShown(f, open, story) {
   return true;
 }
 
+// What a room draws reaches past its own box: the plaza's two lamps over the dive chamber hang 12 tiles below the plaza's floor.
+// Culling by the room's area alone dropped them (rope, shell and glow) as soon as the octopus swam down to the whirlpool (Daniel,
+// 2026-10-18: "these lights in the bottom of the hub disappear when I come near"). So a room is culled by its area joined with every
+// furnishing's reach (a lamp: its rope up to the ceiling, at most 8 tiles, and its glow). Worked out each frame into one object per
+// room (a dozen furnishings: nothing to cache, so a furnishing added later is never missed).
+const LAMP_REACH = { x: 2.6, up: 8.5, down: 2.6 }, PIECE_REACH = { x: 2.5, up: 3, down: 1.5 };
+function drawBox(r) {
+  const b = r.drawBox || (r.drawBox = { x0: 0, y0: 0, x1: 0, y1: 0 });
+  b.x0 = r.x0 - 3; b.y0 = r.y0 - 3; b.x1 = r.x1 + 4; b.y1 = r.y1 + 3;
+  for (const f of r.room.furnish) {
+    const x = r.ax + 0.5 + (f.dx || 0), y = r.ay + (f.dy || 0), k = f.kind === 'lamp' || f.kind === 'glow' ? LAMP_REACH : PIECE_REACH;
+    const rr = f.kind === 'glow' ? Math.max(k.x, (f.r || 1.5) + 0.5) : k.x;
+    if (x - rr < b.x0) b.x0 = x - rr; if (x + rr > b.x1) b.x1 = x + rr;
+    if (y - k.up < b.y0) b.y0 = y - k.up; if (y + k.down > b.y1) b.y1 = y + k.down;
+  }
+  return b;
+}
+
 /** The ceiling above (x, y): the first solid tile row's bottom edge, at most 8 tiles up. */
 function ceilingAbove(tileAt, x, y) {
   const tx = Math.floor(x);
@@ -100,12 +118,14 @@ export function drawHubRooms(ctx, camera, cw, ch, level, table, t, s) {
   const ppu = camera.pxPerUnit;
   const SX = (x) => cw / 2 + (x - camera.x) * ppu, SY = (y) => ch / 2 + (y - camera.y) * ppu;
   for (const r of level.village) {
-    if (!inView(camera, cw, ch, r.x0 - 3, r.y0 - 3, r.x1 + 4, r.y1 + 3)) continue;
+    const b = drawBox(r);
+    if (!inView(camera, cw, ch, b.x0, b.y0, b.x1, b.y1)) continue;
     const room = r.room;
     // the furniture: lamps first (their glow under everything), then the pieces
     for (const f of room.furnish) {
       if (f.kind !== 'lamp' && f.kind !== 'glow') continue;
       if (!furnishShown(f, r.open, s.story)) continue;
+      if (f.kind === 'lamp' && !inView(camera, cw, ch, r.ax + 0.5 + f.dx - LAMP_REACH.x, r.ay + f.dy - LAMP_REACH.up, r.ax + 0.5 + f.dx + LAMP_REACH.x, r.ay + f.dy + LAMP_REACH.down)) continue;
       if (f.kind === 'lamp') drawLamp(ctx, camera, cw, ch, r.ax + 0.5 + f.dx, r.ay + f.dy, t, s.tileAt, r.open);
       else glow(ctx, SX(r.ax + 0.5 + f.dx), SY(r.ay + f.dy), ppu * (f.r || 1.5), 0.8, 'rgba(190,240,220,', 'rgba(150,220,210,');
     }

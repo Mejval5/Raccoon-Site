@@ -19,12 +19,14 @@ Daniel's rule: mouse+keyboard and controller are both first-class, natively. Pho
 | Aim | cursor | Right stick (idle: facing / swim direction, with light auto-aim at the nearest target in a cone) |
 | Ink Jet | LMB / J K | RT (held: auto-repeat) |
 | Use slot (spell / bomb throw) | RMB / C | RB |
-| Hand (grab, talk, buy, throw, hold = drop) | F / MMB | A (hold = drop) |
+| Hand (grab, talk, buy, throw, hold = drop) | F / MMB | LB (hold = drop); A also works in play. Prompts name LB |
 | Dash | Space / Shift | B or LT |
-| Hotbar prev / next | Q E / wheel | LB / D-pad left-right, d-pad up = bomb slot |
+| Hotbar prev / next | Q E / wheel | D-pad left-right, d-pad up = bomb slot |
 | Journal / inventory | Tab / I | Back (View) |
 | Pause | Esc | Start (Menu) |
 | Menus | mouse | D-pad / left stick to move, A confirm, B back, bumpers for tabs |
+
+2026-10-18 (Daniel: "LB should grab on controller so I can throw while aiming"): the hand moved from A to LB so the right thumb can stay on the aim stick through a grab and a throw. A stays a second hand button in play; LB no longer steps the hotbar (the d-pad does). Menus are unchanged: A confirms, B backs, LB / RB turn the journal's chapters. Co-op ghosts are unchanged.
 
 Deadzone 0.2 radial, aim stick 0.3. Rumble is a nice-to-have (Phase 3). No remapping UI for the demo.
 

@@ -121,6 +121,17 @@ export async function runLootTests(assert) {
     const plain = setup('chest', 6.5, 6.5, 6.5, 6.5, 5, (r) => { r.aux = 0; r.n = 5; });
     const ev = steps(plain, 3);
     assert('chest: swimming into it opens it once for its shells (4-6)', ev.filter((e) => e.type === 'chest').length === 1 && ev[0].shells === 5 && ev.every((e) => e.type === 'chest') && plain.octo.hearts === 3);
+    // 2026-10-18: local co-op: the second octopus opens it (who: 1), once, and its shells pop up out of the clam (spreadShells: above it)
+    {
+      const co = setup('chest', 6.5, 6.5, 2.5, 2.5, 5, (r) => { r.aux = 0; r.n = 6; });
+      const two = [co.octo, createOctopus(6.5, 6.4)];
+      const ce = [];
+      for (let i = 0; i < 3; i++) { co.loot.update(DT, two, co.world, null); ce.push(...co.loot.takeEvents()); }
+      const c1 = ce.filter((e) => e.type === 'chest');
+      assert('chest (co-op): the octopus touching it opens it, once, with who = its index and all its shells', c1.length === 1 && c1[0].who === 1 && c1[0].shells === 6 && co.loot.data.state[0] === ST_DONE);
+      const spots = spreadShells(4, 6.5, 6.5 - 0.4, co.world.isSolid);
+      assert('chest: its shells pop out upward from the clam (spreadShells)', spots.length === 4 && spots.every((p) => p.vy < 0 && Math.abs(p.x - 6.5) < 1 && !co.world.isSolid(p.x, p.y)));
+    }
     const far = setup('chest', 6.5, 6.5, 12.5, 6.5, 5, (r) => { r.aux = 0; });
     assert('chest: stays shut while nobody touches it', steps(far, 20).length === 0 && far.loot.data.state[0] === 0);
 

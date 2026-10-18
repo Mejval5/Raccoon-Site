@@ -68,7 +68,7 @@ const casts = (n) => n + (n === 1 ? ' cast' : ' casts');
 function padKeys(style) {
   const L = (a) => glyph(a, 'pad', style).label;
   return {
-    slot: L('use') + ' casts it along the right stick; pick the slot with ' + L('next') + ' or the d-pad',
+    slot: L('use') + ' casts it along the right stick; pick the slot with the d-pad',
     jet: L('attack') + ' along the right stick (hold to fire on each refill)',
     bomb: L('use') + ' on the bomb slot: with the right stick held it throws a sticky mine that way, else it drops one. ' + L('select') + ' picks the bomb slot',
     item: 'Nothing to press: it works while you carry it',
