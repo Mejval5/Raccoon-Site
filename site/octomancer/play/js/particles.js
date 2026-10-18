@@ -5,12 +5,18 @@
 // pushing, and `update()` mutates in place.
 
 import { wornColors } from './skin-draw.js';
-import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION } from './config.js';
+import { prefersReducedMotion, shakeEnabled, SHAKE_MAX_PX, SHAKE_DURATION, BLAST_SHAKE_S, BLAST_FEEL_RANGE, BLAST_HITSTOP_S, KILL_POOF_N, PICKUP_SPECKS } from './config.js';
 import { offScreenFar } from './cull.js';
 
 const POOL_SIZE = 256;
 const INK_COLOR = '#150d1c';
 const GOO_COLORS = ['#c0485e', '#e0607a'];
+// Impact pass (2026-10-18): one shake path. The v2 game shakes through shakeFx / shakePx only; the old world-unit shake
+// (shakeScreen / shakeOffset) is kept for the endless mode (?endless=1), the only renderer that still reads it.
+const LEGACY_SHAKE = typeof location !== 'undefined' && /[?&]endless=1(&|$)/.test(location.search || '');
+/** Kill poof tints by creature kind (muted, natural: the creature's own colour), mixed with a pale speck. */
+const KILL_TINT = { piranha: '#9fb3bd', crab: '#c98466', manta: '#7f97a8', cannon: '#a39a82', urchin: '#7d6390', tentacle: '#b97a84', gclam: '#bfae94' };
+const KILL_PALE = '#e4ece6';
 
 export function createParticles() {
   const pool = new Array(POOL_SIZE);
@@ -31,6 +37,23 @@ export function createParticles() {
   }
 
   return {
+    /** Every kill (impact pass): KILL_POOF_N short-lived specks tinted by the creature `kind`, every third one pale. Fewer under reduced motion. */
+    killPoof(x, y, kind = '') {
+      const tint = KILL_TINT[kind] || '#cfe8ff', n = prefersReducedMotion() ? 6 : KILL_POOF_N;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.random() * 0.4, speed = 1.4 + Math.random() * 1.8;
+        spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed, 0.32 + Math.random() * 0.18, 0.05 + (i % 3 ? 0.015 : 0), i % 3 ? tint : KILL_PALE);
+      }
+    },
+    /** A pickup (impact pass): PICKUP_SPECKS pale specks that spread and slow (the octopus pops in render.js). None under reduced motion. */
+    pickupPop(x, y, color = '#dff3ff') {
+      if (prefersReducedMotion()) return;
+      for (let i = 0; i < PICKUP_SPECKS; i++) {
+        const a = (i / PICKUP_SPECKS) * Math.PI * 2 + Math.random() * 0.5, speed = 0.7 + Math.random() * 1.1;
+        const p = spawnOne(x, y, Math.cos(a) * speed, Math.sin(a) * speed - 0.2, 0.22 + Math.random() * 0.14, 0.04, color);
+        if (p) p.damp = 0.9;
+      }
+    },
     /** Small poof on an enemy death: a burst of short-lived dots. */
     deathPoof(x, y, color = '#cfe8ff') {
       for (let i = 0; i < 10; i++) {
@@ -143,7 +166,7 @@ export function createParticles() {
           spawnOne(x + Math.cos(a) * r, y + Math.sin(a) * r, (Math.random() - 0.5) * 1.2, -0.8 - Math.random() * 1.4, 0.7 + Math.random() * 0.7, 0.04 + Math.random() * 0.05, 'rgba(215,240,255,0.6)');
         }
       }
-      this.shakeFx(blastShakePx(fromOcto), SHAKE_DURATION);
+      this.shakeFx(blastShakePx(fromOcto), BLAST_SHAKE_S);
     },
     /** v2: a puff where a dash hit a wall, thrown out along the wall normal: 13 bright dust puffs plus 3 rock chips. */
     bouncePuff(x, y, nx, ny) {
@@ -203,7 +226,7 @@ export function createParticles() {
     /** 0.2s screen shake, skipped entirely under reduced motion (M7 also
      * reads this; wired here since M3 is the first thing that shakes). */
     shakeOffset() {
-      if (shake <= 0) return { x: 0, y: 0 };
+      if (shake <= 0) return ZERO;
       const t = performance.now() * 0.05;
       return { x: Math.sin(t) * shake, y: Math.cos(t * 1.3) * shake };
     },
@@ -242,11 +265,27 @@ export function createParticles() {
   };
 
   function shakeScreen(mag) {
-    if (!prefersReducedMotion() && shakeEnabled()) shake = Math.max(shake, mag);
+    if (LEGACY_SHAKE && !prefersReducedMotion() && shakeEnabled()) shake = Math.max(shake, mag);
   }
 }
 
-/** Explosion shake in px for a blast `dist` tiles from the octopus: 6 px point blank, fading to 1 px at 14 tiles. */
+const ZERO = Object.freeze({ x: 0, y: 0 });
+
+/** Explosion shake in px for a blast `dist` tiles from the octopus: SHAKE_MAX_PX (9) point blank, fading to 1 px at 14 tiles. */
 export function blastShakePx(dist) {
   return SHAKE_MAX_PX * Math.max(1 / SHAKE_MAX_PX, 1 - Math.max(0, dist) / 14);
+}
+/** The blast falloff k: 1 at the blast, 0 at BLAST_FEEL_RANGE (10) tiles and beyond (hit-stop and rumble scale by it). */
+export function blastFalloff(dist) {
+  return Math.max(0, Math.min(1, 1 - Math.max(0, dist) / BLAST_FEEL_RANGE));
+}
+/** Seconds of hit-stop for a blast `dist` tiles away: BLAST_HITSTOP_S x k, 0 when that is under half a step (10 ms) and under reduced motion. */
+export function blastHitStop(dist) {
+  if (prefersReducedMotion()) return 0;
+  const s = BLAST_HITSTOP_S * blastFalloff(dist);
+  return s >= 0.01 ? s : 0;
+}
+/** Loudness of a blast `dist` tiles away for sfx.bomb(gain): 1 point blank, falling to 0.25 at 18 tiles and beyond. */
+export function blastGain(dist) {
+  return Math.max(0.25, 1 - Math.max(0, dist) / 24);
 }

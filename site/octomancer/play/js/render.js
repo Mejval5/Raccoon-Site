@@ -1617,7 +1617,7 @@ export function createRenderer(ctx, world) {
     // r45: going into a whirlpool (main.js stepEntry): the turn and the scale come from the scripted pose, interpolated like the position
     const e = o.entry;
     const rot = e ? e.prot + (e.rot - e.prot) * alpha : o.angle;
-    const k = e ? e.psc + (e.sc - e.psc) * alpha : 1;
+    const k = e ? e.psc + (e.sc - e.psc) * alpha : o.pop && time >= o.pop.t0 && time - o.pop.t0 < o.pop.s ? 1 + o.pop.a * Math.sin((Math.PI * (time - o.pop.t0)) / o.pop.s) : 1; // impact pass: main.js sets o.pop on a pickup (1.0 -> 1.08 -> 1.0)
     o.__drawn = { x: ix, y: iy, sx: s.x, sy: s.y, rot, scale: k };
     if (drawTrace.on) traceDraw('octo', o);
     // Actions tuning: dash i-frames (octopus.js dashInvuln) read as a brief translucent smear: two faint after-images trailing
@@ -1761,7 +1761,7 @@ export function createRenderer(ctx, world) {
       cullFrame(camera, canvasW, canvasH); // r43: what is far from the camera is not drawn or animated (cull.js); its logic keeps running
       const shakePx = shakePxIn ? shakePxIn : shakeOffset ? { x: shakeOffset.x * camera.pxPerUnit, y: shakeOffset.y * camera.pxPerUnit } : { x: 0, y: 0 };
       ctx.save();
-      ctx.translate(shakePx.x, shakePx.y);
+      ctx.translate(Math.round(shakePx.x), Math.round(shakePx.y)); // impact pass: whole device pixels, no sub-pixel shimmer
       const reduced = prefersReducedMotion();
       // r43: a new level's heavy set-up runs one piece per frame, never several in one: the plant anchors first, then the three
       // deep-rock steps (and the wall cells, a few per frame, see drawBandWalls)

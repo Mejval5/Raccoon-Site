@@ -59,7 +59,7 @@ import { createProps, PROP_NAMES, PK_BLOCK, PK_CLAM, PS_CARRY, PS_HELD } from '.
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
 import { drawCorpses, drawCorpseOne } from './corpses-draw.js';
-import { createParticles } from './particles.js';
+import { createParticles, blastFalloff, blastHitStop, blastGain } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
 import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js';
@@ -109,6 +109,7 @@ import { OCTO_IDLE_SINK, SHAKE_HURT_PX, HITSTOP_S, SPLAT_SHAKE_PX, SPLAT_HITSTOP
 import { createSettingsPanel } from './settings-ui.js';
 import { seedFromText } from './settings.js';
 import { DASH_COOLDOWN } from './config.js';
+import { SHAKE_HURT_S, PICKUP_POP_S, PICKUP_POP, RUMBLE } from './config.js'; // impact pass (IMPROVEMENTS.md #4)
 import { HEART_MAX, BOMB_MAX, BOMB_RADIUS, SWIM_MAX_SPEED, TRAIL_BUBBLE_PERIOD_MIN, TRAIL_BUBBLE_PERIOD_MAX, DREAD_RANGE } from './config.js';
 import { createAudio } from './audio.js';
 import { createSfx } from './sfx.js';
@@ -1029,18 +1030,19 @@ function step(dt) {
   pickups.update(dt, sim.time, pickupOctos(), resident, world); // a dead body collects nothing
   for (const ev of pickups.events) {
     const color = ev.type === 'shell' ? '#e8f1e4' : '#9dffd8'; // r46: pale, natural specks, no gold
-    particles.pickupSparkle(ev.x, ev.y, color);
+    particles.pickupPop(ev.x, ev.y, color); // impact pass: 8 specks and a short scale pop on the octopus that took it
+    popOcto(ev.who);
     if (V2) { discover(itemId(ev.type)); journal.bump(itemId(ev.type), STAT_COLLECTED); if (ev.type === 'shell') { gainShells(run, ev.value || 1); const kid = itemId(SHELL_NAMES[ev.sk]); if (kid) { discover(kid); journal.bump(kid, STAT_COLLECTED); } if (ev.sk === SK_MOON) ui.showToast('A moon shell, +' + ev.value + ' shells'); } }
   }
   for (const p of ps) {
     usePlayer(p);
     if (octo.hearts < prevHearts) {
       sfx.hurt();
-      if (V2) { particles.shakeFx(SHAKE_HURT_PX); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); }
+      if (V2) { particles.shakeFx(SHAKE_HURT_PX, SHAKE_HURT_S); if (!prefersReducedMotion()) hitStop = Math.max(hitStop, HITSTOP_S); rumbleP(p, RUMBLE.hurt); }
     }
     if (octo.bodyHits !== prevBodyHits) { // the dead body took a hit (V2-PLAN 14): a puff, a thud, a little shake (none with reduced motion)
       prevBodyHits = octo.bodyHits;
-      particles.deathPoof(octo.x, octo.y, '#ffd9e0'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12);
+      particles.deathPoof(octo.x, octo.y, '#ffd9e0'); sfx.thud(); particles.shakeFx(1.5, 0.12);
     }
     if (V2 && octo.bouncedThisStep) { particles.bouncePuff(octo.bounceX, octo.bounceY, octo.bounceNx, octo.bounceNy); particles.shakeFx(1.5, 0.12); }
     prevHearts = octo.hearts;
@@ -1073,6 +1075,7 @@ function step(dt) {
       else if (ev.type === 'splat') { // a boulder flattens the octopus: gore, the heaviest shake in the game and a freeze on the impact
         particles.splatBurst(ev.x, ev.y); particles.shakeFx(SPLAT_SHAKE_PX, 0.55, SPLAT_SHAKE_PX); sfx.splat();
         if (!prefersReducedMotion()) hitStop = Math.max(hitStop, SPLAT_HITSTOP);
+        rumbleP(nearP(ev.x, ev.y), RUMBLE.splat);
       }
     }
   }
@@ -1105,9 +1108,13 @@ function step(dt) {
     if (V2) { inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); spellFx.blast(ev.x, ev.y, BOMB_RADIUS); } // SPELLS-PICK: a blast blows an ink cloud out and ends a Lure
     const near = solo ? octo : oOf(nearP(ev.x, ev.y)); // co-op: the blast feels as loud as it is for the nearest player
     const bd = Math.hypot(ev.x - near.x, ev.y - near.y);
-    particles.blastBurst(ev.x, ev.y, bd); sfx.bomb();
+    particles.blastBurst(ev.x, ev.y, bd); sfx.bomb(blastGain(bd)); // impact pass: as loud as it is near
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
-    if (V2) particles.blastFeel(ev.x, ev.y, bd);
+    if (V2) { // impact pass: the one shake (9 px point blank over 0.3 s), a hit-stop of 0.05 s x k and each player's pad by their own k
+      particles.blastFeel(ev.x, ev.y, bd);
+      hitStop = Math.max(hitStop, blastHitStop(bd));
+      for (const p of ps) { const o = oOf(p), k = blastFalloff(Math.hypot(ev.x - o.x, ev.y - o.y)); if (k > 0 && !o.dead) rumbleP(p, RUMBLE.blast, k); }
+    }
     if (V2 && shopSt) { const before = shelfWares(); shopBlast(shopSt, ev.x, ev.y, BOMB_RADIUS, props); if (shelfWares() < before) wareKnocked(world.inShop && world.inShop(ev.x, ev.y) ? 'shop' : 'theft'); } // controls 2026-10-08: blasting a ware off is theft
     // 2026-10-08: the creatures, NPCs and keepers already took the blast inside bombs.update (damage.js blast, by the creature table)
     if (V2 && run.state === S_BIOME && world.inShop && world.inShop(ev.x, ev.y)) shopAggro('shop'); // a bomb going off inside the stall
@@ -1129,7 +1136,8 @@ function step(dt) {
     if (ev.type !== 'enemyKilled') continue;
     // enemy infighting: a kill by another creature's attack (a frenzy bite, a shot, a claw, a snap, a grab) is not hers: no score, no journal kill
     const hers = !INFIGHT_KILL[ev.reason];
-    particles.deathPoof(ev.x, ev.y); if (hers) runKills++;
+    particles.killPoof(ev.x, ev.y, ev.kind); if (hers) runKills++; // impact pass: 14 specks in the creature's tint (enemies.js draws the pale flash)
+    if (V2 && ev.reason === 'dash') rumbleP(nearP(ev.x, ev.y), RUMBLE.dashKill);
     if (V2) addCorpseFromEvent(ev); // V2-PLAN 16: a kill leaves a body, never an item
     if (V2 && !isSafeState(run)) {
       if (hers) run.dive.kills++;
@@ -1402,7 +1410,7 @@ function takeHandEvents() {
     if (ev.type === 'grab') { particles.trailBubble(ev.x, ev.y); sfx.thud(); }
     else if (ev.type === 'throw') sfx.dash();
     else if (ev.type === 'drop') sfx.thud();
-    else if (ev.type === 'shield') { particles.deathPoof(ev.x, ev.y, '#d9c6a8'); sfx.thud(); particles.shakeFx(SHAKE_HURT_PX * 0.5, 0.12); }
+    else if (ev.type === 'shield') { particles.deathPoof(ev.x, ev.y, '#d9c6a8'); sfx.thud(); particles.shakeFx(1.5, 0.12); }
     else if (ev.type === 'hit') { particles.deathPoof(ev.x, ev.y, '#e8e0d0'); sfx.thud(); }
   }
   hand.events.length = 0;
@@ -2530,7 +2538,7 @@ function onNpcEvent(ev) {
       if (!ev.hub) people.noteGrudge(ev.who, true); // r3: dead for the rest of the dive (owed meetings never come)
       break;
     }
-    case 'harpoon': sfx.bomb(); break;
+    case 'harpoon': sfx.harpoon(); break; // impact pass: its own sound (sfx.js, #5)
     case 'harpoonHit': particles.deathPoof(ev.x, ev.y, ev.rock ? '#d9cdb8' : '#f4efe4'); break;
     default: break;
   }
@@ -2879,6 +2887,22 @@ function drawObjectTags(c, camera, cw, ch, t) {
 }
 
 // --- V2-PLAN 16: ambush creatures (js/creatures.js) ---
+// --- impact pass (IMPROVEMENTS.md 2026-10-18 #4): pad rumble and the pickup pop ---
+/** The pad that player `p` plays on ('' for the keyboard; solo: the primary pad, only while the pad is the input in use). */
+function padOf(p) {
+  const d = roster.slots[p.slot] ? roster.slots[p.slot].device : '';
+  if (d === null || d === undefined) return input.mode() === 'pad' ? pad.primaryKey() : '';
+  return d === KEYBOARD ? '' : d;
+}
+/** Rumble player `p`'s pad by a RUMBLE row [weak, strong, ms], magnitudes x `k` (gamepad.js caps and gates it by the settings). */
+function rumbleP(p, r, k = 1) { if (p) pad.rumble(padOf(p), r[0] * k, r[1] * k, r[2]); }
+/** The pickup pop on the octopus that collected (pickups.js `who`: index into pickupOctos(); solo: the one octopus). */
+function popOcto(who) {
+  const w = pickupOctos(), o = Array.isArray(w) ? w[who] : w;
+  if (!o || o.dead || prefersReducedMotion()) return;
+  if (!o.pop) o.pop = { t0: 0, s: PICKUP_POP_S, a: PICKUP_POP };
+  o.pop.t0 = sim.time;
+}
 let grabCueShown = false; // the 'Dash to break free!' cue shows once per page
 function handleCreatureEvents() {
   if (!creatures.events.length) return;
@@ -2894,7 +2918,7 @@ function handleCreatureEvents() {
       case 'pearlDrop': pickups.dropShell(ev.x, ev.y, 0, -1.2, SK_PEARL); break;
       case 'killed': {
         const hers = !INFIGHT_KILL[ev.reason]; // enemy infighting: a kill by another creature is not hers
-        particles.deathPoof(ev.x, ev.y, '#cfe8ff'); if (hers) runKills++;
+        particles.killPoof(ev.x, ev.y, ev.kind); if (hers) runKills++;
         if (hers && !isSafeState(run)) { run.dive.kills++; journal.bump('creature-' + ev.kind, STAT_KILLED); }
         break;
       }
@@ -2967,7 +2991,7 @@ function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
     switch (ev.type) {
       case 'break':
-        particles.bombDebris(ev.x, ev.y); sfx.bomb();
+        particles.bombDebris(ev.x, ev.y); sfx.potBreak(); // impact pass: its own sound (sfx.js, #5)
         dropShells(ev.shells, ev.x, ev.y);
         discover(lootJournalId(ev.lk));
         break;
@@ -3627,7 +3651,7 @@ function handleKeeperEvents() {
         break;
       case 'clawLaunch': sfx.dash(); break;
       case 'clawHit': particles.bouncePuff(ev.x, ev.y, 0, -1); break; // INFIGHT.claw: it hit something in the way
-      case 'octoHit': particles.shakeFx(SHAKE_HURT_PX * 1.6); break;
+      case 'octoHit': particles.shakeFx(4.8); break;
       default: break;
     }
   }
