@@ -58,13 +58,13 @@ export async function runActionsTests(assert) {
       if (!(r.splats === 1 && !anyAlive(jet) && r.lastSplatX < 15 && r.lastSplatX > 14.6 && jet.stainCount() === 1)) bad.push(MAT_NAMES[m] + ' x=' + r.lastSplatX);
     }
     assert('ink: a blob stops and stains at the face of rock, bedrock, timber and masonry' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0);
-    // fish bone is weak (creature-rules.js PIERCE): the tile crumbles, the blob splashes there (no stain: the rock is gone) and flies on
+    // fish bone is strong (creature-rules.js PIERCE): the tile crumbles, the blob splashes there (no stain: the rock is gone) and stops, one tile per shot
     const w = createLevelWorld(0, 0, { level: handLevel(30, 12, (put) => { for (let y = 2; y < 10; y++) put(15, y, MAT_BONE); }) });
     const jet = createInkJet();
     jet.fire(10, 6.5, 1, 0, 0);
     let maxX = 0, pierced = 0, splats = 0;
     for (let t = 0; t < 1 - 1e-9; t += DT) { jet.update(DT, w, [], noHurt, { props: createProps(), corpses: createCorpses() }); pierced += jet.events.pierced; splats += jet.events.nSplat; if (jet.data.alive[0]) maxX = jet.data.x[0]; }
-    assert('pierce: a blob crumbles a fish-bone wall, splashes once and flies on to its full range (' + maxX.toFixed(2) + ')', w.tileAt(15, 6) === 0 && w.tileAt(15, 5) === MAT_BONE && pierced === 1 && splats === 1 && maxX > 16 && jet.stainCount() === 0);
+    assert('pierce: a blob crumbles one fish-bone tile, splashes once and stops there (' + maxX.toFixed(2) + ')', w.tileAt(15, 6) === 0 && w.tileAt(15, 5) === MAT_BONE && pierced === 0 && splats === 1 && maxX < 16 && jet.stainCount() === 0);
   }
 
   // ================================================================ Ink Jet vs props, blocks, corpses
@@ -208,9 +208,9 @@ export async function runActionsTests(assert) {
     const j2 = createInkJet(); j2.fire(6, 7, 1, 0, 0);
     const r2 = fly(j2, OPEN, [hz], noHurt, null, 0.6);
     assert('pierce: a bomb and a hazard (no hp) still stop the blob', r.splats === 1 && r.maxX < 8 && r2.splats === 1 && r2.maxX < 8);
-    assert('pierce: the table says which kinds are weak (pots, loot clams, fish, corpses, bone, rubble, finds) and strong (enemies, clam, tentacle, keeper, people, walls, blocks, bombs)',
-      ['pot', 'lootclam', 'ambient', 'corpse', 'bone', 'rubble', 'find', 'droplet', 'pickup'].every((x) => pierces(x)) &&
-      ['enemy', 'gclam', 'tentacle', 'keeper', 'npc', 'ware', 'target', 'wall', 'block', 'bomb', 'rock', 'chest', 'relic'].every((x) => !pierces(x)) &&
+    assert('pierce: the table says which kinds are weak (pots, loot clams, fish, corpses, rubble, finds) and strong (enemies, clam, tentacle, keeper, people, walls, bone, blocks, bombs)',
+      ['pot', 'lootclam', 'ambient', 'corpse', 'rubble', 'find', 'droplet', 'pickup'].every((x) => pierces(x)) &&
+      ['enemy', 'bone', 'gclam', 'tentacle', 'keeper', 'npc', 'ware', 'target', 'wall', 'block', 'bomb', 'rock', 'chest', 'relic'].every((x) => !pierces(x)) &&
       !pierces('pot', 'shot') && !pierces('nonsense') && PIERCE_KINDS.length === 22);
   }
 

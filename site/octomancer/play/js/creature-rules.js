@@ -261,7 +261,7 @@ export const PIERCE = {
   lootclam: { weak: true,  why: 'a breakable loot clam (loot.js LK_CLAM, props PK_CLAM, also one held on its wall); not the giant clam' },
   ambient:  { weak: true,  why: 'a background fish (decor fish, the foliage greenranha): it dies in one hit and has no attack' },
   corpse:   { weak: true,  why: 'a dead body (corpses.js): it is shoved along the flight' },
-  bone:     { weak: true,  why: 'a fish-bone block (fragile.js): it crumbles under the blob' },
+  bone:     { weak: false, why: 'a fish-bone block (fragile.js): it crumbles under the blob, which stops there (Daniel 2026-10-18: one tile per shot, so bone shortcuts stay work)' },
   rubble:   { weak: true,  why: 'a chip of bombed rock (props PK_RUBBLE): it is shoved' },
   find:     { weak: true,  why: 'a shell, bomb or item dropped out of the rock (props PK_FIND, a small pickup): it is shoved' },
   droplet:  { weak: true,  why: 'a fish juice droplet: never touched by the jet' },

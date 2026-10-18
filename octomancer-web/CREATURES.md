@@ -331,7 +331,6 @@ through `pierces(kind, src = 'ink')`; `js/inkjet.js` reads it once at load (`PRO
 | loot clam (`lootclam`), also one held on its wall | breaks (the giant clam is a strong creature) |
 | background fish (`ambient`: decor fish, greenranha) | dies, a small corpse sinks |
 | corpse (`corpse`) | is shoved along the flight |
-| fish-bone block (`bone`) | crumbles (`fragile.js crumbleAt`) |
 | rubble chip (`rubble`), a find out of the rock (`find`) | is shoved |
 | juice droplet (`droplet`), loose shell (`pickup`) | nothing: the jet never touched them |
 
@@ -340,6 +339,7 @@ through `pierces(kind, src = 'ink')`; `js/inkjet.js` reads it once at load (`PRO
 | enemies with health (piranha, crab, manta, cannon) and hazards (urchin, horns, the Beholder) (`enemy`) |
 | the giant clam (`gclam`), the tentacle (`tentacle`), shopkeepers (`keeper`), people calm or hostile (`npc`) |
 | a ware on its pedestal (`ware`), the hub's practice target (`target`) |
+| a fish-bone block (`bone`): one tile crumbles and the blob stops there (Daniel 2026-10-18, so bone shortcuts stay work) |
 | rock, bedrock, timber, masonry (`wall`), a push block (`block`), a bomb (`bomb`), a boulder (`rock`), a chest (`chest`), the relic (`relic`) |
 
 Once per blob, without allocation: props and corpses go in the blob's own row of `data.hitIds` (`PIERCE_MAX` = 12 slots,
