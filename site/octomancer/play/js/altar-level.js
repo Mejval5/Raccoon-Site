@@ -17,7 +17,7 @@ export const ALTAR_JOURNAL = 'place-altar';
 const SEE_R = 9; // tiles: met (journal) this close
 const NEAR_R = 22; // tiles: bodies are only checked while the octopus is this close
 
-// Phase 2B: the sign's words (rich.js tokens: {hand+} is F / MMB on the desktop, A on a pad); its board opens over the post
+// Phase 2B: the sign's words (rich.js tokens: {hand+} is F / MMB on the desktop, LB / A on a pad); its board opens over the post
 const OFFER = {
   title: 'An offering altar',
   desktop: 'Lay a body on the stone: grab it with {hand+}, then drop or throw it here. Each hollow that lights is a gift. Never a person, never a bomb.',

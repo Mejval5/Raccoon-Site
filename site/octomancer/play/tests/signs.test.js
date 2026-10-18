@@ -23,8 +23,8 @@ export async function runSignsTests(assert) {
   assert('glyphs (desktop): every play action a pad has, the desktop has too (the pad menu-only tab / menu moves aside)', Object.keys(PAD_MAP).filter((a) => !/^(tab|menu)/.test(a)).every((a) => glyphs(a, 'desktop').length > 0));
 
   // --- tokens
-  assert('rich: {hand} is F on the desktop, A on an Xbox pad, Cross on a DualSense, Grab on a phone',
-    plainText('{hand}', 'desktop') === 'F' && plainText('{hand}', 'pad') === 'A' && plainText('{hand}', 'pad', 'ps') === 'Cross' && plainText('{hand}', 'touch') === 'Grab');
+  assert('rich: {hand} is F on the desktop, LB on an Xbox pad, L1 on a DualSense, Grab on a phone; {hand+} on a pad is LB/A',
+    plainText('{hand}', 'desktop') === 'F' && plainText('{hand}', 'pad') === 'LB' && plainText('{hand}', 'pad', 'ps') === 'L1' && plainText('{hand}', 'touch') === 'Grab' && plainText('{hand+}', 'pad') === 'LB/A');
   assert('rich: {dash+} lists every glyph (Space/Shift; B/LT); {key:J} is a literal key',
     plainText('{dash+} dashes', 'desktop') === 'Space/Shift dashes' && plainText('{dash+} dashes', 'pad') === 'B/LT dashes' && plainText('({key:J} or {key:K})', 'pad') === '(J or K)');
   assert('rich: the same sentence keeps its words and swaps only the glyphs on a scheme switch',
