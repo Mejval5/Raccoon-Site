@@ -145,6 +145,13 @@ export function createGamepad(input, hooks = {}) {
       if (restyled && input.mode() === 'pad') input.setMode('pad', true); // the glyphs change
       // whatever is held at the moment it appears (a trigger resting half down, a stick off-centre) never counts as a press
       for (const n of NAMES) { down[n] = btnDown(gp, BTN[n]); was[n] = down[n]; latched[n] = down[n]; }
+      // ... except the press that woke it: Chrome shows a pad only once one of its buttons is pressed, so a pad seen for the first
+      // time in a menu with A or Start down is that press (co-op polish: A on the focused Add line, Start to join)
+      if (!known.has(gkey)) {
+        known.add(gkey);
+        const menuNow = !!(hooks.menuActive && hooks.menuActive());
+        if (menuNow) { inMenu = true; for (const n of WAKE_BTNS) if (down[n]) { down[n] = was[n] = latched[n] = false; } }
+      }
       moveOut = aimOut = false;
       if (hooks.onConnect) hooks.onConnect(padId, style);
     }
@@ -215,6 +222,8 @@ export function createGamepad(input, hooks = {}) {
   // reports its presses (hooks.onFree(key, button, info)): A or Start in the pause menu is how it joins. The same rules as the
   // primary pad: what is held when it appears or when a menu opens or closes waits for its release.
   const others = new Map(); // key -> per-pad record
+  const known = new Set();  // every pad key seen since the page loaded (a first sighting may carry the press that woke the pad)
+  const WAKE_BTNS = ['a', 'start'];
   const FREE_BTNS = ['a', 'start', 'b', 'back', 'up', 'down', 'left', 'right']; // a free pad's presses (co-op polish: the d-pad walks the pause menu)
   function padByKey(list, key) {
     if (!list) return null;
@@ -238,7 +247,17 @@ export function createGamepad(input, hooks = {}) {
       if (!g || g.connected === false || g === primary) continue;
       const key = keyOf(g, i);
       let r = others.get(key);
-      if (!r) { r = otherRec(key, g); others.set(key, r); if (hooks.onOtherConnect) hooks.onOtherConnect(key, r.style); continue; }
+      if (!r) {
+        r = otherRec(key, g); others.set(key, r); if (hooks.onOtherConnect) hooks.onOtherConnect(key, r.style);
+        // a pad seen for the first time in a menu: the A or Start that woke it counts (see pollPrimary)
+        const fresh = !known.has(key);
+        known.add(key);
+        if (!(fresh && hooks.menuActive && hooks.menuActive())) continue;
+        r.inMenu = true;
+        let woke = false;
+        for (const n of WAKE_BTNS) if (r.down[n]) { r.down[n] = r.was[n] = r.latched[n] = false; woke = true; }
+        if (!woke) continue;
+      }
       r.seen = true;
       pollOther(r, g, dt);
     }
