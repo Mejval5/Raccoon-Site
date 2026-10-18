@@ -6,7 +6,7 @@
 
 import { layoutRich, drawRichLayout } from './rich.js';
 import { LOOK_WOOD } from './glyphs.js';
-import { signText } from './signs.js';
+import { signText, placeBoard, signPosts, boardView } from './signs.js';
 
 const WOOD = '#c09056', WOOD_LIT = '#d6a96a', WOOD_EDGE = '#3a2410', BURNT = '#3a2410', POST = '#6b4a22';
 const FONT = 'Quicksand, sans-serif';
@@ -81,92 +81,174 @@ function plank(ctx, label, ppu, lit) {
   return ph;
 }
 
+// Night batch 1 (IMPROVEMENTS.md #1): the open (or folding) boards are not drawn with the posts. drawSigns, in the world pass
+// before the actors, draws the posts, the closed planks and the cord of an open board, and queues the board; drawSignBoards,
+// called once after the octopus (main.js postOctoDraw), places each queued board clear of what it explains, of every octopus
+// and of the other posts (signs.js placeBoard) and draws it over the actors. The board still hangs on its post: a cord runs from
+// the post top (or the rope ends) to it whenever it has slid or risen off it.
+const queue = []; // [{p, view, time, prompts, hidden}] the boards to draw this frame
+let queueTime = NaN;
+const CORD = '#4a3418';
+
 /**
  * Draw the signs of a level. `open` = the prompt being read (or null); `view` = {scheme: 'desktop'|'pad'|'touch', style}, or
- * a function (prompt) -> view.
- * Signs whose `when` the caller filtered out are skipped through `hidden(p)`.
+ * a function (prompt) -> view (co-op polish: each board names the controls of the player nearest it).
+ * Signs whose `when` the caller filtered out are skipped through `hidden(p)`. An open board is queued for drawSignBoards.
  */
 export function drawSigns(ctx, camera, cw, ch, prompts, open, view, time, hidden = null) {
   if (!prompts || !prompts.length) return;
-  // co-op polish: `view` may be a function of the prompt (each board names the controls of the player nearest it)
+  if (time !== queueTime) { queue.length = 0; queueTime = time; } // a frame that was never flushed (no postOctoDraw) drops its boards
   const vOf = typeof view === 'function' ? view : null;
   const ppu = camera.pxPerUnit;
   ctx.save();
   ctx.lineJoin = 'round';
-  let last = null;
   for (const p of prompts) {
     const target = p === open ? 1 : 0;
     const dt = p._t === undefined ? 1 : Math.max(0, Math.min(0.1, time - p._t));
     p._t = time;
     p._open = p._open === undefined ? target : p._open + Math.sign(target - p._open) * Math.min(Math.abs(target - p._open), dt / OPEN_S);
-    if (hidden && hidden(p)) { p._open = 0; continue; }
-    if (p === open) { last = p; continue; }
-    drawOne(ctx, camera, cw, ch, p, ppu, vOf ? vOf(p) : view, time);
+    if (hidden && hidden(p)) { p._open = 0; p._pl = null; continue; }
+    if (drawOne(ctx, camera, cw, ch, p, ppu, time) && p._open > 0) queue.push({ p, view: vOf ? vOf(p) : view, time, prompts, hidden, open: p === open });
+    else if (!(p._open > 0)) p._pl = null;
   }
-  if (last) drawOne(ctx, camera, cw, ch, last, ppu, vOf ? vOf(last) : view, time);
   ctx.restore();
 }
 
-function drawOne(ctx, camera, cw, ch, p, ppu, view, time) {
+/** The world point a board hangs from: {x, y, dir} ('up' = its bottom sits there, a post top; 'down' = its top, the rope ends). */
+function attachOf(p) {
+  if (p.sign) return { x: p.sign[0] + 0.5, y: p.sign[1] + 1 - 0.78 + 0.2, dir: 'up', top: p.sign[1] + 1 - 0.78 };
+  if (p.hang) return { x: p.hang[0] + 0.5, y: p.hang[1] + (p.hang[2] || 0.7), dir: 'down', top: p.hang[1] };
+  return { x: p.anchor[0], y: p.anchor[1], dir: 'up', top: p.anchor[1] };
+}
+
+/** A post, a closed plank, a hung plank's ropes; true when the sign is near enough the view to show a board. */
+function drawOne(ctx, camera, cw, ch, p, ppu, time) {
   const k = p._open || 0;
   const label = p.label || p.title || '';
   if (p.sign) {
     const bx = cw / 2 + (p.sign[0] + 0.5 - camera.x) * ppu;
     const floor = ch / 2 + (p.sign[1] + 1 - camera.y) * ppu;
-    if (bx < -ppu * 6 || bx > cw + ppu * 6 || floor < -ppu * 2 || floor > ch + ppu * 6) return;
+    if (bx < -ppu * 6 || bx > cw + ppu * 6 || floor < -ppu * 2 || floor > ch + ppu * 6) return false;
     const signY = floor - ppu * 0.78;
     const postW = Math.max(2, ppu * 0.08);
+    if (k > 0 && p._pl) cord(ctx, camera, cw, ch, ppu, p, bx, signY, k); // under the actors, like the post
     ctx.fillStyle = POST; ctx.strokeStyle = WOOD_EDGE; ctx.lineWidth = Math.max(1, ppu * 0.03);
     ctx.fillRect(bx - postW / 2, signY, postW, floor - signY);
     ctx.strokeRect(bx - postW / 2, signY, postW, floor - signY);
     const sway = Math.sin(time * 1.1 + p.sign[0] * 1.9) * 0.02;
     if (k < 1 && label) { ctx.save(); ctx.globalAlpha *= 1 - k; ctx.translate(bx, signY); ctx.rotate(sway); plank(ctx, label, ppu, k > 0); ctx.restore(); }
-    if (k > 0) openBoard(ctx, p, ppu, cw, ch, view, bx, signY + ppu * 0.2, k, sway * 0.5, 'up', postW);
-  } else if (p.hang) {
+    return true;
+  }
+  if (p.hang) {
     const cx = cw / 2 + (p.hang[0] + 0.5 - camera.x) * ppu;
     const top = ch / 2 + (p.hang[1] - camera.y) * ppu;
-    if (cx < -ppu * 6 || cx > cw + ppu * 6 || top < -ppu * 6 || top > ch + ppu) return;
+    if (cx < -ppu * 6 || cx > cw + ppu * 6 || top < -ppu * 6 || top > ch + ppu) return false;
+    if (k >= 1) return true; // the open board's ropes go with it (drawSignBoards)
     const drop = (p.hang[2] || 0.7) * ppu;
     const sway = Math.sin(time * 0.9 + p.hang[0]) * 0.015;
-    // the plank / board hangs from two ropes; the ropes reach the board's top corners
-    const b = k > 0 ? board(p, view.scheme, view.style, ppu, cw) : null;
     let half = ppu * 0.6;
-    if (label && !b) { ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.27))}px ${FONT}`; half = (ctx.measureText(label).width + ppu * 0.36) / 2; }
-    if (b) half = (b.w / 2) * (0.7 + 0.3 * k);
-    const shift = b ? clampShift(cx, half, cw) : 0;
-    ctx.strokeStyle = '#4a3418'; ctx.lineWidth = Math.max(1.5, ppu * 0.035);
+    if (label) { ctx.font = `700 ${Math.max(10, Math.round(ppu * 0.27))}px ${FONT}`; half = (ctx.measureText(label).width + ppu * 0.36) / 2; }
+    ctx.save(); ctx.globalAlpha *= 1 - k;
+    ctx.strokeStyle = CORD; ctx.lineWidth = Math.max(1.5, ppu * 0.035);
     ctx.beginPath();
-    ctx.moveTo(cx - half * 0.7 + shift, top); ctx.lineTo(cx - half * 0.7 + shift, top + drop + 2);
-    ctx.moveTo(cx + half * 0.7 + shift, top); ctx.lineTo(cx + half * 0.7 + shift, top + drop + 2);
+    ctx.moveTo(cx - half * 0.7, top); ctx.lineTo(cx - half * 0.7, top + drop + 2);
+    ctx.moveTo(cx + half * 0.7, top); ctx.lineTo(cx + half * 0.7, top + drop + 2);
     ctx.stroke();
-    if (k < 1 && label) { ctx.save(); ctx.globalAlpha *= 1 - k; ctx.translate(cx, top + drop + ppu * 0.21); ctx.rotate(sway); plank(ctx, label, ppu, k > 0); ctx.restore(); }
-    if (b) { ctx.save(); ctx.globalAlpha *= k; ctx.translate(cx + shift, top + drop); ctx.rotate(sway); const s = 0.7 + 0.3 * k; ctx.scale(s, s); ctx.drawImage(b.c, -b.w / 2, 0); ctx.restore(); }
-  } else if (p.anchor && k > 0) {
-    const ax = cw / 2 + (p.anchor[0] - camera.x) * ppu, ay = ch / 2 + (p.anchor[1] - camera.y) * ppu;
-    openBoard(ctx, p, ppu, cw, ch, view, ax, ay, k, 0, 'up', ppu * 0.5);
+    if (label) { ctx.translate(cx, top + drop + ppu * 0.21); ctx.rotate(sway); plank(ctx, label, ppu, k > 0); }
+    ctx.restore();
+    return true;
   }
+  if (p.anchor) {
+    const ax = cw / 2 + (p.anchor[0] - camera.x) * ppu, ay = ch / 2 + (p.anchor[1] - camera.y) * ppu;
+    return !(ax < -ppu * 6 || ax > cw + ppu * 6 || ay < -ppu * 6 || ay > ch + ppu * 6);
+  }
+  return false;
 }
 
-/** How far a board centred at x with half-width `half` slides to stay on screen (it never leaves the post it stands on). */
-function clampShift(x, half, cw) {
-  const m = 8;
-  let s = 0;
-  if (x - half < m) s = m - (x - half);
-  else if (x + half > cw - m) s = cw - m - (x + half);
-  return Math.max(-half * 0.85, Math.min(half * 0.85, s));
-}
-
-function openBoard(ctx, p, ppu, cw, ch, view, x, bottom, k, rot, dir, keep) {
-  const b = board(p, view.scheme, view.style, ppu, cw);
-  const s = 0.7 + 0.3 * k;
-  const shift = clampShift(x, (b.w / 2) * s, cw);
+/** The cord from a post top (screen bx, top) to the board's nearest bottom (or top) edge, when the board is off the post. */
+function cord(ctx, camera, cw, ch, ppu, p, bx, top, k) {
+  const r = p._pl, s = 0.7 + 0.3 * k;
+  const X = (x) => cw / 2 + (x - camera.x) * ppu, Y = (y) => ch / 2 + (y - camera.y) * ppu;
+  const cx = (r.x0 + r.x1) / 2, hw = ((r.x1 - r.x0) / 2) * s;
+  const edge = r.up ? r.y1 : r.y0; // the edge the board hangs by
+  const ex = X(Math.max(cx - hw + 0.25, Math.min(cx + hw - 0.25, (bx - cw / 2) / ppu + camera.x)));
+  const ey = r.up ? Y(edge) - ppu * 0.08 : Y(edge) + ppu * 0.08;
+  if (r.up && Math.abs(ex - bx) < 1.5 && ey >= top - ppu * 0.05) return; // it sits on the post: the post is its anchor
   ctx.save();
   ctx.globalAlpha *= k;
-  ctx.translate(x + shift, bottom);
-  ctx.rotate(rot);
-  ctx.scale(s, s);
-  ctx.drawImage(b.c, -b.w / 2, -b.h);
+  ctx.strokeStyle = CORD; ctx.lineWidth = Math.max(1.5, ppu * 0.035); ctx.lineCap = 'round';
+  const sag = Math.min(ppu * 0.25, Math.hypot(ex - bx, ey - top) * 0.08);
+  ctx.beginPath(); ctx.moveTo(bx, top); ctx.quadraticCurveTo((bx + ex) / 2, (top + ey) / 2 + sag, ex, ey); ctx.stroke();
+  ctx.fillStyle = WOOD_EDGE; ctx.beginPath(); ctx.arc(bx, top, Math.max(1.5, ppu * 0.045), 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+}
+
+/**
+ * Draw the boards queued by drawSigns this frame, over the actors. `avoid` = {targets: [rects], discs: [{x, y}] (every
+ * octopus), solid(tx, ty)?}; the board stays in the view and out from under the HUD corners (signs.js boardView).
+ */
+export function drawSignBoards(ctx, camera, cw, ch, avoid = null) {
+  if (!queue.length) return;
+  if (typeof avoid === 'function') avoid = avoid(); // (built only on a frame with a board)
+  const ppu = camera.pxPerUnit;
+  const cssW = ctx.canvas && ctx.canvas.clientWidth;
+  const bv = boardView(camera.x, camera.y, ppu, cw, ch, cssW ? cw / cssW : 1), view = bv.view;
+  const targets = ((avoid && avoid.targets) || []).concat(bv.hud), discs = (avoid && avoid.discs) || [], solid = (avoid && avoid.solid) || null;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  for (const q of queue) {
+    const p = q.p, k = p._open || 0;
+    const b = board(p, q.view.scheme, q.view.style, ppu, cw);
+    const a = attachOf(p);
+    a.w = b.w / ppu; a.h = b.h / ppu;
+    const posts = signPosts(q.prompts, p, q.hidden);
+    // only the open board looks for its spot; a folding one stays where it was
+    if (q.open || !p._pl) {
+      const pick = placeBoard(a, targets, posts, discs, view, solid, p._pl);
+      const dt = p._plT === undefined ? 1 : Math.max(0, Math.min(0.1, q.time - p._plT));
+      p._plT = q.time;
+      if (!p._pl || k < 0.05 || p._pl.w !== a.w) p._pl = { x0: pick.x0, y0: pick.y0, x1: pick.x1, y1: pick.y1, w: a.w, up: (a.dir === 'up') !== (pick.f === 1) };
+      else { // glide to the new spot (no jump when the octopus swims into it)
+        const e = 1 - Math.exp(-dt * 12), pl = p._pl;
+        pl.x0 += (pick.x0 - pl.x0) * e; pl.y0 += (pick.y0 - pl.y0) * e;
+        pl.x1 = pl.x0 + a.w; pl.y1 = pl.y0 + a.h; pl.up = (a.dir === 'up') !== (pick.f === 1);
+      }
+      p._pl.i = pick.i; p._pl.j = pick.j; p._pl.f = pick.f; p._pl.clear = pick.clear;
+    }
+    const r = p._pl, s = 0.7 + 0.3 * k;
+    const X = (x) => cw / 2 + (x - camera.x) * ppu, Y = (y) => ch / 2 + (y - camera.y) * ppu;
+    const sway = p.sign ? Math.sin(q.time * 1.1 + p.sign[0] * 1.9) * 0.01 : p.hang ? Math.sin(q.time * 0.9 + p.hang[0]) * 0.015 : 0;
+    const px = X((r.x0 + r.x1) / 2), py = r.up ? Y(r.y1) : Y(r.y0); // the edge it unfolds from
+    if (p.hang) { // its two ropes from the rock to the board's top corners
+      const at = Y(a.top), hw = (b.w / 2) * s; // the ropes slide along the rock with the board (they hang straight)
+      ctx.save(); ctx.globalAlpha *= k;
+      ctx.strokeStyle = CORD; ctx.lineWidth = Math.max(1.5, ppu * 0.035);
+      ctx.beginPath();
+      for (const sx of [-1, 1]) { ctx.moveTo(px + sx * hw * 0.7, at); ctx.lineTo(px + sx * hw * 0.7, (r.up ? py - b.h * s : py) + 2); }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha *= k;
+    ctx.translate(px, py);
+    ctx.rotate(sway);
+    ctx.scale(s, s);
+    ctx.drawImage(b.c, -b.w / 2, r.up ? -b.h : 0);
+    ctx.restore();
+  }
+  ctx.restore();
+  lastDrawn.length = 0;
+  for (const q of queue) lastDrawn.push(q.p);
+  queue.length = 0;
+}
+const lastDrawn = []; // the prompts whose boards the last drawSignBoards drew (test hook)
+
+/** A prompt's open board size in tiles for a scheme at a zoom (the cached board). */
+export function boardSize(p, scheme, style, ppu, cw) { const b = board(p, scheme, style, ppu, cw); return { w: b.w / ppu, h: b.h / ppu }; }
+
+/** Test hook: the boards drawn by the last drawSignBoards (or the open ones of `prompts`) in world tiles: {title, x0, y0, x1, y1, open, clear}. */
+export function boardRects(prompts = null) {
+  return (prompts || lastDrawn).filter((p) => p._pl && p._open > 0).map((p) => ({ title: p.title, x0: p._pl.x0, y0: p._pl.y0, x1: p._pl.x1, y1: p._pl.y1, open: p._open, clear: p._pl.clear }));
 }
 
 /**

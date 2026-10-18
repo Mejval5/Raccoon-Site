@@ -7,8 +7,8 @@ import { createTouchUI } from './touch-ui.js';
 import { createGamepad, fakePad, padStyleOf } from './gamepad.js';
 import { createMenuNav } from './menu-nav.js';
 import { glyph, drawGlyph, signScheme } from './glyphs.js';
-import { pickPrompt, signText, CONTROL_ROWS } from './signs.js';
-import { drawSigns, drawAnchorTag } from './signs-draw.js';
+import { pickPrompt, signText, CONTROL_ROWS, levelSignTargets } from './signs.js';
+import { drawSigns, drawSignBoards, drawAnchorTag } from './signs-draw.js';
 import { plainText, glyphLabels } from './rich.js';
 import { drawCavePainting } from './cave-paint.js';
 import { setArtScheme } from './journal-art.js';
@@ -2969,6 +2969,15 @@ function v2People(c, camera, w2s, cw, ch) {
   if (run.state === S_BIOME || run.state === S_REST) drawPeopleExtras(c, camera, cw, ch, t);
   if (keeperNotice > 0 && shopSt && shopSt.keeperIdx >= 0 && shopSt.keeperIdx < keepers.n) drawKeeperNotice(c, camera, cw, ch, keepers.x[shopSt.keeperIdx], keepers.y[shopSt.keeperIdx] - 1.3, keeperNotice / 0.9, t);
   drawObjectTags(c, camera, cw, ch, t);
+  drawSignBoards(c, camera, cw, ch, signAvoid); // night batch 1: the open sign's board, over the actors and clear of what it explains
+}
+/** Night batch 1: what an open sign's board keeps clear of: the level's whirlpools, wares and mirror, the altar, every octopus. */
+const signDiscs = [];
+function signAvoid() {
+  const a = run.state === S_BIOME ? altarLv.altar : null;
+  signDiscs.length = 0;
+  if (coop()) { for (const p of players()) { const o = oOf(p); if (!o.dead) signDiscs.push(o); } } else if (!octo.dead) signDiscs.push(octo);
+  return { targets: levelSignTargets(world.level, a ? [{ x0: a.x - 1.6, y0: a.y - 2.5, x1: a.x + 1.6, y1: a.y + 0.1 }] : null), discs: signDiscs, solid: (tx, ty) => world.tileAt(tx, ty) !== 0 };
 }
 /** Phase 2B: the prompts fixed to their object (CONTROLLER-PLAN "Text in the world"): what they say, for tests too. */
 function objectTags() {

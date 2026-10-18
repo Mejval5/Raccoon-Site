@@ -170,6 +170,40 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     await at(qh, hs2.tutorialX + 1.4, hs2.tutorialY + 0.2);
     await shot(qh, 'portal-pad-412');
     await qh.close();
+
+    // ======================================================== night batch 1: the open board keeps clear of what it explains
+    // In the real game (camera, HUD, the post pass and the board pass): the dash, shop and dive signs of the tutorial and the
+    // altar's, with the octopus where the review saw it covered (IMPROVEMENTS.md #1). Frames night/signs-board-*.png.
+    const boardCheck = (page, which) => page.evaluate(async (which) => {
+      const D = await import('/octomancer/play/js/signs-draw.js'), S = await import('/octomancer/play/js/signs.js'), A = await import('/octomancer/play/js/authored.js');
+      const o = __octo.state().octopus, a = __octo.altar();
+      const targets = which === 'altar' ? [{ x0: a.x - 1.5, y0: a.y - 1.86, x1: a.x + 1.5, y1: a.y }]
+        : S.levelSignTargets(A.parseAuthoredMap(await (await fetch('/octomancer/play/data/tutorial.json')).json())).filter((t) => !t.soft);
+      const rs = D.boardRects();
+      return { ok: rs.length === 1 && rs.every((r) => !targets.some((t) => S.rectsHit(r, t)) && !S.rectHitsDisc(r, o.x, o.y, S.OCTO_CLEAR)), rs: JSON.stringify(rs) };
+    }, which);
+    for (const vp of ['desktop', 'phone']) {
+      const tag = vp === 'phone' ? '412' : '1440';
+      const b = await open(browser, vp, '?at=tutorial&seed=7');
+      for (const [name, x, y] of [['dash', 15.6, 11.5], ['shop', 26, 28.2], ['dive', 4.6, 29.2]]) {
+        await at(b, x, y, 40);
+        const r = await boardCheck(b, name);
+        check(tag + ' ' + name + ': the open board is drawn and hides neither its target nor the octopus', r.ok, r.rs);
+        await shot(b, 'board-' + name + '-' + tag);
+      }
+      check(tag + ' boards: no page errors', b.errs.length === 0, b.errs.slice(0, 3).join(' | '));
+      await b.close();
+      const al = await open(browser, vp, '?at=1&seed=5&altar=1', true);
+      const a = await al.evaluate(() => __octo.altar());
+      if (a && a.sign) {
+        await al.evaluate((a) => { __octo.god(true); for (let i = 0; i < 40; i++) { __octo.teleport(a.x - 0.77, a.y - 2.7); __octo.stepDraw(1); } }, a);
+        const r = await boardCheck(al, 'altar');
+        check(tag + ' altar: the board is off the stone and the octopus', r.ok, r.rs);
+        await shot(al, 'board-altar-' + tag);
+      } else check(tag + ' altar: a first-meeting altar with a sign on ?altar=1', false, JSON.stringify(a));
+      check(tag + ' altar: no page errors', al.errs.length === 0, al.errs.slice(0, 3).join(' | '));
+      await al.close();
+    }
   } catch (e) {
     fails.push('exception'); console.log('FAIL exception', e && e.stack ? e.stack.slice(0, 800) : e);
   } finally {
