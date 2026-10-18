@@ -130,6 +130,23 @@ body {
 .octo-hud-jar .octo-hud-num { color: #e4d8f6; }
 .octo-hud-jar.is-empty .octo-hud-num { color: #e2a397; }
 .octo-hud-badge.octo-jar-shake { animation: octo-jar-shake 0.32s ease-out; }
+/* a lost heart: the heart swells and flushes red, then settles (0.35 s; transform and filter only, no layout). Two classes with
+   the same keyframes take turns (hud-strip.js, coop-ui.js), so a second hit restarts it. */
+@keyframes octo-heart-hit-a { 0% { transform: scale(1.25); filter: drop-shadow(0 0 5px rgba(214, 74, 52, .9)) saturate(1.6); } 100% { transform: scale(1); filter: none; } }
+@keyframes octo-heart-hit-b { 0% { transform: scale(1.25); filter: drop-shadow(0 0 5px rgba(214, 74, 52, .9)) saturate(1.6); } 100% { transform: scale(1); filter: none; } }
+.octo-hud-hearts.is-hit-a, .octo-coop-hb.is-hit-a { animation: octo-heart-hit-a .35s ease-out; }
+.octo-hud-hearts.is-hit-b, .octo-coop-hb.is-hit-b { animation: octo-heart-hit-b .35s ease-out; }
+.octo-hud-hearts.is-hit-a .octo-hud-num, .octo-hud-hearts.is-hit-b .octo-hud-num { color: #f2a493; }
+/* co-op: the shared shell count sits at the head of the clock row (the vitals row is the players' strips then) */
+.octo-hud-runline .octo-hud-shells { height: 26px; }
+.octo-hud-runline .octo-hud-shell-icon { width: 25px; height: 25px; }
+.octo-hud-runline .octo-hud-shells .octo-hud-num { font-size: 16px; }
+/* desktop: a soft dark pool of water behind the column, so lamp ropes, plants and props do not run through the numbers
+   (the phone has its dark band along the top). One static gradient, no edge. */
+@media (min-width: 601px) and (min-height: 501px) {
+  .octo-hud-bar::before { content: ''; position: absolute; z-index: -1; inset: -34px -40px -36px -60px; pointer-events: none;
+    background: radial-gradient(closest-side, rgba(4, 14, 22, .62), rgba(4, 14, 22, .5) 45%, rgba(4, 14, 22, .22) 75%, rgba(4, 14, 22, 0)); }
+}
 /* the run line: clocks (fixed size, contained: a tick lays out nothing else), Swift Current, level */
 .octo-hud-clock { display: flex; align-items: center; gap: 5px; flex: none; }
 .octo-hud-glass { width: 15px; height: 21px; flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.55)); }
@@ -873,18 +890,36 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 .octo-coop-remove { border: 1.5px solid rgba(255,255,255,0.35); background: transparent; color: #eafffa; border-radius: 999px; padding: 3px 10px; font: 600 12px 'Quicksand', sans-serif; cursor: pointer; }
 .octo-coop-add { font-size: 13px; opacity: .75; }
 .octo-coop-hud { position: absolute; top: calc(6px + var(--safe-t)); left: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: var(--hb-max-w); pointer-events: none; z-index: 3; }
-.octo-coop-strip { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 4px; border-radius: 10px; background: rgba(10, 28, 42, 0.78); border-left: 6px solid var(--coop); box-shadow: inset 0 -2px 0 var(--coop-dark); font: 700 16px 'Quicksand', sans-serif; color: #eafffa; }
+.octo-coop-strip { flex: none; white-space: nowrap; display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 4px; border-radius: 10px; background: rgba(10, 28, 42, 0.78); border-left: 6px solid var(--coop); box-shadow: inset 0 -2px 0 var(--coop-dark); font: 700 16px 'Quicksand', sans-serif; color: #eafffa; }
 .octo-coop-tag { min-width: 24px; padding: 0 4px; color: var(--coop); text-shadow: 0 1px 0 #10202c; }
 .octo-coop-strip .octo-coop-heart { width: 20px; height: 20px; }
 .octo-coop-icon { width: 24px; height: 24px; }
 .octo-coop-n { min-width: 12px; margin-right: 4px; }
-.octo-coop-jar { font-size: 13px; color: #c9b4e8; margin-right: 2px; }
+.octo-coop-hb { display: inline-flex; align-items: center; gap: 4px; }
+.octo-coop-jarc { width: 18px; height: 24px; }
+.octo-coop-jarc.is-empty { opacity: .55; }
+.octo-coop-jar { color: #e4d8f6; }
 .octo-coop-slot { border: 1.5px solid rgba(210, 251, 230, 0.45); border-radius: 6px; width: 26px; height: 26px; }
 .octo-coop-out { opacity: .55; }
 .octo-coop-small .octo-coop-strip { font-size: 13px; padding: 2px 6px 2px 3px; }
 .octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
 .octo-coop-small .octo-coop-icon { width: 19px; height: 19px; }
-.octo-coop-small .octo-coop-jar { font-size: 11px; }
+.octo-coop-small .octo-coop-jarc { width: 14px; height: 19px; }
+.octo-coop-small .octo-coop-slot { width: 21px; height: 21px; }
+/* phones: one strip per row, narrower, so the column of strips stays clear of the clock row */
+@media (max-width: 600px) {
+  .octo-coop-hud { left: 6px; gap: 4px; }
+  .octo-coop-strip, .octo-coop-small .octo-coop-strip { font-size: 13px; gap: 3px; padding: 2px 6px 2px 3px; border-left-width: 5px; }
+  .octo-coop-tag { min-width: 18px; padding: 0 2px; }
+  .octo-coop-strip .octo-coop-heart, .octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
+  .octo-coop-icon, .octo-coop-small .octo-coop-icon { width: 18px; height: 18px; }
+  .octo-coop-jarc, .octo-coop-small .octo-coop-jarc { width: 13px; height: 18px; }
+  .octo-coop-slot, .octo-coop-small .octo-coop-slot { width: 20px; height: 20px; }
+  .octo-coop-n { min-width: 8px; margin-right: 2px; }
+  /* the clock row carries the shell count in co-op: a little tighter, and no hourglass, so it stays clear of the strips */
+  #hud.octo-coop-on .octo-hud-runline { gap: 4px; }
+  #hud.octo-coop-on .octo-hud-glass { display: none; }
+}
 /* co-op: the strips replace player 1's own hotbar row (each player's selected slot is in their strip) */
 #hud.octo-coop-on > .octo-hotbar { display: none; }
 /* and its hearts, bombs, jar and dash timer (per player, in the strips); the shared shells, clocks and level stay in the column */
