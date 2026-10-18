@@ -802,11 +802,21 @@ const PAD_JOURNAL = { root: null, back: () => closeInventory(), pad: (a) => jour
 const PAD_LOOKS = { root: null, back: () => looksPicker.hide(), pad: (a) => looksPicker.pad(a), focus: () => looksPicker.padFocus() };
 /** The pause menu's Add line (coop-ui.js) has the menu focus (the pad's ring, or the keyboard's arrows). */
 function addFocused() { const a = coopUI.addBtn; return !!a && (menuNav.focused() === a || document.activeElement === a); }
+// join fix: the mouse over a pause-menu button gives it the menu focus, so a pad's A (or Enter) acts on what the pointer shows
+document.addEventListener('mouseover', (e) => {
+  const b = e.target && e.target.closest ? e.target.closest('.octo-pause-overlay button') : null;
+  if (b && pauseMenuUp() && document.activeElement !== b && !b.disabled) { try { b.focus({ preventScroll: true }); } catch (err) { /* old browsers */ } }
+});
 const KB_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 let kbMenuNav = false; // the arrow keys moved the menu focus: the ring shows for the keyboard too, until the mouse moves
 window.addEventListener('mousemove', () => { if (kbMenuNav) { kbMenuNav = false; if (input.mode() !== 'pad') menuNav.hideRing(); } });
 /** The pause menu's first button, where the focus starts (not the Add line: A or Enter there joins, co-op polish item 3). */
-function pauseFirst() { return ui.pauseFirst(); } // Resume (Stay while Return to hub asks)
+function pauseFirst() {
+  if (ui.hubAsked()) return ui.pauseFirst(); // Stay while Return to hub asks
+  const act = document.activeElement; // (join fix: a button the mouse is over has the focus already: keep it)
+  if (act && act.tagName === 'BUTTON' && act.closest && act.closest('.octo-pause-overlay')) return act;
+  return ui.pauseFirst(); // Resume
+}
 /** A pad's menu action (`key`: the pad, '' / undefined for the primary one). Local co-op (polish item 3): A joins only on the
  *  focused Add line (a pad that already plays: nothing); elsewhere it is the focused button's press, never a join. */
 function menuPress(a, key) {
@@ -1976,7 +1986,7 @@ function refreshRows() {
   saveCur();
   const rows = players().map((p) => {
     const o = p.octo, d = roster.slots[p.slot].device;
-    return { slot: p.slot, device: d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
+    return { slot: p.slot, device: d, on: d === null ? p1Dev : d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
   });
   coopUI.setRows(rows, rows.length >= MAX_PLAYERS, input.padStyle());
   refreshControlsLine(); // a join or a leave: whose line it is (solo again: the plain line, no dot)
@@ -3102,6 +3112,11 @@ function handleEmbedEvents() {
     } else if (ev.ek === EK_ITEM) takeCarried(itemFromCode(ev.sub), ev.x, ev.y);
   }
 }
+/** Local co-op: run fn as the player whose octopus is index `who` of worldOctos() (loot.js / pickups.js `who`); solo, or no who: as is. */
+function asOpener(who, fn) {
+  const ps = players(), p = who >= 0 && ps.length > 1 ? ps[who] : null;
+  return p ? withP(p, fn) : fn();
+}
 function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
     switch (ev.type) {
@@ -3114,7 +3129,7 @@ function handleLootEvents() {
         particles.pickupSparkle(ev.x, ev.y - 0.3, '#c8f5e6'); sfx.chime();
         dropShells(ev.shells, ev.x, ev.y - 0.4);
         discover('loot-chest');
-        if (ev.carry) takeCarried(ev.carry, ev.x, ev.y - 0.3);
+        if (ev.carry) asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y - 0.3)); // co-op: into the opener's pack, not the focus player's
         if (ev.trap) ui.showToast('It was trapped!');
         break;
       case 'trap':
@@ -3130,7 +3145,7 @@ function handleLootEvents() {
         ui.showToast('A hidden pocket!');
         break;
       case 'item':
-        if (ev.carry) { takeCarried(ev.carry, ev.x, ev.y); break; }
+        if (ev.carry) { asOpener(ev.who, () => takeCarried(ev.carry, ev.x, ev.y)); break; }
         particles.pickupSparkle(ev.x, ev.y, ev.item === 2 ? '#ff8a9a' : '#cfe8ff'); sfx.chime();
         discover('item-' + (ev.item === 2 ? 'heart' : 'bomb'));
         break;
@@ -3741,8 +3756,8 @@ function inkV16Targets(list) {
 // critters and the foliage's hover fish (the little greenranha). Built only while a blob is in flight; never auto-aimed.
 const ambPool = [], hoverOut = [];
 function ambProxy(n, kind, bx, by, phase, t, reduced) {
-  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false });
-  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false;
+  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false, inkPierce: 0 });
+  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false; p.inkPierce = 0; // a pooled stand-in: a new fish, not pierced yet
   ambientPos(kind, bx, by, phase, t, reduced, p);
   return p;
 }
@@ -4358,6 +4373,10 @@ window.__octo = {
   },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
+  /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */
+  droppedShells() { return pickups.visible(world.residentChunks()).filter((it) => it.type === 'shell' && it.dropped); },
+  /** Test hook (chest-cdp.js): set loot record i's state (0 intact, 1 done, ...) to compare how it is drawn; returns the old state. */
+  setLootState(i, st) { const d = loot.data, was = d.state[i]; if (i >= 0 && i < d.n) d.state[i] = st; return was; },
   /** Time pressure test hooks: set the level clock (seconds on this level), read the Beholder's clock / warning and the Swift Current state. */
   tileAt(tx, ty) { return world.tileAt(tx, ty); },
   setLevelTime(t) { sim.time = +t || 0; return sim.time; },

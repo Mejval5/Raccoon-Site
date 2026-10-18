@@ -64,7 +64,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
     await h.keyboard.press('Escape'); await sleep(100);
     check('3 Esc pauses', await paused(h));
     let c = await C(h);
-    check('3 the Add line is a button that names Start on a free pad and A / Enter on it', /^Add player/.test(c.add) && /Menu on a free pad, or A \/ Enter here/.test(c.add), c.add);
+    check('3 the Add line is a button that names Start on a free pad and A on it (player 1 is on the keyboard: no Enter)', /^Add player/.test(c.add) && /Menu on a free pad, or A here/.test(c.add), c.add);
     // pad A presses A: the menu's focus starts on the first pause button (Resume since 2026-10-18; down once: Journal in the hub), not on the Add line
     check('3 the pause menu focus starts on Resume, not on the Add line', (await C(h)).focus === 'Resume' || !(await C(h)).addFocused, (await C(h)).focus);
     await tapPads(h, [{ down: true }, {}]);
@@ -104,7 +104,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
     await shot(h, 'line-keyboard-dot');
     await tapPads(h, [{ rb: true }, {}]); await step(h, 2);
     L = await line(h);
-    check('1 co-op: a press on player 2\'s pad shows the pad line with the teal dot', L.scheme === 'pad' && L.dot === TEAL && L.glyphs.includes('A') && L.shown, JSON.stringify(L).slice(0, 160));
+    check('1 co-op: a press on player 2\'s pad shows the pad line with the teal dot', L.scheme === 'pad' && L.dot === TEAL && L.glyphs.includes('LB') && L.shown, JSON.stringify(L).slice(0, 160));
     await shot(h, 'line-pad-dot');
     const dot = await h.evaluate(() => { const d = document.querySelector('.octo-controls-help .octo-ch-dot'); return d ? getComputedStyle(d).backgroundColor : ''; });
     check('1 the dot is drawn in front of the line, in the player\'s colour', dot === 'rgb(79, 163, 155)', dot);
@@ -124,7 +124,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
       await h.evaluate((b, f) => { __octo.teleportPlayer(1, b.x, b.y); __octo.teleportPlayer(0, f.x, f.y); __octo.teleportPlayer(2, f.x + 0.5, f.y); }, board, far);
       await step(h, 3);
       let s = await G(h);
-      check('2 a sign\'s board names the controls of the player nearest it (player 2, a pad: A)', s.openView && s.openView.scheme === 'pad' && s.openView.glyphs.includes('A') && !s.openView.glyphs.includes('F'), JSON.stringify(s.openView || {}).slice(0, 200));
+      check('2 a sign\'s board names the controls of the player nearest it (player 2, a pad: LB)', s.openView && s.openView.scheme === 'pad' && s.openView.glyphs.includes('LB') && !s.openView.glyphs.includes('F'), JSON.stringify(s.openView || {}).slice(0, 200));
       await h.evaluate((b, f) => { __octo.teleportPlayer(0, b.x, b.y); __octo.teleportPlayer(1, f.x, f.y); }, board, far);
       await step(h, 3);
       s = await G(h);
@@ -136,7 +136,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
       await step(h, 3);
       let s = await G(h);
       const tag = s.tags.find((t) => t.id === 'mirror');
-      check('2 the mirror\'s tag names the pad player\'s button (A) when they are beside it', tag && tag.scheme === 'pad' && tag.glyphs.includes('A'), JSON.stringify(s.tags));
+      check('2 the mirror\'s tag names the pad player\'s button (LB) when they are beside it', tag && tag.scheme === 'pad' && tag.glyphs.includes('LB'), JSON.stringify(s.tags));
       await h.evaluate((m, f) => { __octo.teleportPlayer(0, m.x + 1.2, m.y - 0.7); __octo.teleportPlayer(1, f.x, f.y); }, mir, far);
       await step(h, 3);
       s = await G(h);
@@ -149,7 +149,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
       await step(h, 4);
       let s = await G(h);
       const hint = s.hints.find((x) => x.slot === 1 && x.kind === 'portal');
-      check('2 the hand\'s key over the whirlpool is the pad player\'s glyph (A)', hint && hint.scheme === 'pad' && hint.label === 'A', JSON.stringify(s.hints));
+      check('2 the hand\'s key over the whirlpool is the pad player\'s glyph (LB)', hint && hint.scheme === 'pad' && hint.label === 'LB', JSON.stringify(s.hints));
       await shot(h, 'portal-pad-player');
       await h.evaluate((r, f) => { __octo.teleportPlayer(0, r.tutorialX + 1.4, r.tutorialY + 0.2); __octo.teleportPlayer(1, f.x, f.y); }, hs, far);
       await step(h, 4);
@@ -210,6 +210,68 @@ const RED = '#c05060', TEAL = '#4fa39b';
     c = await C(s3);
     check('3c solo, paused from the keyboard: Start on a pad joins it as player 2 (the menu stays)', c.players.length === 2 && /#0$/.test(c.players[1].device) && c.players[0].device === 'keyboard' && await paused(s3), JSON.stringify(c.players.map((p) => [p.slot, p.device])));
     await s3.close();
+
+    // ================================================================ 3d. Daniel's bug: A on the focused Add line from a pad must join
+    const focusAddPad = async (p, idx, n) => { for (let i = 0; i < 5 && !(await C(p)).addFocused; i++) { const l = Array(n).fill(null).map(() => ({})); l[idx] = { up: true }; await tapPads(p, l); } };
+    {
+      // pad A plays solo, Start pauses, pad A walks to Add, A on pad B joins pad B
+      const p = await open(browser, '?seed=7', { helpDone: true });
+      await PADS(p, [{}, {}]); await PADS(p, [{ lx: 0.8 }, {}], 3); await PADS(p, [{}, {}]);
+      await tapPads(p, [{ start: true }, {}]);
+      await focusAddPad(p, 0, 2);
+      c = await C(p);
+      check('3d pad A plays solo: the Add line offers another pad (not pad A itself)', /Menu on another pad/.test(c.add), c.add);
+      await tapPads(p, [{}, { a: true }]);
+      c = await C(p);
+      check('3d pad A plays, Add focused: A on pad B joins pad B as player 2', c.players.length === 2 && /#1$/.test(c.players[1].device) && /#0$/.test(c.players[0].device), JSON.stringify(c.players.map((q) => q.device)));
+      // player 2's pad (already a player) on another button: A presses it, nobody joins
+      for (let i = 0; i < 3 && !/Journal/.test((await C(p)).focus); i++) await tapPads(p, [{}, { down: true }]);
+      await tapPads(p, [{}, { a: true }]); await sleep(150);
+      c = await C(p);
+      check('3d A on a pad that already plays presses the focused button (the journal opens), nobody joins', c.players.length === 2 && await p.evaluate(() => __octo.journal().open), c.focus);
+      await p.close();
+    }
+    {
+      // the keyboard plays, Esc pauses, the pad walks to Add and presses A: it joins
+      const p = await open(browser, '?seed=7', { helpDone: true });
+      await PADS(p, [{}]); await p.keyboard.press('KeyD'); await step(p, 2);
+      await p.keyboard.press('Escape'); await sleep(100);
+      await focusAddPad(p, 0, 1);
+      await tapPads(p, [{ a: true }]);
+      c = await C(p);
+      check('3d the keyboard plays, Esc, Add focused: A on the pad joins it as player 2', c.players.length === 2 && c.players[0].device === 'keyboard' && /#0$/.test(c.players[1].device), JSON.stringify(c.players.map((q) => q.device)));
+      await p.close();
+    }
+    {
+      // a real pad appears only with the press that woke it (Chrome): the keyboard plays, Esc, the arrows to Add, then a pad never
+      // seen before shows up with A down
+      const p = await open(browser, '?seed=7', { helpDone: true });
+      await p.keyboard.press('KeyD'); await step(p, 2);
+      await p.keyboard.press('Escape'); await sleep(100);
+      for (let i = 0; i < 5 && !(await C(p)).addFocused; i++) await p.keyboard.press('ArrowUp');
+      await PADS(p, [{ a: true }]); await PADS(p, [{}]);
+      c = await C(p);
+      check('3d a pad woken by its A on the focused Add line joins with that same press', c.players.length === 2 && /#0$/.test(c.players[1].device), JSON.stringify(c.players.map((q) => q.device)));
+      // and a second pad woken by Start joins too
+      await PADS(p, [{}, { start: true }]); await PADS(p, [{}, {}]);
+      c = await C(p);
+      check('3d a pad woken by Start in the pause menu joins with that same press', c.players.length === 3 && /#1$/.test(c.players[2].device), JSON.stringify(c.players.map((q) => q.device)));
+      check('3d ... and the game stays paused', await paused(p));
+      await p.close();
+    }
+    {
+      // the mouse over the Add line gives it the focus: A on a pad there joins (not the button the ring was on)
+      const p = await open(browser, '?seed=7', { helpDone: true });
+      await PADS(p, [{}]); await p.keyboard.press('KeyD'); await step(p, 2);
+      await p.keyboard.press('Escape'); await sleep(100);
+      const r = await p.evaluate(() => { const e = document.querySelector('.octo-coop-add').getBoundingClientRect(); return { x: e.x + e.width / 2, y: e.y + e.height / 2 }; });
+      await p.mouse.move(r.x, r.y); await sleep(50);
+      await tapPads(p, [{ a: true }]);
+      c = await C(p);
+      check('3d the mouse over the Add line, A on a pad joins it', c.players.length === 2 && /#0$/.test(c.players[1].device), JSON.stringify({ n: c.players.length, focus: c.focus }));
+      check('no page errors (join cases)', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
 
     // ================================================================ 1b. the controls line retires per scheme, in the save
     const r = await open(browser, '?at=1&seed=5', { helpDone: false });

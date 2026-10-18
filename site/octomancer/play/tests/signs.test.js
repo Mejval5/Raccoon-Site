@@ -4,7 +4,7 @@
 // that a scheme switch repaints (new board / painting), and that every authored sign text resolves.
 import { richSegments, plainText, glyphLabels, layoutRich, drawRichLayout } from '../js/rich.js';
 import { glyph, glyphs, signScheme, drawGlyph, LOOK_WOOD, LOOK_PAINT, PAD_MAP } from '../js/glyphs.js';
-import { signText, pickPrompt, placeSigns, CONTROL_ROWS, placeBoard, levelSignTargets, signPosts, rectHitsDisc, rectsHit, OCTO_CLEAR, boardView } from '../js/signs.js';
+import { signText, pickPrompt, placeSigns, CONTROL_ROWS, placeBoard, levelSignTargets, signPosts, rectHitsDisc, rectsHit, OCTO_CLEAR, boardView, hungBoardRect } from '../js/signs.js';
 import { drawSigns, drawSignBoards, drawAnchorTag, boardCacheSize, boardSize, boardRects } from '../js/signs-draw.js';
 import { parseAuthoredMap } from '../js/authored.js';
 import { computePxPerUnit } from '../js/camera.js';
@@ -23,8 +23,8 @@ export async function runSignsTests(assert) {
   assert('glyphs (desktop): every play action a pad has, the desktop has too (the pad menu-only tab / menu moves aside)', Object.keys(PAD_MAP).filter((a) => !/^(tab|menu)/.test(a)).every((a) => glyphs(a, 'desktop').length > 0));
 
   // --- tokens
-  assert('rich: {hand} is F on the desktop, A on an Xbox pad, Cross on a DualSense, Grab on a phone',
-    plainText('{hand}', 'desktop') === 'F' && plainText('{hand}', 'pad') === 'A' && plainText('{hand}', 'pad', 'ps') === 'Cross' && plainText('{hand}', 'touch') === 'Grab');
+  assert('rich: {hand} is F on the desktop, LB on an Xbox pad, L1 on a DualSense, Grab on a phone; {hand+} on a pad is LB/A',
+    plainText('{hand}', 'desktop') === 'F' && plainText('{hand}', 'pad') === 'LB' && plainText('{hand}', 'pad', 'ps') === 'L1' && plainText('{hand}', 'touch') === 'Grab' && plainText('{hand+}', 'pad') === 'LB/A');
   assert('rich: {dash+} lists every glyph (Space/Shift; B/LT); {key:J} is a literal key',
     plainText('{dash+} dashes', 'desktop') === 'Space/Shift dashes' && plainText('{dash+} dashes', 'pad') === 'B/LT dashes' && plainText('({key:J} or {key:K})', 'pad') === '(J or K)');
   assert('rich: the same sentence keeps its words and swaps only the glyphs on a scheme switch',
@@ -126,6 +126,7 @@ export async function runSignsTests(assert) {
         const lv = L.lv, solid = (x, y) => x < 0 || y < 0 || x >= lv.w || y >= lv.h || lv.tiles[y * lv.w + x] !== 0;
         const targets = levelSignTargets(lv, L.extra || null);
         for (const p of lv.prompts) {
+          if (p.hang) continue; // a rope-hung board is a fixture (checked below), not placed
           for (const scheme of ['desktop', 'touch']) {
             const sz = boardSize(p, scheme, 'xbox', ppu, vw);
             const at = p.sign ? { x: p.sign[0] + 0.5, y: p.sign[1] + 0.42, dir: 'up' } : p.hang ? { x: p.hang[0] + 0.5, y: p.hang[1] + (p.hang[2] || 0.7), dir: 'down' } : { x: p.anchor[0], y: p.anchor[1], dir: 'up' };
@@ -144,7 +145,7 @@ export async function runSignsTests(assert) {
         }
       }
     }
-    assert('signs (night 1): from every spot a sign opens, its board keeps clear of the whirlpool, the wares, the altar, the octopus and the HUD corners (tutorial, hub, grotto, altar; 1440x900 and 412x915)',
+    assert('signs (night 1): from every spot a post-mounted sign opens, its board keeps clear of the whirlpool, the wares, the altar, the octopus and the HUD corners (tutorial, hub, grotto, altar; 1440x900 and 412x915)',
       n > 2000 && bad.length === 0, n + ' spots; ' + bad.length + ' hidden: ' + bad.slice(0, 6).join(' | '));
     // the board prefers to sit on its post, and stays clear of another post where it can
     const open = placeBoard({ x: 10, y: 10, dir: 'up', w: 5, h: 2 }, [], [], [], null, null);
@@ -164,6 +165,30 @@ export async function runSignsTests(assert) {
     }
     const br = boardRects(tut.prompts);
     assert('signs (night 1): the tutorial Dive board, drawn in a frame, is off the whirlpool and the octopus', br.length === 1 && br[0].clear && !levelSignTargets(tut).some((t) => !t.soft && rectsHit(br[0], t)) && !rectHitsDisc(br[0], dive.x, dive.y, OCTO_CLEAR), JSON.stringify(br));
+    // Daniel 2026-10-18: the hub's welcome board hangs on ropes from the rock: a fixture. Whatever the camera or the octopus
+    // does, it stays under its rope ends (it scrolls off like any prop), at 1440x900 and 412x915.
+    const hub = levels[1].lv, wel = hub.prompts.find((p) => p.hang && p.when === 'sealed');
+    let still = true, seen = 0;
+    const want = [];
+    for (const [vw, vh] of [[1440, 900], [412, 915]]) {
+      const hc = document.createElement('canvas'); hc.width = vw; hc.height = vh;
+      const hg = hc.getContext('2d'), hp = computePxPerUnit(vw, vh);
+      const sz = boardSize(wel, 'desktop', 'xbox', hp, vw);
+      const fix = hungBoardRect({ x: wel.hang[0] + 0.5, y: wel.hang[1] + (wel.hang[2] || 0.7), w: sz.w, h: sz.h });
+      want.push(fix);
+      // the octopus swims from under the board away to the right and down; the camera follows it
+      for (let i = 0; i < 30; i++) {
+        const ox = wel.hang[0] + 0.5 + i * 0.4, oy = wel.hang[1] + 2 + i * 0.25;
+        const hcam = { x: ox, y: oy, pxPerUnit: hp };
+        drawSigns(hg, hcam, vw, vh, hub.prompts, wel, { scheme: 'desktop', style: 'xbox' }, 50 + vw + i * 0.05);
+        drawSignBoards(hg, hcam, vw, vh, () => ({ targets: levelSignTargets(hub), discs: [{ x: ox, y: oy }], solid: null }));
+        const r = boardRects([wel])[0];
+        if (!r) continue;
+        seen++;
+        if (Math.abs(r.x0 - fix.x0) > 1e-6 || Math.abs(r.y0 - fix.y0) > 1e-6 || Math.abs(r.x1 - fix.x1) > 1e-6) still = false;
+      }
+    }
+    assert('signs (Daniel): the hub welcome board, hung from the rock, stays at its anchor while the octopus swims away (1440x900, 412x915)', still && seen >= 30, seen + ' frames ' + JSON.stringify(want));
   }
 
   // --- the journal's Controls tab

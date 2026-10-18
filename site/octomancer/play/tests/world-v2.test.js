@@ -95,6 +95,19 @@ export async function runWorldV2Tests(assert) {
     assert(`v2 render r43: the first view is baked in ${frames} frames (ready, deep rock done)`, renderer.ready() && cs.deepStage >= 3 && frames < 200);
     assert(`v2 render r43: no wall canvas is wider or taller than the screen (${cs.maxW}x${cs.maxH} px of ${canvas.width}x${canvas.height})`, cs.maxW <= canvas.width && cs.maxH <= canvas.height);
     assert(`v2 render r43: the canvases for a 375x812 screen stay small (${(cs.bytes / 1048576).toFixed(1)} MB, ${cs.cells} cells at ${cs.bake} px/unit)`, cs.bytes < 14 * 1048576 && cs.cells >= 2);
+    // 2026-10-18 (Daniel: "this shell doesn't seem to do anything now"): the wreck set piece and the contact shadows
+    // (preEnemyDraw) are drawn BEFORE the pickups, or the hull covers the shells a giant clam pops up into its hold
+    {
+      const order = [];
+      const shell = { type: 'shell', sk: 1, value: 1, dropped: true, collected: false, hidden: false, vx: 0, vy: 0, delay: 0, y: octo.y };
+      Object.defineProperty(shell, 'x', { get() { order.push('pickup'); return octo.x; } });
+      renderer.render(canvas.width, canvas.height, octo, 1, 0, 1, {
+        resident: world.residentChunks(), pickups: [shell], bubbles: [], critters: [], depth: 30, enemies: [], shots: [], bombs: [],
+        particles: null, shakeOffset: null, dreadLevel: 0, preEnemyDraw: () => order.push('wreck'), extraDraw: () => order.push('loot'),
+      });
+      const w = order.indexOf('wreck'), pk = order.indexOf('pickup'), lt = order.indexOf('loot');
+      assert(`render order: the wreck (preEnemyDraw) is drawn under the pickups, the loot over both (${order.filter((v, i) => order[i - 1] !== v).join(' > ')})`, w >= 0 && pk > w && lt > pk);
+    }
     renderer.dispose();
     assert('v2 render r43: dispose gives every canvas back (none left in use)', canvasPoolStats().live === live0 && renderer.canvasStats().n === 0);
     const w2 = createLevelWorld(43, 0);
