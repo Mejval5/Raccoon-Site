@@ -71,9 +71,10 @@ function drawPearl(c, glint) {
     c.lineWidth = 0.035; c.strokeStyle = '#6f6260'; c.stroke();
   }
   if (glint > 0) { // a soft milky patch fading in and out
-    const h = c.createRadialGradient(px - 0.05, py - 0.06, 0, px - 0.05, py - 0.06, 0.09);
-    h.addColorStop(0, 'rgba(255,255,255,' + (0.55 * glint).toFixed(3) + ')'); h.addColorStop(1, 'rgba(255,255,255,0)');
-    c.fillStyle = h; c.beginPath(); c.arc(px - 0.05, py - 0.06, 0.09, 0, TAU); c.fill();
+    const k = PEARL_R / 0.16, gx = px - 0.05 * k, gy = py - 0.06 * k, gr = 0.09 * k;
+    const h = c.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    h.addColorStop(0, 'rgba(255,255,255,' + (0.4 * glint).toFixed(3) + ')'); h.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = h; c.beginPath(); c.arc(gx, gy, gr, 0, TAU); c.fill();
   }
 }
 
@@ -406,7 +407,7 @@ export function drawClamIcon(c) {
 }
 
 /** The pearl on its own (journal item art), in [-1, 1]. */
-export function drawPearlIcon(c) { c.save(); c.scale(2.6, 2.6); c.translate(0, 0.46); drawPearl(c, 0.7); c.restore(); }
+export function drawPearlIcon(c) { c.save(); c.scale(2.4, 2.4); c.translate(0, 0.5); drawPearl(c, 0.7); c.restore(); }
 
 function corpseFrame(c, sx, sy, ppu, rot, face, alpha, fn) {
   c.save();

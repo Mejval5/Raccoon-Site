@@ -1,9 +1,8 @@
-// Swift Current (2026-10-08): the optional, skill-rewarding level bonus (Spelunky 2's "finish fast" kind). Each generated
-// level gets a target time from the swim distance between the start and the exit whirlpool. Reach the whirlpool's
-// surroundings before it and the current brings up a moon shell (shells.js SK_MOON, the top shell, worth more than a
-// pearl): it pops out of the whirlpool toward you. If you dive in without grabbing it, it is paid into the purse anyway.
-// The target shows on the level banner (a small current mark with the time); earning it is a quiet toast and a journal
-// count (`loot-swift`, "Earned").
+// Swift Current (2026-10-08): the optional "finish fast" target (Spelunky 2's kind). Each generated level gets a target
+// time from the swim distance between the start and the exit whirlpool. Reach the whirlpool's surroundings before it and
+// the HUD marks it beaten: a quiet toast and a journal count (`loot-swift`, "Earned"). The target shows by the clock.
+// 2026-10-18 (Daniel): it pays nothing any more. The moon shell (shells.js SK_MOON) comes from the giant clam's pearl
+// carried into the exit whirlpool (pearl.js, main.js pearlIntoWhirlpool). The Beholder's clock (beholder.js) is unchanged.
 //
 // Pure logic, no drawing; main.js wires it.
 

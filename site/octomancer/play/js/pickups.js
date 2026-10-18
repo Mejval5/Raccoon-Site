@@ -217,7 +217,7 @@ export function createPickups() {
       if (!items) return false;
       const it = { type: 'shell', x, y, sk, value: SHELL_VALUE[sk] || 1, hidden: false, collected: false, dropped: true, vx, vy, delay: SHELL_PICKUP_DELAY };
       items.push(it);
-      return it; // truthy: the live item (Swift Current pays an uncollected moon shell at the exit)
+      return it; // truthy: the live item
     },
     /** Visible, uncollected pickups in world space, for render.js. */
     visible(resident) {

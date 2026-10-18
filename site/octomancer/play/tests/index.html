@@ -325,6 +325,9 @@ await runBackroomTests(assert);
 // --- the offering altar (altar.js: favour, hollows, anger, the offering check, the floor finder) ---
 import { runAltarTests } from './altar.test.js';
 await runAltarTests(assert);
+// --- 2026-10-18: the giant clam's pearl, carried to the exit whirlpool for the moon shell (pearl.js) ---
+import { runPearlTests } from './pearl.test.js';
+await runPearlTests(assert);
 
 // --- night batch 5: the sound modules (voice pool and cap, cooldown, jitter, ducks, the unlock on a pad press, menu sounds) ---
 import { runAudioTests } from './audio.test.js';

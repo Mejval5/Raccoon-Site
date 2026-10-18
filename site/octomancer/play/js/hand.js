@@ -6,6 +6,7 @@
 //                            which is lifted into the tentacles
 //   holding, tap             throw it: toward the cursor with a mouse, along the move keys / stick, else forward (throwDir)
 //   holding, hold HOLD_DROP_S  drop it gently where the octopus is
+//   holding, ctx.heldPress     main.js may use a press while holding (the pearl at the exit whirlpool): then nothing is thrown
 //
 // Carrying costs: the octopus swims slower (octo.carryMul = the thing's weight), cannot Ink Jet (main.js asks `holding`),
 // and only a pot or a clam takes a hit for it (octo.shieldHit, then the pot breaks). A thrown thing hits what it flies into
@@ -218,6 +219,7 @@ export function stepHand(hand, octo, btn, dt, aim, ctx) {
   if (btn.pressed && !hand.down) {
     hand.down = true; hand.downT = 0; hand.dropped = false; hand.downCarry = !!hand.held;
     if (!hand.held) handUse(hand, octo, ctx);
+    else if (ctx && ctx.heldPress && ctx.heldPress(hand, octo)) hand.downCarry = false; // used while held (the pearl at the exit whirlpool): no throw on release
   }
   if (hand.down) {
     hand.downT += dt;
@@ -229,6 +231,14 @@ export function stepHand(hand, octo, btn, dt, aim, ctx) {
   }
 }
 
+/** Empty the hand without letting go (the held thing was taken: the pearl into the whirlpool). */
+export function handClear(hand, octo) {
+  if (!hand.held) return false;
+  hand.held = null; hand.heldKind = '';
+  setCarry(hand, octo);
+  return true;
+}
+
 /** The target for the tell and the phone button (call once per step; null while holding). */
 export function updateTarget(hand, octo, ctx) {
   hand.target = hand.held || octo.dead ? null : findTarget(octo, ctx);
@@ -237,7 +247,7 @@ export function updateTarget(hand, octo, ctx) {
 
 /** What the phone's Spell button should read: 'throw' while holding, 'enter' (a whirlpool) / 'grab' / 'use' when a target is in reach and the octopus is nearly still, else ''. */
 export function phoneHandMode(hand, octo) {
-  if (hand.held) return 'throw';
+  if (hand.held) return hand.heldPortal ? 'enter' : 'throw'; // heldPortal (main.js): the held pearl is at the exit whirlpool
   if (!hand.target || Math.hypot(octo.vx || 0, octo.vy || 0) >= STILL_SPEED) return '';
   if (hand.target.priority >= PRI_PORTAL) return 'enter';
   return hand.target.priority > PRI_THING ? 'use' : 'grab';

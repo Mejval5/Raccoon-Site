@@ -4,6 +4,9 @@
 //
 //  - Giant clam: sits on a floor, cycles shut -> opening -> open (a pearl inside) -> tremble -> snap while the octopus is near.
 //    A snap with the octopus centre in the mouth is an instant death. A bomb kills it (the pearl drops out).
+//    2026-10-18 (Daniel): the pearl is the big carried pearl (pearl.js), one per level at most: only ONE clam of a level holds
+//    it (the clam of the level's chunk with the lowest hash; a clam added directly gets it while none has). It is taken with the
+//    hand while the shell is open (pearlNear / takePearl; main.js registers the hand kind), not by touch any more.
 //  - Tentacle (Milan's Clamissaint): dormant until the octopus comes close, then wakes, reaches, strikes. A hit holds the octopus
 //    and drags it into the shell unless it breaks free (3 dash presses, ink damage, or a bomb).
 //
@@ -12,7 +15,6 @@
 import { killOctopus } from './octopus.js';
 import { pickTarget, octoList } from './players.js';
 import { hasLineOfSight } from './pathfind.js';
-import { PEARL_VALUE } from './shells.js';
 import { inCameraView } from './cull.js';
 import { resolveHit, rowOf, SOURCES } from './creature-rules.js';
 import { creatureId } from './damage.js';
@@ -36,7 +38,8 @@ export const CLAM_SHUT_H = 0.8;      // height of the shut shell (the bonk box)
 export const CLAM_MOUTH_HALF_W = 0.85; // the octopus centre inside this box at the snap is caught
 export const CLAM_MOUTH_H = 1.0;
 export const CLAM_HP = rowOf('gclam').hp; // creature-rules.js (18)
-export const PEARL_R = 0.16;
+export const PEARL_R = 0.3;   // the big pearl as it sits in the open clam (0.6 across: it fits under the shut shell); out of it, pearl.js PEARL_BIG_R
+export const PEARL_SIT = 0.5; // its centre above the clam's floor line
 const BONK_PUSH = 3;
 
 // tentacle states
@@ -125,12 +128,13 @@ export function createCreatures() {
   const heldO = new Array(CAP).fill(null); // tentacle: the octopus it holds (co-op: any of them), parallel to the typed arrays
   const heldK = new Int8Array(CAP);         // ...and its index in the list update() got (the `who` of the grab / release / eaten events)
   const ONE = [null];                      // octoList's reusable 1-slot array for a single octopus
+  let pearlGiven = false, pearlsOn = true, reserved = false; // one pearl clam per creatures instance (a level); setPearls(false): none (the tutorial); reserved: the grotto's clam gets it
   let inf = null; // infight.js (v2): the INFIGHT rules (snap, grab); null = they only ever attack the octopus
   let curWorld = null;
   const solidAt = (tx, ty) => curWorld.isSolid(tx, ty);
   const losSolid = (x0, y0, x1, y1) => hasLineOfSight(solidAt, x0, y0, x1, y1);
 
-  function add(rec) {
+  function add(rec, pearlOk = null) {
     if (d.n >= CAP) return -1;
     const i = d.n++;
     const code = rec.ck;
@@ -142,7 +146,9 @@ export function createCreatures() {
     if (code === CR_GCLAM) {
       d.fy[i] = rec.y + 0.5;
       d.x[i] = rec.x; d.y[i] = d.fy[i] - 0.4;
-      d.hp[i] = CLAM_HP; d.pearl[i] = 1;
+      const give = pearlsOn && !pearlGiven && (pearlOk === null || pearlOk);
+      d.hp[i] = CLAM_HP; d.pearl[i] = give ? 1 : 0;
+      if (give) pearlGiven = true;
       d.t[i] = CLAM_SHUT_MIN + rnd(d.rs, i) * CLAM_SHUT_VAR;
     } else {
       d.x[i] = rec.x + d.dx[i] * 0.04; d.y[i] = rec.y + d.dy[i] * 0.04; // the shell sits on its surface, a hair into it
@@ -155,10 +161,14 @@ export function createCreatures() {
     return i;
   }
 
+  const PN = { x: 0, y: 0, i: -1 };
+  /** The pearl can be taken: the shell open, trembling, or more than half open. */
+  function pearlOpen(i) { const sn = d.state[i]; return sn === CL_OPEN || sn === CL_TREMBLE || (sn === CL_OPENING && d.ang[i] > 0.5); }
+
   function die(i, vx, vy, reason = '') {
     d.alive[i] = 0;
     events.push({ type: 'killed', kind: CREATURE_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx, vy, face: d.side[i], reason });
-    if (d.kind[i] === CR_GCLAM && d.pearl[i]) { d.pearl[i] = 0; events.push({ type: 'pearlDrop', x: d.x[i], y: d.fy[i] - 0.38 }); }
+    if (d.kind[i] === CR_GCLAM && d.pearl[i]) { d.pearl[i] = 0; events.push({ type: 'pearlDrop', x: d.x[i], y: d.fy[i] - PEARL_SIT }); }
   }
 
   // ------------------------------------------------------------ damage (2026-10-08, creature-rules.js)
@@ -268,13 +278,7 @@ export function createCreatures() {
     for (let k = 0; k < octos.length; k++) { // the pearl and the bonk are for every octopus
       const o = octos[k];
       if (o.dead || o.held > 0) continue;
-      // the pearl: taken while the shell is open (or trembling)
-      if (d.pearl[i] && (sn === CL_OPEN || sn === CL_TREMBLE || (sn === CL_OPENING && d.ang[i] > 0.5))) {
-        if (Math.hypot(o.x - cx, o.y - (fy - 0.38)) < PEARL_R + o.radius * 0.8) {
-          d.pearl[i] = 0;
-          events.push({ type: 'pearl', x: cx, y: fy - 0.38, value: PEARL_VALUE, who: k });
-        }
-      }
+      // (the pearl is taken with the hand while the shell is open: pearlNear / takePearl below)
       // a shut shell is a solid mound: swimming or dashing into it just bonks (no damage), the octopus is pushed out
       if (sn === CL_SHUT || sn === CL_SNAP || (sn === CL_OPENING && d.ang[i] < 0.25)) bonk(i, o, world, k);
     }
@@ -484,6 +488,26 @@ export function createCreatures() {
     events,
     /** Add one record directly (tests, debug). Returns its index, or -1 when full. */
     add,
+    /** false: no clam holds a pearl (the tutorial's practice clam); true (the default): one per level. */
+    setPearls(on) { pearlsOn = !!on; },
+    /** The level's pearl is for a clam added later (the "pearl" grotto's, spawned on its first entry): the chunk's clams hold none. */
+    reservePearl() { reserved = true; if (pearlGiven) { for (let i = 0; i < d.n; i++) if (d.kind[i] === CR_GCLAM) d.pearl[i] = 0; pearlGiven = false; } },
+    /** The open clam pearl nearest (o.x, o.y) within `reach` of it: {x, y, i} (a shared object) or null. Open = the hand fits in. */
+    pearlNear(o, reach) {
+      for (let i = 0; i < d.n; i++) {
+        if (!d.alive[i] || d.kind[i] !== CR_GCLAM || !d.pearl[i] || !pearlOpen(i)) continue;
+        const px = d.x[i], py = d.fy[i] - PEARL_SIT;
+        if (Math.hypot(o.x - px, o.y - py) <= reach) { PN.x = px; PN.y = py; PN.i = i; return PN; }
+      }
+      return null;
+    },
+    /** The hand takes clam i's pearl (true once, while it is open). */
+    takePearl(i) {
+      if (i < 0 || i >= d.n || !d.alive[i] || !d.pearl[i] || !pearlOpen(i)) return false;
+      d.pearl[i] = 0;
+      events.push({ type: 'pearl', x: d.x[i], y: d.fy[i] - PEARL_SIT, i });
+      return true;
+    },
     /** v2: the enemy-infighting runtime (infight.js): a clam's snap and a tentacle's grab reach other creatures. null: none. */
     setInfight(x) { inf = x; },
     count() { return d.n; },
@@ -496,7 +520,9 @@ export function createCreatures() {
         for (const { index, chunk } of resident) {
           if (loaded.has(index)) continue;
           loaded.add(index);
-          for (const s of chunk.spawns) if (s.type === 'creature') add(s);
+          let pick = null, ph = 0; // the chunk's pearl clam: the giant clam with the lowest position hash (seeded by the level)
+          for (const s of chunk.spawns) if (s.type === 'creature' && s.ck === CR_GCLAM) { const h = hash2(s.x, s.y); if (!pick || h < ph) { pick = s; ph = h; } }
+          for (const s of chunk.spawns) if (s.type === 'creature') add(s, s.ck === CR_GCLAM ? s === pick && !reserved : null);
         }
       }
       for (let i = 0; i < d.n; i++) {

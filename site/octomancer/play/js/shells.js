@@ -3,8 +3,8 @@
 //   cowrie   1  small, common
 //   conch    5  spiral conch, uncommon
 //   nautilus 15 big chambered shell, rare
-//   pearl    30 only inside a giant clam (creatures.js), never placed loose
-//   moon     50 the top shell: only the Swift Current bonus brings one (swift.js), never placed loose
+//   pearl    30 buried in the rock (embed.js); the giant clam's pearl is the big carried one (pearl.js), not a shell
+//   moon     50 the top shell: the exit whirlpool makes one of the giant clam's pearl (pearl.js), never placed loose
 // (Owner: damage model. The drawing lives in shells-draw / render.js; the art is natural, no glossy gem look.)
 
 export const SK_COWRIE = 1, SK_CONCH = 2, SK_NAUTILUS = 3, SK_PEARL = 4, SK_MOON = 5;

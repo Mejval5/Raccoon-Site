@@ -7,7 +7,6 @@ import {
   CLAM_TREMBLE_T, CLAM_OPEN_T, TENT_FLING, TENT_REGRAB_CD,
 } from '../js/creatures.js';
 import { createOctopus, stepOctopus } from '../js/octopus.js';
-import { PEARL_VALUE } from '../js/shells.js';
 import { ENTRIES } from '../js/journal.js';
 import { hasCorpseArt } from '../js/corpses-draw.js';
 import '../js/creatures-draw.js'; // registers the corpse art
@@ -129,21 +128,52 @@ export async function runCreatureTests(assert) {
     {
       const w2 = fake(room(14, 10));
       const { cr, octo, d } = mk(7.5, 5.0);
+      // 2026-10-18: the pearl is the big carried pearl (pearl.js): touching it takes nothing, the hand takes it (pearlNear / takePearl)
+      let near = null, shutNear = 'unset', took = 0, again = true, pev = 0;
       const ev = run(cr, octo, w2, 7, (i) => {
+        if (shutNear === 'unset' && d.state[0] === CL_SHUT) shutNear = cr.pearlNear({ x: 7.5, y: 8.5 }, 0.85);
         if (d.state[0] === CL_OPEN && d.t[0] > 0.3 && d.t[0] < 0.4) { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 8.35; }
-        else if (d.state[0] === CL_OPEN && d.t[0] >= 0.4) { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 5.0; }
+        else if (d.state[0] === CL_OPEN && d.t[0] >= 0.4 && !took) {
+          octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 5.0;
+          near = cr.pearlNear({ x: 7.5, y: 7.9 }, 0.85); near = near && { ...near };
+          if (near && cr.takePearl(near.i)) { took++; pev = cr.events.filter((e) => e.type === 'pearl').length; }
+          again = cr.takePearl(0);
+        }
         return null;
       });
-      const pearls = ev.filter((e) => e.type === 'pearl');
-      assert(`clam: touching the pearl while open gives exactly one pearl worth ${PEARL_VALUE}`, pearls.length === 1 && pearls[0].value === PEARL_VALUE && d.pearl[0] === 0);
+      assert('clam: the open clam offers its pearl to the hand (pearlNear), at its mouth; a shut clam offers none',
+        shutNear === null && near && near.i === 0 && Math.abs(near.y - (d.fy[0] - 0.5)) < 0.05);
+      assert('clam: the hand takes the pearl from the open clam exactly once (a pearl event, the clam is empty)', took === 1 && again === false && pev === 1 && d.pearl[0] === 0);
       assert('clam: after the pearl is gone it still snaps (and the octopus is out of the way)', ev.some((e) => e.type === 'snap') && !octo.dead);
+    }
+    // touching alone never takes it
+    {
+      const w2 = fake(room(14, 10));
+      const { cr, octo, d } = mk(7.5, 5.0);
+      const ev = run(cr, octo, w2, 3, (i) => { if (d.state[0] === CL_OPEN && d.t[0] < 0.2) { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 8.35; } else { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 5; } return null; });
+      assert('clam: swimming through the open pearl does not take it', !ev.some((e) => e.type === 'pearl') && d.pearl[0] === 1);
     }
     // trembling still allows the grab
     {
       const w2 = fake(room(14, 10));
       const { cr, octo, d } = mk(7.5, 5.0);
-      const ev = run(cr, octo, w2, 7, (i) => { if (d.state[0] === CL_TREMBLE && d.t[0] < 0.1) { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 8.35; } else if (d.state[0] === CL_TREMBLE) { octo.x = octo.prevX = 7.5; octo.y = octo.prevY = 5; } return null; });
-      assert('clam: the pearl can be taken during the tremble too', ev.filter((e) => e.type === 'pearl').length === 1);
+      let ok = false;
+      run(cr, octo, w2, 7, (i) => { if (d.state[0] === CL_TREMBLE && !ok) ok = cr.takePearl(0); return null; });
+      assert('clam: the pearl can be taken during the tremble too', ok && d.pearl[0] === 0);
+    }
+    // one pearl per level: only one clam holds it, the chunk's clam with the lowest hash; setPearls(false) gives none
+    {
+      const c = createCreatures();
+      c.add({ type: 'creature', ck: CR_GCLAM, x: 3.5, y: 7.5, dx: 0, dy: -1, side: 1 }); c.add({ type: 'creature', ck: CR_GCLAM, x: 9.5, y: 7.5, dx: 0, dy: -1, side: 1 });
+      const ch = { spawns: [{ type: 'creature', ck: CR_GCLAM, x: 20.5, y: 7.5, dx: 0, dy: -1, side: 1 }, { type: 'creature', ck: CR_GCLAM, x: 30.5, y: 7.5, dx: 0, dy: -1, side: 1 }] };
+      const c2 = createCreatures();
+      c2.update(DT, createOctopus(1, 1), fake(room(40, 10)), [{ index: 0, chunk: ch }]);
+      const c3 = createCreatures(); c3.setPearls(false); c3.add({ type: 'creature', ck: CR_GCLAM, x: 3.5, y: 7.5, dx: 0, dy: -1, side: 1 });
+      assert('clam: one pearl per level: two clams added, only the first holds it; a chunk of two gives it to exactly one; setPearls(false): none',
+        c.data.pearl[0] === 1 && c.data.pearl[1] === 0 && c2.data.n === 2 && c2.data.pearl[0] + c2.data.pearl[1] === 1 && c3.data.pearl[0] === 0);
+      const c4 = createCreatures(); c4.update(DT, createOctopus(1, 1), fake(room(40, 10)), [{ index: 0, chunk: ch }]); c4.reservePearl();
+      const g4 = c4.add({ type: 'creature', ck: CR_GCLAM, x: 5.5, y: 7.5, dx: 0, dy: -1, side: 1 });
+      assert('clam: the "pearl" grotto reserves the level pearl: the chunk clams give theirs up, the grotto clam (added later) holds it', c4.data.pearl[0] + c4.data.pearl[1] === 0 && c4.data.pearl[g4] === 1);
     }
     // bomb
     {
@@ -155,7 +185,7 @@ export async function runCreatureTests(assert) {
       const k = ev.find((e) => e.type === 'killed');
       assert('clam: a bomb blast kills it: a killed event (kind gclam, with velocity and face) and the pearl drops out', n === 1 && k && k.kind === 'gclam' && typeof k.vx === 'number' && typeof k.face === 'number' && ev.some((e) => e.type === 'pearlDrop') && d.alive[0] === 0);
       const { cr: c2, octo: o2, d: d2 } = mk(7.5, 5.0);
-      run(c2, o2, w2, 4, (i) => { if (d2.state[0] === CL_OPEN && d2.t[0] < 0.4) { o2.x = o2.prevX = 7.5; o2.y = o2.prevY = 8.35; } else if (d2.state[0] === CL_OPEN) { o2.x = o2.prevX = 7.5; o2.y = o2.prevY = 5; } return null; });
+      run(c2, o2, w2, 4, (i) => { if (d2.state[0] === CL_OPEN && d2.pearl[0]) c2.takePearl(0); return null; });
       c2.events.length = 0;
       c2.blast(7.5, 7.0, 2.5, o2);
       assert('clam: a bomb after the pearl was taken kills it with no pearl drop', c2.events.some((e) => e.type === 'killed') && !c2.events.some((e) => e.type === 'pearlDrop'));

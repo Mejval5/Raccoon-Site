@@ -48,7 +48,7 @@ import { fetchPatterns, setPatternTable } from './patterns.js';
 import { fetchFoliage, setFoliageTable } from './foliage.js';
 import { createAutofire } from './autofire.js';
 import { createBombs, spawnRubble, DROP_BELOW } from './bomb.js';
-import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, PRI_TALK, PRI_PORTAL, PRI_DOOR, HAND_REACH } from './hand.js';
+import { createHand, stepHand, attach as handAttach, stepFlying, updateTarget, phoneHandMode, registerInteract, handPoint, handClear, PRI_TALK, PRI_PORTAL, PRI_DOOR, PRI_THING, HAND_REACH } from './hand.js';
 import { registerHandKinds } from './hand-kinds.js';
 import { createAltarLevel } from './altar-level.js'; // the offering altar (altar.js, altar-draw.js)
 import { registerKeeperGrab } from './altar.js';
@@ -59,10 +59,12 @@ import { createProps, PROP_NAMES, PK_BLOCK, PK_CLAM, PS_CARRY, PS_HELD } from '.
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
 import { drawCorpses, drawCorpseOne } from './corpses-draw.js';
+import { createPearl, stepPearl, blastPearl, spawnPearl, takePearl, pearlInLevel, registerPearlGrab, PL_CARRY } from './pearl.js';
+import { drawPearl } from './pearl-draw.js';
 import { createParticles, blastFalloff, blastHitStop, blastGain } from './particles.js';
 import { createUI } from './ui.js';
 import { computeScore } from './score.js';
-import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js';
+import { SHELL_NAMES, SK_MOON, MOON_VALUE, payout } from './shells.js';
 import { beholderTiming } from './beholder.js';
 import { swimDistance, swiftTarget, createSwift, stepSwift } from './swift.js';
 import { mulberry32 } from './rng.js';
@@ -342,6 +344,7 @@ let corpses = createCorpses(); // v2: what dead enemies and NPCs leave behind (s
 let hazards = createHazards(V2 ? props : null);
 if (V2) enemies.setHazardData(hazards.data);
 let creatures = createCreatures(); // v2: the giant clam and the tentacle (creatures.js)
+let pearl = createPearl(); // 2026-10-18: the level's one big pearl (pearl.js), out of its clam: carried to the exit whirlpool for a moon shell
 let loot = createLoot(V2 ? props : null);
 let embedded = createEmbedded(V2 ? props : null); // buried treasure (embed.js)
 // 2026-10-08: the shared damage entry (damage.js, creature-rules.js); see wireDamage
@@ -445,7 +448,7 @@ let prevHearts = octo.hearts;
 // v2 (round 22): this level's quest and shop, the tutorial assists, and the hub sign's quest preview
 let quest = null;
 let levelClock = 0; // the HUD's level clock (s on this level; dive states only; stops with the run clock: pause, death, fades)
-let swift = null; // Swift Current (swift.js): this level's target time, earned flag and the moon shell it brought
+let swift = null; // Swift Current (swift.js): this level's target time and earned flag (no reward since 2026-10-18: the pearl brings the moon shell)
 let questClear = null; // [x, y, ...]: enemies within QUEST_CLEAR_R of these are removed after the level's first enemy update (the encounter, r3: the visitors)
 const QUEST_CLEAR_R = 3;
 let shopSt = null;
@@ -1128,6 +1131,7 @@ function step(dt) {
   if (V2) { damage.tick(dt); infight.tick(dt); }
   if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
+  if (V2 && pearl.state) stepPearl(pearl, dt, world, hazards.data); // the big pearl: sinks, rolls, rides jets (carried: the hand moves it)
   if (V2) for (const p of ps) { usePlayer(p); if (!(entry && entry.p === p) && !octo.hidden) stepHandWorld(dt, p === ps[0]); } // the held thing follows the tentacles; thrown things hit what they meet
   usePlayer(fp);
   if (V2 && run.state === S_BIOME && keepers.n) stepKeepers(keepers, dt, worldOctos(), world, infight);
@@ -1220,7 +1224,7 @@ function step(dt) {
   }
   if (V2) drainInfight();
   // blasts shove the corpses (the ones this very blast made too, so they are thrown, not just dropped)
-  if (V2) for (let i = 0; i < blastLog.length; i += 2) corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS);
+  if (V2) for (let i = 0; i < blastLog.length; i += 2) { corpses.blast(blastLog[i], blastLog[i + 1], BOMB_RADIUS); blastPearl(pearl, blastLog[i], blastLog[i + 1], BOMB_RADIUS); } // the pearl is knocked about too (it never breaks)
   if (V2) handleCrumbles(dt);
   particles.update(dt, solidForSight);
   for (const p of ps) { // B / X: the keyboard quick bomb (dropped)
@@ -1468,7 +1472,14 @@ function stepCombat(snap, dt) {
 const handCtx = {
   isSolid: (x, y) => world.isSolid(x, y),
   thrownHit: (x, y, r, vx, vy, dmg, rec) => thrownHit(x, y, r, vx, vy, dmg, rec),
+  heldPress: (h, o) => { const p = pearlPortal(h, o); return p ? enterPortal(p) : false; }, // the pearl into the exit whirlpool (finishPortal converts it)
 };
+/** The exit whirlpool the hand's held pearl is at (portalAt), or null: F there dives with it instead of throwing it. */
+function pearlPortal(h, o) {
+  if (!h.held || !h.held.pearl || !run || run.state !== S_BIOME) return null;
+  const p = portalAt(o);
+  return p && p.ev === EV_EXIT ? p : null;
+}
 /** After the physics of the step: the held thing in the tentacles, thrown things in flight, the target for the tell. */
 function stepHandWorld(dt, first = true) {
   if (first && keeperNotice > 0) keeperNotice = Math.max(0, keeperNotice - dt); // (local co-op: once per step, not per player)
@@ -1476,6 +1487,7 @@ function stepHandWorld(dt, first = true) {
   stepFlying(hand, dt, handCtx);
   takeHandEvents();
   updateTarget(hand, octo, handCtx);
+  hand.heldPortal = !!pearlPortal(hand, octo); // the phone's button reads Enter, the key hint shows over the whirlpool
 }
 function takeHandEvents() {
   for (const ev of hand.events) {
@@ -2331,6 +2343,8 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     hazards = createHazards(V2 ? props : null);
     if (V2) enemies.setHazardData(hazards.data);
     creatures = createCreatures();
+    pearl = createPearl();
+    if (run && run.state === S_TUTORIAL) creatures.setPearls(false); // the practice clam holds no pearl (no exit to bring it to)
     loot = createLoot(V2 ? props : null);
     if (V2) wireDamage();
     chain.reset(); // its links point at the old level's things
@@ -2866,6 +2880,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (world.fresh) world.fresh.draw(c, camera, cw, ch, world.tileAt); // raw edges and silt haze over a fresh crater (fresh.js)
   const hh = heldView ? hand.held : null; // the held thing is skipped here and drawn after the octopus (drawHeld)
   drawCorpses(c, camera, cw, ch, corpses.data, t, hh && hh.ci !== undefined ? hh.ci : -1);
+  if (pearl.state) drawPearl(c, camera, cw, ch, pearl, t, true); // the big pearl (in a hand: drawHeld draws it over the octopus)
   if (run.state === S_BIOME) {
     if (world.level.nPockets) drawPocketCracks(c, camera, cw, ch, world.level.pockets, world.level.nPockets, world.tileAt);
     drawDecorBoulders(c, camera, cw, ch, decorBoulders(lv), world.tileAt);
@@ -2899,7 +2914,14 @@ function v2Extra(c, camera, w2s, cw, ch) {
   if (!octo.dead && !octo.hidden && !entry) { // controls 2026-10-08: the tentacle curl toward what F would take, the arm round what it holds
     // the octopus's drawn (interpolated) position: the arm and the held thing move with the body, not with the 50 Hz steps
     const hv = heldView;
-    if (hand.held) { if (hv && hv.rigid) drawHeldArm(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, hand.held.r || 0.3, t); }
+    if (hand.held) {
+      if (hv && hv.rigid) drawHeldArm(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, hand.held.r || 0.3, t);
+      if (hand.heldPortal) { // the pearl at the exit whirlpool: the hand's key over it (phones: the Spell button reads Enter)
+        const pv = coop() ? viewOf(cur) : signView, lv = world.level, hx = lv.exitX + 0.5, hy = lv.exitY + 0.5 - 1.45;
+        if (pv.scheme === 'pad') { const sp = worldToScreen(camera, cw, ch, hx, hy); drawGlyph(c, glyph('hand', 'pad', pv.style), sp.x, sp.y, camera.pxPerUnit * 0.21); }
+        else if (pv.scheme !== 'touch') drawKeyHint(c, camera, cw, ch, hx, hy, glyph('hand', 'desktop').label, t);
+      }
+    }
     else if (hand.target) {
       drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
       const k = hand.target.kind;
@@ -2952,6 +2974,7 @@ function heldSysPos(h, alpha, out) {
   else if (h.enemy) { const e = h.enemy, px = e.prevX === undefined ? e.x : e.prevX, py = e.prevY === undefined ? e.y : e.prevY; out.x = px + (e.x - px) * alpha; out.y = py + (e.y - py) * alpha; }
   else if (h.bomb) { out.x = h.bomb.x; out.y = h.bomb.y; }
   else if (h.slot !== undefined) { const p = shopSt ? shopSt.pid[h.slot] : -1; if (p < 0) return null; out.x = props.data.x[p]; out.y = props.data.y[p]; }
+  else if (h.pearl) { out.x = h.pearl.x; out.y = h.pearl.y; }
   else return null;
   return out;
 }
@@ -2969,6 +2992,7 @@ function drawHeld(c, camera, w2s, cw, ch, t) {
   else if (h.enemy) drawEnemyOne(c, camera, w2s, cw, ch, h.enemy, t, hv.alpha);
   else if (h.bomb) drawBombOne(c, camera, w2s, cw, ch, h.bomb, t);
   else if (h.slot !== undefined && shopSt) drawWare(c, camera, cw, ch, shopSt, props, h.slot, t);
+  else if (h.pearl) drawPearl(c, camera, cw, ch, h.pearl, t, false);
   c.restore();
   if (hv.rigid) drawHeldGrip(c, camera, cw, ch, hv.ox, hv.oy, hv.x, hv.y, h.r || 0.3, t); // the arm's grip over the thing
   heldLast = { x: sys.x + dx, y: sys.y + dy, sx: sys.x, sy: sys.y, ox: hv.ox, oy: hv.oy, wall: hv.rigid && handPoint(HV_POSE, h.r || 0.3, null, HV_SYS).x !== hv.x }; // wall: carried beside the body (the hand point is in rock)
@@ -2981,6 +3005,7 @@ function traceHeldFrame() {
   if (h) {
     if (h.li !== undefined) { kind = 'loot'; ref = h.li; } else if (h.ci !== undefined) { kind = 'corpse'; ref = h.ci; }
     else if (h.enemy) { kind = 'enemy'; ref = h.enemy; } else if (h.bomb) { kind = 'bomb'; ref = h.bomb; } else if (h.slot !== undefined) { kind = 'ware'; ref = h.slot; }
+    else if (h.pearl) { kind = 'pearl'; ref = h.pearl; }
   }
   let octoAt = -1, before = 0, after = 0;
   for (let k = 0; k < L.length; k += 2) {
@@ -3099,13 +3124,10 @@ function handleCreatureEvents() {
   takeKilledEvents(creatures.events); // corpses
   for (const ev of creatures.events) {
     switch (ev.type) {
-      case 'pearl': // taken from the open clam: shells straight into the purse, no sparkle
-        gainShells(run, ev.value);
-        discover('item-pearl'); journal.bump('item-pearl', STAT_COLLECTED);
-        ui.showToast('A pearl! +' + ev.value + ' shells');
-        for (let k = 0; k < 3; k++) particles.trailBubble(ev.x + (k - 1) * 0.15, ev.y - k * 0.1);
+      case 'pearl': // the hand took the big pearl out of the open clam (pearl.js; the hand kind 'pearl' holds it now)
+        for (let k = 0; k < 3; k++) particles.trailBubble(ev.x + (k - 1) * 0.25, ev.y - k * 0.15);
         break;
-      case 'pearlDrop': pickups.dropShell(ev.x, ev.y, 0, -1.2, SK_PEARL); break;
+      case 'pearlDrop': if (!pearlInLevel(pearl)) spawnPearl(pearl, ev.x, ev.y, 0, -1.2); break; // a killed clam lets its pearl roll out
       case 'killed': {
         const hers = !INFIGHT_KILL[ev.reason]; // enemy infighting: a kill by another creature is not hers
         particles.killPoof(ev.x, ev.y, ev.kind); if (hers) runKills++;
@@ -3305,6 +3327,7 @@ function setupBack() {
   const lv = V2 && run && run.state === S_BIOME && world.level ? world.level.back : null;
   back = lv ? { lv, inside: false, entered: false, hops: 0, spring: lv.spring ? { x: lv.spring.x, y: lv.spring.y, used: false } : null, frontSnap: null, hopSnap: null, hopT: 0, openT: 0 } : null;
   if (back) preloadBackroomArt();
+  if (back && back.lv.spawns && back.lv.spawns.some((s) => s.type === 'creature' && s.ck === CR_GCLAM)) creatures.reservePearl(); // the "pearl" grotto: its clam holds the level's one pearl
 }
 function releaseBack() {
   if (!back) return;
@@ -3531,26 +3554,34 @@ function setupTimePressure(spec) {
   const ex = lv.exitX + 0.5, ey = lv.exitY + 0.5;
   swift = createSwift(swiftTarget(swimDistance(world, world.startX, world.startY, ex, ey)), ex, ey);
 }
-/** In time: the current brings a moon shell up out of the whirlpool toward the octopus; a quiet toast and a journal count. */
+/**
+ * In time: the Swift Current is beaten (the HUD marks it, a quiet toast and a journal count). Daniel 2026-10-18: it pays
+ * nothing any more; the moon shell comes from the clam's pearl carried into the exit whirlpool (pearlIntoWhirlpool).
+ */
 function earnSwift() {
-  const dx = octo.x - swift.exitX, dy = octo.y - swift.exitY, d = Math.hypot(dx, dy) || 1;
-  swift.shell = pickups.dropShell(swift.exitX, swift.exitY, dx / d * 7, dy / d * 7, SK_MOON) || null;
-  if (!swift.shell) paySwiftShell(); // no level chunk to drop into (never in a real level): straight into the purse
   run.dive.swift = (run.dive.swift | 0) + 1;
   discover('loot-swift'); journal.bump('loot-swift', STAT_COLLECTED);
-  for (let i = 0; i < 6; i++) particles.trailBubble(swift.exitX + (i - 2.5) * 0.15, swift.exitY);
-  sfx.chime();
-  ui.showToast('Swift Current: the tide brings up a moon shell', 2600, false, true);
+  ui.showToast('Swift Current: you beat the tide', 2200, false, true);
 }
-/** Diving in without the moon shell: it comes along anyway (paid once). */
-function paySwiftShell() {
-  if (!swift || !swift.earned || swift.paid) return;
-  if (swift.shell && swift.shell.collected) return;
-  swift.paid = true;
-  if (swift.shell) swift.shell.collected = true;
+/** Whoever enters the exit whirlpool holding the pearl (co-op: any player of the party) gives it to the whirlpool: a moon shell. */
+function pearlIntoWhirlpool(p) {
+  if (pearl.state !== PL_CARRY) return false;
+  if (coop()) saveCur();
+  let holder = null;
+  for (const pl of players()) { const h = pl === cur ? hand : pl.hand; if (h && h.held && h.held.pearl === pearl) { holder = pl; break; } }
+  if (!holder) return false;
+  withP(holder, () => handClear(hand, octo));
+  takePearl(pearl, p.x, p.y);
   gainShells(run, MOON_VALUE);
   discover('item-moon'); journal.bump('item-moon', STAT_COLLECTED);
+  discover('item-bigpearl'); journal.bump('item-bigpearl', STAT_COLLECTED);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; particles.trailBubble(p.x + Math.cos(a) * 0.7, p.y + Math.sin(a) * 0.45); }
+  sfx.chime();
+  ui.showToast('The whirlpool takes the pearl: a moon shell', 2800, false, true);
+  pearlConverted++;
+  return true;
 }
+let pearlConverted = 0; // test hook: pearls the whirlpool took on this page
 /** The Beholder's warning and entry: a quiet toast, the swell, a small shake when it comes. */
 function onBeholderEvent(ev) {
   if (V2 && isSafeState(run)) return;
@@ -3657,7 +3688,7 @@ function enterPortal(p) {
 }
 function finishPortal(p) {
   if (p.ev === EV_EXIT && run.state === S_BIOME) {
-    paySwiftShell();
+    pearlIntoWhirlpool(p);
     if (questOnExit(quest)) payQuest();
     if (relicHeld) { relicHeld = false; addStory('relics'); story = getStory(); }
   }
@@ -3673,6 +3704,12 @@ const handEnv = {
 if (V2) {
   registerHandKinds(handEnv);
   registerKeeperGrab({ keepers: () => (run && run.state === S_BIOME ? keepers : null), keeperDead: KM_DEAD }); // a stunned keeper can be carried (to the altar)
+  registerPearlGrab(registerInteract, PRI_THING, { // the big pearl: out of the open clam, or lying loose (pearl.js)
+    pearl: () => (run && run.state === S_BIOME ? pearl : null),
+    clamPearl: (o, reach) => creatures.pearlNear(o, reach),
+    takeClamPearl: (i) => { const ok = creatures.takePearl(i); if (ok) handleCreatureEvents(); return ok; },
+    onGrab: () => { discover('item-bigpearl'); },
+  });
   registerInteract('mirror', { // skins: the hub's mirror shell opens the looks picker
     priority: PRI_TALK + 1,
     find(o, reach) {
@@ -4624,10 +4661,23 @@ window.__octo = {
     return out;
   },
   /** Test hook: put a creature down (kind 'gclam' | 'tentacle'; (x, y) = the anchor cell centre, (dx, dy) the facing away from its surface). */
-  spawnCreature(kind, x, y, dx = 0, dy = -1) {
+  spawnCreature(kind, x, y, dx = 0, dy = -1, withPearl = false) {
     if (!CREATURE_CODE[kind]) return -1;
-    return creatures.add({ type: 'creature', ck: CREATURE_CODE[kind], x, y, dx, dy, side: 1, tilt: 0 });
+    const i = creatures.add({ type: 'creature', ck: CREATURE_CODE[kind], x, y, dx, dy, side: 1, tilt: 0 });
+    if (withPearl && i >= 0 && kind === 'gclam') { for (let k = 0; k < creatures.data.n; k++) creatures.data.pearl[k] = 0; creatures.data.pearl[i] = 1; pearl.state = 0; } // the one pearl of the level: this clam's
+    return i;
   },
+  /** Test hook: clam i opens now (its pearl can be taken). */
+  clamOpen(i) { const d = creatures.data; if (i < 0 || i >= d.n) return false; d.state[i] = CL_OPEN; d.t[i] = 0; d.ang[i] = 1; return true; },
+  /** The big pearl (pearl.js): state 0 none, 1 free, 2 rest, 3 carried, 4 swirling into the whirlpool, 5 gone; who holds it. */
+  pearl() {
+    let heldBy = -1;
+    if (coop()) saveCur();
+    for (const p of players()) { const h = p === cur ? hand : p.hand; if (h && h.held && h.held.pearl === pearl) heldBy = p.slot; }
+    return { state: pearl.state, x: pearl.x, y: pearl.y, vx: pearl.vx, vy: pearl.vy, r: pearl.r, heldBy, converted: pearlConverted, taken: pearl.taken, heldPortal: !!hand.heldPortal };
+  },
+  /** Test hook: the pearl lies loose at (x, y). */
+  putPearl(x, y, vx = 0, vy = 0) { spawnPearl(pearl, x, y, vx, vy); return pearl.state; },
   creatureHit(x, y, r, dmg, src) { return creatures.hit(x, y, r, dmg, src, octo); },
   /** Chain reactions (chain.js): its stats, the pending links and the TRIGGERS table. */
   chain() {

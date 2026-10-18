@@ -6,7 +6,7 @@
 //
 // Checks: the level banner carries the Swift Current target (m:ss); the hub never runs the clock; on 1-1 the warning starts
 // at 2:00 (dark edge, distant eye, quiet toast) and the Beholder enters at 2:30 at least 15 tiles away and drifts in;
-// reaching the whirlpool in time brings up a moon shell (toast, +50 shells when taken, the journal counts it); too late
+// reaching the whirlpool in time is marked beaten (a quiet toast; since 2026-10-18 no moon shell and no shells); too late
 // brings nothing.
 const path = require('path');
 const fs = require('fs');
@@ -104,17 +104,14 @@ const VPS = [
         await sleep(500);
         const got = await page.evaluate(() => ({ tp: __octo.timePressure(), toast: (document.querySelector('.octo-toast') || {}).textContent || '' }));
         if (!late) {
-          check(`${vn} swift: reaching the whirlpool in time brings up a moon shell with a quiet toast`, got.tp.swift.earned && got.tp.swift.shell && !got.tp.swift.shell.collected && /Swift Current/.test(got.toast), `(target ${tp.swift.target} s)`);
+          // 2026-10-18 (Daniel): the Swift Current pays nothing any more (the moon shell comes from the clam's pearl: pearl-cdp.js)
+          check(`${vn} swift: reaching the whirlpool in time is marked beaten with a quiet toast, and brings up no moon shell`, got.tp.swift.earned && !got.tp.swift.shell && /Swift Current/.test(got.toast), `(target ${tp.swift.target} s)`);
           await sleep(250);
           await page.evaluate(() => __octo.frames(1, 16, true));
           await shot(page, 'tp-bonus-' + vn);
           await page.evaluate(() => __octo.frames(0));
-          const sh = got.tp.swift.shell;
-          await page.evaluate((s) => __octo.teleport(s.x, s.y), sh);
-          await sleep(400);
-          const after = await page.evaluate(() => ({ tp: __octo.timePressure(), shells: __octo.level().run.shells, j: __octo.journal ? __octo.journal() : null }));
-          check(`${vn} swift: taking the moon shell adds 50 shells`, after.tp.swift.shell.collected && after.shells - shells0 === 50, `(${shells0} -> ${after.shells})`);
-          if (SHOTS) { await page.evaluate(() => __octo.frames(1, 16, true)); await shot(page, 'tp-bonus-taken-' + vn); await page.evaluate(() => __octo.frames(0)); }
+          const after = await page.evaluate(() => ({ tp: __octo.timePressure(), shells: __octo.level().run.shells }));
+          check(`${vn} swift: no shells for it`, after.shells === shells0, `(${shells0} -> ${after.shells})`);
         } else {
           check(`${vn} swift: too late, nothing comes up`, !got.tp.swift.earned && !got.tp.swift.shell);
         }

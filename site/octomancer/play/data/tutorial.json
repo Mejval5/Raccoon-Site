@@ -317,8 +317,8 @@
     6,
     32
    ],
-   "desktop": "Swim into the whirlpool and press {hand} to dive. Be quick below: a Swift Current earns a moon shell, and after about 2:30 the Beholder comes.",
-   "touch": "Swim into the whirlpool and tap Enter to dive. Be quick below: a Swift Current earns a moon shell, and after about 2:30 the Beholder comes."
+   "desktop": "Swim into the whirlpool and press {hand} to dive. Below, bring a clam's pearl in for a moon shell, race the Swift Current, and flee the Beholder after 2:30.",
+   "touch": "Swim into the whirlpool and tap Enter to dive. Below, bring a clam's pearl in for a moon shell, race the Swift Current, and flee the Beholder after 2:30."
   }
  ],
  "spawns": [
