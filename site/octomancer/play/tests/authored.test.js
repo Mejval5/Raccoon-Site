@@ -82,10 +82,10 @@ export async function runAuthoredTests(assert) {
     const dk = (p) => plainText(signText(p, 'desktop'), 'desktop'), pd = (p) => plainText(signText(p, 'pad'), 'pad');
     return /press B\b/.test(dk(b)) && /\{bomb\}/.test(b.desktop) && /press RB/.test(pd(b)) && /tap Bomb/.test(b.touch) && /press RMB/.test(dk(st)) && /RS/.test(pd(st)) && /press RB/.test(pd(st)) && /tap Bomb/.test(st.touch);
   })());
-  assert('authored tutorial: the dive prompt names F (A on a pad), the whirlpool, the Beholder and the Swift Current; the open hub sign names the journal (Tab / View / Pause)', (() => {
+  assert('authored tutorial: the dive prompt names F (LB on a pad), the whirlpool, the Beholder and the Swift Current; the open hub sign names the journal (Tab / View / Pause)', (() => {
     const d = tut.prompts.find((p) => p.title === 'Dive'), w = hub.prompts.find((p) => p.when === 'open');
     const dk = plainText(signText(d, 'desktop'), 'desktop'), pd = plainText(signText(d, 'pad'), 'pad');
-    return /press F/.test(dk) && /whirlpool/.test(dk) && /Beholder/.test(dk) && /Swift Current/.test(dk) && /press A\b/.test(pd) && /tap Enter/.test(d.touch) &&
+    return /press F/.test(dk) && /whirlpool/.test(dk) && /Beholder/.test(dk) && /Swift Current/.test(dk) && /press LB\b/.test(pd) && /tap Enter/.test(d.touch) &&
       /Tab/.test(plainText(signText(w, 'desktop'), 'desktop')) && /View/.test(plainText(signText(w, 'pad'), 'pad')) && /Pause opens your journal/.test(w.touch);
   })());
   const clear = (base, lists) => { const t = base.slice(); for (const l of lists) for (let i = 0; i < l.length; i += 2) t[l[i + 1] * tut.w + l[i]] = 0; return t; };
