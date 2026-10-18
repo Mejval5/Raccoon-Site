@@ -1108,7 +1108,7 @@ function step(dt) {
     if (V2) { inkClouds.blast(ev.x, ev.y, BOMB_RADIUS); spellFx.blast(ev.x, ev.y, BOMB_RADIUS); } // SPELLS-PICK: a blast blows an ink cloud out and ends a Lure
     const near = solo ? octo : oOf(nearP(ev.x, ev.y)); // co-op: the blast feels as loud as it is for the nearest player
     const bd = Math.hypot(ev.x - near.x, ev.y - near.y);
-    particles.blastBurst(ev.x, ev.y, bd); sfx.bomb(blastGain(bd)); // impact pass: as loud as it is near (sfx.js #5 reads the gain)
+    particles.blastBurst(ev.x, ev.y, bd); sfx.bomb(blastGain(bd)); // impact pass: as loud as it is near
     if (V2 && world.fresh && ev.tiles > 0) world.fresh.haze(ev.x, ev.y, ev.tiles); // the silt that hangs over the crater afterwards
     if (V2) { // impact pass: the one shake (9 px point blank over 0.3 s), a hit-stop of 0.05 s x k and each player's pad by their own k
       particles.blastFeel(ev.x, ev.y, bd);
@@ -2538,7 +2538,7 @@ function onNpcEvent(ev) {
       if (!ev.hub) people.noteGrudge(ev.who, true); // r3: dead for the rest of the dive (owed meetings never come)
       break;
     }
-    case 'harpoon': (sfx.harpoon || sfx.bomb).call(sfx); break; // impact pass: its own sound once sfx.js (#5) has one
+    case 'harpoon': sfx.harpoon(); break; // impact pass: its own sound (sfx.js, #5)
     case 'harpoonHit': particles.deathPoof(ev.x, ev.y, ev.rock ? '#d9cdb8' : '#f4efe4'); break;
     default: break;
   }
@@ -2982,7 +2982,7 @@ function handleLootEvents() {
   for (const ev of loot.takeEvents()) {
     switch (ev.type) {
       case 'break':
-        particles.bombDebris(ev.x, ev.y); (sfx.potBreak || sfx.bomb).call(sfx); // impact pass: its own sound once sfx.js (#5) has one
+        particles.bombDebris(ev.x, ev.y); sfx.potBreak(); // impact pass: its own sound (sfx.js, #5)
         dropShells(ev.shells, ev.x, ev.y);
         discover(lootJournalId(ev.lk));
         break;
