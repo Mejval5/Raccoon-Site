@@ -8,6 +8,8 @@
 //   - the fish bone hides the keepsake: a dash crumbles it, the keepsake gives a bomb for the next dive, once;
 //   - the hub is safe: no bomb from the keys, a bomb set off beside the octopus does not hurt it;
 //   - the hub loads fast (the authored world step) and stays inside the canvas budget.
+//   - 2026-10-18, the safe zone: Marlo jetted 20 times in his workshop is alive and calm, only knocked about, and says only his
+//     hub lines; a resident killed in an old save (story goneMarlo) is home again.
 // Frames go to octomancer-web/night/hub-*.png.
 //   node hub-cdp.js [port | baseUrl]      (serve with python -m http.server <port> --directory site)
 const path = require('path');
@@ -94,9 +96,9 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       h = await R(p2);
       const bits = h.story.hubRooms;
       await p2.close();
-      const p3 = await open(browser, { ...SAVES.mid, story: { ...SAVES.mid.story, quill: 0, goneQuill: 1, hubRooms: bits } });
+      const p3 = await open(browser, { ...SAVES.mid, meta: { dives: 0, clears: 0 }, story: { ...SAVES.mid.story, quill: 0, saidQuill: 0, hubRooms: bits } });
       h = await R(p3);
-      check('persistence: the grotto, seen open before, stays open after Quill is gone (story.hubRooms)', room(h, 'grotto').open && !h.residents.some((r) => r.id === 'quill'));
+      check('persistence: the grotto, seen open before, stays open while its condition no longer holds (Quill not met: story.hubRooms)', room(h, 'grotto').open && !h.residents.some((r) => r.id === 'quill'));
       await p3.reload({ waitUntil: 'networkidle0' });
       await p3.waitForFunction(() => window.__octo && !__octo.transitioning() && __octo.hubRooms(), { timeout: 60000 });
       h = await R(p3);
@@ -172,6 +174,52 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       check('secret: the keepsake gives its bomb only once', h.story.boonBombs === b1);
       check('full: no page errors', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
       await p.close();
+    }
+
+    // ================================================================== the safe zone: jet Marlo 20 times; he only ever says hub lines
+    {
+      const p = await open(browser, 'full');
+      await p.evaluate(() => __octo.freeze(true));
+      let h = await R(p);
+      const m = h.residents.find((r) => r.id === 'marlo');
+      // his hub lines: every stage's, the thank-yous, the bumped lines and the gifts he can hand over (data/quests.json)
+      const hubLines = await p.evaluate(async () => {
+        const q = await (await fetch('data/quests.json')).json(), n = q.npcs.find((x) => x.id === 'marlo');
+        const out = [...Object.values(n.hub).flat(), ...Object.values(n.thanks), ...(n.bumped || [])];
+        for (const r of q.quests) if (r.npc === 'marlo') for (const o of r.outcomes || []) if (o.next) out.push(...o.next.lines);
+        return out;
+      });
+      const story0 = (await R(p)).story;
+      await p.evaluate((x, y) => { __octo.teleport(x - 2.4, y - 0.8); __octo.stepDraw(20); }, m.x, m.y);
+      const res = await p.evaluate((n) => {
+        const said = new Set(), mx = [];
+        let maxOff = 0;
+        for (let k = 0; k < n; k++) {
+          const o = __octo.state().octopus, mm = __octo.npcs().find((x) => x.who === 'marlo');
+          if (mm) __octo.fireInk(mm.x - o.x, mm.cy - o.y); // straight at him
+          for (let s = 0; s < 80; s++) { // the jet's cooldown is 1.5 s
+            __octo.stepDraw(1);
+            const t = __octo.hubRooms().talk; if (t.who === 'marlo' && t.text) said.add(t.text);
+            const r = __octo.hubRooms().residents.find((x) => x.id === 'marlo'), q = __octo.npcs().find((x) => x.who === 'marlo');
+            if (r && q) maxOff = Math.max(maxOff, Math.hypot(q.x - r.x, q.y - r.y));
+          }
+          mx.push(__octo.npcs().find((x) => x.who === 'marlo'));
+        }
+        return { said: [...said], maxOff, last: __octo.npcs().find((x) => x.who === 'marlo'), mood: __octo.npcMood(), residents: __octo.hubRooms().residents.map((r) => r.id), hearts: __octo.state().octopus.hearts };
+      }, 20);
+      h = await R(p);
+      check('safe zone: Marlo jetted 20 times in his workshop is alive, calm and unhurt', !!res.last && !res.last.hostile && res.last.hp === 6 && res.mood.dead[1] === 0 && res.mood.hostile[1] === 0 && res.residents.includes('marlo'), JSON.stringify({ last: res.last, mood: res.mood }));
+      check('safe zone: ... the jet knocks him about (off his spot, never out of his room)', res.maxOff > 0.05 && res.maxOff <= 1.45, res.maxOff.toFixed(2));
+      check('safe zone: ... nothing was counted against her (no angered / killed story)', (h.story.angeredMarlo | 0) === (story0.angeredMarlo | 0) && (h.story.killedMarlo | 0) === (story0.killedMarlo | 0) && !(h.story.goneMarlo | 0));
+      check('safe zone: ... he speaks only his hub lines (no "meet me at the hub")', res.said.length > 0 && res.said.every((l) => hubLines.includes(l) && !/meet me|find me|at the hub/i.test(l)), JSON.stringify(res.said));
+      await shot(p, 'safe-jet');
+      check('safe zone: no page errors', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
+      await p.close();
+      // an older build let the hub kill him: a save with his room open and goneMarlo set brings him home on the hub rebuild
+      const p2 = await open(browser, { ...SAVES.full, story: { ...SAVES.full.story, goneMarlo: 1, killedMarlo: 1, angeredMarlo: 1 } });
+      h = await R(p2);
+      check('safe zone: a resident killed in an old save is home again (residents are never persisted as dead)', room(h, 'workshop').open && h.residents.some((r) => r.id === 'marlo') && (await p2.evaluate(() => __octo.npcMood().dead[1])) === 0, JSON.stringify(h.residents.map((r) => r.id)));
+      await p2.close();
     }
 
     // ================================================================== load time and canvas memory

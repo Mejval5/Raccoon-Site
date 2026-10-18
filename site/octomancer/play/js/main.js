@@ -98,7 +98,7 @@ import { createChain } from './chain.js';
 import { drawChain } from './chain-draw.js';
 import { TRIGGERS, TRIGGER_TARGET_NAMES as TRIGGER_NAMES_, INFIGHT_KILL } from './creature-rules.js';
 import { createInfight } from './infight.js';
-import { CREATURES, SOURCES, resolveHit, HAZARD_COOL } from './creature-rules.js';
+import { CREATURES, SOURCES, resolveHit, HAZARD_COOL, isSafeZone } from './creature-rules.js';
 import { createKeepers, addKeeper, stepKeepers, hitKeeper, hitKeepersAt, keeperFamily, angerAll, exitGuardWaits, guardSpot, KM_CALM, KM_WAIT, KM_ANGRY, KM_DEAD, KEEPER_R, MODE_NAMES } from './shopkeeper.js';
 import { drawKeepers, drawLooseWares, drawWare } from './shopkeeper-draw.js';
 import { setShopHooks, HIT_INK, HIT_DASH, HIT_BOMB, HIT_HEAVY } from './shop-aggro.js';
@@ -455,13 +455,16 @@ const diveDone = new Set(); // people whose scene was finished in this dive (nob
 // owners round 3 (quests rework, people.js): meetings owed further down the dive, grudges, and this level's visitors with a reward
 const people = createPeople();
 let relicHeld = false; // a relic was lifted on this level: carried out through the exit it counts for Quill
-const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [] }; // what a hub resident is saying now
+const hubTalk = { talk: createTalk(), who: '', cool: {}, visits: {}, undo: [], bump: false }; // what a hub resident is saying now
 // V2-PLAN 16 point 5 (npcs.js): the friendly NPCs can be hurt, killed and turned against you. npcMoods is the per-dive record of who
 // turned on you (reset when a dive starts or the hub is entered); the story counters goneX / killedX / angeredX outlive the dive.
 const npcMoods = createMoods();
 let npcs = null; // this level's NPC slots (setupLevelExtras)
 const capName = (id) => id.charAt(0).toUpperCase() + id.slice(1);
 const npcGone = (id) => (story['gone' + capName(id)] | 0) > 0; // killed: absent until the end of the next dive
+/** This level as creature-rules.js SAFE_ZONES keys it: the hub and the rest grotto are safe zones (nobody is harmed there). */
+const zoneOf = (r) => (!r || MOVETEST ? '' : r.state === S_HUB ? 'hub' : r.state === S_REST ? 'rest' : r.state === S_BIOME ? 'biome' : r.state === S_TUTORIAL ? 'tutorial' : '');
+const inSafeZone = () => isSafeZone(zoneOf(run));
 const PERSON_ENTRY = ['', 'person-diver', 'person-critter', 'person-collector', 'person-host'];
 /** Back in the hub: the Collector moves in after the first dive; Marlo's ring exists once he was freed in three runs. */
 function arriveInHub() {
@@ -2035,7 +2038,7 @@ function stepPull(dt) {
 
 /** One player's own part of the v2 step (local co-op: every player but the focus, who runs the whole of stepV2). */
 function stepV2Player(snap) {
-  octo.safe = run.state === S_HUB && !MOVETEST;
+  octo.safe = inSafeZone(); // the hub and the rest grotto: nothing hurts any player (octopus.js hurtOctopus / killOctopus)
   if (entry) return;
   if (run.state === S_BIOME) stepSiphon();
   if (run.state === S_REST) stepRestSpring();
@@ -2576,13 +2579,15 @@ if (V2) registerNpcCorpses(setCorpseArt);
 function makeNpcs() {
   const lines = {};
   for (const n of questTable.npcs) lines[n.id] = { hurt: n.hurt || [], angry: n.angry || [] };
-  const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, lines });
+  const sys = createNpcs(world, { moods: npcMoods, hub: run.state === S_HUB, safe: inSafeZone(), lines }); // safe: hits only knock people about
   sys.setInfight(infight); // enemy infighting: harpoons hit any creature; lures
   return sys;
 }
-/** The hub residents that are here and calm: not killed (gone for a run) and not turned on you. */
+/** The hub residents: everyone who moved in. 2026-10-18: residents are never persisted as dead (the hub is a safe zone, and a
+ *  person killed in a dive, or in the hub by an older build, story goneX, is home again when the hub is rebuilt); goneX only
+ *  keeps them out of the next dive. */
 function activeResidents() {
-  return hubResidents(questTable, story).filter((r) => !npcGone(r.id) && !(npcs && npcs.owns(npcByName(r.id))));
+  return hubResidents(questTable, story).filter((r) => !(npcs && npcs.owns(npcByName(r.id))));
 }
 let npcTick = 0;
 /** Each step after the octopus moved: tell npcs.js where the calm NPCs are, step it, apply what happened. */
@@ -2640,10 +2645,33 @@ function onNpcEvent(ev) {
       if (!ev.hub) people.noteGrudge(ev.who, true); // r3: dead for the rest of the dive (owed meetings never come)
       break;
     }
+    case 'bumped': npcBumped(ev); break; // a safe zone: knocked about, never harmed (creature-rules.js SAFE_ZONES)
     case 'harpoon': sfx.harpoon(); break; // impact pass: its own sound (sfx.js, #5)
     case 'harpoonHit': particles.deathPoof(ev.x, ev.y, ev.rock ? '#d9cdb8' : '#f4efe4'); break;
     default: break;
   }
+}
+/** Safe zones: someone was knocked about. A short 'hey!' line (quests.json `bumped`) through their own speech bubble, unless
+ *  they are already speaking. */
+function npcBumped(ev) {
+  const n = questTable.npcById.get(ev.name), pool = n && n.bumped;
+  if (!pool || !pool.length) return;
+  const line = pool[(npcBumpN++) % pool.length];
+  if (run.state === S_HUB) {
+    if (talking(hubTalk.talk)) return;
+    say(hubTalk.talk, [line]);
+    hubTalk.who = ev.name; hubTalk.undo = []; hubTalk.far = false; hubTalk.bump = true;
+    return;
+  }
+  const v = people.visitors.find((p) => p.who === ev.who && p.idx === ev.idx);
+  if (v && !v.talk.text) say(v.talk, [line]);
+}
+let npcBumpN = 0;
+/** Where a hub resident is drawn: its spot (hubPlace) plus the bump a safe-zone hit gave it (npcs.js offset). */
+function hubDrawPlace(lv, id, t) {
+  const pl = hubPlace(lv, id, t);
+  if (npcs) { const o = npcs.offset(npcByName(id), 0); pl.x += o.x; pl.y += o.y; }
+  return pl;
 }
 /** A dive ended (a death or a biome clear): whoever was killed has one dive end less to stay away. */
 function endOfDiveNpcs() {
@@ -2654,7 +2682,7 @@ function endOfDiveNpcs() {
 /** v2 per-step logic after the octopus moved: exit, hub residents, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
-  octo.safe = run.state === S_HUB && !MOVETEST; // the hub village: nothing hurts the octopus (octopus.js hurtOctopus / killOctopus)
+  octo.safe = inSafeZone(); // the hub village and the rest grotto (creature-rules.js SAFE_ZONES): nothing hurts the octopus (octopus.js hurtOctopus / killOctopus)
   stepSkinGifts();
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
@@ -3997,10 +4025,10 @@ function drawQuestThing(c, camera, cw, ch, t) {
 function drawPeopleExtras(c, camera, cw, ch, t) {
   for (const v of people.visitors) {
     if (v.hostile || (npcs && npcs.owns(v.who))) continue;
-    const lift = idleLift(v.idle);
-    drawPerson(c, camera, cw, ch, v.npc, v.variant, v.x, v.y, t, v.idle.face, lift, { wave: !!v.talk.text });
+    const lift = idleLift(v.idle), bo = npcs ? npcs.offset(v.who, v.idx) : null, vx = v.x + (bo ? bo.x : 0), vy = v.y + (bo ? bo.y : 0); // a safe zone's bump
+    drawPerson(c, camera, cw, ch, v.npc, v.variant, vx, vy, t, v.idle.face, lift, { wave: !!v.talk.text });
     const head = v.npc === 'pip' ? (v.variant === 'mama' ? 0.95 : 0.7) : v.npc === 'marlo' ? 1.35 : 1.45;
-    if (v.talk.text) drawSpeech(c, camera, cw, ch, v.x, v.y - head - lift, v.talk.text, talkAlpha(v.talk), v.name);
+    if (v.talk.text) drawSpeech(c, camera, cw, ch, vx, vy - head - lift, v.talk.text, talkAlpha(v.talk), v.name);
   }
   if (run.state === S_BIOME && !(npcs && npcs.owns(NPC_HOST))) for (const ps of poolSts) {
     if (ps.talk && ps.talk.text) drawSpeech(c, camera, cw, ch, ps.plan.x - 1.7, ps.plan.floorY + 1 - 1.3, ps.talk.text, talkAlpha(ps.talk), 'The Host');
@@ -4047,7 +4075,7 @@ function hubStep(lv) {
     hubTalk.cool[who] = sim.time + 3; hubTalk.who = ''; hubTalk.undo = [];
   }
   talkStep(hubTalk.talk, STEP);
-  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + 7; hubTalk.who = ''; hubTalk.undo = []; hubTalk.far = false; }
+  if (!talking(hubTalk.talk) && hubTalk.who) { hubTalk.cool[hubTalk.who] = sim.time + (hubTalk.bump ? 1.5 : 7); hubTalk.who = ''; hubTalk.undo = []; hubTalk.far = false; hubTalk.bump = false; }
   if (talking(hubTalk.talk)) return;
   const t = sim.time;
   // the nearest resident in range (off their cool-down) takes the turn
@@ -4065,7 +4093,7 @@ function hubStep(lv) {
     const visit = hubTalk.visits[r.id] | 0;
     const v = hubVisit(questTable, story, r.id, visit);
     say(hubTalk.talk, v.lines);
-    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id; hubTalk.far = false;
+    hubTalk.visits[r.id] = visit + 1; hubTalk.who = r.id; hubTalk.far = false; hubTalk.bump = false;
     hubTalk.undo = v.set.filter(([k]) => k.startsWith('said')).map(([k]) => [k, story[k] | 0]);
     for (const [k, n] of v.set) { if (/^(gift|boon)/.test(k)) setStoryExact(k, n); else setStory(k, n); if (k === 'relicsGiven') journal.bump('person-collector', STAT_COLLECTED); }
     if (v.gift) { sfx.chime(); particles.pickupSparkle(octo.x, octo.y, '#c8f5e6'); } // r3: a gift for the next dive
@@ -4156,7 +4184,7 @@ function villageStep(lv) {
 function drawVillageFolk(c, camera, cw, ch, lv, t) {
   if (!lv.village) return;
   const nook = roomOf(lv, 'pip');
-  if (nook && nook.open && (story.mamaPip | 0) >= 1 && !npcGone('pip')) drawCritter(c, camera, cw, ch, nook.ax - 2.4 + Math.sin(t * 0.4) * 0.5, nook.ay + 1.7 + Math.sin(t * 1.1) * 0.2, true, t, 0, 'mama');
+  if (nook && nook.open && (story.mamaPip | 0) >= 1) drawCritter(c, camera, cw, ch, nook.ax - 2.4 + Math.sin(t * 0.4) * 0.5, nook.ay + 1.7 + Math.sin(t * 1.1) * 0.2, true, t, 0, 'mama');
   const den = keeperHome(lv);
   if (!den) return;
   const kp = keeperSpot(den), img = artImg('keeper'), ppu = camera.pxPerUnit;
@@ -4175,7 +4203,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
   const fl = cullFlags('hubPeople', 8);
   let k = 0;
   for (const r of activeResidents()) {
-    const pl = hubPlace(lv, r.id, t);
+    const pl = hubDrawPlace(lv, r.id, t);
     if (!visibleAt(fl, k++ & 7, pl.x, pl.y, 3)) continue; // r43: a resident far from the camera is not animated or drawn (its bubble below still is)
     const idl = idleOf(r.id);
     if (r.id === 'marlo') drawPerson(c, camera, cw, ch, 'marlo', '', pl.x, pl.y, t, idl.face, idleLift(idl), { wave: true });
@@ -4185,7 +4213,7 @@ function drawHubPeople(c, camera, cw, ch, lv, t) {
   }
   drawVillageFolk(c, camera, cw, ch, lv, t);
   if (hubTalk.who && hubTalk.talk.text) {
-    const pl = hubPlace(lv, hubTalk.who, t);
+    const pl = hubDrawPlace(lv, hubTalk.who, t);
     drawSpeech(c, camera, cw, ch, pl.x, pl.y - pl.head, hubTalk.talk.text, talkAlpha(hubTalk.talk), questTable.npcById.get(hubTalk.who).name);
   }
 }

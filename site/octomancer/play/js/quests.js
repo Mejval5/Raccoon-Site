@@ -57,7 +57,7 @@ export function parseQuests(json) {
     if (out.next) { gifts.push({ npc, lines: (out.next.lines || []).slice(), boon: out.next.boon || {} }); out.giftId = gifts.length; }
     return out;
   });
-  const npcs = json.npcs.map((n) => ({ ...n, hub: n.hub || {}, thanks: n.thanks || {}, chat: n.chat || [], react: n.react || [], outcomes: outs(n.outcomes, n.id, 'npc ' + n.id) }));
+  const npcs = json.npcs.map((n) => ({ ...n, hub: n.hub || {}, thanks: n.thanks || {}, chat: n.chat || [], react: n.react || [], bumped: n.bumped || [], outcomes: outs(n.outcomes, n.id, 'npc ' + n.id) }));
   const npcById = new Map(npcs.map((n) => [n.id, n]));
   const rows = json.quests.map((q) => {
     if (!KINDS[q.kind]) throw new Error('quest ' + q.id + ': unknown kind ' + q.kind);
@@ -421,6 +421,29 @@ export function questInk(st, x, y) {
 export function nextStage(current, row) { return Math.max(current | 0, Math.min((current | 0) + 1, (row.max | 0) + 1)); }
 
 // ---- the hub: who stands where, and what they say --------------------------------------------------------------
+
+// 2026-10-18 (Daniel: Marlo, home in his workshop, said "find me at the hub"): every line has one place. These two lists are the
+// audit quests.test.js runs: no line of a dive encounter is said in the hub, and no hub line talks as if the hub were elsewhere.
+/** Words that only make sense away from the hub. */
+export const AWAY_WORDS = /\b(at|to|in) the (hub|village)\b|\bmeet me\b|\bfind me\b|\bfurther down\b|\bsee you (back )?(home|up)\b/i;
+/** Every line a resident can say in the hub (hubVisit, the safe-zone bump): hub stages, thanks, relics, gifts, bumped. */
+export function hubLines(table, id) {
+  const n = table.npcById.get(id), out = [];
+  if (!n) return out;
+  for (const k of Object.keys(n.hub)) out.push(...n.hub[k]);
+  for (const k of Object.keys(n.thanks)) out.push(n.thanks[k]);
+  out.push(...(n.relics || []), ...(n.bumped || []));
+  for (const g of table.gifts || []) if (g.npc === id) out.push(...g.lines);
+  return out;
+}
+/** Every line of the dive encounters (rows' meet / ask / help / thank, their outcomes and later meetings; the host's wager outcomes). */
+export function diveLines(table) {
+  const out = [];
+  const outs = (list) => { for (const o of list || []) { out.push(...o.lines); if (o.later) out.push(...(o.later.lines || [])); } };
+  for (const r of table.rows) { for (const k of Object.keys(r.lines)) out.push(r.lines[k]); outs(r.outcomes); }
+  for (const n of table.npcs) outs(n.outcomes);
+  return out;
+}
 
 /**
  * The hub residents for this story: [{id, stage, name}] in table order, only people who have been met (stage >= 1).

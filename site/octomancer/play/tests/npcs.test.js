@@ -1,5 +1,6 @@
 // V2-PLAN 16 point 5: friendly NPCs are killable and aggroable (npcs.js) on a fake world: an open box of water with an optional wall.
-import { createNpcs, createMoods, resetMoods, NPC_MARLO, NPC_PIP, NPC_QUILL, NPC_HOST, NPC_HP, FL_SEALED, FL_CAGED, FL_FOLLOWING, FL_TALKING, AIM_S } from '../js/npcs.js';
+import { createNpcs, createMoods, resetMoods, NPC_MARLO, NPC_PIP, NPC_QUILL, NPC_HOST, NPC_HP, FL_SEALED, FL_CAGED, FL_FOLLOWING, FL_TALKING, AIM_S, BUMP_MAX } from '../js/npcs.js';
+import { isSafeZone, safeZoneHit, resolveHit, SAFE_ZONE } from '../js/creature-rules.js';
 import { createOctopus } from '../js/octopus.js';
 import { DASH_KILL_SPEED } from '../js/config.js';
 import { STEP } from '../js/loop.js';
@@ -11,7 +12,7 @@ function fakeWorld(wall0 = null, wall1 = null) {
 const LINES = { marlo: { hurt: ['Ow!'], angry: ['Back off!'] }, pip: { hurt: ['Squeak!'] }, quill: { hurt: ['Rude!'] }, host: { hurt: ['Hey!'] } };
 function setup(world, opts = {}) {
   const calls = [];
-  const sys = createNpcs(world, { moods: opts.moods, hub: !!opts.hub, lines: LINES, onKeeper: (r) => calls.push(r) });
+  const sys = createNpcs(world, { moods: opts.moods, hub: !!opts.hub, safe: opts.safe, lines: LINES, onKeeper: (r) => calls.push(r) });
   const octo = createOctopus(opts.ox === undefined ? 10 : opts.ox, opts.oy === undefined ? 15 : opts.oy);
   const evs = [];
   const run = (n, place) => { for (let i = 0; i < n; i++) { if (place) place(); octo.invulnTimer = Math.max(0, octo.invulnTimer - STEP); sys.step(octo, STEP); sys.drain((e) => evs.push(e)); } };
@@ -149,21 +150,56 @@ export async function runNpcTests(assert) {
     assert('a new dive resets the mood record: calm again, full health', c.sys.place(NPC_HOST, 30, 16, 0) === true && !c.sys.list()[0].hostile && c.sys.list()[0].hp === NPC_HP[NPC_HOST]);
   }
 
-  // ---- hub: nobody fights back ----
+  // ---- safe zones (2026-10-18, Daniel: "In the hub everyone should be invincible; you can only knock them around") ----
+  assert('safe zones are keyed on the level: the hub and the rest grotto, not a dive level or the tutorial', isSafeZone('hub') && isSafeZone('rest') && !isSafeZone('biome') && !isSafeZone('tutorial') && !isSafeZone(''));
+  assert('safeZoneHit: a bomb on Marlo deals nothing, kills nothing, stuns nothing, still shoves', (() => { const o = safeZoneHit(resolveHit('marlo', 'bomb')); return o.dmg === 0 && !o.kill && o.stun === 0 && o.knock >= SAFE_ZONE.knockMin; })());
   {
-    const t = setup(fakeWorld(), { hub: true, ox: 10, oy: 15 });
-    t.sys.place(NPC_MARLO, 14, 15.55);
-    t.sys.hurt(NPC_MARLO, 1); t.sys.drain((e) => t.evs.push(e));
-    const d0 = Math.hypot(t.sys.list()[0].x - 10, t.sys.list()[0].cy - 15);
-    t.run(250);
-    const m = t.sys.list()[0];
-    assert('a hurt hub resident turns hostile, flees, and never attacks', m.hostile && m.state === 'flee' && Math.hypot(m.x - 10, m.cy - 15) > d0 + 2 && t.octo.hearts === 3 && t.sys.harpoonList().length === 0);
-    const t2 = setup(fakeWorld(), { hub: true, ox: 10, oy: 15 });
-    t2.sys.spawn(NPC_PIP, 12, 15, true); t2.sys.spawn(NPC_QUILL, 11, 15.65, true);
-    t2.run(300);
-    assert('hostile hub Pip and Quill never bite either', t2.octo.hearts === 3);
-    t2.sys.hurt(NPC_QUILL, 9); t2.sys.drain((e) => t2.evs.push(e));
-    assert('a hub resident can still be killed', t2.evs.some((e) => e.type === 'killed' && e.kind === 'npc-quill' && e.hub === true));
+    const harmed = (t) => t.evs.some((e) => e.type === 'hurt' || e.type === 'angered' || e.type === 'killed');
+    const calm = (t, who) => { const n = t.sys.list().find((m) => m.who === who); return !!n && !n.dead && !n.hostile && n.hp === NPC_HP[NPC_MARLO]; };
+    for (const zone of ['hub', 'rest']) {
+      const mk = () => { const t = setup(fakeWorld(), { hub: zone === 'hub', safe: true, ox: 10, oy: 15 }); t.who = NPC_MARLO; t.spot = () => t.sys.place(NPC_MARLO, 20, 15.55); t.spot(); return t; };
+      // the Ink Jet, 20 times
+      const t = mk();
+      let pushed = 0;
+      for (let k = 0; k < 20; k++) { t.sys.hit(19.6, 15, 0.2, 4, 'ink'); t.sys.drain((e) => t.evs.push(e)); t.run(3, t.spot); pushed = Math.max(pushed, Math.hypot(t.sys.offset(NPC_MARLO).x, t.sys.offset(NPC_MARLO).y)); }
+      assert(`${zone}: 20 Ink Jet hits on Marlo: no damage, no anger, no death`, calm(t, 'marlo') && !harmed(t), JSON.stringify(t.sys.list()));
+      assert(`${zone}: ... but every hit pushes him off his spot (never further than BUMP_MAX)`, pushed > 0.1 && pushed <= BUMP_MAX + 1e-6 && t.sys.offset(NPC_MARLO).x >= 0, pushed);
+      assert(`${zone}: ... and he says a bumped line (not once per hit)`, t.evs.filter((e) => e.type === 'bumped').length >= 1 && t.evs.filter((e) => e.type === 'bumped').length <= 3);
+      t.run(150, t.spot);
+      assert(`${zone}: ... then springs back to his spot`, Math.hypot(t.sys.offset(NPC_MARLO).x, t.sys.offset(NPC_MARLO).y) < 0.05);
+      // a bomb going off on him
+      const b = mk();
+      const hurtN = b.sys.blast(20, 15, 2.5); b.sys.drain((e) => b.evs.push(e)); b.run(2, b.spot);
+      assert(`${zone}: a bomb blast on Marlo: alive, calm, full health, still pushed`, hurtN === 0 && calm(b, 'marlo') && !harmed(b) && Math.hypot(b.sys.offset(NPC_MARLO).x, b.sys.offset(NPC_MARLO).y) > 0.02);
+      // a thrown prop (INFIGHT.projectile) and a dash (with and without the Urchin Cap), through the family adapter
+      const th = mk();
+      const dealt = th.sys.family.apply(th.sys.find(NPC_MARLO, 0), 'thrown', 18, 14.9, -1, 1, true); th.sys.drain((e) => th.evs.push(e)); th.run(2, th.spot);
+      assert(`${zone}: a thrown pot: no damage, no anger, pushed away from it`, dealt === 0 && calm(th, 'marlo') && !harmed(th) && th.sys.offset(NPC_MARLO).x > 0.02);
+      for (const cap of [false, true]) {
+        const ds = mk();
+        ds.octo.x = 19.5; ds.octo.y = 15; ds.octo.vx = 15; ds.octo.vy = 0; ds.octo.dashedThisStep = true; ds.octo.spikeHelmet = cap;
+        ds.sys.step(ds.octo, STEP); ds.sys.drain((e) => ds.evs.push(e)); ds.run(2, ds.spot);
+        assert(`${zone}: a dash into Marlo${cap ? ' with the Urchin Cap' : ''}: no damage, no anger, he is bumped`, calm(ds, 'marlo') && !harmed(ds) && ds.evs.some((e) => e.type === 'bumped'));
+      }
+      // the damage-entry sources (spikes, a boulder, Anchor) and the test hook
+      const h = mk();
+      for (const src of ['spikes', 'boulder', 'anchor', 'harpoon', 'claw', 'bite', 'shock', 'snap', 'grab']) h.sys.family.apply(h.sys.find(NPC_MARLO, 0), src, 20, 16, -1, 1, true);
+      h.sys.hurt(NPC_MARLO, 99); h.sys.drain((e) => h.evs.push(e));
+      assert(`${zone}: no source of the table hurts, angers or kills anyone in a safe zone`, calm(h, 'marlo') && !harmed(h));
+      // a jet, a Riptide, a ghost's blow: a push that never carries him out of his room
+      const j = mk();
+      for (let k = 0; k < 200; k++) { j.sys.family.push(j.sys.find(NPC_MARLO, 0), 0.6, 0, 'drift'); j.sys.family.push(j.sys.find(NPC_MARLO, 0), 3, 0, 'knock'); j.run(1, j.spot); }
+      const far = Math.hypot(j.sys.offset(NPC_MARLO).x, j.sys.offset(NPC_MARLO).y);
+      j.run(150, j.spot);
+      assert(`${zone}: a long push (a jet, a Riptide) moves him at most BUMP_MAX off his spot, and he comes back`, far > 0.3 && far <= BUMP_MAX + 1e-6 && Math.hypot(j.sys.offset(NPC_MARLO).x, j.sys.offset(NPC_MARLO).y) < 0.05, far);
+      // the octopus: nothing a person does reaches her (a grudge from the dive keeps away instead of attacking)
+      const g = setup(fakeWorld(), { hub: zone === 'hub', safe: true, ox: 10, oy: 15 });
+      g.sys.spawn(NPC_MARLO, 15, 15.55, true); g.sys.spawn(NPC_PIP, 12, 15, true); g.sys.spawn(NPC_QUILL, 11, 15.65, true);
+      g.run(300);
+      assert(`${zone}: someone already angry (a dive's grudge) keeps away: no harpoon, no bite`, g.octo.hearts === 3 && g.sys.harpoonList().length === 0 && g.sys.list().every((n) => n.state === 'flee' || n.state === 'calm'));
+      g.sys.hurt(NPC_QUILL, 9); g.sys.drain((e) => g.evs.push(e));
+      assert(`${zone}: ... and cannot be killed either`, !g.evs.some((e) => e.type === 'killed'));
+    }
   }
 
   // ---- dash ----
@@ -186,12 +222,10 @@ export async function runNpcTests(assert) {
     t2.sys.place(NPC_PIP, 20.2, 15, 0, FL_FOLLOWING); t2.sys.step(t2.octo, STEP);
     t2.sys.place(NPC_PIP, 20.2, 15, 0, FL_CAGED); t2.sys.step(t2.octo, STEP);
     assert('Pip cannot be dash-hit while he follows you or while caged', t2.sys.list()[0].hp === 2 && !t2.sys.list()[0].hostile);
-    const t3 = setup(fakeWorld(), { hub: true, ox: 20, oy: 15 });
-    t3.octo.dashedThisStep = true; t3.octo.vx = 15; t3.octo.spikeHelmet = true;
-    t3.sys.place(NPC_MARLO, 20.2, 15.55, 0, FL_TALKING); t3.sys.step(t3.octo, STEP);
-    assert('a hub resident who is talking cannot be dash-hit', t3.sys.list()[0].hp === 6);
+    const t3 = setup(fakeWorld(), { ox: 20, oy: 15 }); // solo / co-op dives are unchanged: ink still hurts and angers a person in a level
+    t3.sys.place(NPC_MARLO, 20.2, 15.55, 0, 0);
     t3.sys.hit(20, 15, 1, 1, 'ink');
-    assert('but ink (the Ink Jet hook) does hurt them', t3.sys.list()[0].hp === 5 && t3.sys.list()[0].hostile);
+    assert('in a dive level ink (the Ink Jet hook) does hurt and anger them', t3.sys.list()[0].hp === 5 && t3.sys.list()[0].hostile);
   }
 
   // ---- the shopkeeper is not ours ----
