@@ -92,13 +92,15 @@ typical clear banks 30 to 80.
 ## 7. Journal
 
 - Places: **Your Village** (`place-village`, counter "Pieces built"), found on the first build.
-- The first build of each decoration gets a toast "Built: Shell lantern" (an event toast).
+- The very first build gets a toast "Built: Shell lantern" (an event toast, shown at once); later builds only chime.
 
 ## 8. Performance
 
 Each piece is painted once into a small canvas per zoom (`hub-build-draw.js`, like the cave painting) and blitted while on
-screen; hanging pieces sway the blit, lights add one cached glow sprite. Measured in `tests/hub-build-cdp.js` (hub frame
-cost with 0 and with 13 pieces built).
+screen; hanging pieces sway the blit, lights add one cached glow sprite. At most 2 new paintings a frame (a hub arrival never
+paints them all in one task); the pile and the tally stone keep one canvas each for good (death-perf-cdp counts canvases).
+Measured in `tests/hub-build-cdp.js` (render only, 1440x900, three hub views summed): 1.58 to 2.45 ms with 0 pieces and
+1.59 to 2.16 ms with all 13 built, over several runs; the difference (-0.1 to +0.02 ms a frame) is inside the noise.
 
 ## Holes and open questions for Daniel
 
