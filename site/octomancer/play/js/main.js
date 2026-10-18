@@ -4751,6 +4751,7 @@ window.__octo = {
       points: lv.points, keeper: keeperHome(lv) ? keeperSpot(keeperHome(lv)) : null, keeperSays: village.keeperTalk.text,
       round: { on: village.roundOn, hits: village.hits, wonAt: village.wonAt, hitAt: village.targetHitAt }, talk: { who: hubTalk.who, text: hubTalk.talk.text },
       story: { hubRooms: story.hubRooms | 0, hubSecret: story.hubSecret | 0, hubPractice: story.hubPractice | 0, boonBombs: story.boonBombs | 0 }, safe: !!octo.safe,
+      cam: { x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, w: canvas.width, h: canvas.height }, // the last frame's view (device px), to sample pixels at a world point
     };
   },
   hubSeal() { return { seal: hubSeal(), open: diveOpen(run), tutorialDone: run.tutorialDone, savedDone: getTutorialDone(), unlock: unlockAnim ? { t: unlockAnim.t, seal: unlockAnim.seal } : null, offer: ui.isOfferShown(), bumpAt: sealBumpAt, tutorialX: world.level.tutorialX, tutorialY: world.level.tutorialY }; },
