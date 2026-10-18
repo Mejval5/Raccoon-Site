@@ -9,6 +9,7 @@ import { BOMB_RADIUS } from './config.js';
 import { drawBombSprite, spriteMeta, spriteRect } from './sprites.js';
 import { visibleObj, cullView } from './cull.js';
 import { drawTrace, traceDraw } from './draw-trace.js';
+import { cannonBody, CANNON_RECOIL } from './enemies.js';
 
 const ASSET = (name) => new URL(`../assets/${name}`, import.meta.url).href;
 
@@ -90,7 +91,8 @@ const URCHIN_RIM_INSET = 0.1; // push = 0.5-0.45+0.1 = 0.15 (was 0.31)
 // rim collision now rests on (push = 0.5-0.45+0.26 = 0.31 for its 0.9
 // worldSize). A smaller, urchin-sized inset brings its base flush with the
 // rim instead of sunk into the rock.
-const CANNON_RIM_INSET = 0.1; // push = 0.5-0.45+0.1 = 0.15 (was 0.31)
+// (The push itself, 0.5-0.45+0.1 = 0.15, now lives in enemies.js as CANNON_SEAT: the turning fish's mouth, where its
+// shot starts, is measured from that seated body centre, so the sim and the drawing share one number.)
 function surfaceDrawOffset(placement, worldSize, inset = GROUND_RIM_INSET) {
   const push = 0.5 - worldSize / 2 + inset;
   if (placement === 'floor') return push;
@@ -179,7 +181,7 @@ const HALF_PI = Math.PI / 2;
 function flashOf(e, time) {
   let f = e.hitFlash || 0;
   if (e.stun > 0) f = Math.max(f, 0.3 + 0.3 * Math.abs(Math.sin(time * 34)));
-  if (e.tell > 0) f = Math.max(f, 0.15 + 0.5 * Math.abs(Math.sin(time * (16 + 26 * e.tell))));
+  if (e.tell > 0 && e.kind !== 'cannon') f = Math.max(f, 0.15 + 0.5 * Math.abs(Math.sin(time * (16 + 26 * e.tell)))); // the cannon's tell is its squish
   return f;
 }
 
@@ -221,7 +223,6 @@ function drawStunStars(ctx, sx, sy, ppu, time) {
   ctx.restore();
 }
 
-/** The cannon's barrel along its aim (e.aim, radians) with a muzzle glow while it charges. */
 /** Ink Jet hits leave dark blotches on the creature (inkjet.js sets inkStain = seconds left, inkHits = how many hits): one more blotch per hit,
  * fading over the last 1.5 s. Flat dark fills, no outline, laid out by golden angle so the same enemy always looks the same. */
 function drawInkStain(ctx, sx, sy, ppu, e) {
@@ -240,24 +241,59 @@ function drawInkStain(ctx, sx, sy, ppu, e) {
   ctx.globalAlpha = 1;
 }
 
-function drawBarrel(ctx, sx, sy, ppu, e, time) {
-  const a = e.aim;
+// The cannon fish (NPC30, a gourd-bellied fish with its mouth at the top of its spout). It turns its whole body to its
+// facing e.aim (the art's top along the aim) and mirrors so its lip curls away from the rock (e.lip, enemies.js). The
+// pre-strike is the original Unity squish (octomancer-unity Sprites/Animations/Canon/CanonShoot.anim): over the 0.6 s charge
+// it squashes to half its length along the aim and 1.25x across, kept seated on its back; on the spit it snaps long
+// (1.25x along, 0.67x across) for two frames and settles over 0.75 s. No barrel, no glow, no ring.
+const CANNON_H = 0.9, CANNON_HALF = CANNON_H / 2;
+const KICK_T = [0, 0.033, 0.467, 0.783], KICK_AL = [0.5, 1.25, 1.083, 1], KICK_AC = [1.25, 0.667, 0.917, 1];
+/** The cannon's squash for this frame: o.along / o.across (scale along and across its facing) and o.shift (tiles the body
+ * centre moves toward the mouth, so the back of the body stays on its rock). No allocation. */
+export function cannonPose(e, o) {
+  if (e.kick > 0) {
+    const u = CANNON_RECOIL - e.kick;
+    let k = 1;
+    while (k < 3 && u > KICK_T[k]) k++;
+    const f = Math.max(0, Math.min(1, (u - KICK_T[k - 1]) / (KICK_T[k] - KICK_T[k - 1])));
+    o.along = KICK_AL[k - 1] + (KICK_AL[k] - KICK_AL[k - 1]) * f;
+    o.across = KICK_AC[k - 1] + (KICK_AC[k] - KICK_AC[k - 1]) * f;
+  } else {
+    const q = e.sq || 0, k = q * q * (3 - 2 * q);
+    o.along = 1 - 0.5 * k; o.across = 1 + 0.25 * k;
+  }
+  o.shift = (o.along - 1) * CANNON_HALF;
+  return o;
+}
+const CPOSE = { along: 1, across: 1, shift: 0 }, CBODY = { x: 0, y: 0 };
+function drawCannonFish(ctx, sx, sy, ppu, rot, lip, along, across, hitFlash) {
+  if (!ready(cannonImg)) return;
+  const h = CANNON_H * ppu, w = h * (cannonImg.naturalWidth / cannonImg.naturalHeight);
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.rotate(a);
-  const len = ppu * 0.62, w = ppu * 0.2;
-  ctx.fillStyle = '#26323d'; ctx.strokeStyle = '#0b0f14'; ctx.lineWidth = Math.max(1.5, ppu * 0.035);
-  ctx.beginPath(); ctx.rect(ppu * 0.1, -w / 2, len, w); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#5b6f80';
-  ctx.fillRect(ppu * 0.1 + len * 0.82, -w * 0.62, len * 0.18, w * 1.24); // muzzle ring
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(ppu * 0.1, -w / 2, len * 0.8, w * 0.25);
-  if (e.tell > 0) { // the charge: a glow growing at the muzzle
-    const mx = ppu * 0.1 + len + ppu * 0.04, r = ppu * (0.18 + 0.4 * e.tell);
-    const g = ctx.createRadialGradient(mx, 0, 0, mx, 0, r);
-    g.addColorStop(0, 'rgba(255,250,200,0.95)'); g.addColorStop(0.4, 'rgba(255,190,70,0.6)'); g.addColorStop(1, 'rgba(255,120,30,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(mx, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.rotate(rot);
+  ctx.scale(lip < 0 ? -across : across, along);
+  if (frostK > 0) ctx.filter = frostFilter(hitFlash);
+  else if (hitFlash > 0) ctx.filter = `brightness(${1 + hitFlash * 2}) saturate(${1 - hitFlash * 0.6})`;
+  ctx.drawImage(cannonImg, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+const PUFF_T = 0.4;
+/** The spit: four pale bubbles burst from where the mouth was, drifting out along the spit and fading (no glow). */
+function drawSpitPuff(ctx, camera, worldToScreen, canvasW, canvasH, ppu, e) {
+  const u = CANNON_RECOIL - e.kick;
+  if (u >= PUFF_T) return;
+  const k = u / PUFF_T, ca = Math.cos(e.fa), sa = Math.sin(e.fa);
+  const m = worldToScreen(camera, canvasW, canvasH, e.mx, e.my), mx = m.x, my = m.y;
+  ctx.save();
+  ctx.lineWidth = Math.max(1, ppu * 0.018); ctx.strokeStyle = 'rgba(30,50,70,0.55)';
+  for (let i = 0; i < 4; i++) {
+    const d = ppu * (0.04 + (0.1 + 0.06 * ((i * 5) % 4)) * k), side = ppu * (i - 1.5) * 0.13 * (0.45 + k); // a little cone, behind the ball
+    const x = mx + ca * d - sa * side, y = my + sa * d + ca * side - ppu * 0.12 * k * k; // and they start to rise
+    const r = ppu * (0.04 + 0.025 * ((i * 3) % 4) / 3) * (0.75 + 0.5 * k);
+    ctx.globalAlpha = 0.85 * (1 - k);
+    ctx.fillStyle = 'rgba(220,242,255,0.6)';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.restore();
 }
@@ -314,13 +350,14 @@ function enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha)
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, piranhaImg, px, py, 1.15, face > 0, false, fl, tilt);
       if (tell > 0) drawBang(ctx, sc.x, sc.y - ppu * 0.75, ppu, tell);
     } else if (e.kind === 'cannon') {
-      const { dx, dy } = surfaceDrawOffsetXY(e.placement, e.wallDir, 0.9, CANNON_RIM_INSET);
-      // wall placement: the base sits against the solid side (gen.js wallDir: +1 = solid to the right), see round 10
-      const angle = e.placement === 'wall' && e.wallDir ? -e.wallDir * Math.PI / 2 : 0;
-      sc = worldToScreen(camera, canvasW, canvasH, ex + dx, ey + dy);
-      if (tell > 0) drawTellGlow(ctx, sc.x, sc.y, ppu, tell * 0.7, time);
-      drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, cannonImg, ex + dx, ey + dy, 0.9, angle + wob, fl);
-      if (e.aim !== undefined && !e.ghost) drawBarrel(ctx, sc.x, sc.y, ppu, e, time);
+      // the body is seated CANNON_SEAT toward its rock (enemies.js cannonBody, the same point the mouth is measured from)
+      cannonBody(e, CBODY);
+      const aim = e.aim === undefined ? -HALF_PI : e.aim, ca = Math.cos(aim), sa = Math.sin(aim);
+      cannonPose(e, CPOSE);
+      const bx = CBODY.x + (ex - e.x) + ca * CPOSE.shift, by = CBODY.y + (ey - e.y) + sa * CPOSE.shift;
+      sc = worldToScreen(camera, canvasW, canvasH, bx, by);
+      drawCannonFish(ctx, sc.x, sc.y, ppu, aim + HALF_PI + wob, e.lip || 1, CPOSE.along, CPOSE.across, fl);
+      if (e.kick > 0 && !e.ghost) drawSpitPuff(ctx, camera, worldToScreen, canvasW, canvasH, ppu, e);
     } else if (e.kind === 'beholder') {
       const frame = beholderFrames[Math.floor(time * 8) % beholderFrames.length];
       const pulse = 1 + Math.sin(time * 6) * 0.04;

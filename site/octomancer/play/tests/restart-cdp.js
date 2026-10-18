@@ -9,11 +9,14 @@
 // replayable (no second unlock moment) and can be left from the pause menu; the death screen's Restart run (R, Enter, the button)
 // starts Shallows 1-1 at once, H / 'Back to the hub' goes to the hub; the pause menu's Restart run (button and R); and a quick
 // restart leaves exactly the state that death -> hub -> dive leaves (run, octopus, juice, items, hotbar, aggro, moods, people,
-// dive story, Beholder clock, best runs and journal counters), at 1440x900 and 412x915.
+// dive story, Beholder clock, best runs and journal counters), at 1440x900 and 412x915. The pause menu (2026-10-18): Resume first
+// (a click resumes), Return to hub in a dive asks (Stay / Esc keeps the dive, Yes goes to the hub, alive: not a death) and leaves the
+// same state as death -> hub; neither Return to hub nor Restart run in the hub or the tutorial. Frames: octomancer-web/night/pausemenu-*.png.
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
 const puppeteer = require(path.join(tools, 'node_modules', 'puppeteer-core'));
 const BASE = process.argv[2] || 'http://127.0.0.1:61500/octomancer/play/index.html';
+const OUT = path.join(__dirname, '..', '..', '..', '..', 'octomancer-web', 'night', 'pausemenu-');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const saveScript = (done) => "try{if(!sessionStorage.getItem('keep'))localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,best:0,runs:0,muted:true,helpDone:true,tutorialDone:" + done + ",journal:[]}));sessionStorage.setItem('keep','1')}catch(e){}";
 const VPS = [
@@ -67,7 +70,7 @@ const VPS = [
       if (!touch) { await page.keyboard.press('Escape'); } else { await page.tap('.octo-pause-btn'); }
       await sleep(300);
       let b = await page.evaluate(() => __octo.uiButtons());
-      check(`[${vn}] the tutorial's pause menu offers Leave the tutorial, not Restart run`, b.pauseLeave.shown && !b.pauseRestart.shown);
+      check(`[${vn}] the tutorial's pause menu offers Leave the tutorial, not Restart run or Return to hub`, b.pauseLeave.shown && !b.pauseRestart.shown && !b.pauseHub.shown && b.pauseResume.shown && b.pauseOrder[0] === 'Resume', JSON.stringify(b.pauseOrder));
       if (!touch) await page.click('.octo-pause-leave'); else await page.tap('.octo-pause-leave');
       await settle(page);
       s = await page.evaluate(() => __octo.hubSeal());
@@ -105,12 +108,53 @@ const VPS = [
 
       // --- 3) quick restart vs death -> hub -> dive: the same state ---
       const snaps = [];
-      for (const how of ['hub', 'quick']) {
+      for (const how of ['hub', 'quick', 'pause']) {
         page = await open(vp, '?seed=7&at=2', true, vn);
         await page.evaluate(() => { __octo.giveItem('lantern'); __octo.giveShells(30); __octo.setJuice(9); __octo.giveBombs(1); __octo.shopAggro && __octo.shopAggro('test'); });
-        await dieAndWait(page);
+        if (how === 'pause') { // the pause menu's Return to hub: no death, the hub, then the dive whirlpool
+          const press = async (sel) => { if (!touch) await page.click(sel); else await page.tap(sel); await sleep(250); };
+          const openPause = async () => { if (!touch) await page.keyboard.press('Escape'); else await page.tap('.octo-pause-btn'); await sleep(300); };
+          const vis = () => page.evaluate(() => [...document.querySelectorAll('.octo-pause-overlay button')].filter((e) => e.getBoundingClientRect().width > 1).map((e) => e.textContent.trim()));
+          await openPause();
+          b = await page.evaluate(() => __octo.uiButtons());
+          const hint = await page.evaluate(() => document.querySelector('.octo-pause-overlay .octo-overlay-hint').textContent);
+          check(`[${vn}] the pause menu in a dive: Resume, Restart run, Return to hub, Journal, Settings (Resume first); the hint is short`,
+            JSON.stringify(b.pauseOrder) === JSON.stringify(['Resume', 'Restart run', 'Return to hub', 'Journal', 'Settings']) && (touch ? /pause button also resumes/.test(hint) : hint === 'Esc or Menu also resumes'), JSON.stringify([b.pauseOrder, hint]));
+          await page.screenshot({ path: OUT + 'dive-' + vn + '.png' });
+          await press('.octo-pause-resume');
+          check(`[${vn}] Resume (${touch ? 'tap' : 'click'}) resumes`, !(await page.evaluate(() => __octo.state().paused)));
+          await openPause();
+          await press('.octo-pause-hub');
+          b = await page.evaluate(() => __octo.uiButtons());
+          let v = await vis();
+          const act = await page.evaluate(() => document.activeElement && document.activeElement.className);
+          check(`[${vn}] Return to hub asks first: the question and Yes / Stay take the buttons' place, Stay has the focus`, b.hubAsk && JSON.stringify(v) === '["Yes","Stay"]' && /octo-pause-hub-stay/.test(act) &&
+            /Leave the dive and return to the hub\?/.test(await page.evaluate(() => document.querySelector('.octo-pause-hubask').textContent)), JSON.stringify([v, act]));
+          await page.screenshot({ path: OUT + 'ask-' + vn + '.png' });
+          if (!touch) await page.keyboard.press('Escape'); else await page.tap('.octo-pause-hub-stay');
+          await sleep(300);
+          b = await page.evaluate(() => __octo.uiButtons());
+          v = await vis();
+          check(`[${vn}] ${touch ? 'Stay' : 'Esc'} answers Stay: the menu is back, still paused, still in the dive`, !b.hubAsk && v.includes('Return to hub') && v.includes('Resume') && (await page.evaluate(() => __octo.state().paused)) && (await stage(page)) === 'Shallows 1-2', JSON.stringify(v));
+          if (!touch) { // the Stay button too
+            await press('.octo-pause-hub'); await press('.octo-pause-hub-stay');
+            check(`[${vn}] (the Stay button)`, !(await page.evaluate(() => __octo.uiButtons().hubAsk)) && (await stage(page)) === 'Shallows 1-2' && (await page.evaluate(() => __octo.state().paused)));
+          }
+          const d0 = await page.evaluate(() => __octo.runSnapshot().deaths);
+          await press('.octo-pause-hub'); await press('.octo-pause-hub-yes');
+          await settle(page);
+          const h = await page.evaluate(() => __octo.runSnapshot());
+          check(`[${vn}] Yes: the hub, unpaused, the run ended (no items, shells or juice) and not counted as a death`,
+            h.stage === 'Hub' && !h.paused && h.items.length === 0 && h.shells === 0 && h.juice === 0 && !h.shopAggro && h.deaths === d0, JSON.stringify({ st: h.stage, p: h.paused, i: h.items, j: h.juice, s: h.shells, hb: h.hotbar, ag: h.shopAggro, d: [d0, h.deaths] }));
+          await openPause();
+          b = await page.evaluate(() => __octo.uiButtons());
+          check(`[${vn}] the hub's pause menu has no Return to hub and no Restart run (Resume first)`, !b.pauseHub.shown && !b.pauseRestart.shown && JSON.stringify(b.pauseOrder) === JSON.stringify(['Resume', 'Journal', 'Settings']), JSON.stringify(b.pauseOrder));
+          await page.screenshot({ path: OUT + 'hub-' + vn + '.png' });
+          await press('.octo-pause-resume');
+          await page.evaluate(() => __octo.runEvent('enter'));
+        } else await dieAndWait(page);
         b = await page.evaluate(() => __octo.uiButtons());
-        if (how === 'hub') {
+        if (how === 'pause') { /* entered above */ } else if (how === 'hub') {
           check(`[${vn}] the death screen shows Restart run first, Back to the hub second`, b.restart.shown && b.restart.label === 'Restart run' && b.hub.shown && b.hub.label === 'Back to the hub' && (touch || (b.restart.key === 'R' && b.hub.key === 'H')));
           if (!touch) await page.keyboard.press('KeyH'); else await page.tap('.octo-go-hub');
           await settle(page);
@@ -127,7 +171,7 @@ const VPS = [
         if (how === 'quick') check(`[${vn}] R / Restart run starts Shallows 1-1 at once, no hub`, snap.stage === 'Shallows 1-1' && !snap.gameOver);
         await page.close();
       }
-      const [A, B] = snaps;
+      const [A, B, C] = snaps;
       const norm = (x) => {
         const o = JSON.parse(JSON.stringify(x));
         delete o.time; delete o.seenDive; delete o.paused; delete o.dive.time; delete o.save; // save: compared below
@@ -141,6 +185,11 @@ const VPS = [
       check(`[${vn}] a quick restart leaves the same state as death -> hub -> dive`, diff.length === 0, diff.join(' | '));
       check(`[${vn}] ... a fresh dive: full hearts and bombs, no items, no shells, start juice, calm keepers, a new Beholder clock`,
         B.octo.hearts === B.octo.heartMax && B.octo.bombs === A.octo.bombs && B.items.length === 0 && B.shells === 0 && B.juice === B.juiceStart && !B.shopAggro && B.time < 3 && !B.beholderOut && B.level === 1 && B.deaths === 1, JSON.stringify({ h: B.octo.hearts, b: B.octo.bombs, j: B.juice, t: B.time }));
+      // bar the death: the death count, and Quill, who first comes after a recorded dive (a dropped dive is not recorded, quests.js collectorArrives)
+      const nc = JSON.parse(norm(C)), na2 = JSON.parse(norm(A)); delete nc.deaths; delete na2.deaths;
+      for (const o of [nc, na2]) { delete o.story.quill; delete o.diveStory.quill; }
+      const diffC = Object.keys(na2).filter((k) => JSON.stringify(na2[k]) !== JSON.stringify(nc[k])).map((k) => k + ': ' + JSON.stringify(na2[k]).slice(0, 120) + ' vs ' + JSON.stringify(nc[k]).slice(0, 120));
+      check(`[${vn}] the pause menu's Return to hub -> dive leaves the same state as death -> hub -> dive (bar the death)`, diffC.length === 0 && C.deaths === 0 && C.save.bestRuns === 0 && !C.save.killedBy, diffC.join(' | ') + ' ' + JSON.stringify(C.save));
       check(`[${vn}] ... the death was recorded once either way (best runs, dives, journal killed-by)`, A.save.bestRuns === 1 && B.save.bestRuns === 1 && A.save.dives === B.save.dives && A.save.killedBy === B.save.killedBy && /creature-crab:1/.test(B.save.killedBy), JSON.stringify([A.save, B.save]).slice(0, 300));
 
       // --- 4) Enter on the death screen, the button, and the pause menu's Restart run ---

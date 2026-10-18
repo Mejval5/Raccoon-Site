@@ -152,7 +152,7 @@ export async function runEnemyR35Tests(assert) {
     });
     assert(`cannon: a 0.6 s glow telegraph before each shot (${(chargeSteps / Math.max(1, shotsAt.length) * DT).toFixed(2)} s per shot)`, shotsAt.length >= 2 && Math.abs(chargeSteps / shotsAt.length * DT - CANNON_WINDUP) < 0.08);
     assert(`cannon: 2 s reload between shots (${shotsAt.length >= 2 ? (shotsAt[1] - shotsAt[0]).toFixed(2) : '-'} s apart, 0.6 s of it the glow)`, shotsAt.length >= 2 && Math.abs(shotsAt[1] - shotsAt[0] - (CANNON_RELOAD + CANNON_WINDUP)) < 0.12);
-    assert('cannon: the barrel turns slowly (never more than its turn rate per step)', maxTurn <= 1.2 * DT + 1e-9);
+    assert('cannon: the fish turns slowly (never more than its turn rate per step)', maxTurn <= 1.2 * DT + 1e-9);
   }
   {
     // QA F1: it does not fire the instant the octopus walks into range; it has to turn, then glow
@@ -448,10 +448,10 @@ export async function runEnemyR35Tests(assert) {
     assert('review 3: the blast is drawn through to the end of its 0.4 s window', ctx2.calls.length > 5);
   }
   {
-    // telegraphs: the piranha "!" and glow, the cannon's barrel and charge glow, the crab's rear-up
+    // telegraphs: the piranha "!" and glow; the cannon's tell is its squish (tests/cannon.test.js), no barrel and no glow
     const ctx = recCtx(); const en = createEnemies(); const o = createOctopus(30, 30);
     const p = en.spawnAt('piranha', 0, 0); p.st = PS_WINDUP; p.tell = 0.6; const c = en.spawnAt('cannon', 3, 0, 'floor'); c.tell = 0.5; c.st = CN_CHARGE;
     drawEnemies(ctx, CAM, w2s, 800, 600, en.all(), [], 2, 1);
-    assert('telegraph: a winding-up piranha gets a glow and a "!", a charging cannon a barrel and a muzzle glow', ctx.calls.filter((k) => k === 'createRadialGradient').length >= 3 && ctx.calls.filter((k) => k === 'rect').length >= 1);
+    assert('telegraph: a winding-up piranha gets a glow and a "!"; a charging cannon draws no barrel (no rect) and no glow', ctx.calls.filter((k) => k === 'createRadialGradient').length === 1 && ctx.calls.filter((k) => k === 'rect' || k === 'fillRect').length === 0);
   }
 }

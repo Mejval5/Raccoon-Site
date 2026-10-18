@@ -5,7 +5,8 @@
 // comes back, B closes), settings from the pause menu (every switch and button reachable, A flips a switch, the reset
 // confirm backs out on B, the Controller block draws pad glyphs, Journal and Looks open from it and B comes back to it), the
 // hub's mirror (A opens it, the d-pad browses, A wears, B closes), talking to Marlo on A, buying a ware on A, and B on the
-// death and clear screens never throwing. The focus ring is .octo-pad-focus everywhere. Frames: octomancer-web/night/padui-*.png.
+// death and clear screens never throwing; the pause menu (2026-10-18): the focus starts on Resume and A resumes, Return to hub
+// asks (the ring on Stay, B answers Stay), Yes goes to the hub, where Return to hub and Restart run are not in the walk. The focus ring is .octo-pad-focus everywhere. Frames: octomancer-web/night/padui-*.png.
 //   node pad-ui-cdp.js [port | baseUrl]
 const path = require('path');
 const tools = process.env.OCTO_TOOLS || path.join(process.env.TEMP || '/tmp', 'octo-tools');
@@ -212,6 +213,36 @@ const HB = (p) => p.evaluate(() => __octo.juice().hotbar);
       check('B closes Settings back to the pause menu, B again resumes', !(await page.evaluate(() => __octo.settings().open)) && (await page.evaluate(() => __octo.state().paused)));
       await tap(page, { b: true });
       check('(resumed)', !(await page.evaluate(() => __octo.state().paused)));
+
+      // ---------------------------------------------------- the pause menu's Resume and Return to hub
+      await tap(page, { start: true }); await P(page, {}, 9);
+      let ps = await S(page);
+      check('pause menu: the pad focus starts on Resume', ps.menu && ps.ring && ps.focus === 'Resume', ps.focus);
+      await tap(page, { a: true });
+      check('pause menu: A on Resume resumes', !(await page.evaluate(() => __octo.state().paused)));
+      await tap(page, { start: true }); await P(page, {}, 9);
+      const walk = [];
+      for (let i = 0; i < 8 && !/Return to hub/.test((await S(page)).focus); i++) { walk.push((await S(page)).focus); await tap(page, { down: true }); }
+      check('pause menu: d-pad down from Resume reaches Return to hub (after Restart run)', /Return to hub/.test((await S(page)).focus) && walk.join() === 'Resume,Restart runR', walk.join());
+      await tap(page, { a: true }); await P(page, {}, 3);
+      ps = await S(page);
+      check('pause menu: A on Return to hub asks, the ring on Stay', (await page.evaluate(() => __octo.uiButtons().hubAsk)) && ps.focus === 'Stay' && ps.ring, ps.focus);
+      await shot(page, 'pause-ask');
+      await tap(page, { b: true }); await P(page, {}, 3);
+      ps = await S(page);
+      check('pause menu: B answers Stay (still paused in the dive, the ring back on Return to hub)', !(await page.evaluate(() => __octo.uiButtons().hubAsk)) && (await page.evaluate(() => __octo.state().paused)) && (await page.evaluate(() => __octo.level().stage)) === 'Shallows 1-1' && /Return to hub/.test(ps.focus), ps.focus);
+      await tap(page, { a: true }); await P(page, {}, 3);
+      await tap(page, { left: true });
+      check('pause menu: d-pad left from Stay goes to Yes', (await S(page)).focus === 'Yes', (await S(page)).focus);
+      await tap(page, { a: true });
+      await sleep(500); await page.waitForFunction(() => !__octo.transitioning(), { timeout: 20000 }); await sleep(300);
+      check('pause menu: A on Yes returns to the hub, unpaused', (await page.evaluate(() => __octo.level().stage)) === 'Hub' && !(await page.evaluate(() => __octo.state().paused)));
+      await tap(page, { start: true }); await P(page, {}, 9);
+      const hubWalk = new Set();
+      for (let i = 0; i < 8; i++) { hubWalk.add((await S(page)).focus); await tap(page, { down: true }); }
+      check('pause menu in the hub: the focus starts on Resume; no Return to hub or Restart run to walk to', [...hubWalk][0] === 'Resume' && ![...hubWalk].some((f) => /Return to hub|Restart run/.test(f)), [...hubWalk].join());
+      await tap(page, { b: true });
+      check('pause menu in the hub: B resumes', !(await page.evaluate(() => __octo.state().paused)));
 
       // ---------------------------------------------------- the shop: A buys a ware (nothing needs a click)
       check('dive: no page errors', page.errs.length === 0, page.errs.join(' | '));

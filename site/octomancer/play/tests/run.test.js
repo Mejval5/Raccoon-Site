@@ -81,6 +81,13 @@ export function runRunTests(assert) {
   assert('run: a seeded quick restart replays the dive seed; an unseeded one gets a new seed', seeded.diveSeed === s0 && quick.diveSeed !== s0);
   const rest = mk(); rest.state = S_REST;
   assert('run: quick restart works from the rest grotto too', runEvent(rest, EV_RESTART, 'crab') && rest.state === S_BIOME && rest.level === 1);
+  // the pause menu's Return to hub (EV_LEAVE in a dive): the hub as after a death, but alive it is not one
+  const left = mk(), dead = mk(), ld0 = left.deaths;
+  runEvent(left, EV_LEAVE); runEvent(dead, EV_DEATH, 'crab');
+  assert('run: Return to hub from a dive drops the dive like a death (hub, no items, shells, juice, hotbar) but is not a death',
+    left.state === S_HUB && left.level === 0 && left.items.length === 0 && left.shells === 0 && left.juice === dead.juice && left.hotbar === null && !left.shopAggro && left.deaths === ld0 && dead.deaths === ld0 + 1);
+  const leftRest = mk(); leftRest.state = S_REST;
+  assert('run: Return to hub works from the rest grotto too', runEvent(leftRest, EV_LEAVE) && leftRest.state === S_HUB);
   const hubR = createRun(5, { tutorialDone: true });
   assert('run: no quick restart in the hub or on the end screen', !runEvent(hubR, EV_RESTART) && (hubR.state = S_END, !runEvent(hubR, EV_RESTART)));
 

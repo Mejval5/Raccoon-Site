@@ -159,6 +159,10 @@ export function runEvent(run, ev, cause, opts) {
     toHub(run, true, cause);
     return true;
   }
+  if (ev === EV_LEAVE && (run.state === S_BIOME || run.state === S_REST)) { // the pause menu's Return to hub: the dive is dropped, alive (not a death)
+    toHub(run, false);
+    return true;
+  }
   if (ev === EV_RESTART) {
     // `cause` set: the octopus died (the death screen's button); none: the pause menu, alive (the dive is dropped, not a death)
     if (run.state !== S_BIOME && run.state !== S_REST) return false;

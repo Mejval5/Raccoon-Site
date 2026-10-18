@@ -216,28 +216,60 @@ export function createUI(root, handlers) {
   }
 
   const pause = makeOverlay('octo-pause-overlay');
-  const PAUSE_HINT = 'Esc, the pause button, or tap here to resume';
-  const pauseHint = el('div', 'octo-overlay-hint', PAUSE_HINT);
+  const PAUSE_HINT = 'Esc or Menu also resumes'; // pause menu buttons: Resume is the first button, the hint names the other ways
+  const PAUSE_HINT_TOUCH = 'The pause button also resumes';
+  const coarse = () => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } };
+  /** The hint under 'Paused' for a scheme: the pad's own buttons, a phone's pause button, else Esc / Menu. */
+  const pauseHintFor = (s, style) => (s === 'pad' ? glyph('pause', 'pad', style).label + ' or ' + glyph('back', 'pad', style).label + ' also resumes'
+    : s === 'touch' || (s !== 'keyboard' && s !== 'mouse' && coarse()) ? PAUSE_HINT_TOUCH : PAUSE_HINT);
+  const pauseHint = el('div', 'octo-overlay-hint', pauseHintFor('', 'xbox'));
   pause.panel.append(el('div', 'octo-overlay-title', 'Paused'), pauseHint);
+  // pause menu buttons (2026-10-18): Resume first (the parchment primary, where the pad's focus starts)
+  const pauseResumeBtn = el('button', 'octo-btn-wide octo-pause-resume', 'Resume');
+  pauseResumeBtn.type = 'button';
+  pauseResumeBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onTogglePause && handlers.onTogglePause(); });
   // round 38: the journal opens from the pause menu (the touch way in; the hub board is gone since 2026-10-08)
   const journalBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Journal');
   journalBtn.type = 'button';
   journalBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJournal && handlers.onOpenJournal(); });
   // Spelunky's quick restart from the pause menu (in a dive), and a way out of the tutorial; main.js shows the ones that apply (setPauseActions)
-  const pauseRestartBtn = keyButton('octo-btn-wide', 'Restart run', 'R');
+  const pauseRestartBtn = keyButton('octo-btn-wide octo-btn-ghost', 'Restart run', 'R');
   pauseRestartBtn.classList.add('octo-pause-restart');
   pauseRestartBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onQuickRestart && handlers.onQuickRestart(); });
+  // Return to hub (in a dive): it ends the run, so it asks first, the death screen's "Leave the game" pattern (the buttons give
+  // way to the question, Stay takes the focus; B / Esc answers Stay: hubAsked / answerHub)
+  const pauseHubBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-hub', 'Return to hub');
+  pauseHubBtn.type = 'button';
+  const hubAskBox = el('div', 'octo-go-confirm octo-pause-hubask');
+  const hubAskYes = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-hub-yes', 'Yes');
+  hubAskYes.type = 'button';
+  const hubAskStay = el('button', 'octo-btn-wide octo-pause-hub-stay', 'Stay');
+  hubAskStay.type = 'button';
+  const hubAskBtns = el('div', 'octo-go-confirmbtns');
+  hubAskBtns.append(hubAskYes, hubAskStay);
+  hubAskBox.append(el('div', 'octo-go-confirmtext', 'Leave the dive and return to the hub?'), hubAskBtns);
+  hubAskBox.style.display = 'none';
+  hubAskBox.addEventListener('click', (e) => e.stopPropagation()); // a click on the question is not "tap to resume"
   const pauseLeaveBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-leave', 'Leave the tutorial');
   pauseLeaveBtn.type = 'button';
   pauseLeaveBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onLeaveTutorial && handlers.onLeaveTutorial(); });
-  pauseRestartBtn.style.display = pauseLeaveBtn.style.display = 'none';
+  pauseRestartBtn.style.display = pauseHubBtn.style.display = pauseLeaveBtn.style.display = 'none';
   // controller Phase 1: a pad has no gear button to click, so Settings is in the pause menu too
   const pauseSettingsBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-pause-settings', 'Settings');
   pauseSettingsBtn.type = 'button';
   pauseSettingsBtn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onToggleSettings && handlers.onToggleSettings(); });
   const pauseBtns = el('div', 'octo-pause-btns');
-  pauseBtns.append(pauseRestartBtn, journalBtn, pauseSettingsBtn, pauseLeaveBtn);
+  pauseBtns.append(pauseResumeBtn, pauseRestartBtn, pauseHubBtn, hubAskBox, journalBtn, pauseSettingsBtn, pauseLeaveBtn);
   pause.panel.append(pauseBtns, el('div', 'octo-credit', CREDIT_TEXT));
+  function askHub(on) {
+    if (on === (hubAskBox.style.display !== 'none')) return;
+    hubAskBox.style.display = on ? '' : 'none';
+    pause.panel.classList.toggle('is-asking', on);
+    try { (on ? hubAskStay : pauseHubBtn).focus({ preventScroll: true }); } catch (e) { /* old browsers */ }
+  }
+  pauseHubBtn.addEventListener('click', (e) => { e.stopPropagation(); askHub(true); });
+  hubAskStay.addEventListener('click', (e) => { e.stopPropagation(); askHub(false); });
+  hubAskYes.addEventListener('click', (e) => { e.stopPropagation(); askHub(false); handlers.onReturnHub && handlers.onReturnHub(); });
   // Tapping the dimmed backdrop resumes too (but not clicks bubbling from
   // the panel's own future buttons, should any be added).
   pause.overlayEl.addEventListener('click', (e) => {
@@ -401,15 +433,22 @@ export function createUI(root, handlers) {
       hubBtn.style.display = quickMode && leaveBox.style.display === 'none' ? '' : 'none';
       if (quickMode) hubBtn.setLabel(hubButton, 'H');
     },
-    /** Which extra pause-menu buttons show: Restart run (in a dive), Leave the tutorial (in the tutorial). */
-    setPauseActions(restart, leave) {
+    /** Which extra pause-menu buttons show: Restart run and Return to hub (in a dive), Leave the tutorial (in the tutorial). */
+    setPauseActions(restart, leave, hub = restart) {
       pauseRestartBtn.style.display = restart ? '' : 'none';
       pauseLeaveBtn.style.display = leave ? '' : 'none';
+      pauseHubBtn.style.display = hub ? '' : 'none';
+      if (!hub) askHub(false);
     },
+    /** The pause menu's Return to hub question is open (B / Esc there answers Stay: `answerHub(false)`). */
+    hubAsked() { return hubAskBox.style.display !== 'none'; },
+    answerHub(yes) { if (yes) hubAskYes.click(); else askHub(false); },
+    /** Where the pause menu's focus starts: Resume, or Stay while the Return to hub question is open. */
+    pauseFirst() { return hubAskBox.style.display !== 'none' ? hubAskStay : pauseResumeBtn; },
     /** Test hook: the death screen's and the pause menu's buttons as shown ({label, key, shown}). */
     buttons() {
       const b = (x) => ({ label: x.querySelector('.octo-btn-label') ? x.querySelector('.octo-btn-label').textContent : x.textContent, key: x.querySelector('.octo-key') ? x.querySelector('.octo-key').textContent : '', shown: x.style.display !== 'none' });
-      return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), leaveAsk: leaveBox.style.display !== 'none', pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
+      return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), leaveAsk: leaveBox.style.display !== 'none', pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn), pauseResume: b(pauseResumeBtn), pauseHub: b(pauseHubBtn), hubAsk: hubAskBox.style.display !== 'none', pauseOrder: [...pauseBtns.children].filter((x) => x.tagName === 'BUTTON' && x.style.display !== 'none').map((x) => b(x).label) };
     },
     hideControlsHelp() { helpOff = true; applyHelp(); },
     /** The input scheme changed (input.js modechange): the line re-renders with that scheme's glyphs. `dot` (co-op): the colour
@@ -417,9 +456,10 @@ export function createUI(root, handlers) {
     setControlsScheme(scheme, style = 'xbox', dot = '') {
       const s = scheme === 'pad' ? 'pad' : scheme === 'touch' ? 'touch' : 'keyboard';
       dot = dot || '';
+      const hint = pauseHintFor(scheme === 'pad' || scheme === 'touch' || scheme === 'keyboard' || scheme === 'mouse' ? scheme : '', style);
+      if (pauseHint.textContent !== hint) pauseHint.textContent = hint;
       if (s === helpScheme && style === helpStyle && dot === helpDot) return;
       helpScheme = s; helpStyle = style; helpDot = dot; renderHelp(); applyHelp();
-      pauseHint.textContent = s === 'pad' ? glyph('pause', 'pad', style).label + ' or ' + glyph('back', 'pad', style).label + ' to resume' : PAUSE_HINT;
     },
     /** Test hook: what the controls line shows: its scheme, words and the glyph labels drawn. */
     controlsHelpRead() {
@@ -433,8 +473,8 @@ export function createUI(root, handlers) {
       if (scheme !== 'pad') helpRetired.keyboard = true;
       applyHelp();
     },
-    showPause() { pause.overlayEl.style.display = 'flex'; },
-    hidePause() { pause.overlayEl.style.display = 'none'; },
+    showPause() { if (pause.overlayEl.style.display === 'none') askHub(false); pause.overlayEl.style.display = 'flex'; },
+    hidePause() { askHub(false); pause.overlayEl.style.display = 'none'; },
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none' && !gameover.overlayEl.classList.contains('is-pending'); },
     /** The octopus just died: lay the death screen out, invisible, so its rect is known before it shows. */
     prepareGameOver() {

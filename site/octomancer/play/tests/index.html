@@ -193,6 +193,10 @@ await runEnemyR35Tests(assert);
 import { runEnemyR36Tests } from './enemies-r36.test.js';
 await runEnemyR36Tests(assert);
 
+// --- The cannon fish: turns its body, squishes before it spits, the shot leaves its mouth (no barrel) ---
+import { runCannonTests } from './cannon.test.js';
+await runCannonTests(assert);
+
 // --- 2026-10-18: the manta is a glider (loops, banks over you, slams, rests on the floor) ---
 import { runMantaTests } from './manta.test.js';
 await runMantaTests(assert);
