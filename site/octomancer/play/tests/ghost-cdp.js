@@ -44,7 +44,7 @@ async function hold(p, list, n) { for (let i = 0; i < n; i++) { await PADS(p, li
 async function joinB(page) {
   await PADS(page, [{ lx: 0.3 }, {}]); await sleep(100); await PADS(page, [{}, {}]);
   await tapPads(page, [{ start: true }, {}]);
-  await tapPads(page, [{}, { a: true }]);
+  await tapPads(page, [{}, { start: true }]);
   await tapPads(page, [{ start: true }, {}]);
   await page.evaluate(() => __octo.freeze(true));
   await page.waitForFunction(() => __octo.coop().tints.ready >= 1, { timeout: 10000, polling: 100 }).catch(() => {});
