@@ -99,6 +99,11 @@ export function gainShells(run, n) {
   run.dive.shells += n;
 }
 
+/** Hub building (HUB-BUILDING.md): the share of the carried shells a death still banks (Daniel: all of them). Tuning knob. */
+export const DEATH_BANK = 1;
+/** The shells a run that ends now banks into the hoard: everything carried (a death: DEATH_BANK of it). */
+export function bankedShells(run, cleared) { const n = Math.max(0, run.shells | 0); return cleared ? n : Math.floor(n * DEATH_BANK); }
+
 /**
  * Close the dive and snapshot its stats into run.last (what the death / clear screen shows and save.js records).
  * `depth` ranks runs: the level number reached, or BIOME_LEVELS + 1 for a cleared biome.
@@ -113,6 +118,7 @@ export function endDive(run, cleared, cause) {
     depth: cleared ? BIOME_LEVELS + 1 : Math.max(1, run.level || d.reached),
     levelsCleared: run.levelsCleared,
     time: d.time, shells: d.shells, kills: d.kills, quests: d.quests, swift: d.swift | 0,
+    banked: bankedShells(run, cleared), // hub building: what is carried out goes into the hoard (save.js recordDive)
     cause: cleared ? '' : d.cause,
     seed: run.diveSeed, // the dive's own seed: typing it in the settings menu replays the same levels
     shortcutNew: false,

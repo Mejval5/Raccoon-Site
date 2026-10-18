@@ -1,0 +1,30 @@
+{
+ "_doc": "Hub building (octomancer-web/HUB-BUILDING.md, js/hub-build.js, js/hub-build-draw.js). tiers: hoard.lifetime needed for tier 0..3. pile: the balance at which the shell pile reaches stage 1..5. decor: id, name, fits (spot types: hook, niche, ledge, plaza, mural), cost in shells, tier, art (what hub-build-draw.js paints), need (optional, hub-rooms.js conditionMet: the person must have been helped), hint (shown while `need` is not met). Purely decorative: nothing here changes gameplay.",
+ "tiers": [0, 50, 150, 400],
+ "pile": [1, 20, 60, 150, 350],
+ "decor": [
+  { "id": "lantern", "name": "Shell lantern", "fits": ["hook"], "cost": 10, "tier": 0, "art": "lantern" },
+  { "id": "planter", "name": "Kelp planter", "fits": ["ledge", "plaza"], "cost": 15, "tier": 0, "art": "planter" },
+  { "id": "coral", "name": "Coral cluster", "fits": ["ledge", "niche"], "cost": 20, "tier": 0, "art": "coral" },
+  { "id": "anemones", "name": "Anemone bed", "fits": ["ledge", "plaza"], "cost": 20, "tier": 0, "art": "anemones" },
+  { "id": "mosaic-fish", "name": "Mosaic: fish school", "fits": ["mural"], "cost": 25, "tier": 0, "art": "mosaic", "motif": "fish" },
+  { "id": "plaque-marlo", "name": "Marlo's plaque", "fits": ["niche", "ledge"], "cost": 25, "tier": 0, "art": "plaque", "who": "marlo", "need": { "story": "marlo", "min": 1 }, "hint": "Free the diver in the rock first." },
+  { "id": "plaque-pip", "name": "Pip's plaque", "fits": ["niche", "ledge"], "cost": 25, "tier": 0, "art": "plaque", "who": "pip", "need": { "story": "pip", "min": 1 }, "hint": "Free the caged critter first." },
+  { "id": "plaque-quill", "name": "Quill's plaque", "fits": ["niche", "ledge"], "cost": 25, "tier": 0, "art": "plaque", "who": "quill", "need": { "story": "quill", "min": 1 }, "hint": "Meet the collector first." },
+  { "id": "plaque-host", "name": "The host's plaque", "fits": ["niche", "ledge"], "cost": 25, "tier": 0, "art": "plaque", "who": "host", "need": { "story": "host", "min": 1 }, "hint": "Win a wager at a challenge pool first." },
+  { "id": "plaque-keeper", "name": "The keeper's plaque", "fits": ["niche", "ledge"], "cost": 25, "tier": 0, "art": "plaque", "who": "keeper", "need": { "journal": "person-keeper", "stat": "collected", "min": 1 }, "hint": "Buy something from a stall first." },
+  { "id": "glowjar", "name": "Glow jar", "fits": ["hook", "niche", "ledge"], "cost": 30, "tier": 1, "art": "glowjar" },
+  { "id": "fan", "name": "Sea fan", "fits": ["niche", "ledge"], "cost": 30, "tier": 1, "art": "fan" },
+  { "id": "bell", "name": "Bell shell", "fits": ["hook"], "cost": 35, "tier": 1, "art": "bell" },
+  { "id": "bench", "name": "Driftwood bench", "fits": ["plaza"], "cost": 40, "tier": 1, "art": "bench" },
+  { "id": "mosaic-octopus", "name": "Mosaic: octopus", "fits": ["mural"], "cost": 45, "tier": 1, "art": "mosaic", "motif": "octopus" },
+  { "id": "chimes", "name": "Sea-glass chimes", "fits": ["hook"], "cost": 55, "tier": 2, "art": "chimes" },
+  { "id": "net", "name": "Net with glass floats", "fits": ["hook"], "cost": 60, "tier": 2, "art": "net" },
+  { "id": "anchor", "name": "Old anchor", "fits": ["plaza", "ledge"], "cost": 70, "tier": 2, "art": "anchor" },
+  { "id": "mosaic-whirl", "name": "Mosaic: whirlpool", "fits": ["mural"], "cost": 70, "tier": 2, "art": "mosaic", "motif": "whirl" },
+  { "id": "garden", "name": "Coral garden", "fits": ["plaza"], "cost": 80, "tier": 2, "art": "garden" },
+  { "id": "lanterns", "name": "Lantern string", "fits": ["hook"], "cost": 90, "tier": 3, "art": "lanterns" },
+  { "id": "idol", "name": "Stone idol", "fits": ["plaza", "ledge"], "cost": 100, "tier": 3, "art": "idol" },
+  { "id": "mosaic-village", "name": "Mosaic: the village", "fits": ["mural"], "cost": 120, "tier": 3, "art": "mosaic", "motif": "village" }
+ ]
+}

@@ -29,9 +29,12 @@ const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'reli
   // the hub village (hub-rooms.js): hubRooms = bit mask of the rooms seen open (a room once open stays open), hubSecret = the keepsake
   // behind the fish bone was found, hubPractice = practice rounds won at the host's target
   'hubRooms', 'hubSecret', 'hubPractice'];
+// hub building (HUB-BUILDING.md): the hoard's resources (see getHoard below); add later ones (pearls, moonShells, driftwood) here
+export const HOARD_KEYS = ['shells', 'lifetime'];
+const SPOT_ID = /^[a-z0-9-]{1,40}$/;
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
-  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, helpPadDone: false, helpLevels: { keyboard: 0, pad: 0 }, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory(), skins: null, skin: DEFAULT_SKIN };
+  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, helpPadDone: false, helpLevels: { keyboard: 0, pad: 0 }, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory(), skins: null, skin: DEFAULT_SKIN, hoard: freshHoard(), hubBuild: {} };
 }
 
 /** @type {ReturnType<typeof freshMemory>} */
@@ -83,11 +86,13 @@ export function loadBest() {
         story: cleanStory(obj.story),
         skins: cleanSkins(obj.skins),
         skin: isSkinId(obj.skin) ? obj.skin : DEFAULT_SKIN,
+        hoard: cleanHoard(obj.hoard),
+        hubBuild: cleanHubBuild(obj.hubBuild),
       };
       if (memory.skins && !memory.skins.includes(memory.skin)) memory.skin = DEFAULT_SKIN;
     }
   }
-  return { ...memory, skins: memory.skins ? memory.skins.slice() : null, journal: memory.journal.slice(), helpLevels: { ...memory.helpLevels }, bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } } };
+  return { ...memory, skins: memory.skins ? memory.skins.slice() : null, journal: memory.journal.slice(), helpLevels: { ...memory.helpLevels }, bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } }, hoard: { ...memory.hoard }, hubBuild: { ...memory.hubBuild } };
 }
 
 /** Records a finished run's score: bumps `runs`, raises `best` if beaten,
@@ -219,6 +224,7 @@ export function recordDive(sum) {
   if (entry.depth > m.bestDepth) m.bestDepth = entry.depth;
   m.shells += entry.shells; m.kills += entry.kills; m.time += entry.time; m.swift = (m.swift | 0) + Math.floor(num(sum && sum.swift));
   if (!entry.cleared) { const k = entry.cause || 'unknown'; m.deaths[k] = (m.deaths[k] || 0) + 1; }
+  bankInto(memory.hoard, sum && sum.banked); // hub building: what the dive carried out goes into the hoard
   writeToStorage();
   return { rank: res.rank, bestRuns: res.list.map((r) => ({ ...r })) };
 }
@@ -343,4 +349,45 @@ export function setSkin(id) {
   const list = memory.skins || [DEFAULT_SKIN];
   if (isSkinId(id) && list.includes(id)) { memory.skin = id; writeToStorage(); }
   return memory.skin;
+}
+
+// --- hub building (HUB-BUILDING.md, hub-build.js): the hoard banked from every run and the decorations built in the hub ---
+// hoard.shells = the balance to spend, hoard.lifetime = every shell ever banked (unlock tiers, never lowered). Later resources go
+// in HOARD_KEYS (a missing key reads 0, so an older save needs nothing).
+function freshHoard() { const o = {}; for (const k of HOARD_KEYS) o[k] = 0; return o; }
+function cleanHoard(raw) {
+  const out = freshHoard();
+  if (raw && typeof raw === 'object') for (const k of HOARD_KEYS) out[k] = Math.floor(num(raw[k]));
+  if (out.lifetime < out.shells) out.lifetime = out.shells;
+  return out;
+}
+function bankInto(h, n) { const v = Math.floor(num(n)); if (v > 0) { h.shells += v; h.lifetime += v; } return v; }
+function cleanHubBuild(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const k of Object.keys(raw).slice(0, 64)) if (SPOT_ID.test(k) && typeof raw[k] === 'string' && SPOT_ID.test(raw[k])) out[k] = raw[k];
+  return out;
+}
+/** The hoard: {shells, lifetime} (a copy). */
+export function getHoard() { return { ...loadBest().hoard }; }
+/** Bank `n` shells (a run's carried shells); returns the hoard. */
+export function bankShells(n) { loadBest(); if (bankInto(memory.hoard, n)) writeToStorage(); return { ...memory.hoard }; }
+/** Spend `n` shells from the hoard: false (nothing spent) when it holds fewer. */
+export function spendHoard(n) {
+  loadBest();
+  const v = Math.floor(num(n));
+  if (v > memory.hoard.shells) return false;
+  memory.hoard.shells -= v;
+  writeToStorage();
+  return true;
+}
+/** The decorations built: {spotId: decoId} (a copy). */
+export function getHubBuild() { return { ...loadBest().hubBuild }; }
+/** Build `decoId` on `spotId`, or clear it (null); returns the build. */
+export function setHubPiece(spotId, decoId) {
+  loadBest();
+  if (!SPOT_ID.test(String(spotId))) return { ...memory.hubBuild };
+  if (decoId && SPOT_ID.test(String(decoId))) memory.hubBuild[spotId] = String(decoId); else delete memory.hubBuild[spotId];
+  writeToStorage();
+  return { ...memory.hubBuild };
 }

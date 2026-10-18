@@ -106,5 +106,107 @@
    "x": 15.5,
    "y": 30.5
   }
- ]
+ ],
+ "build": {
+  "_doc": "Hub building (octomancer-web/HUB-BUILDING.md, js/hub-build.js). pile: the hoard's shell pile, the centre of its base on the floor; tally: the carved tally stone beside it. spots: where decorations go. hook: x, y = the point on the ceiling (y = the ceiling's edge) the piece hangs from; niche: x = the wall face, y = the piece's centre, side = where the rock is; ledge / plaza: x, y = the centre of the piece's base on the floor; mural: x, y = the centre of a back-wall rectangle w by h. room: the spot exists only while that hub room is open.",
+  "pile": {
+   "x": 42.3,
+   "y": 19
+  },
+  "tally": {
+   "x": 43.85,
+   "y": 19
+  },
+  "spots": [
+   {
+    "id": "plaza-hook-w",
+    "type": "hook",
+    "x": 32.5,
+    "y": 5
+   },
+   {
+    "id": "plaza-hook-e",
+    "type": "hook",
+    "x": 41.5,
+    "y": 4
+   },
+   {
+    "id": "plaza-mural",
+    "type": "mural",
+    "x": 43.2,
+    "y": 14.4,
+    "w": 5.4,
+    "h": 2.6
+   },
+   {
+    "id": "plaza-floor",
+    "type": "plaza",
+    "x": 25.7,
+    "y": 19
+   },
+   {
+    "id": "shaft-niche-w",
+    "type": "niche",
+    "x": 34,
+    "y": 23.5,
+    "side": "left"
+   },
+   {
+    "id": "shaft-niche-e",
+    "type": "niche",
+    "x": 39,
+    "y": 25.5,
+    "side": "right"
+   },
+   {
+    "id": "dive-ledge-w",
+    "type": "ledge",
+    "x": 28.6,
+    "y": 36
+   },
+   {
+    "id": "dive-ledge-e",
+    "type": "ledge",
+    "x": 44.2,
+    "y": 36
+   },
+   {
+    "id": "workshop-niche",
+    "type": "niche",
+    "x": 68,
+    "y": 8.6,
+    "side": "right",
+    "room": "workshop"
+   },
+   {
+    "id": "grotto-niche",
+    "type": "niche",
+    "x": 4,
+    "y": 7.6,
+    "side": "left",
+    "room": "grotto"
+   },
+   {
+    "id": "nook-hook",
+    "type": "hook",
+    "x": 14.5,
+    "y": 23,
+    "room": "nook"
+   },
+   {
+    "id": "arena-hook",
+    "type": "hook",
+    "x": 56.5,
+    "y": 22,
+    "room": "arena"
+   },
+   {
+    "id": "den-ledge",
+    "type": "ledge",
+    "x": 20.2,
+    "y": 40,
+    "room": "den"
+   }
+  ]
+ }
 }

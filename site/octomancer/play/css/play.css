@@ -906,6 +906,11 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   .octo-skin-cv { width: 64px; height: 64px; }
   .octo-skins-sub { display: none; }
 }
+/* hub building (build-picker.js): the looks picker's panel and cards, plus a cost line; a card the hoard cannot pay for is dimmed */
+.octo-build-cost { font-size: 11.5px; font-weight: 600; color: #d8c79a; line-height: 1.1; min-height: 13px; }
+.octo-build-card.is-poor { opacity: .55; }
+.octo-build-card.is-poor .octo-build-cost { color: #c99a86; }
+.octo-build-overlay .octo-build-sub { display: block; }
 
 /* --- local co-op, Phase 1 (coop-ui.js): the pause menu's player rows and the per-player HUD strips. Natural colours, flat,
    no gloss: a coloured dot or a band of the player's colour on the same dark sea-glass panel as the rest of the HUD. --- */

@@ -66,10 +66,9 @@
       { "kind": "lamp", "dx": 11.5, "dy": -7.5, "when": "always" },
       { "kind": "lamp", "dx": -1.5, "dy": 12.5, "when": "always" },
       { "kind": "lamp", "dx": 8.5, "dy": 12.0, "when": "always" },
-      { "sprite": "stone", "dx": -8.5, "dy": 1, "h": 1.0, "when": "always" },
+      { "sprite": "stone", "dx": -9.7, "dy": 1, "h": 1.0, "when": "always" },
       { "sprite": "pot", "dx": -1.0, "dy": 1, "h": 0.8, "when": "always" },
-      { "sprite": "pot", "dx": -0.3, "dy": 1, "h": 0.6, "when": "always" },
-      { "sprite": "kelpNest", "dx": 10.0, "dy": 1, "h": 0.6, "when": "always" }
+      { "sprite": "pot", "dx": -0.3, "dy": 1, "h": 0.6, "when": "always" }
     ] }
  ],
  "target": { "sprite": "practiceTarget", "h": 1.8, "hits": 3, "window": 10,

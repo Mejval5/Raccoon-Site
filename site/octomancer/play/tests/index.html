@@ -307,6 +307,10 @@ await runChainTests(assert);
 import { runSkinsTests } from './skins.test.js';
 await runSkinsTests(assert);
 
+// --- 2026-10-18: hub building (the hoard banked from every run, decorations on the hub's spots; HUB-BUILDING.md) ---
+import { runHubBuildTests } from './hub-build.test.js';
+await runHubBuildTests(assert);
+
 // --- 2026-10-08: back rooms (the kelp grotto under the level, entered on F) ---
 import { runBackroomTests } from './backroom.test.js';
 await runBackroomTests(assert);

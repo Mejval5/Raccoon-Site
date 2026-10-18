@@ -9,6 +9,7 @@ import { ATLAS_RECTS } from './sprite-atlas.js';
 import { ATLAS_R3_RECTS, ATLAS_R3_META } from './sprite-atlas-r3.js';
 import { ATLAS_R4_RECTS } from './sprite-atlas-r4.js';
 import { ATLAS_HUB_RECTS } from './sprite-atlas-hub.js';
+import { ATLAS_BUILD_RECTS } from './sprite-atlas-build.js';
 import { decodeBitmap } from './v2-art.js';
 
 // Two atlases: the first (people, loot, items, hazards) and round 3 (giant clam, limb, drops, ink, bomb). Each has its own image,
@@ -19,6 +20,7 @@ const atlases = [
   { file: 'sprites-r4.webp', rects: ATLAS_R4_RECTS, img: null, ready: false },
   { file: 'sprites-hub.webp', rects: ATLAS_HUB_RECTS, img: null, ready: false },
   { file: 'altar.webp', rects: { altar: [0, 0, 322, 200] }, img: null, ready: false }, // the offering altar (altar-draw.js)
+  { file: 'sprites-build.webp', rects: ATLAS_BUILD_RECTS, img: null, ready: false }, // hub building (HUB-BUILDING.md): bench, anchor, net
 ];
 const listeners = [];
 
@@ -95,7 +97,7 @@ export function drawSpriteColumns(ctx, name, u0, u1, dx, dy, dw, dh) {
 }
 
 /** The aspect w / h of a sprite (1 when unknown): sizes can be worked out before the atlas has loaded. */
-export function spriteAspect(name) { const r = ATLAS_RECTS[name] || ATLAS_R3_RECTS[name] || ATLAS_R4_RECTS[name] || ATLAS_HUB_RECTS[name]; return r ? r[2] / r[3] : 1; }
+export function spriteAspect(name) { const r = ATLAS_RECTS[name] || ATLAS_R3_RECTS[name] || ATLAS_R4_RECTS[name] || ATLAS_HUB_RECTS[name] || ATLAS_BUILD_RECTS[name]; return r ? r[2] / r[3] : 1; }
 
 /** Draw the bomb sprite `name` ('bomb' or 'bombHot') with its body centre on (x, y) and its body radius `r` px, turned by `rot` about that centre. */
 export function drawBombSprite(ctx, name, x, y, r, rot = 0) {

@@ -40,6 +40,7 @@ export function summaryRows(s, seeded = false) {
     ['Shells', String(s.shells)],
     ['Kills', String(s.kills)],
     ['People helped', String(s.quests)],
+    ...(s.banked !== undefined ? [['Banked', s.banked + (s.banked === 1 ? ' shell' : ' shells')]] : []), // hub building: into the hoard
     [s.cleared ? 'Result' : 'Cause of death', s.cleared ? 'Cleared' : causeText(s.cause)],
   ];
   if (seeded) rows.push(['Seed', String(s.seed)]);

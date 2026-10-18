@@ -137,6 +137,9 @@ import { drawItemIcon } from './items-draw.js';
 import { drawSpring, springReach } from './spring-draw.js';
 import { fetchHubRooms, roomStates, applyHubRooms, roomOf, roomAt, kelpPush, openMask, ROOMS_KEY } from './hub-rooms.js';
 import { drawHubRooms } from './hub-rooms-draw.js';
+import { fetchHubBuild, placeSpots } from './hub-build.js'; // hub building (HUB-BUILDING.md): the hoard and the decorations
+import { createHubBuildGame } from './hub-build-game.js';
+import { bankShells, getHubBuild, setHubPiece } from './save.js';
 import { spriteAspect } from './sprites.js';
 import { artImg } from './v2-art.js';
 // local co-op, Phase 1 (MULTIPLAYER-PLAN.md): the roster and its helpers, the pause rows and HUD strips, the player colours' sheets
@@ -174,6 +177,7 @@ let run = null;
 let questTable = null;
 let shopItems = [];
 let hubRooms = null; // the hub village's rooms (data/hub-rooms.json, hub-rooms.js)
+let hubBuildTable = null; // hub building: the decorations catalogue (data/hub-build.json, hub-build.js)
 setFoliageTable(await fetchFoliage()); // r46: every original foliage kind, its offsets and spawn rules (data/foliage.json)
 if (V2) {
   setDefaultBank(await fetchBiome1Bank());
@@ -181,6 +185,7 @@ if (V2) {
   authoredJson = await fetchAuthoredMaps();
   questTable = await fetchQuests();
   hubRooms = await fetchHubRooms();
+  hubBuildTable = await fetchHubBuild();
   shopItems = await fetchShopItems();
   run = createRun(initialSeed, { tutorialDone: getTutorialDone(), shortcut: getShortcut(), shortcut3: getStory().marlo >= DIVER_RUNS, juiceStart: juiceStart(), rest: true });
   run.nextSeed = seedFromText(getSettings().seed); // the seed typed in the settings menu for the next dive (null = random)
@@ -258,6 +263,7 @@ function makeWorldSteps(done) {
 function hubLevel() {
   const lv = parseAuthoredMap(authoredJson.hub);
   if (hubRooms) applyHubRooms(lv, hubRooms, roomStates(hubRooms, hubRoomCtx()), spriteAspect);
+  if (hubBuildTable) placeSpots(lv, authoredJson.hub.build); // hub building: the spots (a room's once it is open), after the rooms
   return lv;
 }
 const STAT_BY_NAME = { seen: STAT_SEEN, killed: STAT_KILLED, killedBy: STAT_KILLED_BY, collected: STAT_COLLECTED, used: STAT_USED, carried: STAT_CARRIED };
@@ -576,7 +582,7 @@ const journalScreen = createJournalScreen(hudEl, journal, {
   onSelectSlot(i) { if (V2 && run) selectIndex(hotbar(), i); },
 });
 /** A full-screen panel is open: the HUD row (hearts, stats) hides under it. */
-function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen || looksOpen); }
+function syncModal() { hudEl.classList.toggle('octo-modal-open', settingsOpen || journalScreen.isOpen() || inventoryOpen || looksOpen || buildOpen); }
 // settings menu (round 38): every change applies at once and is persisted by save.js
 function applySetting(key, v) {
   switch (key) {
@@ -657,6 +663,16 @@ const looksPicker = createSkinPicker(hudEl, {
   onOpen() { looksOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
   onClose() { looksOpen = false; applyPaused(); syncModal(); backToSettings(); },
 });
+// hub building (HUB-BUILDING.md, hub-build-game.js): the hand at a chalk spot opens the build picker; the hoard pays
+let buildOpen = false;
+const buildGame = V2 && hubBuildTable ? createHubBuildGame({
+  hudEl, table: hubBuildTable, buildJson: authoredJson.hub.build, level: () => world.level, inHub: () => !!run && run.state === S_HUB && !MOVETEST,
+  octos: () => (coop() ? players().map(oOf) : [octo]), ctx: () => hubRoomCtx(), toast: (text) => ui.showToast(text, 3000, true), sfx,
+  discover: (id) => discover(id), found: (id) => journal.has(id), bump: (id) => journal.bump(id, STAT_USED), viewNear: (x, y) => viewNear(x, y),
+  onOpen() { buildOpen = true; ui.setPrompt(null); applyPaused(); syncModal(); },
+  onClose() { buildOpen = false; applyPaused(); syncModal(); },
+}) : null;
+const PAD_BUILD = { root: null, back: () => buildGame.hide(), pad: (a) => buildGame.picker.pad(a), focus: () => buildGame.picker.padFocus() };
 function openLooks() {
   if (!V2 || looksOpen || transitioning || ui.isEndShown()) return false;
   if (journalScreen.isOpen()) journalScreen.hide();
@@ -734,8 +750,8 @@ let manualPaused = false;
 let autoPaused = false;
 function applyPaused() {
   const wasPaused = loop.paused;
-  const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen || looksOpen;
-  const showOverlay = isPaused && !settingsOpen && !inventoryOpen && !looksOpen; // (the looks picker too) // the settings panel and the inventory are their own overlays
+  const isPaused = manualPaused || autoPaused || settingsOpen || inventoryOpen || looksOpen || buildOpen;
+  const showOverlay = isPaused && !settingsOpen && !inventoryOpen && !looksOpen && !buildOpen; // (the looks picker too) // the settings panel and the inventory are their own overlays
   if (showOverlay && V2) ui.setPauseActions(canQuickRestart(run) && !everyoneDead() && !transitioning, run.state === S_TUTORIAL && !transitioning); // Restart run in a dive, Leave the tutorial in it
   if (showOverlay && V2) refreshRows(); // local co-op: the player rows and the Add line
   if (isPaused === wasPaused) { if (showOverlay) ui.showPause(); else ui.hidePause(); return; }
@@ -819,6 +835,7 @@ function padMenu() {
   if (V2 && ui.isOfferShown()) return { root: qs('.octo-offer-overlay'), back: () => ui.answerOffer(false) };
   if (settingsPanel.isOpen()) return { root: settingsPanel.el, back: () => settingsPanel.back() };
   if (looksOpen) { PAD_LOOKS.root = looksPicker.el; return PAD_LOOKS; }
+  if (buildOpen) { PAD_BUILD.root = buildGame.picker.el; return PAD_BUILD; }
   if (V2 && (inventoryOpen || journalScreen.isOpen())) { PAD_JOURNAL.root = journalScreen.el; return PAD_JOURNAL; }
   if (V2 && ui.isEndShown()) return { root: qs('.octo-end-overlay') };
   if (ui.isGameOverShown()) return { root: qs('.octo-gameover-overlay') };
@@ -855,6 +872,7 @@ const pad = createGamepad(input, {
     if (!coop() && pauseMenuUp() && pad.primaryKey() && p1Dev !== pad.primaryKey() && tryJoin(pad.primaryKey())) return;
     if (settingsPanel.isOpen()) { settingsPanel.hide(); return; }
     if (looksOpen) { looksPicker.hide(); return; }
+    if (buildOpen) { buildGame.hide(); return; }
     if (V2 && (inventoryOpen || journalScreen.isOpen())) { closeInventory(); return; }
     if (V2 && ui.isOfferShown()) return;
     if (everyoneDead() || ui.isEndShown()) return;
@@ -863,7 +881,7 @@ const pad = createGamepad(input, {
   },
   onInventory(key) { // Back (View): as Tab
     if (key && input.mode() !== 'pad') input.setMode('pad');
-    if (!V2 || settingsPanel.isOpen() || looksOpen || ui.isOfferShown()) return;
+    if (!V2 || settingsPanel.isOpen() || looksOpen || buildOpen || ui.isOfferShown()) return;
     if (inventoryOpen || journalScreen.isOpen()) closeInventory(); else openInventory();
   },
   onDisconnect() { // the pad went away mid-play: pause, as consoles do
@@ -1625,7 +1643,7 @@ function render(alpha, frameMs) {
     shakePx: V2 ? scalePx(particles.shakePx(), dpr) : null,
     preEnemyDraw: V2 && run.state === S_BIOME ? shadowPass : null,
     preWallDraw: V2 ? v2PreWall : null,
-    backWallDraw: V2 && world.level.painting ? paintPass : null, // Phase 2B: the tutorial's controls painting on the back wall
+    backWallDraw: V2 && (world.level.painting || world.level.build) ? paintPass : null, // (hub building: the mosaics) // Phase 2B: the tutorial's controls painting on the back wall
     dreadLevel,
     beholderWarn: V2 && isSafeState(run) ? null : enemies.beholderWarn(),
     extraDraw: V2 ? v2Extra : (autofire ? autofire.draw : null),
@@ -1874,7 +1892,7 @@ function bringOthers(x, y) {
 // --- joining and leaving (pause menu only, plan decisions 3 and 4) ---
 /** The device solo player 1 is on: the one it used last in play (p1Dev, set on a scheme change outside the pause menu). */
 function p1Device() { return p1Dev; }
-function pauseMenuUp() { return manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !looksOpen && !journalScreen.isOpen(); }
+function pauseMenuUp() { return manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !looksOpen && !buildOpen && !journalScreen.isOpen(); }
 const coopUI = createCoopUI(hudEl, { onRemove: (slot) => removeSlot(slot), onAdd: () => tryJoin(KEYBOARD) });
 
 // --- co-op polish item 1: the bottom-left controls line shows the scheme of the player who last pressed something, with a small
@@ -2493,6 +2511,7 @@ function quickRestart() {
   if (died && !octo.gameoverEmitted) return false; // the 1.5 s before the death screen: the death is not recorded yet
   ui.hideGameOver();
   manualPaused = false; applyPaused();
+  if (!died) bankShells(run.shells); // hub building: a dropped run banks what it carried (a death banked in recordDive)
   return v2Event(EV_RESTART, died ? (octo.cause || 'unknown') : '');
 }
 /** The pause menu's 'Leave the tutorial': back to the hub, the tutorial not finished. */
@@ -2714,7 +2733,7 @@ function stepV2(snap) {
   } else if (run.state === S_BIOME && !unlockAnim && altarLv.prompt()) {
     openSign = altarLv.sign ? altarLv.sign[0] : null; // the first offering altar's sign (altar-level.js opens it by distance itself)
   }
-  if (run.state === S_HUB && lv.mirror && !looksOpen && !unlockAnim) { // skins: the mirror shell says what it is when you are beside it (on the shell)
+  if (run.state === S_HUB && lv.mirror && !looksOpen && !buildOpen && !unlockAnim) { // skins: the mirror shell says what it is when you are beside it (on the shell)
     const mp = mirrorPoint(lv.mirror);
     mirrorTag = coop() ? players().some((p) => targetable(oOf(p)) && Math.hypot(oOf(p).x - mp.x, oOf(p).y - mp.y) < 2.2) : Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2;
   }
@@ -2782,6 +2801,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     d.targetHits = village.roundOn || t - village.wonAt < 2.5 ? village.hits : 0; d.keepsakeTaken = (story.hubSecret | 0) > 0;
     drawHubRooms(c, camera, cw, ch, lv, hubRooms, t, d);
   }
+  if (buildGame) buildGame.draw(c, camera, cw, ch, t); // hub building: the hoard's pile, the pieces, the chalk spots
   // Phase 2B: every level's prompts are signs (the hub's welcome board, the grotto's, the tutorial's planks)
   if (lv.prompts && lv.prompts.length) drawSigns(c, camera, cw, ch, lv.prompts, openSign, coop() ? promptView : signView, t, promptHidden); // (co-op: each board in its nearest player's controls)
   if (run.state === S_TUTORIAL) {
@@ -2928,7 +2948,7 @@ function addBlocks(resident) {
     for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
   }
 }
-function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); }
+function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); if (buildGame) buildGame.drawBack(c, camera, cw, ch); }
 /** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
 function v2PreWall(c, camera, cw, ch) {
   const mr = run.state === S_HUB ? world.level.mirror : null;
@@ -2987,6 +3007,7 @@ function objectTags() {
   if (mirrorTag && world.level.mirror) { const mp = mirrorPoint(world.level.mirror), v = viewNear(mp.x, mp.y); out.push({ id: 'mirror', x: mp.x, y: mp.y - 1.35, text: v.scheme === 'touch' ? 'Stay still, tap {use}: your look' : '{hand} change your look', view: v }); }
   if (coop()) { for (const p of players()) { const o = oOf(p); if (o.held && !o.dead) out.push({ id: 'grab', x: o.x, y: o.y - 1.05, text: '{dash} break free!', view: viewOf(p) }); } }
   else if (octo.held && !octo.dead) out.push({ id: 'grab', x: octo.x, y: octo.y - 1.05, text: '{dash} break free!', view: signView });
+  if (buildGame) buildGame.tags(out, hand.target); // hub building: the tally stone's count, '{hand} build' at a spot
   if (run.state === S_HUB && sim.time < diveTagUntil) { const lv = world.level, v = viewNear(lv.exitX + 0.5, lv.exitY); out.push({ id: 'dive', x: lv.exitX + 0.5, y: lv.exitY - 1.6, text: v.scheme === 'touch' ? 'Swim in, tap Enter: a run' : 'Swim in, {hand}: a run', view: v }); }
   return out;
 }
@@ -3596,6 +3617,7 @@ if (V2) {
     },
     use() { return openLooks(); },
   });
+  if (buildGame) registerInteract('build', { priority: PRI_TALK - 2, find: buildGame.interact.find, use: buildGame.interact.use }); // hub building: a chalk spot
   registerInteract('portal', { // Daniel 2026-10-08: whirlpools on F only; a portal beats anything else in reach
     priority: PRI_PORTAL,
     find(o) { const p = portalAt(o); return p ? { x: p.x, y: p.y, ref: p } : null; },
@@ -4753,6 +4775,14 @@ window.__octo = {
       story: { hubRooms: story.hubRooms | 0, hubSecret: story.hubSecret | 0, hubPractice: story.hubPractice | 0, boonBombs: story.boonBombs | 0 }, safe: !!octo.safe,
     };
   },
+  /** Hub building (HUB-BUILDING.md): the hoard, the build, the spots, the picker; open the picker at a spot; pick a card. */
+  hubBuild() { return buildGame ? buildGame.debug() : null; },
+  openBuild(id) { if (!buildGame) return false; const s = world.level.build && world.level.build.spots.find((q) => q.id === id); return buildGame.open(s || null); },
+  buildChoose(id) { return buildGame && buildGame.isOpen() ? buildGame.picker.chooseId(id) : false; },
+  closeBuild() { if (buildGame) buildGame.hide(); },
+  bankShells(n) { const h = bankShells(n); if (buildGame) buildGame.invalidate(); return h; },
+  /** Replace the whole build ({spotId: decoId}; tests, perf) without paying. */
+  hubBuildSet(map) { for (const k of Object.keys(getHubBuild())) setHubPiece(k, null); for (const k of Object.keys(map || {})) setHubPiece(k, map[k]); if (buildGame) buildGame.invalidate(); return getHubBuild(); },
   hubSeal() { return { seal: hubSeal(), open: diveOpen(run), tutorialDone: run.tutorialDone, savedDone: getTutorialDone(), unlock: unlockAnim ? { t: unlockAnim.t, seal: unlockAnim.seal } : null, offer: ui.isOfferShown(), bumpAt: sealBumpAt, tutorialX: world.level.tutorialX, tutorialY: world.level.tutorialY }; },
   answerOffer(yes) { ui.answerOffer(yes); return ui.isOfferShown(); },
   uiButtons() { return ui.buttons(); },
