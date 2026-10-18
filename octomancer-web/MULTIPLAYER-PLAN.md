@@ -39,7 +39,7 @@ Daniel's brief: any plugged-in controller can play solo. Players are added and r
 - Game over when all are dead. Death is a plain "limp and wait" until phase 2 brings ghosts: a dead player's octopus ragdolls and they are out until the next level, where they revive.
 - Tests: `tests/coop.test.js` for roster/restore logic; `tests/coop-cdp.js` with two stubbed pads plus keyboard: join in pause, both move, one dies, next level revives, leave and re-add restores hearts.
 
-**Phase 2: ghosts (one owner, after phase 1).** Ghost float, blow, charged freeze, the charge ring, revive at next level, ghost does not count for the camera. Art: a translucent pale octopus with the player's colour in the eyes, drawn in code from the existing sprite (tint + alpha), no new images.
+**Phase 2: ghosts (one owner, after phase 1). Built 2026-10-17, see OWNERS.md.** Ghost float, blow, charged freeze, the charge ring, revive at next level, ghost does not count for the camera. Art: a translucent pale octopus with the player's colour in the eyes, drawn in code from the existing sprite (tint + alpha), no new images.
 
 **Phase 3: options.** True split-screen toggle, per-player skins at the mirror, enemy scaling, friendly-fire setting.
 
