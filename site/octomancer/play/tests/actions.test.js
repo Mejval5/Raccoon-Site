@@ -14,6 +14,7 @@ import { createHotbarUI } from '../js/hotbar-ui.js';
 import { createQuestState, questInk, Q_RESCUE, CAGE_INK_R } from '../js/quests.js';
 import { killAmbient, isAmbientDead, resetAmbient, ambientPos } from '../js/ambient.js';
 import { createLoot, LK_POT } from '../js/loot.js';
+import { pierces, PIERCE_KINDS } from '../js/creature-rules.js';
 
 const DT = 0.02;
 const OPEN = { isSolid: () => false, breakTile() {} };
@@ -30,12 +31,13 @@ function handLevel(W, H, paint) {
 
 /** Run the jet for `s` seconds; sums the per-step events. */
 function fly(jet, world, list, hurt, phys, s) {
-  const sum = { hits: 0, pushes: 0, blocked: 0, splats: 0, lastSplatX: NaN };
+  const sum = { hits: 0, pushes: 0, blocked: 0, splats: 0, lastSplatX: NaN, maxX: 0 };
   for (let t = 0; t < s - 1e-9; t += DT) {
     jet.update(DT, world, list, hurt, phys);
     const e = jet.events;
     sum.hits += e.hits; sum.pushes += e.pushes; sum.blocked += e.blocked; sum.splats += e.nSplat;
     if (e.nSplat) sum.lastSplatX = e.splat[0];
+    for (let i = 0; i < jet.data.alive.length; i++) if (jet.data.alive[i]) sum.maxX = Math.max(sum.maxX, jet.data.x[i]);
   }
   return sum;
 }
@@ -48,14 +50,21 @@ export async function runActionsTests(assert) {
   // ================================================================ Ink Jet vs every terrain material (the real v2 world)
   {
     const bad = [];
-    for (const m of [MAT_ROCK, MAT_BEDROCK, MAT_BONE, MAT_TIMBER, MAT_MASONRY]) {
+    for (const m of [MAT_ROCK, MAT_BEDROCK, MAT_TIMBER, MAT_MASONRY]) {
       const w = createLevelWorld(0, 0, { level: handLevel(30, 12, (put) => { for (let y = 2; y < 10; y++) put(15, y, m); }) });
       const jet = createInkJet();
       jet.fire(10, 6.5, 1, 0, 0);
       const r = fly(jet, w, [], noHurt, { props: createProps(), corpses: createCorpses() }, 1);
       if (!(r.splats === 1 && !anyAlive(jet) && r.lastSplatX < 15 && r.lastSplatX > 14.6 && jet.stainCount() === 1)) bad.push(MAT_NAMES[m] + ' x=' + r.lastSplatX);
     }
-    assert('ink: a blob stops and stains at the face of rock, bedrock, bone, timber and masonry' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0);
+    assert('ink: a blob stops and stains at the face of rock, bedrock, timber and masonry' + (bad.length ? ' [' + bad.join(', ') + ']' : ''), bad.length === 0);
+    // fish bone is weak (creature-rules.js PIERCE): the tile crumbles, the blob splashes there (no stain: the rock is gone) and flies on
+    const w = createLevelWorld(0, 0, { level: handLevel(30, 12, (put) => { for (let y = 2; y < 10; y++) put(15, y, MAT_BONE); }) });
+    const jet = createInkJet();
+    jet.fire(10, 6.5, 1, 0, 0);
+    let maxX = 0, pierced = 0, splats = 0;
+    for (let t = 0; t < 1 - 1e-9; t += DT) { jet.update(DT, w, [], noHurt, { props: createProps(), corpses: createCorpses() }); pierced += jet.events.pierced; splats += jet.events.nSplat; if (jet.data.alive[0]) maxX = jet.data.x[0]; }
+    assert('pierce: a blob crumbles a fish-bone wall, splashes once and flies on to its full range (' + maxX.toFixed(2) + ')', w.tileAt(15, 6) === 0 && w.tileAt(15, 5) === MAT_BONE && pierced === 1 && splats === 1 && maxX > 16 && jet.stainCount() === 0);
   }
 
   // ================================================================ Ink Jet vs props, blocks, corpses
@@ -90,7 +99,7 @@ export async function runActionsTests(assert) {
     const clam = props.add(PK_CLAM, 10, 9); props.hold(clam, 10, 10);
     const j2 = createInkJet(); j2.fire(6, 9, 1, 0, 0);
     const r2 = fly(j2, OPEN, [], noHurt, { props, corpses: null }, 0.8);
-    assert('ink: a clam held on its wall stops the blob and stays put', r2.splats === 1 && !anyAlive(j2) && d.vx[clam] === 0);
+    assert('pierce: a loot clam held on its wall takes the blob (one splash) and stays put; the blob flies on past it', r2.splats === 1 && d.vx[clam] === 0 && j2.events.pierced === 0 && r2.maxX > 11);
   }
   {
     const corpses = createCorpses(), c = corpses.data;
@@ -99,7 +108,7 @@ export async function runActionsTests(assert) {
     const jet = createInkJet();
     jet.fire(6, 5, 1, 0, 0);
     const r = fly(jet, OPEN, [], noHurt, { props: createProps(), corpses }, 0.6);
-    assert('ink: a corpse is woken and pushed along the flight', r.pushes === 1 && !anyAlive(jet) && c.state[k] !== CS_REST && c.vx[k] > 2);
+    assert('pierce: a corpse is woken and pushed along the flight, once, and the blob flies on past it', r.pushes === 1 && r.splats === 1 && c.state[k] !== CS_REST && c.vx[k] > 2 && r.maxX > 11);
   }
   {
     // the blob moves the bomb for real: the props step carries the shove through the level's physics
@@ -125,6 +134,84 @@ export async function runActionsTests(assert) {
     fly(jet, OPEN, en.all(), (e, dmg) => { calls++; en.hurt(e, dmg); }, { props: createProps(), corpses: createCorpses() }, 0.6);
     assert('ink: a creature is hurt through the shared hurt entry exactly once', calls === 1 && p.hp < 6);
     setHpMode(false); // module-level global: do not leak
+  }
+
+  // ================================================================ Pierce (2026-10-18): weak targets let the blob through
+  {
+    // two pots and a background fish in a row: all three take the blob, it flies on with its direction, speed and damage
+    const props = createProps(), loot = createLoot(props);
+    const l1 = loot.add({ lk: LK_POT, x: 8, y: 5, n: 1 }), l2 = loot.add({ lk: LK_POT, x: 9.5, y: 5, n: 1 });
+    const fish = { ambient: true, kind: 'fish', x: 11, y: 5, radius: 0.3, hp: 1, dead: false };
+    let fishHits = 0;
+    const dmgSeen = [];
+    const hurt = (e, dmg) => { dmgSeen.push(dmg); if (e === fish) { fishHits++; e.hp = 0; e.dead = true; } };
+    const jet = createInkJet();
+    jet.fire(6, 5, 1, 0, 0);
+    const vx0 = jet.data.vx[0];
+    let broke = 0, pierced = 0, splats = 0, maxX = 0, bent = false;
+    for (let t = 0; t < 0.8; t += DT) {
+      jet.update(DT, OPEN, [fish], hurt, { props, corpses: createCorpses() });
+      for (let k = 0; k < jet.events.nProp; k++) if (loot.hitProp(jet.events.propHit[k], 'ink')) broke++;
+      pierced += jet.events.pierced; splats += jet.events.nSplat;
+      if (jet.data.alive[0]) { maxX = jet.data.x[0]; if (jet.data.vy[0] !== 0 || jet.data.vx[0] !== vx0) bent = true; }
+    }
+    assert('pierce: a blob through two pots and a background fish breaks both pots, kills the fish with the full damage and flies on to its range (' + maxX.toFixed(2) + ')',
+      broke === 2 && loot.data.state[l1] === 1 && loot.data.state[l2] === 1 && fish.dead && fishHits === 1 && dmgSeen.length === 1 && dmgSeen[0] === INKJET.damage && pierced === 3 && splats === 3 && maxX > 6 + INKJET.range - 0.5);
+    assert('pierce: the blob keeps its direction and speed through the weak targets', !bent);
+  }
+  {
+    // pot, then a piranha: the pot breaks, the piranha takes the full blob and stops it
+    setHpMode(true);
+    const props = createProps(), loot = createLoot(props), en = createEnemies();
+    loot.add({ lk: LK_POT, x: 8, y: 5, n: 1 });
+    const p = en.spawnAt('piranha', 10, 5, 'open'), hp0 = p.hp;
+    const jet = createInkJet();
+    jet.fire(6, 5, 1, 0, 0);
+    let broke = 0, stopX = NaN, hurts = 0;
+    for (let t = 0; t < 0.8; t += DT) {
+      const was = anyAlive(jet);
+      jet.update(DT, OPEN, en.all(), (e, dmg) => { hurts++; en.hurt(e, dmg); }, { props, corpses: null });
+      for (let k = 0; k < jet.events.nProp; k++) if (loot.hitProp(jet.events.propHit[k], 'ink')) broke++;
+      if (was && !anyAlive(jet) && jet.events.nSplat) stopX = jet.events.splat[(jet.events.nSplat - 1) * 2];
+    }
+    assert('pierce: a blob through a pot into a piranha breaks the pot, hurts the piranha by the full ' + INKJET.damage + ' and stops on it (x ' + stopX + ')',
+      broke === 1 && hurts === 1 && hp0 - p.hp === INKJET.damage && stopX > 9 && stopX < 10.2);
+    setHpMode(false);
+  }
+  {
+    // the same weak target is hit once per blob: a pot it overlaps for several sub-steps (nobody breaks it here), a corpse
+    const props = createProps(), d = props.data, corpses = createCorpses();
+    const pot = props.add(PK_POT, 8, 5);
+    const k = corpses.add('piranha', 9.5, 5, 0, 0, 1);
+    const jet = createInkJet();
+    jet.fire(6, 5, 1, 0, 0);
+    let reports = 0, pierced = 0, pushes = 0;
+    for (let t = 0; t < 0.8; t += DT) { jet.update(DT, OPEN, [], noHurt, { props, corpses }); reports += jet.events.nProp; pierced += jet.events.pierced; pushes += jet.events.pushes; }
+    assert('pierce: one blob hits a pot it overlaps for several sub-steps once, and a corpse once (' + reports + ' reports, ' + pierced + ' pierced, ' + pushes + ' pushes)', reports === 1 && pierced === 2 && pushes === 2 && d.alive[pot] === 1 && corpses.data.vx[k] > 0);
+    // a stand-in fish that does not die (a stub hurt): still only one hurt call per blob
+    const fish = { ambient: true, kind: 'fish', x: 8, y: 5, radius: 0.5, hp: 1, dead: false };
+    let calls = 0;
+    const j2 = createInkJet(); j2.fire(6, 5, 1, 0, 0);
+    for (let t = 0; t < 0.8; t += DT) j2.update(DT, OPEN, [fish], () => { calls++; }, null);
+    const once = calls;
+    j2.update(1.6, OPEN, [], noHurt, null); j2.fire(6, 5, 1, 0, 0); // a second blob may hit it again
+    for (let t = 0; t < 0.8; t += DT) j2.update(DT, OPEN, [fish], () => { calls++; }, null);
+    assert('pierce: a weak creature the blob overlaps for several steps is hurt once per blob (' + once + ', then ' + calls + ')', once === 1 && calls === 2);
+  }
+  {
+    // strong targets still stop it: a bomb, a hp-less hazard stand-in (a pushable block and a creature: above)
+    const props = createProps();
+    props.add(PK_BOMB, 8, 5);
+    const jet = createInkJet(); jet.fire(6, 5, 1, 0, 0);
+    const r = fly(jet, OPEN, [], noHurt, { props, corpses: null }, 0.6);
+    const hz = { kind: 'urchin', x: 8, y: 7, radius: 0.4, dead: false };
+    const j2 = createInkJet(); j2.fire(6, 7, 1, 0, 0);
+    const r2 = fly(j2, OPEN, [hz], noHurt, null, 0.6);
+    assert('pierce: a bomb and a hazard (no hp) still stop the blob', r.splats === 1 && r.maxX < 8 && r2.splats === 1 && r2.maxX < 8);
+    assert('pierce: the table says which kinds are weak (pots, loot clams, fish, corpses, bone, rubble, finds) and strong (enemies, clam, tentacle, keeper, people, walls, blocks, bombs)',
+      ['pot', 'lootclam', 'ambient', 'corpse', 'bone', 'rubble', 'find', 'droplet', 'pickup'].every((x) => pierces(x)) &&
+      ['enemy', 'gclam', 'tentacle', 'keeper', 'npc', 'ware', 'target', 'wall', 'block', 'bomb', 'rock', 'chest', 'relic'].every((x) => !pierces(x)) &&
+      !pierces('pot', 'shot') && !pierces('nonsense') && PIERCE_KINDS.length === 22);
   }
 
   // ================================================================ Ink: pots, the cage, the background fish (unit level)
