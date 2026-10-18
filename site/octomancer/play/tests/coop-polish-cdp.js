@@ -65,7 +65,9 @@ const RED = '#c05060', TEAL = '#4fa39b';
     check('3 Esc pauses', await paused(h));
     let c = await C(h);
     check('3 the Add line is a button that names Start on a free pad and A / Enter on it', /^Add player/.test(c.add) && /Menu on a free pad, or A \/ Enter here/.test(c.add), c.add);
-    // pad A presses A: the menu's focus starts on the first pause button (Journal in the hub), not on the Add line
+    // pad A presses A: the menu's focus starts on the first pause button (Resume since 2026-10-18; down once: Journal in the hub), not on the Add line
+    check('3 the pause menu focus starts on Resume, not on the Add line', (await C(h)).focus === 'Resume' || !(await C(h)).addFocused, (await C(h)).focus);
+    await tapPads(h, [{ down: true }, {}]);
     await tapPads(h, [{ a: true }, {}]); await sleep(150);
     c = await C(h);
     const jOpen = await h.evaluate(() => __octo.journal().open);
@@ -85,6 +87,7 @@ const RED = '#c05060', TEAL = '#4fa39b';
     await tapPads(h, [{}, { down: true }]);
     c = await C(h);
     check('3 a free pad walks the pause menu too (down: off the Add line)', !c.addFocused, c.focus);
+    await tapPads(h, [{}, { down: true }]); // Resume -> Journal
     await tapPads(h, [{}, { a: true }]); await sleep(150);
     c = await C(h);
     check('3 a free pad\'s A off the Add line is a menu press (the journal opens), it does not join', c.players.length === 2 && await h.evaluate(() => __octo.journal().open), String(c.players.length));
