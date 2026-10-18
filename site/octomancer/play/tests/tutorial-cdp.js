@@ -138,7 +138,7 @@ async function toScreen(page, x, y) {
     r = await go(p, 61.5, 11.4, 0.35);
     await hold(p, 0, 0, 35);
     t = await T(p);
-    check('room 4: the bomb prompt names C and that a blast kills outside the tutorial', /press C/.test(t.prompt) && /kills you/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 4: the bomb prompt names B (the {bomb} token) and that a blast can kill outside the tutorial', /press B\b/.test(t.prompt) && /can kill you/.test(t.prompt), t.prompt.slice(0, 80));
     const sel = await p.evaluate(() => { const h = __octo.juice().hotbar; return h.slots[h.sel][0]; });
     check('room 4: the bomb is picked on the bar', sel === 'bomb', sel);
     for (let k = 0; k < 3 && !(await T(p)).rooms[3].done; k++) {
@@ -174,7 +174,7 @@ async function toScreen(page, x, y) {
     check('room 5: door 3 shut before a cast', (await T(p)).doors[3] > 0);
     r = await go(p, 44.5, 30.5, 0.5, 1500);
     t = await T(p);
-    check('room 5: the spell sign names Q / E and Ink Cloud', /Q E/.test(t.prompt) && /Ink Cloud/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 5: the spell sign names Q / E and Ink Cloud', /Q\/E/.test(t.prompt) && /Ink Cloud/.test(t.prompt), t.prompt.slice(0, 80));
     const cloudI = await p.evaluate(() => __octo.juice().hotbar.slots.findIndex((x) => x[0] === 'ink-cloud')); // the HUD order: bombs slot 1, Ink Cloud slot 2
     check('room 5: Ink Cloud is on the bar (slot 2, after the bombs)', cloudI === 1, String(cloudI));
     await key(p, 'Digit' + (cloudI + 1), 1);
@@ -189,7 +189,7 @@ async function toScreen(page, x, y) {
     r = await go(p, 29.6, 31.5, 0.45, 1500);
     await hold(p, 0, 0, 25);
     t = await T(p);
-    check('room 6: the shop prompt names F and theft', /press F/.test(t.prompt) && /keeper come for you/.test(t.prompt), t.prompt.slice(0, 80));
+    check('room 6: the shop prompt names F and theft', /press F/.test(t.prompt) && /sets the keeper on you/.test(t.prompt), t.prompt.slice(0, 80));
     await shot(p, 'shop-desktop');
     await key(p, 'KeyF', 3);
     if ((await T(p)).buys === 0) { await go(p, 27.4, 31.5, 0.45); await hold(p, 0, 0, 25); await key(p, 'KeyF', 3); }
@@ -205,7 +205,7 @@ async function toScreen(page, x, y) {
     // 8 the exit
     r = await go(p, 5.4, 31.2, 0.5, 1500);
     t = await T(p);
-    check('room 8: the exit prompt names F, the Beholder, the Swift Current and Tab', /press F/.test(t.prompt) && /Beholder/.test(t.prompt) && /Swift Current/.test(t.prompt) && /Tab/.test(t.prompt), t.prompt.slice(0, 120));
+    check('room 8: the exit prompt names F, the whirlpool, the Beholder and the Swift Current', /press F/.test(t.prompt) && /whirlpool/.test(t.prompt) && /Beholder/.test(t.prompt) && /Swift Current/.test(t.prompt), t.prompt.slice(0, 120));
     await shot(p, 'exit-desktop');
     check(`the hearts never dropped to zero (lowest ${minHearts})`, minHearts >= 1 && (await T(p)).hearts >= 1);
     // into the whirlpool (F where the whirlpool asks for it)
