@@ -63,15 +63,19 @@ export async function runGamepadTests(assert, approx) {
     assert('pad: a trigger under half way is up', !s.attack.held);
     poll({ rb: true }); s = input.snapshot();
     assert('pad: RB uses the selected slot (src pad, a bomb too)', s.use.pressed && s.src.use === 'pad');
-    poll({}); poll({ a: true }); s = input.snapshot();
-    assert('pad: A is the hand', s.hand.pressed && s.hand.held);
+    poll({}); poll({ lb: true }); s = input.snapshot();
+    assert('pad: LB is the hand (2026-10-18)', s.hand.pressed && s.hand.held && s.cycle === 0);
+    poll({ lb: true }, 5); s = input.snapshot();
+    assert('pad: LB held stays the hand, and never steps the hotbar', !s.hand.pressed && s.hand.held && s.cycle === 0);
+    poll({}); input.snapshot(); poll({ a: true }); s = input.snapshot();
+    assert('pad: A is still a second hand button in play', s.hand.pressed && s.hand.held);
+    poll({ lb: true, a: true }); s = input.snapshot();
+    assert('pad: LB and A together are one held hand (no second press)', !s.hand.pressed && s.hand.held);
     poll({}); poll({ b: true }); s = input.snapshot();
     assert('pad: B dashes', s.dash.pressed);
     poll({}); poll({ lt: 0.9 }); s = input.snapshot();
     assert('pad: LT dashes too', s.dash.pressed);
     poll({}); input.snapshot();
-    poll({ lb: true }); poll({ lb: true }, 5); s = input.snapshot();
-    assert('pad: LB steps the hotbar once per press', s.cycle === 1);
     poll({}); poll({ left: true }); s = input.snapshot();
     assert('pad: d-pad left steps back', s.cycle === -1);
     poll({}); poll({ right: true }); s = input.snapshot();
@@ -91,8 +95,8 @@ export async function runGamepadTests(assert, approx) {
     // menus
     poll({});
     menuOn = true; poll({}); // the switch poll
-    poll({ a: true }); poll({ a: true }); poll({ b: true }); s = input.snapshot();
-    assert('pad: in a menu A confirms and B goes back; gameplay sees nothing', menus.includes('confirm') && menus.includes('back') && !s.hand.held && !s.dash.held);
+    poll({ a: true }); poll({ a: true }); poll({ lb: true }); poll({ b: true }); s = input.snapshot();
+    assert('pad: in a menu A confirms, LB turns a tab back and B goes back; gameplay sees nothing', menus.includes('confirm') && menus.includes('tabprev') && menus.includes('back') && !s.hand.held && !s.dash.held);
     menus.length = 0;
     poll({ down: true }); poll({ down: true }, 20, 1 / 60); // ~0.35 s: the first repeat is at 0.38 s
     const before = menus.filter((m) => m === 'down').length;
@@ -133,7 +137,10 @@ export async function runGamepadTests(assert, approx) {
   }
 
   // --- glyphs
-  assert('glyph: the hand is A on a pad, Cross on a DualSense, F on the keyboard, MMB with a mouse', glyph('hand', 'pad').label === 'A' && glyph('hand', 'pad', 'ps').label === 'Cross' && glyph('hand', 'keyboard').label === 'F' && glyph('hand', 'mouse').label === 'MMB');
+  assert('glyph: the hand is LB on a pad, L1 on a DualSense, F on the keyboard, MMB with a mouse', glyph('hand', 'pad').label === 'LB' && glyph('hand', 'pad', 'ps').label === 'L1' && glyph('hand', 'keyboard').label === 'F' && glyph('hand', 'mouse').label === 'MMB');
+  assert('glyph: the hand lists LB then A on a pad (L1 then Cross)', glyphs('hand', 'pad').map((g) => g.label).join() === 'LB,A' && glyphs('hand', 'pad', 'ps').map((g) => g.label).join() === 'L1,Cross');
+  assert('glyph: the hotbar is the d-pad only on a pad (no LB)', glyphs('cycle', 'pad').map((g) => g.label).join() === 'D-pad left / right' && glyph('next', 'pad').label === 'D-pad right' && glyph('prev', 'pad').label === 'D-pad left');
+  assert('glyph: menus keep A confirm, B back, LB / RB tabs', glyph('confirm', 'pad').label === 'A' && glyph('back', 'pad').label === 'B' && glyph('tabprev', 'pad').label === 'LB' && glyph('tabnext', 'pad').label === 'RB');
   assert('glyph: the ink jet is RT / R2 / J / LMB', glyph('attack', 'pad').label === 'RT' && glyph('attack', 'pad', 'ps').label === 'R2' && glyph('attack', 'keyboard').label === 'J' && glyph('attack', 'mouse').label === 'LMB');
   assert('glyph: dash lists B and LT on a pad', glyphs('dash', 'pad').map((g) => g.label).join() === 'B,LT');
   assert('glyph: pause is Menu / Options, inventory View / Create', glyph('pause', 'pad').label === 'Menu' && glyph('pause', 'pad', 'ps').label === 'Options' && glyph('inventory', 'pad').label === 'View' && glyph('inventory', 'pad', 'ps').label === 'Create');
@@ -142,14 +149,14 @@ export async function runGamepadTests(assert, approx) {
   {
     const pl = controlsLine('pad');
     const kl = controlsLine('keyboard'), ml = controlsLine('mouse');
-    assert('controlsLine: the pad line has its parts and glyphs (no key names)', pl.scheme === 'pad' && pl.parts.length === 9 && /Hand A/.test(pl.text) && /Journal View/.test(pl.text) && !/WASD/.test(pl.text));
+    assert('controlsLine: the pad line has its parts and glyphs (no key names)', pl.scheme === 'pad' && pl.parts.length === 9 && /Hand LB/.test(pl.text) && /Bar D-pad · /.test(pl.text) && /Journal View/.test(pl.text) && !/WASD/.test(pl.text));
     assert('controlsLine: keyboard and mouse share the desktop line (Hand F, Jet LMB, Journal Tab)', kl.text === ml.text && /Hand F/.test(kl.text) && /Jet LMB/.test(kl.text) && /Journal Tab/.test(kl.text) && kl.parts.length === 0);
     assert('controlsLine: touch has no line', controlsLine('touch').text === '');
     // IMPROVEMENTS.md 6: no stale key names in code ("Inventory: Tab" is the journal, "B/X drops one" is gone, "Ink Jet" everywhere)
     const srcs = await Promise.all(['glyphs', 'settings', 'carried', 'hotbar-ui', 'inventory-ui', 'signs'].map((f) => fetch(new URL('../js/' + f + '.js', import.meta.url)).then((r) => r.text()).then((t) => [f, t])));
     const stale = srcs.filter(([, t]) => /Inventory: Tab|B\/X drops|Ink jet/.test(t)).map(([f]) => f);
     assert('key names: no "Inventory: Tab", "B/X drops" or "Ink jet" left in glyphs, settings, carried, hotbar-ui, inventory-ui, signs', stale.length === 0, stale.join());
-    assert('controlsLine: a DualSense line uses its names', /Hand Cross/.test(controlsLine('pad', 'ps').text));
+    assert('controlsLine: a DualSense line uses its names', /Hand L1/.test(controlsLine('pad', 'ps').text));
     // IMPROVEMENTS.md 6: one short line per scheme, essentials only
     assert('controlsLine: the desktop and pad lines are at most 110 characters, no bracketed notes', [kl, pl, controlsLine('pad', 'ps')].every((l) => l.text.length <= 110 && !/[()]/.test(l.text)), [kl, pl].map((l) => l.text.length).join(' / '));
   }

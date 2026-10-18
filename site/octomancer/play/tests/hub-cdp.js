@@ -7,7 +7,9 @@
 //   - the Ink Jet practice target: three hits in the window win a round (the host calls it);
 //   - the fish bone hides the keepsake: a dash crumbles it, the keepsake gives a bomb for the next dive, once;
 //   - the hub is safe: no bomb from the keys, a bomb set off beside the octopus does not hurt it;
-//   - the hub loads fast (the authored world step) and stays inside the canvas budget.
+//   - the hub loads fast (the authored world step) and stays inside the canvas budget;
+//   - swimming down into the dive chamber, its two hanging lamps stay drawn and the octopus is drawn in every frame (plain, a worn
+//     skin, after a death).
 // Frames go to octomancer-web/night/hub-*.png.
 //   node hub-cdp.js [port | baseUrl]      (serve with python -m http.server <port> --directory site)
 const path = require('path');
@@ -171,6 +173,69 @@ const room = (h, id) => h.rooms.find((r) => r.id === id);
       h = await R(p);
       check('secret: the keepsake gives its bomb only once', h.story.boonBombs === b1);
       check('full: no page errors', p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
+      await p.close();
+    }
+
+    // ================================================================== the dive chamber: its lamps and the octopus stay drawn on the way down
+    // (Daniel 2026-10-18: "these lights in the bottom of the hub disappear when I come near". The plaza's two lamps over the dive
+    // chamber hang 12 tiles below the plaza's floor and were culled with the plaza's own area.) The octopus swims down the shaft
+    // into the chamber; at every half tile the pixels at both lamps' shells are sampled, and every frame the pixels at the octopus.
+    // Solo player 1 with Milan's own colours, with a worn skin, and back in the hub after a death.
+    for (const sc of ['plain', 'skin', 'death']) {
+      const p = await open(browser, sc === 'skin' ? { ...SAVES.full, skins: ['octo', 'pip', 'marlo'], skin: 'pip' } : 'full');
+      if (sc === 'death') {
+        await p.evaluate(() => __octo.runEvent('enter'));
+        await sleep(400); await p.waitForFunction(() => !__octo.transitioning(), { timeout: 30000 }); await sleep(300);
+        await p.evaluate(() => __octo.runEvent('death'));
+        await sleep(400); await p.waitForFunction(() => !__octo.transitioning() && __octo.hubRooms(), { timeout: 30000 }); await sleep(800);
+      }
+      await p.evaluate(() => __octo.freeze(true));
+      const res = await p.evaluate(async () => {
+        const table = await (await fetch('data/hub-rooms.json')).json();
+        const h = __octo.hubRooms(), pl = h.rooms.find((r) => r.id === 'plaza'), def = table.rooms.find((r) => r.id === 'plaza');
+        const lamps = def.furnish.filter((f) => f.kind === 'lamp' && f.dy > 6).map((f) => [pl.ax + 0.5 + f.dx, pl.ay + f.dy]); // the two over the dive chamber
+        const g = document.getElementById('game').getContext('2d', { willReadFrequently: true });
+        // count pixels in a box (world units round a world point) that pass `test`
+        const count = (cam, wx, wy, rx, ry, test) => {
+          const sx = Math.round(cam.w / 2 + (wx - cam.x) * cam.ppu), sy = Math.round(cam.h / 2 + (wy - cam.y) * cam.ppu);
+          const hw = Math.max(2, Math.round(rx * cam.ppu)), hh = Math.max(2, Math.round(ry * cam.ppu));
+          const x0 = sx - hw, y0 = sy - hh, x1 = sx + hw, y1 = sy + hh;
+          if (x0 < 0 || y0 < 0 || x1 > cam.w || y1 > cam.h) return -1; // not wholly on the screen: not sampled
+          const d = g.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+          let n = 0;
+          for (let i = 0; i < d.length; i += 4) if (test(d[i], d[i + 1], d[i + 2])) n++;
+          return n;
+        };
+        const shell = (r, gg, b) => r > 140 && r > b + 25; // the beige snail shell and its amber light (the water and the rock are blue-green)
+        const body = (r, gg, b) => r > 90 && r > b + 30; // Milan's red body or a skin's warm colours (the water and the rock are bluer than red)
+        __octo.teleport(36.5, 19.5); __octo.stepDraw(30);
+        const lampMiss = [], octoMiss = [];
+        let frames = 0, lastHalf = -1, lampSamples = 0;
+        __octo.input({ move: { x: 0, y: 1 } });
+        for (let f = 0; f < 240; f++) {
+          __octo.stepDraw(1); frames++;
+          const d = __octo.drawnOcto(), cam = __octo.hubRooms().cam, o = __octo.state().octopus;
+          const onBody = d ? count(cam, d.x, d.y - 0.1, 0.3, 0.3, body) : 0;
+          if (!d || onBody < 15) octoMiss.push([f, +o.y.toFixed(2), !!d, onBody]);
+          const half = Math.floor(o.y * 2);
+          if (half !== lastHalf) {
+            lastHalf = half;
+            for (const [lx, ly] of lamps) {
+              const n = count(cam, lx, ly - 0.55, 0.6, 0.55, shell);
+              if (n < 0) continue; // that lamp is off the screen at this point
+              lampSamples++;
+              if (n < 20) lampMiss.push([+o.y.toFixed(1), lx, ly, n]);
+            }
+          }
+        }
+        __octo.input(null);
+        return { lamps, frames, lampSamples, lampMiss, octoMiss, endY: __octo.state().octopus.y };
+      });
+      check(`dive chamber (${sc}): the octopus swims down into the chamber`, res.endY > 34, `y ${res.endY.toFixed(2)}`);
+      check(`dive chamber (${sc}): both chamber lamps stay drawn at every half tile of the approach`, res.lamps.length === 2 && res.lampSamples >= 10 && res.lampMiss.length === 0, JSON.stringify({ samples: res.lampSamples, miss: res.lampMiss.slice(0, 4) }));
+      check(`dive chamber (${sc}): the octopus is drawn in every hub frame`, res.octoMiss.length === 0, `${res.frames} frames, missing ${JSON.stringify(res.octoMiss.slice(0, 4))}`);
+      await shot(p, `dive-chamber-${sc}`);
+      check(`dive chamber (${sc}): no page errors`, p.errs.length === 0, p.errs.slice(0, 3).join(' | '));
       await p.close();
     }
 

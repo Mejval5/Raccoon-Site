@@ -1,6 +1,7 @@
 // Node script (not part of tests/index.html): the Ink Jet against what lives in a real level, in headless Chrome:
 // a clay pot and a clam break, a background fish (decor fish or the foliage greenranha) dies and leaves a corpse,
 // Pip (calm, free) is hurt and turns, Pip in his cage gets the cage broken; and a dash through a piranha harms neither.
+// Pierce (2026-10-18): one blob through a pot into a piranha breaks the pot and still hurts the piranha.
 //   node actions-cdp.js [baseUrl]      (serve with python -m http.server <port> --directory site)
 // puppeteer-core is resolved from $OCTO_TOOLS (default %TEMP%/octo-tools). Exits 1 on a failed check.
 const path = require('path');
@@ -57,6 +58,31 @@ const FIND_LANE = `(function () {
         return { lane, fired, state: __octo.loot().items[li].state };
       }, kind, FIND_LANE);
       check(`ink: a ${kind} hit by a blob breaks (as a dash or a blast would)`, r.fired && r.state === 1, JSON.stringify(r));
+    }
+    // ---- pierce: one blob through a pot into a piranha (the pot is weak, the piranha strong) ----
+    {
+      const r = await page.evaluate(() => {
+        const o = __octo.state().octopus;
+        const clear = (x, y) => { for (let t = -2.6; t <= 3.2; t += 0.2) for (const dy of [-0.5, 0, 0.5]) if (__octo.isSolid(x + t, y + dy)) return false; return true; };
+        let lane = null;
+        for (let rr = 0; rr < 40 && !lane; rr++) for (let a = 0; a < 24 && !lane; a++) {
+          const x = Math.floor(o.x + Math.cos(a / 24 * 6.283) * rr) + 0.5, y = Math.floor(o.y + Math.sin(a / 24 * 6.283) * rr) + 0.5;
+          if (clear(x, y)) lane = { x, y };
+        }
+        if (!lane) return { lane: null };
+        __octo.teleport(lane.x - 2.3, lane.y);
+        __octo.step(80); // the jet has refilled
+        __octo.teleport(lane.x - 2.3, lane.y);
+        const li = __octo.spawnLoot('pot', lane.x, lane.y, 2); // a pot sinks: shoot before it drops out of the lane
+        const e = __octo.spawn('piranha', lane.x + 2.4, lane.y, 'open');
+        __octo.step(2); // the pot's prop appears
+        const before = __octo.enemies().find((q) => q.id === e.id);
+        const fired = __octo.fireInk(1, 0);
+        __octo.step(24);
+        const after = __octo.enemies().find((q) => q.id === e.id);
+        return { lane, fired, pot: __octo.loot().items[li].state, hp0: before && before.hp, hp1: after ? after.hp : 0, dead: !after || after.dead };
+      });
+      check('pierce: one blob through a pot into a piranha breaks the pot and hurts the piranha', r.fired && r.pot === 1 && (r.dead || r.hp1 < r.hp0), JSON.stringify(r));
     }
     // ---- Pip: in his cage (seed 5 has the rescue), the blob breaks the cage; then, free, a blob hurts him ----
     {

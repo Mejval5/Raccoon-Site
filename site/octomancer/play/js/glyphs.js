@@ -43,8 +43,9 @@ const PAD_PS = {
 };
 /** Which pad button(s) each action is on (the first is the one a prompt shows). Mirrors gamepad.js. */
 export const PAD_MAP = {
-  move: ['ls'], aim: ['rs'], attack: ['rt'], use: ['rb'], hand: ['a'], dash: ['b', 'lt'],
-  cycle: ['lb', 'lr'], prev: ['left'], next: ['lb'], select: ['up'], bomb: ['up'], inventory: ['back'], pause: ['start'],
+  // the hand: LB first (2026-10-18: grab and throw while the right stick aims), A a second button for it
+  move: ['ls'], aim: ['rs'], attack: ['rt'], use: ['rb'], hand: ['lb', 'a'], dash: ['b', 'lt'],
+  cycle: ['lr'], prev: ['left'], next: ['right'], select: ['up'], bomb: ['up'], inventory: ['back'], pause: ['start'],
   confirm: ['a'], back: ['b'],
   // menus (Phase 2A): the bumpers turn tabs, X and Y are a screen's own extra verbs
   tabprev: ['lb'], tabnext: ['rb'], menux: ['x'], menuy: ['y'],
@@ -120,7 +121,7 @@ const DESKTOP_TEXT_V1 = 'Swim: WASD/arrows | Dash: Space/Shift | Bomb: B/X';
 export function controlsLine(scheme, style = 'xbox', v2 = true) {
   if (scheme === 'pad') {
     const parts = PAD_LINE.map(([name, action, note]) => ({ name, glyphs: glyphs(action, 'pad', style).slice(0, 1), note: note || '' })); // (the first button of each)
-    const text = parts.map((p) => p.name + ' ' + p.glyphs.map((g) => g.label).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' · ');
+    const text = parts.map((p) => p.name + ' ' + p.glyphs.map((g) => (g.arm === 'lr' ? 'D-pad' : g.label)).join('/') + (p.note ? ' (' + p.note + ')' : '')).join(' · ');
     return { scheme, text, parts };
   }
   if (scheme === 'touch') return { scheme, text: '', parts: [] };
