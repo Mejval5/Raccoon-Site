@@ -129,5 +129,36 @@ export async function runSignsTests(assert) {
     assert('signs data: every sign resolves in every scheme (no token left as braces)', pads.concat(desks).every((s) => !/[{}]/.test(s)) && all.every((p) => !/[{}]/.test(plainText(p.touch, 'touch'))));
     assert('signs data: a pad player never reads a key or a mouse button on a sign', pads.every((s) => !/\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click|C)\b/.test(s)), pads.find((s) => /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click|C)\b/.test(s)) || '');
     assert('signs data: every tutorial and hub sign that names a control does it with a glyph token', all.filter((p) => /press|grabs|dashes|squirts|opens your/.test(p.desktop)).every((p) => /\{[a-z]+\+?\}|\{key:/.test(p.desktop)));
+    // night batch 7 (IMPROVEMENTS.md): short boards, at most two sentences, in every scheme
+    const sentences = (s) => (s.match(/[.!?](\s|$)/g) || []).length;
+    const texts = all.flatMap((p) => [plainText(signText(p, 'desktop'), 'desktop'), plainText(signText(p, 'pad'), 'pad'), plainText(signText(p, 'pad'), 'pad', 'ps'), plainText(p.touch, 'touch')]);
+    const long = texts.find((s) => s.length > 160 || sentences(s) > 2);
+    assert('signs data: every sign reads in at most 160 characters and two sentences, in every scheme', !long, long || '');
+    const tut = await load('tutorial.json');
+    assert('signs data: the tutorial names no key with {key:C}, {key:B} or {key:X} (the actions have tokens)', !/\{key:[CBX]\}/.test(JSON.stringify(tut.prompts)));
+  }
+
+  // --- night batch 7: the words players read in the data files
+  {
+    const load = async (f) => (await fetch(new URL('../data/' + f, import.meta.url))).json();
+    const strs = [];
+    const walk = (v, key) => {
+      if (typeof v === 'string') { if (/\s/.test(v)) strs.push(v); return; } // ids, sprites and map rows have no spaces
+      if (Array.isArray(v)) { for (const x of v) walk(x, key); return; }
+      if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) if (k[0] !== '_' && k !== 'unity') walk(x, k);
+    };
+    for (const f of ['tutorial.json', 'hub.json', 'rest.json', 'journal.json', 'shop-items.json', 'quests.json', 'hub-rooms.json', 'spells.json']) walk(await load(f), '');
+    const bare = strs.map((s) => s.replace(/\{[a-z]+\+?\}|\{key:[^}]+\}/g, '{}')); // tokens out: what is left is plain words
+    const bad = (re) => bare.find((s) => re.test(s));
+    assert('data text: the exit is a whirlpool, never a "ring"', !bad(/\bring\b/i), bad(/\bring\b/i) || '');
+    assert('data text: no "treasure", "biome", "loot" or "currency" in player text', !bad(/treasure|biome|\bloot|currency/i), bad(/treasure|biome|\bloot|currency/i) || '');
+    const KEY = /\b(press|tap|hit|hold|click)\s+(F|C|B|X|J|K|Q|E|I|Tab|Esc|Space|Shift|LMB|RMB|MMB)\b|\b(F|C|B|X|J|K)\s+(slips|opens|drops|grabs|throws|dashes|squirts)\b/;
+    assert('data text: no bare key name ("press F", "F slips through") outside a glyph token', !bad(KEY), bad(KEY) || '');
+    const shop = (await load('shop-items.json')).items, j = (await load('journal.json')).entries;
+    const calm = [...(await load('tutorial.json')).prompts, ...(await load('hub.json')).prompts, ...(await load('rest.json')).prompts].flatMap((p) => [p.title, p.desktop, p.touch, p.pad])
+      .concat(j.flatMap((e) => [e.name, e.text, e.where]), shop.flatMap((it) => [it.name, it.blurb])).filter(Boolean);
+    assert('data text: signs, journal pages and wares speak calmly (no "!")', !calm.some((s) => s.includes('!')), calm.find((s) => s.includes('!')) || '');
+    const named = shop.filter((it) => it.journal).map((it) => [it.name, (j.find((e) => e.id === it.journal) || {}).name]);
+    assert('data text: every shop ware has its journal entry\'s name (Title Case)', named.every(([a, b]) => a === b), JSON.stringify(named.filter(([a, b]) => a !== b)));
   }
 }

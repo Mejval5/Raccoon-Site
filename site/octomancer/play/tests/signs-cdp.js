@@ -69,13 +69,13 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     // each later room: its sign names only its own controls
     const rooms = [
       ['dash', 15.5, 11.4, ['Space', 'Shift'], ['B', 'LT']],
-      ['ink', 28, 9, ['LMB', 'J', 'K'], ['RT', 'RS']],
+      ['ink', 28, 9, ['LMB', 'J'], ['RT', 'RS']],
       ['grab', 41, 10, ['F', 'MMB'], ['A', 'RS']],
-      ['bomb', 61.5, 10, ['C', 'RMB', 'B', 'X'], ['D-pad up', 'RB']],
+      ['bomb', 61.5, 10, ['B'], ['RB']],
       ['sticky', 58, 30, ['RMB'], ['RS', 'RB']],
-      ['cloud', 42, 29, ['Q', 'E', '1-9', 'RMB', 'C'], ['LB', 'D-pad left / right', 'RB']],
+      ['cloud', 42, 29, ['Q', 'E', 'Wheel', 'RMB'], ['LB', 'D-pad left / right', 'RB']],
       ['shop', 27, 30, ['F'], ['A']],
-      ['exit', 4.5, 30.5, ['F', 'MMB', 'Tab'], ['A', 'View']],
+      ['exit', 4.5, 30.5, ['F'], ['A']],
     ];
     let popups = 0;
     for (const [tag, x, y, keys, pads] of rooms) {
@@ -115,8 +115,8 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     // ======================================================== the hub (a fresh save)
     const h = await open(browser, 'desktop', '?seed=7');
     s = await G(h);
-    check('hub: the welcome is a board hung over the start (sealed dive, the tutorial ring, F); no offer card, no banner',
-      s.open && s.open.where === 'hang' && /sealed/.test(s.open.text) && /tutorial/.test(s.open.text) && s.open.glyphs.includes('F') && !s.popup, JSON.stringify(s.open));
+    check('hub: the welcome is a board hung over the start (kelp seals the dive, the tutorial whirlpool, F); no offer card, no banner',
+      s.open && s.open.where === 'hang' && /seals the dive/.test(s.open.text) && /whirlpool/.test(s.open.text) && /tutorial/.test(s.open.text) && s.open.glyphs.includes('F') && !s.popup, JSON.stringify(s.open));
     await shot(h, 'hub-keyboard-1440');
     await padOn(h);
     s = await G(h);
