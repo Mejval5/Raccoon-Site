@@ -3734,8 +3734,8 @@ function inkV16Targets(list) {
 // critters and the foliage's hover fish (the little greenranha). Built only while a blob is in flight; never auto-aimed.
 const ambPool = [], hoverOut = [];
 function ambProxy(n, kind, bx, by, phase, t, reduced) {
-  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false });
-  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false;
+  const p = ambPool[n] || (ambPool[n] = { v16: 3, ambient: true, kind: '', bx: 0, by: 0, x: 0, y: 0, radius: 0, hp: 1, dead: false, inkPierce: 0 });
+  p.kind = kind; p.bx = bx; p.by = by; p.radius = AMBIENT_R[kind]; p.hp = 1; p.dead = false; p.inkPierce = 0; // a pooled stand-in: a new fish, not pierced yet
   ambientPos(kind, bx, by, phase, t, reduced, p);
   return p;
 }
