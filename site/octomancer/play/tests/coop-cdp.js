@@ -2,7 +2,7 @@
 // fake standard pads (navigator.getGamepads stubbed; __octo.pads([...]) drives them) and the keyboard. Pad A plays solo, Start
 // pauses, pad B presses Start in the pause menu and joins as player 2 (teal) (co-op polish: a free pad joins with Start, or A on the
 // focused Add line); both swim on their own sticks; the shared camera
-// frames both and zooms out (at most 1.6x) as they spread; player 2 dies and is out (no death screen), the next level revives
+// frames both and zooms out (at most 1.6x) as they spread; player 2 dies and becomes a ghost (no death screen), the next level revives
 // them with 2 hearts; Remove then Add (pad B again) brings back the hearts they had; Enter on the focused Add line joins the keyboard
 // as player 3;
 // the exit pull draws the others to the whirlpool; game over when every player is dead; four players in the hub; frame time and
@@ -132,7 +132,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     await step(page, 30);
     c = await C(page);
     check('player 2 dies and is out; player 1 plays on; no death screen', c.players[1].dead && !c.players[0].dead && !c.gameOver);
-    check('player 2 strip says out', /out/.test(c.strips[1] || ''), c.strips[1]);
+    check('player 2 strip says ghost', /ghost/.test(c.strips[1] || ''), c.strips[1]);
     // the dead are not framed: the zoom comes back to 1x
     await page.evaluate(() => __octo.freeze(false)); await sleep(1500); await page.evaluate(() => __octo.freeze(true));
     c = await camInfo(page);

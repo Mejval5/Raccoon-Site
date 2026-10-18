@@ -1,6 +1,6 @@
 // Local co-op, Phase 1 (octomancer-web/MULTIPLAYER-PLAN.md): the two bits of DOM co-op adds.
 //  1. The pause menu's player rows (the only place to join or leave, Daniel's rule: no popup in the world): one row per player
-//     with their colour, device and hearts (or "out" when dead until the next level), a Remove button, and the Add line. The
+//     with their colour, device and hearts (or "ghost" when dead until the next level), a Remove button, and the Add line. The
 //     buttons are ordinary buttons, so the pad's menu cursor (menu-nav.js) walks them. Co-op polish: the Add line is a button
 //     too, and joining is explicit: a free pad joins with Start, or with A while the Add line has the focus; the keyboard with
 //     Enter there (or a click on it). A or Enter anywhere else is that button's own press (main.js menuPress / addFocused).
@@ -15,6 +15,28 @@ const asset = (p) => new URL(p, import.meta.url).href;
 const HEART_SRC = asset('../assets/ui-heart.webp');
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+/** The HUD strip's ghost mark (a dead player, until the next level): a little floating octopus-ghost shape in the player's
+ *  colour, drawn once into the strip's 40x40 canvas: a round head, three wavy tentacle tips, two dark eyes. */
+function drawGhostMark(g, col) {
+  g.clearRect(0, 0, 40, 40);
+  g.save();
+  g.globalAlpha = 0.9;
+  g.fillStyle = col; g.strokeStyle = '#10202c'; g.lineWidth = 2.5; g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(8, 22);
+  g.arc(20, 18, 12, Math.PI, 0);
+  g.lineTo(32, 31);
+  g.quadraticCurveTo(29, 36, 26, 31); g.quadraticCurveTo(23, 36, 20, 31); g.quadraticCurveTo(17, 36, 14, 31); g.quadraticCurveTo(11, 36, 8, 31);
+  g.closePath();
+  g.fill(); g.stroke();
+  g.globalAlpha = 1;
+  g.fillStyle = '#eafffa';
+  g.beginPath(); g.ellipse(15.5, 18, 3.2, 3.8, 0, 0, Math.PI * 2); g.ellipse(24.5, 18, 3.2, 3.8, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#10202c';
+  g.beginPath(); g.arc(16, 19, 1.6, 0, Math.PI * 2); g.arc(25, 19, 1.6, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
 
 /** `deviceName(dev)`: 'Keyboard' | 'Pad' | 'Any'. */
 export function deviceName(dev, style = 'xbox') {
@@ -68,7 +90,7 @@ export function createCoopUI(hudEl, handlers) {
       const dot = el('span', 'octo-coop-dot'); dot.style.background = c.ui;
       const name = el('span', 'octo-coop-name', 'P' + (r.slot + 1));
       const dev = el('span', 'octo-coop-dev', deviceName(r.device, r.style));
-      const st = el('span', 'octo-coop-state', r.dead ? 'out' : r.hearts + ' / ' + r.heartMax);
+      const st = el('span', 'octo-coop-state', r.dead ? 'ghost' : r.hearts + ' / ' + r.heartMax);
       if (!r.dead) { const h = el('img', 'octo-coop-heart'); h.src = HEART_SRC; h.alt = ''; st.prepend(h); }
       const rm = el('button', 'octo-coop-remove', 'Remove');
       rm.type = 'button';
@@ -92,14 +114,15 @@ export function createCoopUI(hudEl, handlers) {
     const s = el('div', 'octo-coop-strip');
     const tag = el('span', 'octo-coop-tag');
     const heart = el('img', 'octo-coop-heart'); heart.src = HEART_SRC; heart.alt = '';
+    const ghost = el('canvas', 'octo-coop-ghost'); ghost.width = ghost.height = 40; ghost.style.display = 'none'; // co-op Phase 2: a dead player's mark
     const hearts = el('span', 'octo-coop-n');
     const bombC = el('canvas', 'octo-coop-icon'); bombC.width = bombC.height = 40;
     const bombs = el('span', 'octo-coop-n');
     const jar = el('span', 'octo-coop-jar');
     const slotC = el('canvas', 'octo-coop-icon octo-coop-slot'); slotC.width = slotC.height = 40;
-    s.append(tag, heart, hearts, bombC, bombs, jar, slotC);
+    s.append(tag, heart, ghost, hearts, bombC, bombs, jar, slotC);
     strips.appendChild(s);
-    return (made[i] = { s, tag, hearts, bombs, jar, bombC, slotC, k: {} });
+    return (made[i] = { s, tag, heart, ghost, hearts, bombs, jar, bombC, slotC, k: {} });
   }
   /** players: [{slot, hearts, dead, bombs, casts, slotId}] (solo or none: the strips hide). */
   function update(players) {
@@ -110,9 +133,13 @@ export function createCoopUI(hudEl, handlers) {
     for (let i = 0; i < made.length; i++) if (made[i]) made[i].s.style.display = i < players.length ? '' : 'none';
     for (let i = 0; i < players.length; i++) {
       const p = players[i], m = strip(i), k = m.k, c = PLAYER_COLOURS[p.slot];
-      if (k.slot !== p.slot) { k.slot = p.slot; m.s.style.setProperty('--coop', c.ui); m.s.style.setProperty('--coop-dark', c.dark); m.tag.textContent = 'P' + (p.slot + 1); }
-      if (k.dead !== p.dead) { k.dead = p.dead; m.s.classList.toggle('octo-coop-out', !!p.dead); }
-      const ht = p.dead ? 'out' : String(p.hearts);
+      if (k.slot !== p.slot) { k.slot = p.slot; k.dead = undefined; m.s.style.setProperty('--coop', c.ui); m.s.style.setProperty('--coop-dark', c.dark); m.tag.textContent = 'P' + (p.slot + 1); }
+      if (k.dead !== p.dead) {
+        k.dead = p.dead; m.s.classList.toggle('octo-coop-out', !!p.dead);
+        m.heart.style.display = p.dead ? 'none' : ''; m.ghost.style.display = p.dead ? '' : 'none';
+        if (p.dead) drawGhostMark(m.ghost.getContext('2d'), c.ui);
+      }
+      const ht = p.dead ? 'ghost' : String(p.hearts);
       if (k.h !== ht) { k.h = ht; m.hearts.textContent = ht; }
       if (k.b !== p.bombs) { k.b = p.bombs; m.bombs.textContent = String(p.bombs); }
       if (!k.bombDrawn) { const g = m.bombC.getContext('2d'); g.clearRect(0, 0, 40, 40); drawBombSlotIcon(g, 20, 20, 17); k.bombDrawn = true; }

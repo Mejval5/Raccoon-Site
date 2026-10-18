@@ -892,7 +892,9 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 .octo-coop-n { min-width: 12px; margin-right: 4px; }
 .octo-coop-jar { font-size: 13px; color: #c9b4e8; margin-right: 2px; }
 .octo-coop-slot { border: 1.5px solid rgba(210, 251, 230, 0.45); border-radius: 6px; width: 26px; height: 26px; }
-.octo-coop-out { opacity: .55; }
+.octo-coop-out { opacity: .8; }
+.octo-coop-ghost { width: 22px; height: 22px; }
+.octo-coop-small .octo-coop-ghost { width: 17px; height: 17px; }
 .octo-coop-small .octo-coop-strip { font-size: 13px; padding: 2px 6px 2px 3px; }
 .octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
 .octo-coop-small .octo-coop-icon { width: 19px; height: 19px; }
