@@ -303,12 +303,12 @@ async function checkLayout(p, tag, n) {
       await ph.evaluate(() => __octo.god(true));
       await PADS(ph, [{ lx: 0.3 }, {}, {}]); await sleep(100); await PADS(ph, [{}, {}, {}]);
       await tapPads(ph, [{ start: true }, {}, {}]);
-      await tapPads(ph, [{}, { a: true }, {}]);
+      await tapPads(ph, [{}, { start: true }, {}]);
       await tapPads(ph, [{ start: true }, {}, {}]); await sleep(400);
       await checkLayout(ph, '412x915, two players', 2);
       await tapPads(ph, [{ start: true }, {}, {}]);
-      await tapPads(ph, [{}, {}, { a: true }]);
-      await ph.keyboard.press('Enter');
+      await tapPads(ph, [{}, {}, { start: true }]);
+      await kbJoin(ph);
       await tapPads(ph, [{ start: true }, {}, {}]); await sleep(400);
       await checkLayout(ph, '412x915, four players', 4);
       await ph.close();
