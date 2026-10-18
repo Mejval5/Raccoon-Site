@@ -1,6 +1,6 @@
 // Hotbar data, hotbar UI and inventory UI (juice / spells step). DOM tests run on detached elements.
-import { createHotbar, MAX_SLOTS, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, addSpell, hotbarKey } from '../js/hotbar.js';
-import { registerSpellForTest, spellById, JUICE, juiceCap } from '../js/spells.js';
+import { createHotbar, MAX_SLOTS, selectNext, selectIndex, selectedSpell, selectedIds, moveSlot, addSpell, hotbarKey, swapSlots, BOMB_SLOT } from '../js/hotbar.js';
+import { registerSpellForTest, spellById, JUICE, juiceCap, castSpell, createInkClouds, CAST_OK } from '../js/spells.js';
 import { createHotbarUI } from '../js/hotbar-ui.js';
 import { createInventoryUI } from '../js/inventory-ui.js';
 
@@ -58,6 +58,30 @@ export async function runHotbarTests(assert) {
     assert('hotbar ui: juice and bombs update their text', ui.el.querySelector('.octo-hb-casts').textContent === '2' && ui.el.querySelector('.octo-hb-count').textContent === '0/5');
     ui.shakeJar();
     assert('hotbar ui: shakeJar adds the shake class', ui.el.querySelector('.octo-hb-jar').classList.contains('octo-jar-shake'));
+    ui.shakeSlot(1);
+    assert('hotbar ui: shakeSlot(index) shakes that slot\'s tile only (a spell that could not happen)', slotEls[1].classList.contains('octo-jar-shake') && !slotEls[0].classList.contains('octo-jar-shake'));
+
+    // 2026-10-18 (Daniel: "couldn't place the Lure until I swapped it in the journal"): whichever way a slot is selected (a number
+    // key, Q / E or the wheel, the d-pad, a click, after a swap), Use casts THAT slot, on a fresh level too: the run's cast lock
+    // from the old level's clock must not hold it.
+    {
+      const bar = createHotbar([BOMB_SLOT, 'ink-cloud', 'lure']);
+      const clouds = createInkClouds();
+      const fxStub = { lure: () => true, defer: () => false };
+      const run = { juice: 99, castLockUntil: 120.4 }; // the last cast of a long level, then the clock went back to 0
+      let now = 1;
+      const use = () => { now += 0.5; return castSpell(run, selectedIds(bar), { clouds, fx: fxStub, x: 5, y: 5, vx: 0, vy: 0, dirX: 1, dirY: 0, now }); };
+      const paths = [
+        ['number key 3', () => selectIndex(bar, 2), 'lure'],
+        ['Q (previous)', () => selectNext(bar, -1), 'ink-cloud'],
+        ['E / wheel (next)', () => selectNext(bar, 1), 'lure'],
+        ['d-pad up (bomb) then right', () => { selectIndex(bar, 0); selectNext(bar, 1); }, 'ink-cloud'],
+        ['a click on slot 3', () => selectIndex(bar, 2), 'lure'],
+        ['a journal swap and back', () => { swapSlots(bar, 1, 2); swapSlots(bar, 1, 2); }, 'lure'],
+      ];
+      const got = paths.map(([, sel, want]) => { sel(); return selectedSpell(bar) === want && use() === CAST_OK; });
+      assert('hotbar: every way of selecting, then Use casts the selected spell (Lure, Ink Cloud) on a new level clock, no journal needed', got.every(Boolean), JSON.stringify(got));
+    }
     ui.shakeJar();
     assert('hotbar ui: shakeJar is restartable', ui.el.querySelector('.octo-hb-jar').classList.contains('octo-jar-shake'));
     ui.setCompact(true);

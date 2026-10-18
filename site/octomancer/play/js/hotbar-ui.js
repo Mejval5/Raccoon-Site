@@ -177,9 +177,10 @@ export function createHotbarUI(root, handlers = {}) {
       void jarEl.offsetWidth;
       jarEl.classList.add('octo-jar-shake');
     },
-    /** A slot's "nothing to use" feedback (the bomb stack is empty): the jar's shake on that slot. */
+    /** A slot's "nothing to use" feedback (the bomb stack is empty, a spell that could not happen there): the jar's shake on
+     *  that slot. `id` = 'bomb', or the slot's index on the bar. */
     shakeSlot(id) {
-      const e = id === 'bomb' ? (barBomb || bombSlot) : slotEls.find((x) => x.title === id);
+      const e = id === 'bomb' ? (barBomb || bombSlot) : typeof id === 'number' ? slotEls[id] : slotEls.find((x) => x.title === id);
       if (!e) return;
       e.classList.remove('octo-jar-shake'); void e.offsetWidth; e.classList.add('octo-jar-shake');
     },

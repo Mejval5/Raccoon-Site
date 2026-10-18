@@ -3,7 +3,7 @@
 // free and crumbles at 25 s with a rebake; Anchor ignores jet, blast and knock impulses, crushes at >= 6 u/s, smashes timber and
 // cannot dash; Delayed fires at 1.5 s; Ink Cloud rides a jet and a blast clears it; the rune pedestals' order and rules.
 import {
-  SPELLS, MODS, SLOT, JUICE, spellById, modById, resolveSlot, slotPrice, castSpell, createInkClouds, CAST_OK, CAST_NONE, CAST_BUSY, CAST_EMPTY,
+  SPELLS, MODS, SLOT, JUICE, spellById, modById, resolveSlot, slotPrice, castSpell, createInkClouds, CAST_OK, CAST_NONE, CAST_BUSY, CAST_EMPTY, castLocked,
 } from '../js/spells.js';
 import { createSpellFx, ANCHOR_CRUSH_SPEED } from '../js/spell-fx.js';
 import { createHazards, JET_ACC, HZ_JET, HZ_NONE } from '../js/hazards.js';
@@ -86,6 +86,13 @@ export async function runSpellSetTests(assert) {
       c.now = 0.2; const b = castSpell(run, ['ink-cloud'], c);
       c.now = 0.45; const d = castSpell(run, ['ink-cloud'], c);
       assert('one global 0.4 s cast lock: a second cast 0.2 s later is refused for free, 0.45 s later it goes', a === CAST_OK && b === CAST_BUSY && d === CAST_OK && run.juice === 4);
+      // 2026-10-18 (Daniel: the Lure / Ink Cloud would not cast until much later): the lock is kept on the run, ctx.now is the
+      // level clock, back to 0 on each level. A lock left from the old level's clock (90 s) must not hold the new level's casts.
+      run.juice = 12; run.castLockUntil = 90.4;
+      c.now = 2; const fresh = castSpell(run, ['ink-cloud'], c);
+      c.now = 2.2; const again = castSpell(run, ['ink-cloud'], c);
+      assert('a stale cast lock from an older level clock (90.4 s at 2 s) is ignored; the new 0.4 s lock still holds', fresh === CAST_OK && again === CAST_BUSY && Math.abs(run.castLockUntil - 2.4) < 1e-9);
+      assert('castLocked: inside the 0.4 s only', castLocked({ castLockUntil: 1.4 }, 1.1) && !castLocked({ castLockUntil: 1.4 }, 1.4) && !castLocked({ castLockUntil: 90 }, 1) && !castLocked({}, 1) && !castLocked({ castLockUntil: 2 }, undefined));
       run.juice = 4;
       assert('Heavy Riptide (2 casts) with one cast in the jar: the empty jar, nothing paid', castSpell(run, ['riptide', 'heavy'], ctxOf(r, 10, 10)) === CAST_EMPTY && run.juice === 4);
     }
