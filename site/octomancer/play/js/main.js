@@ -23,7 +23,9 @@ import { screenToWorld, worldToScreen } from './camera.js';
 import { drawBlackHole, farCorner } from './blackhole.js';
 import { createPickups } from './pickups.js';
 import { createDecor } from './decor.js';
-import { isBaked, setOctopusSkin, getOctopusSkin } from './octopus-draw.js';
+import { isBaked, setOctopusSkin, getOctopusSkin, prepareTint } from './octopus-draw.js';
+import { GHOST, createGhost, stepGhost, freezeDone, blowFactor, pickFreeze, clampGhost } from './ghost.js';
+import { drawGhost } from './ghost-draw.js';
 // 2026-10-08 skins: each person gives a look the first time they are rescued or befriended (skins.js, skin-draw.js, skin-gifts.js)
 import { getSkins, unlockSkins, getSkin, setSkin as saveSkin } from './save.js';
 import { newSkins, earnedSkins, skinById, DEFAULT_SKIN } from './skins.js';
@@ -53,7 +55,7 @@ import { registerKeeperGrab } from './altar.js';
 import { drawHandTell, drawHeldArm, drawHeldGrip, drawKeeperNotice, drawKeyHint } from './hand-draw.js';
 import { drawEnemyOne, drawBombOne } from './enemy-draw.js';
 import { drawTrace } from './draw-trace.js';
-import { createProps, PROP_NAMES, PK_BLOCK } from './props.js';
+import { createProps, PROP_NAMES, PK_BLOCK, PK_CLAM, PS_CARRY, PS_HELD } from './props.js';
 import { createRagdoll } from './ragdoll.js';
 import { createCorpses, kindName as corpseKindName } from './corpses.js';
 import { drawCorpses, drawCorpseOne } from './corpses-draw.js';
@@ -1011,7 +1013,8 @@ function step(dt) {
         trailTimer = TRAIL_BUBBLE_PERIOD_MAX - (TRAIL_BUBBLE_PERIOD_MAX - TRAIL_BUBBLE_PERIOD_MIN) * speedFrac;
         particles.trailBubble(octo.x, octo.y);
       }
-    } else if (!p.deadSeen) { p.deadSeen = true; p.diedAt = sim.time; } // local co-op: out until the next level
+    } else if (!p.deadSeen) { p.deadSeen = true; p.diedAt = sim.time; } // local co-op: a ghost until the next level
+    if (!solo && octo.dead) stepGhostOf(p, s, dt); // co-op Phase 2: the ghost rises from the body, floats, blows and freezes
     p.snap = s;
   }
   const fp = solo ? ps[0] : focusP();
@@ -1691,7 +1694,7 @@ function deathFocus(w, h) {
 const roster = createRoster();
 const PR = [null, null, null, null]; // runtime record per roster slot
 function newRuntime(slot) {
-  return { slot, octo: null, hand: null, inkJet: null, lastAim: { x: 1, y: 0 }, prevHearts: 0, prevBodyHits: 0, trailTimer: 0, ragdoll: null, hotbar: null, items: [], juice: 0, snap: NO_INPUT, movedAt: 0, deadSeen: false, diedAt: 0 };
+  return { slot, octo: null, hand: null, inkJet: null, lastAim: { x: 1, y: 0 }, prevHearts: 0, prevBodyHits: 0, trailTimer: 0, ragdoll: null, hotbar: null, items: [], juice: 0, snap: NO_INPUT, movedAt: 0, deadSeen: false, diedAt: 0, ghost: null, ghostPose: null };
 }
 PR[0] = newRuntime(0);
 let cur = PR[0];
@@ -1774,6 +1777,7 @@ function partySees() { for (const p of players()) if (oOf(p).seeBuried) return t
 function setupOcto(p) {
   const o = p.octo;
   o.pi = p.slot; o.tint = PLAYER_COLOURS[p.slot].body || null;
+  prepareTint(o.tint); // the colour sheet starts building now: the octopus is drawn once it is ready, never in player 1's red first
   if (V2) { o.feel = true; o.sink = sinkNow; applyCarried(o, p.items); }
 }
 const START_OFFS = [0.9, -0.9, 1.8, -1.8, 2.7, -2.7];
@@ -1798,7 +1802,7 @@ function resetOthers() {
     p.octo = createOctopus(world.startX, world.startY);
     placeNear(p.octo, world.startX, world.startY, k);
     p.hand = createHand(); p.inkJet = createInkJet(); p.ragdoll = createRagdoll(); p.lastAim = { x: 1, y: 0 };
-    p.prevBodyHits = 0; p.trailTimer = 0; p.deadSeen = false; p.diedAt = 0;
+    p.prevBodyHits = 0; p.trailTimer = 0; p.deadSeen = false; p.diedAt = 0; p.ghost = null;
     setupOcto(p);
     p.prevHearts = p.octo.hearts;
   }
@@ -2001,8 +2005,8 @@ function forEachPlayerDraw(fn) {
 /** The keyboard player's cursor ring and each pad player's aim ring (2.5 tiles out along the aim stick). */
 function drawCoopReticles(c, camera, cw, ch, t) {
   for (const p of players()) {
-    const o = oOf(p);
-    if (o.dead || o.hidden) continue;
+    const o0 = oOf(p), o = o0.dead ? p.ghost : o0; // a ghost aims its blow too
+    if (!o || o0.hidden) continue;
     const dev = roster.slots[p.slot].device;
     if (dev === KEYBOARD) { if (input.mouse.seen && input.kbMode() === 'mouse') drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t); }
     else if (p.snap && p.snap.aim && p.snap.aim.active) {
@@ -2010,6 +2014,116 @@ function drawCoopReticles(c, camera, cw, ch, t) {
       const sp = worldToScreen(camera, cw, ch, o.x + (a.x / al) * 2.5, o.y + (a.y / al) * 2.5);
       drawReticle(c, sp.x, sp.y, camera.pxPerUnit, t);
     }
+  }
+}
+
+// --- local co-op, Phase 2: ghosts (ghost.js, ghost-draw.js; MULTIPLAYER-PLAN.md decisions 5 and 6) -------------------------
+// A dead player in co-op (solo: the death screen, as always) rises as a ghost GHOST.riseS after the death. The body stays where
+// it lies (a ragdoll, knocked about as before); the ghost is a record of its own on the player (p.ghost): it is never in the
+// world's octopus list, so nothing can hurt, grab, chase or frame it, and it can pick up, buy, talk to or trigger nothing.
+/** One step of player p's ghost (p is current). `s` = the player's input. */
+function stepGhostOf(p, s, dt) {
+  if (everyoneDead()) return; // the death screen: no ghost rises, the ones there rest
+  let g = p.ghost;
+  if (!g) {
+    if (sim.time - p.diedAt < GHOST.riseS || octo.hidden) return;
+    g = p.ghost = createGhost(octo.x, octo.y - 0.25);
+    for (let i = 0; i < 4; i++) particles.trailBubble(g.x + (i - 1.5) * 0.18, g.y - 0.2 - i * 0.12);
+  }
+  const blow = !!(s.attack && (s.attack.pressed || s.attack.held));
+  const use = !!(s.use && (s.use.held || s.use.pressed));
+  stepGhost(g, s.move.x, s.move.y, blow, use, dt);
+  ghostBounds(g);
+  if (g.blew) { ghostAim(p, s, g); ghostBlow(g); }
+  if (g.cast) ghostFreeze(g);
+  if (run.state === S_REST && restSpring && springReach(g.x, g.y, restSpring.x, restSpring.y)) reviveGhost(p, g.x, g.y); // the grotto's spring brings a ghost back
+}
+/** A ghost floats through rock but stays inside the shared camera's view (it is dragged along with the live players) and the level. */
+function ghostBounds(g) {
+  const cam = renderer.camera, ppu = cam.pxPerUnit;
+  if (ppu > 0) {
+    const hw = Math.max(1, canvas.width / ppu / 2 - 0.6), hh = Math.max(1, canvas.height / ppu / 2 - 0.6);
+    clampGhost(g, cam.x - hw, cam.y - hh, cam.x + hw, cam.y + hh);
+  }
+  if (world.width > 1) clampGhost(g, 0.5, 0.5, world.width - 0.5, (world.height || 1e9) - 0.5);
+}
+/** The blow's direction: the mouse (the keyboard player clicking), the aim stick, the swim direction, else the way it faces. */
+function ghostAim(p, s, g) {
+  let dx = 0, dy = 0;
+  if (roster.slots[p.slot].device === KEYBOARD && s.src && s.src.attack === 'mouse' && input.mouse.seen) {
+    const w = screenToWorld(renderer.camera, canvas.width, canvas.height, input.mouse.x, input.mouse.y);
+    dx = w.x - g.x; dy = w.y - g.y;
+  }
+  if (Math.hypot(dx, dy) < 0.3 && s.aim && s.aim.active && Math.hypot(s.aim.x, s.aim.y) > 1e-3) { dx = s.aim.x; dy = s.aim.y; }
+  if (Math.hypot(dx, dy) < 0.3 && Math.hypot(s.move.x, s.move.y) > 0.25) { dx = s.move.x; dy = s.move.y; }
+  if (Math.hypot(dx, dy) < 1e-3) { dx = g.face; dy = 0; }
+  const l = Math.hypot(dx, dy);
+  g.bx = dx / l; g.by = dy / l;
+}
+/** Blow: a soft push in the cone on the loose props (bombs, pots, rocks, finds, the dead bodies), the corpses and the creatures. No damage. */
+function ghostBlow(g) {
+  const ux = g.bx, uy = g.by, d = props.data;
+  for (let j = 0; j < d.n; j++) {
+    if (!d.alive[j] || d.state[j] === PS_CARRY) continue; // what a live octopus holds stays in its tentacles
+    const f = blowFactor(g.x, g.y, ux, uy, d.x[j], d.y[j], d.radius[j]);
+    if (f <= 0) continue;
+    if (d.state[j] === PS_HELD) { // a pot (chest, relic) sitting on its floor is blown off it; a clam on its wall, a stuck bomb, a hanging thing stay
+      if (d.kind[j] === PK_CLAM || d.stuck[j] || d.sy[j] <= Math.floor(d.y[j])) continue;
+      props.release(j);
+    }
+    props.nudge(j, ux, uy, GHOST.blowPush * f);
+  }
+  const cd = corpses.data;
+  for (let j = 0; j < cd.n; j++) {
+    if (!cd.alive[j]) continue;
+    const f = blowFactor(g.x, g.y, ux, uy, cd.x[j], cd.y[j], cd.radius[j]);
+    if (f > 0) corpses.nudge(j, ux, uy, GHOST.blowPush * 0.7 * f);
+  }
+  for (const e of enemies.all()) {
+    if (e.dead || e.ghost) continue;
+    const f = blowFactor(g.x, g.y, ux, uy, e.x, e.y, e.radius || 0.4);
+    if (f > 0) enemies.nudge(e, ux, uy, GHOST.blowPush * 0.55 * f);
+  }
+  sfx.inkPuff();
+}
+/** Freeze: the nearest creature in reach holds still for GHOST.freezeS; the cooldown starts only when one was there. */
+function ghostFreeze(g) {
+  const e = pickFreeze(g.x, g.y, enemies.all());
+  if (e && enemies.freeze(e, GHOST.freezeS)) {
+    freezeDone(g);
+    sfx.chime();
+    for (let i = 0; i < 3; i++) particles.trailBubble(e.x + (i - 1) * 0.25, e.y - 0.2);
+  } else particles.trailBubble(g.x, g.y - 0.3); // nothing in reach: the charge is spent, no cooldown
+}
+/** The grotto's spring: player p (current) comes back alive where the ghost is, with every heart and a full jar. */
+function reviveGhost(p, x, y) {
+  if (hand.held) handDrop(hand, octo, handCtx);
+  if (octo.bodyIdx >= 0) { props.remove(octo.bodyIdx); octo.bodyIdx = -1; }
+  const hm = octo.heartMax, bombs = octo.bombs;
+  octo = createOctopus(x, y);
+  p.octo = octo;
+  hand = createHand(); ragdoll = createRagdoll();
+  setupOcto(p);
+  octo.heartMax = Math.max(octo.heartMax, hm); octo.hearts = octo.heartMax; octo.bombs = bombs;
+  prevHearts = octo.hearts; prevBodyHits = 0; run.juice = juiceCap();
+  p.ghost = null; p.deadSeen = false; p.diedAt = 0;
+  saveCur();
+  particles.pickupSparkle(x, y, '#bfe8d8'); sfx.chime();
+  refreshRows();
+}
+const GHOST_LOOKS = PLAYER_COLOURS.map((c) => {
+  const n = parseInt(c.ui.slice(1), 16), mix = (v, p) => Math.round(p + (v - p) * 0.22);
+  return { ui: c.ui, wash: 'rgba(' + mix((n >> 16) & 255, 226) + ',' + mix((n >> 8) & 255, 236) + ',' + mix(n & 255, 240) + ',0.62)' };
+});
+/** Every ghost, over the world (after the octopi and what they hold). */
+function drawGhosts(c, camera, cw, ch, t) {
+  saveCur();
+  for (const p of players()) {
+    const g = p.ghost;
+    if (!g) continue;
+    const pose = p.ghostPose || (p.ghostPose = { x: 0, y: 0, angle: 0, swimming: false, dead: false, limp: false, dashCooldown: 0, hurting: false, stunT: 0, held: 0, radius: 0.35, tint: null, __t: 0, __speed: 0 });
+    pose.tint = p.octo.tint || null;
+    drawGhost(c, camera, cw, ch, g, pose, GHOST_LOOKS[p.slot], t, renderAlpha);
   }
 }
 
@@ -2032,7 +2146,8 @@ function coopHooks() {
       return {
         players: players().map((p) => ({ slot: p.slot, device: roster.slots[p.slot].device, colour: PLAYER_COLOURS[p.slot].id, tint: p.octo.tint || null,
           x: p.octo.x, y: p.octo.y, vx: p.octo.vx, vy: p.octo.vy, hearts: p.octo.hearts, heartMax: p.octo.heartMax, bombs: p.octo.bombs, juice: p.juice,
-          items: p.items.slice(), hotbar: p.hotbar ? p.hotbar.slots.map((s) => s.ids.slice()) : null, dead: !!p.octo.dead, hidden: !!p.octo.hidden, sealed: !!p.octo.sealed })),
+          items: p.items.slice(), hotbar: p.hotbar ? p.hotbar.slots.map((s) => s.ids.slice()) : null, dead: !!p.octo.dead, hidden: !!p.octo.hidden, sealed: !!p.octo.sealed,
+          ghost: p.ghost ? { x: p.ghost.x, y: p.ghost.y, vx: p.ghost.vx, vy: p.ghost.vy, charge: p.ghost.charge, charging: p.ghost.charging, freezeCd: p.ghost.freezeCd, blowCd: p.ghost.blowCd, puff: p.ghost.puff } : null })),
         records: [...roster.records.entries()].map(([d, r]) => ({ device: d, slot: r.slot, hearts: r.hearts, bombs: r.bombs, dead: r.dead })),
         camera: { zoom: camZoom, x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, solo: computePxPerUnit(canvas.width, canvas.height) },
         pull: pull ? { t: pull.t } : null, gameOver: ui.isGameOverShown(), primary: pad.primaryKey(), others: pad.others(), tints: tintStats(),
@@ -2045,6 +2160,8 @@ function coopHooks() {
     killPlayer(slot, cause = 'test') { return withSlot(slot, () => { killOctopus(octo, cause); octo.deathTimer = 0; return true; }); },
     teleportPlayer(slot, x, y) { return withSlot(slot, () => { octo.x = octo.prevX = x; octo.y = octo.prevY = y; octo.vx = octo.vy = 0; ragdoll.place(octo, props, x, y); return { x, y }; }); },
     setPlayerHearts(slot, n) { return withSlot(slot, () => { octo.hearts = prevHearts = Math.max(1, Math.min(octo.heartMax, n | 0)); return octo.hearts; }); },
+    /** Co-op Phase 2: put player `slot`'s ghost at (x, y) (it still stays inside the camera's view). */
+    teleportGhost(slot, x, y) { const p = PR[slot]; if (!p || !p.ghost) return null; const g = p.ghost; g.x = g.prevX = x; g.y = g.prevY = y; g.vx = g.vy = 0; return { x, y }; },
     pressHandOf(slot) { return withSlot(slot, () => { const p = portalAt(octo); return p ? enterPortal(p) : false; }); },
   };
 }
@@ -2107,7 +2224,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
   prevHearts = octo.hearts;
   prevBodyHits = 0;
   ragdoll = createRagdoll();
-  cur.deadSeen = false; cur.diedAt = 0;
+  cur.deadSeen = false; cur.diedAt = 0; cur.ghost = null;
   resetOthers();
   pull = null; camZoom = 1;
   dropTints(players().map((q) => PLAYER_COLOURS[q.slot].body).filter(Boolean)); // local co-op: a colour nobody plays any more frees its sheet at the next level (a quick leave and rejoin keeps it)
@@ -2715,7 +2832,7 @@ function v2People(c, camera, w2s, cw, ch) {
   });
   drawInkClouds(c, camera, cw, ch, inkClouds.data, t, 1); // a thin veil of it over the octopus: it reads as inside the cloud
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawChain(c, camera, cw, ch, chain); // chain reactions: the motes running link to link and the rings where they land, over the blasts
-  if (coop()) { if (!holdDark) drawCoopReticles(c, camera, cw, ch, t); } // local co-op: the keyboard player's cursor, each pad player's aim
+  if (coop()) { drawGhosts(c, camera, cw, ch, t); if (!holdDark) drawCoopReticles(c, camera, cw, ch, t); } // local co-op: the ghosts; the keyboard player's cursor, each pad player's aim
   else if (input.mode() !== 'touch' && input.mode() !== 'pad' && input.mouse.seen && !octo.dead && !holdDark) drawReticle(c, input.mouse.x, input.mouse.y, camera.pxPerUnit, t);
   else if (input.mode() === 'pad' && input.pad.aimActive && !octo.dead && !holdDark && !octo.hidden) { // the aim stick: the same quiet ring, 2.5 tiles out
     const ax = input.pad.ax, ay = input.pad.ay, al = Math.hypot(ax, ay) || 1;
@@ -4096,7 +4213,7 @@ window.__octo = {
   },
   /** Enemies (kind, position, pattern state, telegraph, stun) and shots, for tests and review. */
   enemies() {
-    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead, tg: e.tg || 0, frenzy: e.frenzy || 0 }));
+    return enemies.all().filter((e) => !e.ghost).map((e) => ({ drawn: e.cv === 1, id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, st: e.st, t: e.t, tell: e.tell, stun: e.stun, placement: e.placement, face: e.face, dir: e.dir, aim: e.aim, dead: e.dead, tg: e.tg || 0, frenzy: e.frenzy || 0, frozen: e.frozen || 0, hp: e.hp }));
   },
   shots() { return enemies.shots().map((s) => ({ x: s.x, y: s.y, vx: s.vx, vy: s.vy })); },
   auto() { return autofire ? { ...autofire.stats } : null; },
