@@ -111,7 +111,7 @@ export async function runDamageTests(assert) {
       if (o.swimming && free < 0) free = k; else if (free < 0) limp++;
     }
     assert(`eel: inputs are ignored for ~${EEL_STUN_S} s (${limp} steps = ${(limp * DT).toFixed(2)} s), then control returns`, Math.abs(limp * DT - EEL_STUN_S) <= 0.06 && free >= 0 && o.stunT === 0);
-    // manta: dive contact stuns (STUN_S), gliding contact is a plain hit
+    // manta: dive contact stuns (STUN_S), gliding contact is harmless (2026-10-18: the glider)
     const world = grid((x, y) => x < 1 || x >= 40 || y >= 30 || y < 1);
     for (const [st, label] of [[MA_DIVE, 'dive'], [MA_GLIDE, 'glide']]) {
       const en = createEnemies(); const m = en.spawnAt('manta', 20, 10, 'open');
@@ -119,7 +119,7 @@ export async function runDamageTests(assert) {
       m.st = st; m.t = 5; m.tx = 0; m.ty = 1; m.cool = 5;
       en.update(DT, 0, oc, world, [], null);
       if (label === 'dive') assert(`manta: contact during the dive stuns for ${STUN_S} s and costs a heart (stunT ${oc.stunT.toFixed(2)}, hearts ${oc.hearts})`, Math.abs(oc.stunT - STUN_S) < 0.05 && oc.hearts === 2);
-      else assert('manta: gliding contact stays a one-hit with knockback (no stun)', oc.stunT === 0 && oc.hearts === 2 && Math.abs(oc.vy) + Math.abs(oc.vx) > 5);
+      else assert('manta: gliding contact does nothing (the glider never bites; manta.test.js)', oc.stunT === 0 && oc.hearts === 3);
     }
   }
 
