@@ -124,10 +124,19 @@ export const EFFECTS = {
  * the jar shakes), CAST_NONE (no such spell, or the effect could not happen: nothing is paid) or CAST_BUSY (the 0.4 s cast lock;
  * only when ctx.now is given). A slot with Delayed is paid now and goes off later (ctx.fx.defer).
  */
+/** Whether the 0.4 s cast lock holds at level time `now` (a lock more than one castLock ahead belongs to an older clock: no). */
+export function castLocked(run, now) {
+  if (now === undefined || run.castLockUntil === undefined) return false;
+  const left = run.castLockUntil - now;
+  return left > 0 && left <= SLOT.castLock + 1e-6;
+}
 export function castSpell(run, ids, ctx) {
   const p = resolveSlot(ids);
   if (!p || !EFFECTS[p.spell.effect]) return CAST_NONE;
-  if (ctx.now !== undefined && run.castLockUntil !== undefined && ctx.now < run.castLockUntil) return CAST_BUSY;
+  // 2026-10-18 (Daniel: "couldn't place the Lure"): ctx.now is the LEVEL clock (sim.time, back to 0 on every level), the lock
+  // is kept on the run. A lock from an older clock (further ahead than one castLock) is stale: ignore it, or every cast of the
+  // next level was CAST_BUSY, silently, until the new clock caught up with the old level's time.
+  if (castLocked(run, ctx.now)) return CAST_BUSY;
   const price = p.price * JUICE.perCast;
   if (run.juice < price) return CAST_EMPTY;
   const ok = p.delay > 0 && ctx.fx ? ctx.fx.defer(p, ctx) : EFFECTS[p.spell.effect](p, ctx);
