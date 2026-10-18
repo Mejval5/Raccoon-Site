@@ -50,7 +50,9 @@ export function deviceName(dev, style = 'xbox') {
 /** How to join, naming only the devices that are still free: the keyboard drops out once it plays, "a free pad" becomes "another
  *  pad" once one plays. Co-op polish: Start on a free pad, or A (Enter) on the focused Add line. `style`: the pad make. */
 export function joinHow(rows, style = 'xbox') {
-  const kb = rows.some((r) => r.device === KEYBOARD), pads = rows.some((r) => r.device && r.device !== KEYBOARD);
+  // (solo: the row's `on` is the device player 1 last played on, so the line never offers player 1's own device)
+  const dev = (r) => r.device || r.on || null;
+  const kb = rows.some((r) => dev(r) === KEYBOARD), pads = rows.some((r) => dev(r) && dev(r) !== KEYBOARD);
   const A = style === 'ps' ? 'Cross' : 'A', S = style === 'ps' ? 'Options' : 'Menu';
   return S + ' on ' + (pads ? 'another pad' : 'a free pad') + ', or ' + A + (kb ? '' : ' / Enter') + ' here';
 }

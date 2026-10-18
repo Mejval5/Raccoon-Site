@@ -800,11 +800,18 @@ const PAD_JOURNAL = { root: null, back: () => closeInventory(), pad: (a) => jour
 const PAD_LOOKS = { root: null, back: () => looksPicker.hide(), pad: (a) => looksPicker.pad(a), focus: () => looksPicker.padFocus() };
 /** The pause menu's Add line (coop-ui.js) has the menu focus (the pad's ring, or the keyboard's arrows). */
 function addFocused() { const a = coopUI.addBtn; return !!a && (menuNav.focused() === a || document.activeElement === a); }
+// join fix: the mouse over a pause-menu button gives it the menu focus, so a pad's A (or Enter) acts on what the pointer shows
+document.addEventListener('mouseover', (e) => {
+  const b = e.target && e.target.closest ? e.target.closest('.octo-pause-overlay button') : null;
+  if (b && pauseMenuUp() && document.activeElement !== b && !b.disabled) { try { b.focus({ preventScroll: true }); } catch (err) { /* old browsers */ } }
+});
 const KB_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 let kbMenuNav = false; // the arrow keys moved the menu focus: the ring shows for the keyboard too, until the mouse moves
 window.addEventListener('mousemove', () => { if (kbMenuNav) { kbMenuNav = false; if (input.mode() !== 'pad') menuNav.hideRing(); } });
 /** The pause menu's first button, where the focus starts (not the Add line: A or Enter there joins, co-op polish item 3). */
 function pauseFirst() {
+  const act = document.activeElement; // (join fix: a button the mouse is over has the focus already: keep it)
+  if (act && act.tagName === 'BUTTON' && act.closest && act.closest('.octo-pause-overlay')) return act;
   for (const b of document.querySelectorAll('.octo-pause-overlay .octo-pause-btns button')) if (b.style.display !== 'none') return b;
   return null;
 }
@@ -1977,7 +1984,7 @@ function refreshRows() {
   saveCur();
   const rows = players().map((p) => {
     const o = p.octo, d = roster.slots[p.slot].device;
-    return { slot: p.slot, device: d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
+    return { slot: p.slot, device: d, on: d === null ? p1Dev : d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
   });
   coopUI.setRows(rows, rows.length >= MAX_PLAYERS, input.padStyle());
   refreshControlsLine(); // a join or a leave: whose line it is (solo again: the plain line, no dot)
