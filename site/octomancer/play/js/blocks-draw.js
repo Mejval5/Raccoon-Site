@@ -12,16 +12,24 @@ import { visibleAt, cullFlags, cullView } from './cull.js';
  * @param {number} cw canvas width (px)
  * @param {number} ch canvas height (px)
  * @param {ReturnType<import('./props.js').createProps>['data']} d
+ * @param {number} [alpha] render alpha between the last two fixed steps (1 = the latest step). The block is drawn between
+ *   its previous and current step position, as the octopus and the camera are: drawn raw at the 50 Hz step on a 60 Hz
+ *   display it stuttered against the smoothly moving camera while sliding or falling (Daniel, 2026-10-18).
  */
-export function drawBlocks(ctx, camera, cw, ch, d) {
+/** Test hook (main.js __octo.watchBlock / blockDrawn): where block `i` was last drawn, world (x, y) and canvas centre (sx, sy). */
+export const blockWatch = { i: -1, x: 0, y: 0, sx: 0, sy: 0, frames: 0 };
+
+export function drawBlocks(ctx, camera, cw, ch, d, alpha = 1) {
   let img = null, fl = null;
   const ppu = camera.pxPerUnit;
   for (let i = 0; i < d.n; i++) {
     if (!d.alive[i] || d.kind[i] !== PK_BLOCK) continue;
     if (!fl) { cullView(camera, cw, ch); fl = cullFlags('blocks', d.cap); img = artImg('pushBlock'); }
-    if (!visibleAt(fl, i, d.x[i], d.y[i], d.radius[i] * 1.5)) continue;
+    const x = d.px[i] + (d.x[i] - d.px[i]) * alpha, y = d.py[i] + (d.y[i] - d.py[i]) * alpha;
+    if (!visibleAt(fl, i, x, y, d.radius[i] * 1.5)) continue;
     const half = d.radius[i] * ppu;
-    const sx = cw / 2 + (d.x[i] - camera.x) * ppu - half, sy = ch / 2 + (d.y[i] - camera.y) * ppu - half;
+    const sx = cw / 2 + (x - camera.x) * ppu - half, sy = ch / 2 + (y - camera.y) * ppu - half;
+    if (i === blockWatch.i) { blockWatch.x = x; blockWatch.y = y; blockWatch.sx = sx + half; blockWatch.sy = sy + half; blockWatch.frames++; }
     if (img) ctx.drawImage(img, sx, sy, half * 2, half * 2);
     else fallbackBlock(ctx, sx, sy, half * 2, i);
   }

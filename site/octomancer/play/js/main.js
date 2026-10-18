@@ -37,7 +37,7 @@ import { createHazards, hazardJournalId, makeHazardRecord } from './hazards.js';
 import { drawHazards, drawImpaleOverlay, drawSplatRock } from './hazards-draw.js';
 import { createCreatures, creatureJournalId, CREATURE_CODE, CR_GCLAM, CL_OPENING, CL_OPEN, CL_TREMBLE, TN_DORMANT, TN_RETRACT, TN_FED } from './creatures.js';
 import { drawCreaturesBack, drawCreaturesFront } from './creatures-draw.js';
-import { drawBlocks } from './blocks-draw.js';
+import { drawBlocks, blockWatch } from './blocks-draw.js';
 import { createLoot, lootJournalId, spreadShells, findSwarmSpots, TRAP_SWARM, LOOT_NAMES, LOOT_CODE as LOOT_CODE_ } from './loot.js';
 import { applyCarried, giveItem, itemJournalId, pickupText, itemFromCode, canCarry, ITEM_DEFS } from './items.js';
 import { drawLoot, drawLootOne } from './loot-draw.js';
@@ -3039,7 +3039,7 @@ function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, worl
 function v2PreWall(c, camera, cw, ch) {
   const mr = run.state === S_HUB ? world.level.mirror : null;
   if (mr) drawMirrorShell(c, camera, cw, ch, mr.x, mr.y, !!(hand.target && hand.target.kind === 'mirror'));
-  drawBlocks(c, camera, cw, ch, props.data); // blocks only exist in generated levels, so no state test
+  drawBlocks(c, camera, cw, ch, props.data, renderAlpha); // blocks only exist in generated levels, so no state test
   if (back) drawBackCurtains(c, camera, cw, ch);
   if (run.state === S_BIOME || run.state === S_TUTORIAL) drawHazards(c, camera, cw, ch, hazards.data, sim.time, solidForSight);
 }
@@ -4477,6 +4477,9 @@ window.__octo = {
   /** Test hook: a pushable block at (x, y) (it settles onto what is under it); returns its prop index. `blockLands`: hard landings so far. */
   addBlock(x, y) { return props.add(PK_BLOCK, x, y); },
   blockLands() { return blockLands; },
+  /** Test hook: record where block i is drawn each frame; blockDrawn() = {x, y} world and {sx, sy} canvas px of its last draw, frames drawn. */
+  watchBlock(i) { blockWatch.i = i; blockWatch.frames = 0; return i; },
+  blockDrawn() { return { ...blockWatch }; },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
   /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */

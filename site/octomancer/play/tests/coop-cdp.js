@@ -80,7 +80,26 @@ async function checkLayout(p, tag, n) {
   check(tag + ': ' + n + ' strips, each on one line with the jar drawn (no "ink" word)', L.n === n && L.oneLine && !L.ink && L.jars === n, JSON.stringify(L));
   check(tag + ': no orphan shell count (it sits in the clock row; the vitals row is empty)', L.shellInClock && L.vitalKids === 0, JSON.stringify(L));
   check(tag + ': the strips stay clear of the clock row', L.hits === 0, JSON.stringify(L));
+  const bad = [...await numsOnTop(p, '.octo-hud-badge', '.octo-hud-num', '.octo-hud-icon'), ...await numsOnTop(p, '.octo-coop-hb', '.octo-coop-n', '.octo-coop-heart, .octo-coop-ghost')];
+  check(tag + ': the counts paint over their icons (strips and the shell count)', bad.length === 0, bad.join('; '));
 }
+
+const numsOnTop = (page, badgeSel, numSel, iconSel) => page.evaluate((b, n, i) => {
+  const st = document.createElement('style'); st.textContent = '#hud, #hud * { pointer-events: auto !important; }'; document.head.append(st);
+  const bad = [];
+  for (const badge of document.querySelectorAll(b)) {
+    if (getComputedStyle(badge).display === 'none' || !badge.offsetParent) continue;
+    const num = badge.querySelector(n), nb = num.getBoundingClientRect();
+    const icons = [...badge.querySelectorAll(i)].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect());
+    const ov = icons.find((ib) => ib.left < nb.right && nb.left < ib.right && ib.top < nb.bottom && nb.top < ib.bottom);
+    const x = ov ? (Math.max(ov.left, nb.left) + Math.min(ov.right, nb.right)) / 2 : (nb.left + nb.right) / 2;
+    const y = ov ? (Math.max(ov.top, nb.top) + Math.min(ov.bottom, nb.bottom)) / 2 : (nb.top + nb.bottom) / 2;
+    const hit = document.elementFromPoint(x, y);
+    if (!(hit === num || num.contains(hit))) bad.push(badge.className + ' -> ' + (hit && hit.className));
+  }
+  st.remove();
+  return bad;
+}, badgeSel, numSel, iconSel);
 
 (async () => {
   const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', args: ['--no-sandbox'], protocolTimeout: 180000 });
