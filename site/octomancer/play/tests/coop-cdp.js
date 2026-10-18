@@ -1,7 +1,7 @@
 // Node script (not part of tests/index.html): local co-op Phase 1 (octomancer-web/MULTIPLAYER-PLAN.md) in real Chrome, with two
 // fake standard pads (navigator.getGamepads stubbed; __octo.pads([...]) drives them) and the keyboard. Pad A plays solo, Start
 // pauses, pad B presses A in the pause menu and joins as player 2 (teal); both swim on their own sticks; the shared camera
-// frames both and zooms out (at most 1.6x) as they spread; player 2 dies and is out (no death screen), the next level revives
+// frames both and zooms out (at most 1.6x) as they spread; player 2 dies and becomes a ghost (no death screen), the next level revives
 // them with 2 hearts; Remove then Add (pad B again) brings back the hearts they had; Enter on the keyboard joins as player 3;
 // the exit pull draws the others to the whirlpool; game over when every player is dead; four players in the hub; frame time and
 // canvas memory with four players at 1440x900. Frames: octomancer-web/night/coop-*.png.
@@ -155,7 +155,7 @@ async function checkLayout(p, tag, n) {
     await step(page, 30);
     c = await C(page);
     check('player 2 dies and is out; player 1 plays on; no death screen', c.players[1].dead && !c.players[0].dead && !c.gameOver);
-    check('player 2 strip says out', /out/.test(c.strips[1] || ''), c.strips[1]);
+    check('player 2 strip says ghost', /ghost/.test(c.strips[1] || ''), c.strips[1]);
     // the dead are not framed: the zoom comes back to 1x
     await page.evaluate(() => __octo.freeze(false)); await sleep(1500); await page.evaluate(() => __octo.freeze(true));
     c = await camInfo(page);

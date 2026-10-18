@@ -900,7 +900,9 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 .octo-coop-jarc.is-empty { opacity: .55; }
 .octo-coop-jar { color: #e4d8f6; }
 .octo-coop-slot { border: 1.5px solid rgba(210, 251, 230, 0.45); border-radius: 6px; width: 26px; height: 26px; }
-.octo-coop-out { opacity: .55; }
+.octo-coop-out { opacity: .8; }
+.octo-coop-ghost { width: 22px; height: 22px; }
+.octo-coop-small .octo-coop-ghost { width: 17px; height: 17px; }
 .octo-coop-small .octo-coop-strip { font-size: 13px; padding: 2px 6px 2px 3px; }
 .octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
 .octo-coop-small .octo-coop-icon { width: 19px; height: 19px; }
@@ -914,6 +916,7 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   .octo-coop-strip .octo-coop-heart, .octo-coop-small .octo-coop-strip .octo-coop-heart { width: 16px; height: 16px; }
   .octo-coop-icon, .octo-coop-small .octo-coop-icon { width: 18px; height: 18px; }
   .octo-coop-jarc, .octo-coop-small .octo-coop-jarc { width: 13px; height: 18px; }
+  .octo-coop-ghost, .octo-coop-small .octo-coop-ghost { width: 16px; height: 16px; }
   .octo-coop-slot, .octo-coop-small .octo-coop-slot { width: 20px; height: 20px; }
   .octo-coop-n { min-width: 8px; margin-right: 2px; }
   /* the clock row carries the shell count in co-op: a little tighter, and no hourglass, so it stays clear of the strips */
