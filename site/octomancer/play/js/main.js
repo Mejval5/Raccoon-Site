@@ -1171,6 +1171,7 @@ function step(dt) {
     if (ev.type === 'beholderWarn' || ev.type === 'beholderSpawned') { onBeholderEvent(ev); continue; }
     if (ev.type === 'hitStop') { if (!(V2 && prefersReducedMotion())) hitStop = Math.max(hitStop, ev.dur); continue; }
     if (ev.type === 'shotHit') { particles.deathPoof(ev.x, ev.y, '#f4efe4'); continue; } // a cannon shot hit another creature (INFIGHT.projectile)
+    if (ev.type === 'mantaSlam') { particles.siltPuff(ev.x, ev.y); if (Math.hypot(ev.x - octo.x, ev.y - octo.y) < 14) sfx.thud(); continue; } // the glider hit the floor (enemies.js MA_DIVE)
     if (ev.type !== 'enemyKilled') continue;
     // enemy infighting: a kill by another creature's attack (a frenzy bite, a shot, a claw, a snap, a grab) is not hers: no score, no journal kill
     const hers = !INFIGHT_KILL[ev.reason];

@@ -242,7 +242,7 @@ nearest lure that covers a point. Who follows it:
 - A **patrolling piranha** within r swims to it (A* when the line is blocked) and hovers there instead of its beat.
 - A **crab** with the lure about its level (within 3 tiles up or down) walks its ledge toward it and waits under it. Walls and
   ledges still turn it.
-- A **manta's** glide line drifts to the lure.
+- A **manta's** glide loop drifts to the lure (section 6).
 - A **hostile NPC that cannot see the octopus** (Marlo out of sight, Pip / Quill / the host with rock between) swims to it.
 - Not the keeper, the clam, the tentacle, the cannon or the static spikes. A creature that sees the octopus still goes for
   her, so a lure draws the patrolling and the lost.
@@ -313,3 +313,24 @@ adapters and queues one link per target, each due after its delay (nearer = soon
 
 What changed in play: a bomb no longer drops every hanging boulder in its reach at once (`hazards.blast`, no longer called by
 main.js); each one rumbles and drops as a link. A boulder whose ceiling a bomb removed still falls at once.
+
+## 6. Manta: the glider (2026-10-18)
+
+Daniel: "the green guy needs a bit different mechanic, it's just like the other black and red guy". The piranha notices you
+and lunges; the manta now never chases and never bites. It is a hazard you read from below, Spelunky style: **don't be under it.**
+
+| State | `st` | What it does | Timing |
+|---|---|---|---|
+| glide | `MA_GLIDE` 0 | Slow figure-eight loop around its home (half width up to 4.5 tiles, half height 1.3, shrunk to fit the water and to stay clear of urchins, horns and cannons). It steers after a point running along the loop, heading turning at most 1.8 rad/s, so every turn is a curve. It ignores the octopus. Touching it does nothing. | 2.2 u/s |
+| bank (the tell) | `MA_TELL` 1 (`MA_BANK`) | The octopus passes underneath: within 1.6 tiles sideways, 0.8 to 5.5 tiles below, clear line, not in ink. It slows to a hover, wings spread (x1.16), body squashed (x0.84), and its shadow grows on the floor where the slam will land, following her. No glow, no flicker, no mark. | 0.6 s |
+| dive (the slam) | `MA_DIVE` 2 | Locks the line to where she is at the end of the bank (it must be steep: at least ~57 degrees down, else it sweeps on) and slams straight along it to the floor. Contact is the `slam` source: one heart and limp for `STUN_S` (1.25 s), as before. | 9 u/s, at most 1.2 s |
+| rest | `MA_REST` 4 | On the floor: a sandy silt puff rolls out (`particles.siltPuff`, event `mantaSlam`, a thud) and hides the ray for most of a second. It lies stunned (`e.stun`): no AI, harmless to touch, the hand can pick it up, jets carry it, the Ink Jet and anything else kill it as usual. | 1.5 s |
+| lift-off | `MA_RISE` 3 | Climbs up and forward on a curve, easing back to glide speed, then glides back to its home loop. No new bank for 3 s after it wakes. | 0.9 s |
+
+- **Ink Cloud:** an octopus hidden by ink never sets off the bank; if she inks during the bank it sweeps on without diving.
+- **Lure:** the loop's centre drifts to the lure point (1.2 u/s).
+- **Stuck:** if rock stops it for 0.8 s the loop is re-laid around where it is, running back the way it came.
+- Unchanged: health 16, mass 1.5, `oneHitSplat` (an Urchin Cap ram kills it), the `slam` row (`octoOnly`), spawn rules.
+- Code: `js/enemies.js` manta section (`updateManta`, `fitLoop`, `mantaSteer`, `mantaWake`); drawing `js/enemy-draw.js`
+  (`drawMantaShadow`); tests `tests/manta.test.js` (on the test page) and `node tests/manta-cdp.js [baseUrl] [shotDir]`
+  (a manta slams an octopus lying under it, never bites while gliding; saves `night/manta-*.png` and `night/manta-strip.png`).
