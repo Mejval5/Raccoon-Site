@@ -2038,7 +2038,7 @@ function stepPull(dt) {
 
 /** One player's own part of the v2 step (local co-op: every player but the focus, who runs the whole of stepV2). */
 function stepV2Player(snap) {
-  octo.safe = inSafeZone(); // the hub and the rest grotto: nothing hurts any player (octopus.js hurtOctopus / killOctopus)
+  octo.safe = zoneOf(run) === 'hub'; // the hub: nothing hurts any player (octopus.js hurtOctopus / killOctopus). The rest grotto keeps its dangers for players (a ghost is made and revived there), only its people are safe
   if (entry) return;
   if (run.state === S_BIOME) stepSiphon();
   if (run.state === S_REST) stepRestSpring();
@@ -2682,7 +2682,7 @@ function endOfDiveNpcs() {
 /** v2 per-step logic after the octopus moved: exit, hub residents, prompts, sightings. */
 function stepV2(snap) {
   const lv = world.level;
-  octo.safe = inSafeZone(); // the hub village and the rest grotto (creature-rules.js SAFE_ZONES): nothing hurts the octopus (octopus.js hurtOctopus / killOctopus)
+  octo.safe = zoneOf(run) === 'hub'; // the hub village: nothing hurts the octopus (octopus.js hurtOctopus / killOctopus); in the rest grotto only the people are safe (creature-rules.js SAFE_ZONES)
   stepSkinGifts();
   if (entry) return; // r44: the entry sequence owns the octopus
   if (run.state === S_BIOME) {
