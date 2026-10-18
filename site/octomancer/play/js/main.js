@@ -1103,7 +1103,7 @@ function step(dt) {
     questClear = null;
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
-  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); blockLandingFx(); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) { damage.tick(dt); infight.tick(dt); }
   if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
@@ -1388,7 +1388,10 @@ function castSelected(snap, forceAt = null, src = null, slotIds = null) {
     if (sp.journal) { discover(sp.journal); journal.bump(sp.journal, STAT_USED); }
     for (const m of p.mods) { discover('rune-' + m); journal.bump('rune-' + m, STAT_USED); }
   } else if (r === CAST_EMPTY) { hotbarUI.shakeJar(); ui.shakeJar(); sfx.emptyJar(); runStats.empty++; }
-  else if (r === -1 && sp.effect === 'coral') runStats.refused++; // no cell could grow: nothing was paid
+  else if (r === -1) { // the effect could not happen (a Lure in rock, no room for coral): nothing was paid; the slot's tile shakes
+    hotbarUI.shakeSlot(hotbar().slots.findIndex((sl) => sl.ids === ids));
+    if (sp.effect === 'coral') runStats.refused++;
+  }
   return r;
 }
 /** `d` tiles along (ux, uy) from the octopus, stopping short of the first rock. */
@@ -2321,6 +2324,7 @@ function resetWorld(newSeed, prebuilt = null, deferExtras = false) {
     spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null, clouds: inkClouds, infight: V2 ? infight : null });
   });
   sim.time = 0;
+  if (run) run.castLockUntil = 0; // the cast lock is on the level clock: a new level starts unlocked (spells.js castLocked)
   levelClock = 0;
   entry = null;
   if (back) { releaseBack(); back = null; } // back rooms: the old level's grotto and its copies of the screen (setupLevelExtras makes the new one)
@@ -2943,6 +2947,17 @@ function addBlocks(resident) {
     if (blockChunks.has(index)) continue;
     blockChunks.add(index);
     for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
+  }
+}
+let blockLands = 0; // test hook: hard block landings so far (thud and dust)
+/** A block that came down hard (props.js blockLandings, after each props step): a thud and a puff of dust off the floor. */
+function blockLandingFx() {
+  const L = props.blockLandings();
+  for (let k = 0; k < L.length; k += 3) {
+    blockLands++;
+    particles.bouncePuff(L[k], L[k + 1] - 0.05, 0, -1);
+    sfx.thud();
+    if (L[k + 2] > 3.5) particles.shakeFx(1.5, 0.12);
   }
 }
 function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); }
@@ -4371,6 +4386,9 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) if (d.alive[i]) out.push({ i, kind: PROP_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx: d.vx[i], vy: d.vy[i], r: d.radius[i], state: d.state[i], timer: d.timer[i] });
     return out;
   },
+  /** Test hook: a pushable block at (x, y) (it settles onto what is under it); returns its prop index. `blockLands`: hard landings so far. */
+  addBlock(x, y) { return props.add(PK_BLOCK, x, y); },
+  blockLands() { return blockLands; },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
   /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */
@@ -4777,6 +4795,7 @@ window.__octo = {
       points: lv.points, keeper: keeperHome(lv) ? keeperSpot(keeperHome(lv)) : null, keeperSays: village.keeperTalk.text,
       round: { on: village.roundOn, hits: village.hits, wonAt: village.wonAt, hitAt: village.targetHitAt }, talk: { who: hubTalk.who, text: hubTalk.talk.text },
       story: { hubRooms: story.hubRooms | 0, hubSecret: story.hubSecret | 0, hubPractice: story.hubPractice | 0, boonBombs: story.boonBombs | 0 }, safe: !!octo.safe,
+      cam: { x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, w: canvas.width, h: canvas.height }, // the last frame's view (device px), to sample pixels at a world point
     };
   },
   hubSeal() { return { seal: hubSeal(), open: diveOpen(run), tutorialDone: run.tutorialDone, savedDone: getTutorialDone(), unlock: unlockAnim ? { t: unlockAnim.t, seal: unlockAnim.seal } : null, offer: ui.isOfferShown(), bumpAt: sealBumpAt, tutorialX: world.level.tutorialX, tutorialY: world.level.tutorialY }; },

@@ -22,6 +22,13 @@
 //   PK_BLOCK (Spelunky-style push block) is the exception to "round": an axis-aligned square of half extent radius[i]
 //   that never rotates. It has its own mover (stepBlock: AABB against the tile grid, x then y, substepped) so it rests
 //   exactly on tile tops, stacks on other blocks, and is a solid box to the octopus (pushBlocksByOctopus) and to circle props.
+//   Spelunky rules (2026-10-18, Daniel: "moving the block jitters the camera", "it should stay in the grid after being pushed off"):
+//     push     a shove sets a steady BLOCK_PUSH_SPEED (kept BLOCK_PUSH_HOLD s after the last touch, in `grace`), and the octopus keeps
+//              the block's own speed into it (relative-velocity contact), so neither body stop-goes and the camera look-ahead is steady
+//     fall     the moment a grounded block has nothing under its whole footprint (blockSupported) its sideways speed is dropped and
+//              x snaps to the nearest 1/16 tile that fits (loseSupport): it falls straight down the column it was pushed into
+//     airborne no sideways speed, except the one explicit carry: a blast (BK_BLAST in `mode`, capped at BLOCK_BLAST_CARRY u/s)
+//     land     x snaps to the tile grid (column centre) when that fits; a hard landing is queued for main.js (blockLandings)
 
 import { resolveCircleVsSegments, resolveCircleVsGrid, contact } from './physics.js';
 import { octoHit } from './damage.js';
@@ -70,6 +77,11 @@ const BLOCK_GROUND_DAMP = 9;   // 1/s of extra horizontal damping while a block 
 const BLOCK_PUSH_SPEED = 1.6;  // u/s a swimming octopus shoves a grounded block along
 const BLOCK_CRUSH_SPEED = 3;   // u/s of fall speed above which a block hurts what it lands on
 const BLOCK_STEP = 0.4;        // furthest a block moves in one substep (never tunnels)
+const BLOCK_PUSH_HOLD = 0.05;  // s a shoved block keeps its steady speed after the last touch (bridges a step without contact)
+export const BLOCK_SNAP = 16;  // a block that loses support snaps x to the nearest 1/BLOCK_SNAP tile
+export const BLOCK_BLAST_CARRY = 1.5; // u/s: the most sideways speed a blast gives a block (the only carry a falling block keeps)
+const BK_BLAST = 1;            // blocks' `mode`: thrown by a blast (keeps its capped sideways speed in the air until it lands)
+const BLOCK_THUD_SPEED = 2;    // u/s of landing speed from which a block landing is queued (thud and dust in main.js)
 
 // scratch body for the wall resolvers (no allocation on the hot path)
 const B = { x: 0, y: 0, vx: 0, vy: 0, radius: 0 };
@@ -84,12 +96,12 @@ export function createProps(cap = DEFAULT_CAP) {
     timer: new Float32Array(cap),   // bomb: fuse left; other: unused (rubble lives until it is recycled, see RUBBLE_CAP)
     born: new Uint32Array(cap),     // rubble: spawn serial, the smallest is the oldest
     rest: new Float32Array(cap),    // time spent nearly still
-    grace: new Float32Array(cap),   // bombs: the octopus cannot push it yet (just thrown)
+    grace: new Float32Array(cap),   // bombs: the octopus cannot push it yet (just thrown); blocks: push hold left (BLOCK_PUSH_HOLD)
     grounded: new Uint8Array(cap),  // touched a floor-ish surface this step
     sup: new Uint8Array(cap),       // resting on another prop (set by separate(), read next step so a stack can fall asleep)
     sx: new Int16Array(cap), sy: new Int16Array(cap), // support tile for PS_HELD
     ref: new Int32Array(cap),       // owner's own index (loot record, hazard, ...), -1 none
-    mode: new Uint8Array(cap),      // bombs: BM_PLAIN / BM_HEAVY / BM_STICKY
+    mode: new Uint8Array(cap),      // bombs: BM_PLAIN / BM_HEAVY / BM_STICKY; blocks: 0 or BK_BLAST
     stuck: new Uint8Array(cap),     // a sticky bomb clung to something (set once, read by bomb.js)
   };
   const freeList = [];
@@ -170,6 +182,10 @@ export function createProps(cap = DEFAULT_CAP) {
       const f = (1 - Math.min(1, dist / reach)) * power / Math.max(0.5, MASS[k] * 0.6 + 0.4);
       d.state[i] = PS_FREE; d.rest[i] = 0;
       d.vx[i] += dx * f; d.vy[i] += dy * f - f * 0.15; // a touch of lift so things hop instead of grinding the floor
+      if (k === PK_BLOCK) { // the one sideways carry a block keeps in the air: explicit and small
+        d.vx[i] = Math.max(-BLOCK_BLAST_CARRY, Math.min(BLOCK_BLAST_CARRY, d.vx[i]));
+        d.mode[i] = d.vx[i] !== 0 ? BK_BLAST : 0; d.grace[i] = 0;
+      }
       clampSpeed(i);
     }
   }
@@ -282,7 +298,7 @@ export function createProps(cap = DEFAULT_CAP) {
       if (dx > 0 ? d.x[i] - dx > d.x[j] : d.x[i] - dx < d.x[j]) continue; // it started on the far side: not an entry
       d.x[i] = dx > 0 ? d.x[j] - r - d.radius[j] : d.x[j] + r + d.radius[j];
       // a pushed block passes its speed on (a row of blocks shoves along), the pusher is held by the one ahead
-      if (d.vx[i] * dx > 0) { d.vx[j] = d.vx[i]; d.state[j] = PS_FREE; d.rest[j] = 0; }
+      if (d.vx[i] * dx > 0) { d.vx[j] = d.vx[i]; d.grace[j] = d.grace[i]; d.state[j] = PS_FREE; d.rest[j] = 0; }
       d.vx[i] = 0;
     }
   }
@@ -311,20 +327,69 @@ export function createProps(cap = DEFAULT_CAP) {
     }
   }
 
+  /** Would block i fit with its centre x at nx (no rock, no other block overlapped)? */
+  function blockFits(i, world, nx) {
+    const r = d.radius[i], y = d.y[i];
+    if (boxHitsTiles(world, nx, y, r)) return false;
+    for (let j = 0; j < d.n; j++) {
+      if (j === i || !d.alive[j] || d.kind[j] !== PK_BLOCK) continue;
+      const rr = r + d.radius[j] - BEPS;
+      if (Math.abs(nx - d.x[j]) < rr && Math.abs(y - d.y[j]) < rr) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Snap block i's x to the nearest multiple of 1/q that fits, else the neighbouring step, else leave it (losing support, q 16).
+   * q = 1 (landing): the column centre, only when it fits and the block is still held up there (a block that came down with
+   * a sliver over a ledge stays put rather than being snapped off it).
+   */
+  function snapBlockX(i, world, q) {
+    const x = d.x[i];
+    const a = q === 1 ? Math.floor(x) + 0.5 : Math.round(x * q) / q;
+    if (a === x) return;
+    if (q === 1) {
+      if (!blockFits(i, world, a)) return;
+      d.x[i] = a;
+      if (!blockSupported(i, world)) d.x[i] = x;
+      return;
+    }
+    if (blockFits(i, world, a)) { d.x[i] = a; return; }
+    const b = a + (a < x ? 1 / q : -1 / q);
+    if (blockFits(i, world, b)) d.x[i] = b;
+  }
+
+  /** Block i just lost its support: no sideways speed, no push, x on the 1/16 grid, so it drops straight down its column. */
+  function loseSupport(i, world) {
+    d.vx[i] = 0; d.grace[i] = 0; d.mode[i] = 0;
+    snapBlockX(i, world, BLOCK_SNAP);
+  }
+
+  const landings = []; // x, bottom y, speed per hard block landing in the last step (main.js: thud and dust)
+
   function stepBlock(i, dt, world) {
     const k = PK_BLOCK;
     const onGround = d.grounded[i] === 1;
+    const pushed = d.grace[i] > 0; // shoved within BLOCK_PUSH_HOLD: the steady push speed, no damping
     d.vy[i] += GRAV[k] * dt;
-    d.vx[i] /= 1 + dt * (DRAG[k] + (onGround ? BLOCK_GROUND_DAMP : 0)); // grounded: it slides a little, then stops
+    if (!onGround && d.mode[i] !== BK_BLAST) d.vx[i] = 0; // in the air a block carries no sideways speed (only a blast's)
+    else if (!pushed) d.vx[i] /= 1 + dt * (DRAG[k] + (onGround ? BLOCK_GROUND_DAMP : 0)); // grounded: it slides a little, then stops
     d.vy[i] /= 1 + dt * DRAG[k];
     clampSpeed(i);
     d.grounded[i] = 0;
     d.timer[i] = Math.max(0, d.vy[i]); // fall speed going into this step: what a landing block hits with (crush)
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(d.vx[i]), Math.abs(d.vy[i])) * dt / BLOCK_STEP));
     const sub = dt / steps;
+    let lost = !onGround;
     for (let s = 0; s < steps; s++) {
       if (d.vx[i] !== 0) blockMoveX(i, world, d.vx[i] * sub);
+      if (!lost && !blockSupported(i, world)) { lost = true; loseSupport(i, world); } // the moment nothing is under it
       blockMoveY(i, world, d.vy[i] * sub);
+    }
+    if (!onGround && d.grounded[i]) { // landed: on the tile grid, the blast carry spent
+      d.mode[i] = 0; d.vx[i] = 0;
+      snapBlockX(i, world, 1);
+      if (d.timer[i] >= BLOCK_THUD_SPEED) landings.push(d.x[i], d.y[i] + d.radius[i], d.timer[i]);
     }
     if (d.grounded[i] && Math.hypot(d.vx[i], d.vy[i]) < SLEEP_SPEED) {
       d.rest[i] += dt;
@@ -381,13 +446,15 @@ export function createProps(cap = DEFAULT_CAP) {
         const dir = nx < 0 ? 1 : -1, into = octo.vx * dir;
         // only along a free floor: the next column over must be open, or the block stays put
         if (into > 0.15 && !boxHitsTiles(world, d.x[i] + dir * 0.12, d.y[i], d.radius[i])) {
-          const v = Math.min(BLOCK_PUSH_SPEED, into * 2);
-          if (d.vx[i] * dir < v) d.vx[i] = dir * v;
+          d.vx[i] = dir * BLOCK_PUSH_SPEED; d.grace[i] = BLOCK_PUSH_HOLD; // Spelunky: a steady slide while it is pushed
           d.state[i] = PS_FREE; d.rest[i] = 0;
         }
       }
       octo.x += nx * pen; octo.y += ny * pen;
-      const vn = octo.vx * nx + octo.vy * ny;
+      // the octopus keeps no speed into the block beyond the block's own: against a sliding block it moves with it (no stop-go
+      // between the two bodies, which shook the camera's look-ahead), against a still one it stops as before
+      const bvx = Math.abs(nx) > 0.7 ? d.vx[i] : 0;
+      const vn = (octo.vx - bvx) * nx + octo.vy * ny;
       if (vn < 0) { octo.vx -= vn * nx; octo.vy -= vn * ny; }
     }
   }
@@ -571,6 +638,10 @@ export function createProps(cap = DEFAULT_CAP) {
     setDamage(dm) { dmg = dm || null; },
     add, remove, hold, wake, release, carry, place, stick, wakeAll, wakeNear, blast, checkSupports, nudge,
     count() { return d.live; },
+    /** Hard block landings in the last step, flat (x, bottom y, speed) triples: main.js plays a thud and a puff of dust. */
+    blockLandings() { return landings; },
+    /** Is block i held up by rock or another block under its footprint? (tests) */
+    blockSupported(i, world) { return blockSupported(i, world); },
     /** Indices of live props of one kind (tests, drawing). */
     ofKind(k, out = []) { out.length = 0; for (let i = 0; i < d.n; i++) if (d.alive[i] && d.kind[i] === k) out.push(i); return out; },
 
@@ -582,6 +653,7 @@ export function createProps(cap = DEFAULT_CAP) {
         lastVersion = v;
       }
       nAwake = 0;
+      landings.length = 0;
       let blocksAwake = false;
       for (let i = 0; i < d.n; i++) {
         if (!d.alive[i]) continue;
