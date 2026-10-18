@@ -277,7 +277,7 @@ export function createHazards(props = null) {
     for (let k = 0; k < 8 && world.tileAt(Math.floor(octo.x), floorTop) === 0; k++) floorTop++;
     d.b[i] = floorTop; d.t[i] = 0;
     if (!killOctopus(octo, 'rock', 'splat', octo.x, octo.y, 0)) return false;
-    d.state[i] = 5; d.hit[i] = 1;
+    d.state[i] = 5; d.hit[i] |= 1 << whoIdx;
     octo.flat = 0.75; // already crushed on the impact frame (the hit-stop holds it on screen)
     splatO[i] = octo; // the boulder pins THIS octopus
     events.push({ type: 'splat', x: octo.x, y: Math.min(octo.y, d.y[i] + ROCK_RADIUS), rockX: d.x[i], rockY: d.y[i], who: whoIdx });
@@ -300,14 +300,15 @@ export function createHazards(props = null) {
   /** A falling rock knocks the octopus sideways, out from under it, never along its own fall line (it used to ride
    * the rock down and get hit again as it settled). The side with open water wins; else away from the rock. */
   function hurtByRock(octo, i, world) {
-    if (d.hit[i]) return;
+    const bit = 1 << whoIdx; // local co-op: one hit per octopus per drop (solo: bit 1, as before)
+    if (d.hit[i] & bit) return;
     const rx = d.x[i];
     let side = octo.x >= rx ? 1 : -1;
     if (Math.abs(octo.x - rx) < 0.25 && world && world.isSolid) {
       const l = world.isSolid(octo.x - 1, octo.y), r = world.isSolid(octo.x + 1, octo.y);
       if (l && !r) side = 1; else if (r && !l) side = -1;
     }
-    if (hurt(octo, i, octo.x - side, octo.y)) d.hit[i] = 1;
+    if (hurt(octo, i, octo.x - side, octo.y)) d.hit[i] |= bit;
   }
 
   /** A creature body that moves about (not anchored to rock), and is moving now or knocked out: it sets a boulder off. */
@@ -483,10 +484,10 @@ export function createHazards(props = null) {
     if (st === 2 && sp > 1.5) {
       for (let k = 0; k < octos.length; k++) {
         const octo = octos[k];
-        if (d.state[i] !== 2) break; // it splatted an octopus this step: that one is pinned, the impact is spent
+        // local co-op: once it splatted one octopus this step (pinned under it), the others it touches are still hit, not splatted
         if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
           whoIdx = k;
-          if (octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
+          if (d.state[i] !== 2 || octo.dead || !trySplat(i, octo, world, pd.vy[pid])) hurtByRock(octo, i, world);
         }
       }
       whoIdx = 0;
@@ -552,10 +553,10 @@ export function createHazards(props = null) {
         if (st === 2) {
           for (let k = 0; k < octos.length; k++) {
             const octo = octos[k];
-            if (d.state[i] !== 2) break; // it splatted an octopus this step: that one is pinned, the impact is spent
+            // local co-op: once it splatted one octopus this step (pinned under it), the others it touches are still hit, not splatted
             if (Math.hypot(d.x[i] - octo.x, d.y[i] - octo.y) < ROCK_RADIUS + octo.radius * 0.85) {
               whoIdx = k;
-              if (octo.dead || !trySplat(i, octo, world, d.v[i])) hurtByRock(octo, i, world);
+              if (d.state[i] !== 2 || octo.dead || !trySplat(i, octo, world, d.v[i])) hurtByRock(octo, i, world);
             }
           }
           whoIdx = 0;
