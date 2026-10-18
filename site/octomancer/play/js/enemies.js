@@ -340,9 +340,11 @@ export function setHpMode(on) { hpMode = !!on; }
 //            PS_RECOVER 1 s: recoils and drifts, then back to patrol
 //   crab     CS_WALK    walks its ledge, turns at wall / ledge / resting bomb; octopus within 1.5 -> CS_PAUSE
 //            CS_PAUSE   0.35 s rears up (tell), CS_SNAP 0.2 s snaps (reach +0.4), CS_COOL 1 s
-//   cannon   CN_TRACK   turns its barrel slowly toward you (needs a clear line and the half plane it faces)
-//            CN_CHARGE  0.6 s glow, still turning at 40% rate; fires along the barrel, not at you
-//            CN_RELOAD  2 s
+//   cannon   CN_TRACK   the gourd fish turns its whole body slowly toward you (needs a clear line and the half plane it
+//                       faces; its facing is clamped to that half plane, so it never looks into its own rock)
+//            CN_CHARGE  0.6 s: it squashes down against its rock (the Unity CanonShoot squish), still turning at 40%
+//                       rate; then it snaps long and spits the ball from its mouth, along its facing, not at you
+//            CN_RELOAD  2 s (the first 0.75 s of it the snap-and-settle recoil, `kick`)
 //   manta    MA_GLIDE   wide sine glide; octopus below and within 1.2 tiles sideways with a clear drop -> MA_TELL
 //            MA_TELL    0.6 s stops, tilts and flashes; MA_DIVE steep dive to where you were; MA_RISE climbs back; 3 s cooldown
 //   urchin, horns: static; the spikes pulse slowly (2.6 s) and the contact radius pulses with them
@@ -354,6 +356,10 @@ export const CS_WALK = 0, CS_PAUSE = 1, CS_SNAP = 2, CS_COOL = 3;
 export const CRAB_SNAP_RANGE = 1.5, CRAB_PAUSE = 0.35, CRAB_SNAP = 0.2, CRAB_COOL = 1.0, CRAB_SNAP_REACH = 0.4;
 export const CN_TRACK = 0, CN_CHARGE = 1, CN_RELOAD = 2;
 export const CANNON_WINDUP = 0.6, CANNON_RELOAD = 2.0, CANNON_TURN = 1.2, CANNON_ARC = Math.PI / 2 - 0.12, CANNON_AIM_OK = 0.3;
+// The fish's body (enemy-cannon.webp, NPC30, 0.9 tiles tall) sits CANNON_SEAT tiles from its cell centre toward its rock
+// (enemy-draw.js draws it there). Its mouth is the slit at the top of the spout: CANNON_MOUTH_ALONG tiles out along the
+// facing and CANNON_MOUTH_SIDE to the side its lip curls (e.lip: +1 the art's own right, -1 mirrored).
+export const CANNON_SEAT = 0.15, CANNON_MOUTH_ALONG = 0.4, CANNON_MOUTH_SIDE = 0.14, CANNON_RECOIL = 0.75;
 export const MA_GLIDE = 0, MA_TELL = 1, MA_DIVE = 2, MA_RISE = 3;
 export const MANTA_TELL = 0.6, MANTA_DIVE_SPEED = 6.5, MANTA_DIVE_MAX = 1.1, MANTA_RISE_SPEED = 2.8, MANTA_DIVE_COOLDOWN = 3;
 export const URCHIN_PULSE_PERIOD = 2.6;
@@ -374,6 +380,34 @@ function rnd(e) {
 }
 function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU; return d; }
 function sgn(v, d = 1) { return v > 0 ? 1 : v < 0 ? -1 : d; }
+
+/** The cannon's facing `a` clamped to the half plane round its surface normal `out` (never into its own rock). */
+export function cannonFacing(out, a) {
+  const d = angDiff(a, out);
+  return d > CANNON_ARC ? out + CANNON_ARC : d < -CANNON_ARC ? out - CANNON_ARC : out + d;
+}
+/** Which way the lip curls (+1 / -1) for facing `aim`: away from the rock (a wall fish: up and away), keeping `prev` near
+ * the tie (a floor fish looking straight up) so it never flickers. */
+export function cannonLip(e, aim, prev) {
+  const ox = Math.cos(e.out), oy = Math.sin(e.out);
+  const px = ox, py = e.placement === 'wall' ? oy - 0.4 : oy; // a wall fish: lip away from the rock, a little up (up at rest)
+  const d = -Math.sin(aim) * px + Math.cos(aim) * py; // the art's right side (sprite +x) rotated to `aim`, dot the preference
+  return d > 0.1 ? 1 : d < -0.1 ? -1 : prev;
+}
+/** World centre of the cannon's body (`o` gets x, y; no allocation). */
+export function cannonBody(e, o) {
+  const seat = e.placement === 'floor' || e.placement === 'ceiling' || (e.placement === 'wall' && e.wallDir) ? CANNON_SEAT : 0;
+  o.x = e.x - Math.cos(e.out) * seat; o.y = e.y - Math.sin(e.out) * seat;
+  return o;
+}
+/** World point of the cannon's mouth at its facing e.aim (`o` gets x, y; no allocation). */
+export function cannonMouth(e, o) {
+  cannonBody(e, o);
+  const ca = Math.cos(e.aim), sa = Math.sin(e.aim), side = CANNON_MOUTH_SIDE * (e.lip || 1);
+  o.x += ca * CANNON_MOUTH_ALONG - sa * side; o.y += sa * CANNON_MOUTH_ALONG + ca * side;
+  return o;
+}
+const MOUTH = { x: 0, y: 0 };
 
 /** The direction a cannon faces out of its surface (radians, y down). */
 function cannonOut(placement, wallDir) {
@@ -406,7 +440,11 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
   }
   if (kind === 'cannon') {
     const out = cannonOut(placement, wallDir);
-    return { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: dashKillable(kind), st: CN_RELOAD, t: 1 + rnd(base), out, aim: out };
+    // sq 0..1: the drawn squash (follows the charge, eases out when a charge is called off); kick: s left of the spit recoil;
+    // fa, mx, my: the facing and mouth point of the last spit (the puff of bubbles stays where it was spat)
+    const c = { ...base, radius: CANNON_RADIUS, contactDamage: false, dashKillable: dashKillable(kind), st: CN_RELOAD, t: 1 + rnd(base), out, aim: out, lip: 1, sq: 0, kick: 0, fa: out, mx: x, my: y };
+    c.lip = cannonLip(c, out, rnd(base) < 0.5 ? -1 : 1);
+    return c;
   }
   if (kind === 'crab') {
     const fast = rnd(base) < 0.4;
@@ -604,7 +642,7 @@ export function createEnemies() {
     e.tell = 0;
     if (e.kind === 'piranha') { e.st = PS_PATROL; e.t = 0.5; e.flipCd = 0; }
     else if (e.kind === 'crab') { e.st = CS_WALK; e.cool = 0.5; }
-    else if (e.kind === 'cannon') { e.st = CN_RELOAD; e.t = 1.0; }
+    else if (e.kind === 'cannon') { e.st = CN_RELOAD; e.t = 1.0; e.sq = 0; e.kick = 0; }
     else if (e.kind === 'manta') { e.st = MA_GLIDE; e.cool = 1.5; }
   }
 
@@ -763,21 +801,26 @@ export function createEnemies() {
     // turn slowly toward it (slower while charging), or back to rest
     const rate = (e.st === CN_CHARGE ? CANNON_TURN * 0.4 : CANNON_TURN) * dt;
     const diff = angDiff(want, e.aim);
-    e.aim += Math.max(-rate, Math.min(rate, diff));
+    e.aim = cannonFacing(e.out, e.aim + Math.max(-rate, Math.min(rate, diff)));
+    e.lip = cannonLip(e, e.aim, e.lip);
+    if (e.kick > 0) e.kick = Math.max(0, e.kick - dt);
+    if (e.st !== CN_CHARGE && e.sq > 0) e.sq = Math.max(0, e.sq - dt * 4); // a called-off charge eases back out
     if (e.st === CN_RELOAD) {
       e.t -= dt;
       if (e.t <= 0) { e.st = CN_TRACK; e.t = 0; }
     } else if (e.st === CN_TRACK) {
       if (target && Math.abs(angDiff(want, e.aim)) < CANNON_AIM_OK && inCameraView(e.x, e.y, e.radius)) { /* item 6: it never starts a shot from off-screen */ e.st = CN_CHARGE; e.t = CANNON_WINDUP; e.tell = 0; }
     } else { // CN_CHARGE
-      e.t -= dt; e.tell = Math.min(1, 1 - e.t / CANNON_WINDUP);
+      e.t -= dt; e.tell = Math.min(1, 1 - e.t / CANNON_WINDUP); e.sq = e.tell;
       if (!target) { e.st = CN_TRACK; e.tell = 0; return; } // lost the line: stand down
       if (e.t <= 0) {
         const ca = Math.cos(e.aim), sa = Math.sin(e.aim);
+        cannonMouth(e, MOUTH); // spat from its mouth
         // owner: the cannon itself is never hit by its own shot; oc: the octopus is to blame for this shot (0: a future reflect spell sets it)
-        shots.push({ x: e.x + ca * 0.5, y: e.y + sa * 0.5, vx: ca * CANNON_SHOT_SPEED, vy: sa * CANNON_SHOT_SPEED, radius: CANNON_SHOT_RADIUS, dead: false, owner: e.id, oc: 0 });
+        shots.push({ x: MOUTH.x, y: MOUTH.y, vx: ca * CANNON_SHOT_SPEED, vy: sa * CANNON_SHOT_SPEED, radius: CANNON_SHOT_RADIUS, dead: false, owner: e.id, oc: 0 });
         events.push({ type: 'shotFired', kind: 'cannon' });
         e.st = CN_RELOAD; e.t = CANNON_RELOAD; e.tell = 0;
+        e.sq = 0; e.kick = CANNON_RECOIL; e.fa = e.aim; e.mx = MOUTH.x; e.my = MOUTH.y;
       }
     }
   }
