@@ -105,12 +105,24 @@ export function createUI(root, handlers) {
   // Controller Phase 1: the line follows the active scheme (glyphs.js controlsLine): words for the desktop, drawn button
   // glyphs for a pad. It is the only guidance text on the HUD (CONTROLLER-PLAN "Text in the world").
   const controlsHelp = el('div', 'octo-controls-help');
-  let helpScheme = 'keyboard', helpStyle = 'xbox';
+  let helpScheme = 'keyboard', helpStyle = 'xbox', helpDot = '';
+  // co-op polish: the line is retired per scheme (two levels on the keyboard retire the keyboard line, a pad keeps its own line
+  // until two levels are cleared on a pad); `helpOff` = hidden for touch
+  const helpRetired = { keyboard: false, pad: false };
+  let helpOff = false;
+  function applyHelp() {
+    const off = helpOff || helpRetired[helpScheme === 'pad' ? 'pad' : 'keyboard'];
+    const d = off ? 'none' : '';
+    if (controlsHelp.style.display !== d) controlsHelp.style.display = d;
+  }
   function renderHelp() {
     const line = controlsLine(helpScheme, helpStyle, helpV2);
     controlsHelp.dataset.scheme = line.scheme;
     controlsHelp.textContent = '';
-    if (!line.parts.length) { controlsHelp.textContent = line.text; return; }
+    // co-op (MULTIPLAYER-PLAN decision 12): the colour dot of the player whose scheme this is (solo: none)
+    if (helpDot) { const d = el('span', 'octo-ch-dot'); d.style.background = helpDot; controlsHelp.appendChild(d); }
+    controlsHelp.dataset.dot = helpDot;
+    if (!line.parts.length) { controlsHelp.appendChild(document.createTextNode(line.text)); return; }
     const R = 9, dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
     line.parts.forEach((p, i) => {
       const part = el('span', 'octo-ch-part');
@@ -140,6 +152,7 @@ export function createUI(root, handlers) {
   // again if that device later gets a mouse/keyboard input (e.g. a
   // touch-and-mouse hybrid laptop).
   if (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) {
+    helpOff = true;
     controlsHelp.style.display = 'none';
   }
 
@@ -167,7 +180,7 @@ export function createUI(root, handlers) {
   titleEl.append(titleText, titleSub, titleCurrent);
   let titleTimer = 0, titleTimer2 = 0;
   root.append(bar, pauseBtn, muteBtn, gearBtn, controlsHelp, promptEl, toastEl, titleEl);
-  let helpV2 = false, helpRetired = false;
+  let helpV2 = false;
   renderHelp();
 
   function updateHud(state) {
@@ -358,21 +371,28 @@ export function createUI(root, handlers) {
       const b = (x) => ({ label: x.querySelector('.octo-btn-label') ? x.querySelector('.octo-btn-label').textContent : x.textContent, key: x.querySelector('.octo-key') ? x.querySelector('.octo-key').textContent : '', shown: x.style.display !== 'none' });
       return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
     },
-    hideControlsHelp() { controlsHelp.style.display = 'none'; },
-    /** The input scheme changed (input.js modechange): the line re-renders with that scheme's glyphs. */
-    setControlsScheme(scheme, style = 'xbox') {
+    hideControlsHelp() { helpOff = true; applyHelp(); },
+    /** The input scheme changed (input.js modechange): the line re-renders with that scheme's glyphs. `dot` (co-op): the colour
+     *  of the player whose scheme it is, drawn as a small dot in front; solo passes none. */
+    setControlsScheme(scheme, style = 'xbox', dot = '') {
       const s = scheme === 'pad' ? 'pad' : scheme === 'touch' ? 'touch' : 'keyboard';
-      if (s === helpScheme && style === helpStyle) return;
-      helpScheme = s; helpStyle = style; renderHelp();
+      dot = dot || '';
+      if (s === helpScheme && style === helpStyle && dot === helpDot) return;
+      helpScheme = s; helpStyle = style; helpDot = dot; renderHelp(); applyHelp();
       pauseHint.textContent = s === 'pad' ? glyph('pause', 'pad', style).label + ' or ' + glyph('back', 'pad', style).label + ' to resume' : PAUSE_HINT;
     },
     /** Test hook: what the controls line shows: its scheme, words and the glyph labels drawn. */
     controlsHelpRead() {
-      return { scheme: controlsHelp.dataset.scheme || '', text: controlsHelp.textContent, glyphs: [...controlsHelp.querySelectorAll('canvas.octo-glyph')].map((c) => c.dataset.glyph), shown: controlsHelp.style.display !== 'none' };
+      return { scheme: controlsHelp.dataset.scheme || '', text: controlsHelp.textContent, glyphs: [...controlsHelp.querySelectorAll('canvas.octo-glyph')].map((c) => c.dataset.glyph), shown: controlsHelp.style.display !== 'none', dot: helpDot, retired: { ...helpRetired } };
     },
-    showControlsHelp() { controlsHelp.style.display = helpRetired ? 'none' : ''; },
-    /** Retire the bottom-left controls line for good (the player knows the controls; Settings still lists them). */
-    retireControlsHelp() { helpRetired = true; controlsHelp.style.display = 'none'; },
+    showControlsHelp() { helpOff = false; applyHelp(); },
+    /** Retire the bottom-left controls line of a scheme ('keyboard' | 'pad'; none: both) for good (the player knows those
+     *  controls; Settings still lists them). The other scheme's line still shows when that scheme is picked up. */
+    retireControlsHelp(scheme) {
+      if (scheme === 'pad' || !scheme) helpRetired.pad = true;
+      if (scheme !== 'pad') helpRetired.keyboard = true;
+      applyHelp();
+    },
     showPause() { pause.overlayEl.style.display = 'flex'; },
     hidePause() { pause.overlayEl.style.display = 'none'; },
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none' && !gameover.overlayEl.classList.contains('is-pending'); },

@@ -11,7 +11,7 @@ import { INKJET } from './inkjet.js';
 import { BOMB_RADIUS, BOMB_START } from './config.js';
 import { BOMB_FUSE_V2, STICKY_ARM_S } from './bomb.js';
 import { SOURCES } from './creature-rules.js';
-import { glyph } from './glyphs.js';
+import { glyph, glyphs } from './glyphs.js';
 
 export const K_SLOT = 'slot', K_JET = 'jet', K_BOMB = 'bomb', K_ITEM = 'item', K_JAR = 'jar';
 
@@ -75,13 +75,33 @@ function padKeys(style) {
     jar: 'Spells drink from it when you cast',
   };
 }
-const KEYS = (touch, pad) => (pad ? padKeys(pad) : {
-  slot: touch ? 'Tap its slot on the bar, then Use (Spell casts your last spell)' : 'Right click or C casts it; pick the slot with 1-9, Q / E or the wheel',
-  jet: touch ? 'The Jet button (hold to keep firing)' : 'Left click or J / K (hold to fire on each refill)',
-  bomb: touch ? 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick' : 'Right click or C on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. Shortcut: B / X drop one',
+// co-op polish: the keyboard + mouse lines are built from the desktop glyphs too (glyphs.js), mouse buttons said in words
+const MOUSE_WORDS = { LMB: 'Left click', RMB: 'Right click', MMB: 'Middle click', Wheel: 'the wheel' };
+const said = (l) => MOUSE_WORDS[l] || l;
+let deskCache = null;
+function deskKeys() {
+  if (deskCache) return deskCache;
+  const L = (a) => glyphs(a, 'desktop').map((g) => g.label);
+  const use = L('use'), jet = L('attack'), cyc = L('cycle'), sel = L('select'), bomb = L('bomb');
+  const useW = said(use[0]) + ' or ' + use.slice(1).join(' / ');
+  const pick = 'pick the slot with ' + sel.join(' / ') + ', ' + cyc.filter((l) => !MOUSE_WORDS[l]).join(' / ') + ' or ' + cyc.filter((l) => MOUSE_WORDS[l]).map(said).join(' / ');
+  deskCache = {
+    slot: useW + ' casts it; ' + pick,
+    jet: said(jet[0]) + ' or ' + jet.slice(1).concat(['K']).join(' / ') + ' (hold to fire on each refill)',
+    bomb: useW + ' on the bomb slot: on you it drops one, at the cursor it throws a sticky mine. Shortcut: ' + bomb.join(' / ') + ' drop one',
+    item: 'Nothing to press: it works while you carry it',
+    jar: 'Spells drink from it when you cast',
+  };
+  return deskCache;
+}
+const TOUCH_KEYS = {
+  slot: 'Tap its slot on the bar, then Use (Spell casts your last spell)',
+  jet: 'The Jet button (hold to keep firing)',
+  bomb: 'Pick the bomb slot, then Use: drops one, or throws a mine along the stick',
   item: 'Nothing to press: it works while you carry it',
-  jar: touch ? 'Spells drink from it when you cast' : 'Spells drink from it when you cast',
-});
+  jar: 'Spells drink from it when you cast',
+};
+const KEYS = (touch, pad) => (pad ? padKeys(pad) : touch ? TOUCH_KEYS : deskKeys());
 
 /** Numbers for one spell slot (its runes folded in): price, size, time, and what each rune changes. */
 function spellNumbers(ids) {

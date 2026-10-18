@@ -212,6 +212,7 @@ export function createGamepad(input, hooks = {}) {
   // reports its presses (hooks.onFree(key, button, info)): A or Start in the pause menu is how it joins. The same rules as the
   // primary pad: what is held when it appears or when a menu opens or closes waits for its release.
   const others = new Map(); // key -> per-pad record
+  const FREE_BTNS = ['a', 'start', 'b', 'back', 'up', 'down', 'left', 'right']; // a free pad's presses (co-op polish: the d-pad walks the pause menu)
   function padByKey(list, key) {
     if (!list) return null;
     for (let i = 0; i < list.length; i++) { const g = list[i]; if (g && g.connected !== false && keyOf(g, i) === key) return g; }
@@ -257,7 +258,7 @@ export function createGamepad(input, hooks = {}) {
     for (const n of NAMES) if (ed(n)) fresh = true;
     if (fresh && hooks.onOtherActivity) hooks.onOtherActivity(r.key);
     if (!player) { // a free pad: only its presses, for joining from the pause menu
-      for (const n of ['a', 'start', 'b', 'back']) if (ed(n) && hooks.onFree) hooks.onFree(r.key, n, { id: r.id, index: r.index, style: r.style });
+      for (const n of FREE_BTNS) if (ed(n) && hooks.onFree) hooks.onFree(r.key, n, { id: r.id, index: r.index, style: r.style });
       releaseOther(r);
       return;
     }

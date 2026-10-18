@@ -26,7 +26,7 @@ const DRAG_PX = 8;
 const TAB_CARRIED = { id: 'carried', title: 'Carried' };
 const TAB_PROGRESS = { id: 'progress', title: 'Progress' };
 const TAB_ORDER = [TAB_CARRIED].concat(TABS, [TAB_PROGRESS]);
-const TAB_COLORS = { carried: '#7cc4b4', places: '#e3b25e', people: '#e58f7e', bestiary: '#86bd7c', items: '#74acd8', traps: '#b890d6', progress: '#dcd5ba' };
+const TAB_COLORS = { carried: '#7cc4b4', places: '#e3b25e', people: '#e58f7e', bestiary: '#86bd7c', items: '#74acd8', traps: '#b890d6', progress: '#dcd5ba', controls: '#c9a87c' }; // controls (co-op polish): driftwood, between the places' sand and the people's coral
 
 function el(tag, className, text) {
   const e = document.createElement(tag);

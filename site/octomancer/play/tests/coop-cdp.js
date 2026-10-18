@@ -1,8 +1,10 @@
 // Node script (not part of tests/index.html): local co-op Phase 1 (octomancer-web/MULTIPLAYER-PLAN.md) in real Chrome, with two
 // fake standard pads (navigator.getGamepads stubbed; __octo.pads([...]) drives them) and the keyboard. Pad A plays solo, Start
-// pauses, pad B presses A in the pause menu and joins as player 2 (teal); both swim on their own sticks; the shared camera
+// pauses, pad B presses Start in the pause menu and joins as player 2 (teal) (co-op polish: a free pad joins with Start, or A on the
+// focused Add line); both swim on their own sticks; the shared camera
 // frames both and zooms out (at most 1.6x) as they spread; player 2 dies and is out (no death screen), the next level revives
-// them with 2 hearts; Remove then Add (pad B again) brings back the hearts they had; Enter on the keyboard joins as player 3;
+// them with 2 hearts; Remove then Add (pad B again) brings back the hearts they had; Enter on the focused Add line joins the keyboard
+// as player 3;
 // the exit pull draws the others to the whirlpool; game over when every player is dead; four players in the hub; frame time and
 // canvas memory with four players at 1440x900. Frames: octomancer-web/night/coop-*.png.
 //   node coop-cdp.js [port | baseUrl]
@@ -38,6 +40,11 @@ const step = (p, n = 1) => p.evaluate((n) => __octo.stepDraw(n), n);
 const waitLevel = (p) => p.waitForFunction(() => !__octo.transitioning(), { timeout: 30000, polling: 100 });
 /** A tap of pad buttons (states by pad index): a neutral poll (a pad that just changed role is read fresh), down for a poll, then up. */
 async function tapPads(p, list) { await PADS(p, list.map(() => ({}))); await PADS(p, list); await PADS(p, list.map(() => ({}))); }
+/** The keyboard joins: the arrow keys walk up to the Add line, then Enter (co-op polish: Enter joins only there). */
+async function kbJoin(p) {
+  for (let i = 0; i < 6 && !(await C(p)).addFocused; i++) await p.keyboard.press('ArrowUp');
+  await p.keyboard.press('Enter');
+}
 const shot = (page, tag) => page.screenshot({ path: OUT + tag + '.png' });
 /** Is world point (x, y) inside the view of the camera now (CSS px margin `m`)? */
 const inView = (c, x, y, m = 0) => {
@@ -66,14 +73,14 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     check('solo: the idle pad B does not swim player 1 (no turn to the left)', c.players[0].x >= bx - 0.05, bx.toFixed(2) + ' -> ' + c.players[0].x.toFixed(2));
     await PADS(page, [{}, {}]); await step(page, 5);
 
-    // ---- pause on pad A, pad B presses A: player 2 joins
+    // ---- pause on pad A, pad B presses Start: player 2 joins
     await page.evaluate(() => __octo.freeze(false));
     await tapPads(page, [{ start: true }, {}]);
     let st = await page.evaluate(() => __octo.state().paused);
     check('Start on pad A pauses', st);
     c = await C(page);
-    check('the pause menu offers Add player', /Add player: press A on a pad or Enter on the keyboard/.test(c.add), c.add);
-    await tapPads(page, [{}, { a: true }]);
+    check('the pause menu offers Add player', /^Add player/.test(c.add) && /Menu on a free pad, or A \/ Enter here/.test(c.add), c.add);
+    await tapPads(page, [{}, { start: true }]);
     c = await C(page);
     check('pad B joins as player 2 (teal), player 1 is bound to pad A', c.players.length === 2 && c.players[1].slot === 1 && /#1$/.test(c.players[1].device) && /#0$/.test(c.players[0].device) && c.players[1].colour === 'teal' && !!c.players[1].tint, JSON.stringify(c.players.map((p) => [p.slot, p.device, p.colour])));
     check('player 2 starts with base stats (3 hearts, 3 bombs, a full jar, the starting bar)', c.players[1].hearts === 3 && c.players[1].bombs === 3 && c.players[1].juice > 0);
@@ -147,12 +154,12 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     c = await C(page);
     check('Remove (pause menu) takes player 2 out; the game is solo again', removed && c.players.length === 1 && c.records.length === 1 && c.records[0].hearts === 1, JSON.stringify(c.records));
     check('still paused after Remove', await page.evaluate(() => __octo.state().paused));
-    await tapPads(page, [{}, { a: true }]);
+    await tapPads(page, [{}, { start: true }]);
     c = await C(page);
     check('pad B adds again: player 2 is back in teal with the 1 heart it had', c.players.length === 2 && c.players[1].slot === 1 && c.players[1].hearts === 1 && c.records.length === 0, JSON.stringify(c.players.map((p) => [p.slot, p.hearts])));
 
     // ---- the keyboard joins as player 3
-    await page.keyboard.press('Enter');
+    await kbJoin(page);
     await sleep(100);
     c = await C(page);
     check('Enter on the keyboard joins as player 3 (ochre)', c.players.length === 3 && c.players[2].device === 'keyboard' && c.players[2].colour === 'ochre', JSON.stringify(c.players.map((p) => [p.slot, p.device])));
@@ -226,9 +233,9 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     await hub.evaluate(() => __octo.god(true));
     await PADS(hub, [{ lx: 0.4 }, {}, {}]); await sleep(200); await PADS(hub, [{}, {}, {}]);
     await tapPads(hub, [{ start: true }, {}, {}]);
-    await tapPads(hub, [{}, { a: true }, {}]);
+    await tapPads(hub, [{}, { start: true }, {}]);
     await tapPads(hub, [{}, {}, { start: true }]);
-    await hub.keyboard.press('Enter');
+    await kbJoin(hub);
     c = await C(hub);
     check('hub: four players (pads A, B, C and the keyboard)', c.players.length === 4 && c.players.map((p) => p.colour).join() === 'red,teal,ochre,violet', JSON.stringify(c.players.map((p) => [p.slot, p.device])));
     check('a fifth device cannot join: the party is full', /full/.test(c.add));
@@ -258,9 +265,9 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     const solo = await pf.evaluate(() => ({ ...__octo.metrics(), mem: __octo.memory() }));
     await PADS(pf, [{ lx: 0.2 }, {}, {}]); await sleep(100); await PADS(pf, [{}, {}, {}]);
     await tapPads(pf, [{ start: true }, {}, {}]);
-    await tapPads(pf, [{}, { a: true }, {}]);
-    await tapPads(pf, [{}, {}, { a: true }]);
-    await pf.keyboard.press('Enter');
+    await tapPads(pf, [{}, { start: true }, {}]);
+    await tapPads(pf, [{}, {}, { start: true }]);
+    await kbJoin(pf);
     await tapPads(pf, [{ start: true }, {}, {}]);
     c = await C(pf);
     const pl = c.players[0];

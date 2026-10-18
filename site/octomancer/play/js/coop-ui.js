@@ -1,7 +1,9 @@
 // Local co-op, Phase 1 (octomancer-web/MULTIPLAYER-PLAN.md): the two bits of DOM co-op adds.
 //  1. The pause menu's player rows (the only place to join or leave, Daniel's rule: no popup in the world): one row per player
-//     with their colour, device and hearts (or "out" when dead until the next level), a Remove button, and the Add line ("press A
-//     on a pad or Enter on the keyboard"). The buttons are ordinary buttons, so the pad's menu cursor (menu-nav.js) walks them.
+//     with their colour, device and hearts (or "out" when dead until the next level), a Remove button, and the Add line. The
+//     buttons are ordinary buttons, so the pad's menu cursor (menu-nav.js) walks them. Co-op polish: the Add line is a button
+//     too, and joining is explicit: a free pad joins with Start, or with A while the Add line has the focus; the keyboard with
+//     Enter there (or a click on it). A or Enter anywhere else is that button's own press (main.js menuPress / addFocused).
 //  2. The HUD strips: with two or more players, one compact strip per player along the top in the player's colour (hearts,
 //     bombs, the jar's casts, the selected hotbar slot). Solo shows none of it: the solo HUD is unchanged.
 // DOM only, keyed writes (a strip's text changes only when its value does), no per-frame layout.
@@ -23,14 +25,19 @@ export function deviceName(dev, style = 'xbox') {
 
 /**
  * @param {HTMLElement} hudEl the #hud root
- * @param {{ onRemove(slot: number): void }} handlers
+ * @param {{ onRemove(slot: number): void, onAdd?(): void }} handlers
  */
 export function createCoopUI(hudEl, handlers) {
   // --- 1. pause rows: put inside the pause card, above its buttons
   const box = el('div', 'octo-coop');
   box.addEventListener('click', (e) => e.stopPropagation()); // a click here is not "tap to resume"
   const list = el('div', 'octo-coop-rows');
-  const add = el('div', 'octo-coop-add');
+  const add = el('button', 'octo-coop-add');
+  add.type = 'button';
+  const addName = el('span', 'octo-coop-add-name', 'Add player');
+  const addHow = el('span', 'octo-coop-add-how');
+  add.append(addName, addHow);
+  add.addEventListener('click', (e) => { e.stopPropagation(); if (handlers.onAdd) handlers.onAdd(); }); // a click (or Enter): the keyboard joins
   box.append(list, add);
   let placed = false;
   function place() {
@@ -42,10 +49,13 @@ export function createCoopUI(hudEl, handlers) {
     placed = true;
   }
   let rowsKey = '';
-  /** rows: [{slot, device, style, hearts, heartMax, dead}] in slot order; `full`: four already play. */
-  function setRows(rows, full) {
+  let addStyle = 'xbox';
+  /** rows: [{slot, device, style, hearts, heartMax, dead}] in slot order; `full`: four already play; `style`: the pad make the
+   *  Add line names ('xbox' | 'ps'). */
+  function setRows(rows, full, style = addStyle) {
     place();
-    const k = JSON.stringify(rows) + full;
+    addStyle = style;
+    const k = JSON.stringify(rows) + full + style;
     if (k === rowsKey) return;
     rowsKey = k;
     list.textContent = '';
@@ -66,7 +76,10 @@ export function createCoopUI(hudEl, handlers) {
       row.append(dot, name, dev, st, rm);
       list.append(row);
     }
-    add.textContent = full ? 'Four players: the party is full' : 'Add player: press A on a pad or Enter on the keyboard';
+    add.disabled = !!full;
+    addName.textContent = full ? 'The party is full' : 'Add player';
+    const A = style === 'ps' ? 'Cross' : 'A', S = style === 'ps' ? 'Options' : 'Menu';
+    addHow.textContent = full ? 'four play' : S + ' on a free pad, or ' + A + ' / Enter here';
   }
 
   // --- 2. HUD strips
@@ -114,5 +127,5 @@ export function createCoopUI(hudEl, handlers) {
   }
   /** The sprites came in: redraw the icons on the next update. */
   function refreshIcons() { for (const m of made) if (m) { m.k.bombDrawn = false; m.k.sl = undefined; } }
-  return { setRows, update, refreshIcons, el: box, strips };
+  return { setRows, update, refreshIcons, el: box, strips, addBtn: add };
 }

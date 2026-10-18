@@ -64,7 +64,7 @@ import { SHELL_NAMES, SK_PEARL, SK_MOON, MOON_VALUE, payout } from './shells.js'
 import { beholderTiming } from './beholder.js';
 import { swimDistance, swiftTarget, createSwift, stepSwift } from './swift.js';
 import { mulberry32 } from './rng.js';
-import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, getHelpDone, setHelpDone, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
+import { getJournalStats, saveJournalStats, getStory, addStory, setStory, loadBest, getSettings, setSetting, resetProgress, recordRun, getJournalIds, saveJournalIds, getTutorialDone, setTutorialDone, getHelpDone, setHelpDone, addHelpLevel, recordDive, getBestRuns, getMeta, getShortcut, setShortcut } from './save.js';
 import { summaryRows, summaryHeadline, bestRunLines } from './runstats.js';
 import {
   createRun, runEvent, levelSpec, levelTitle, stageLabel, isSafeState, nextDiveSeed, gainShells, endDive, deathTitle, BIOME_LEVELS, BIOME_NAME,
@@ -305,7 +305,8 @@ const touchUI = createTouchUI(touchRoot, input, canvas); // the canvas takes the
 input.onModeChange((mode) => {
   if (mode === 'touch') ui.hideControlsHelp();
   else ui.showControlsHelp();
-  ui.setControlsScheme(mode, input.padStyle()); // controller Phase 1: the line shows the scheme's own glyphs
+  refreshControlsLine(); // controller Phase 1: the line shows the scheme's own glyphs (co-op: the last presser's, with their dot)
+  if (!pauseMenuUp()) p1Dev = mode === 'pad' && pad.primaryKey() ? pad.primaryKey() : KEYBOARD; // co-op polish: solo player 1's device (the last used in play)
   hudEl.classList.toggle('octo-pad-mode', mode === 'pad'); // (play.css hides the key caps on buttons then)
   if (mode !== 'pad') menuNav.hideRing();
   else { journalScreen.padRestyle(); if (settingsPanel.isOpen()) settingsPanel.refresh(); } // (a pad of another make: its glyphs)
@@ -403,7 +404,7 @@ let spellFx = createSpellFx({ world, hazards, props, damage: V2 ? damage : null,
 let runeSpot = null;
 // the offering altar (altar-level.js): one on some Shallows level of a dive (?altar=1: every level)
 const altarLv = createAltarLevel({
-  signView: () => signView, // Phase 2B: its sign's board draws the scheme's glyphs
+  signView: () => (coop() && altarLv && altarLv.altar ? viewNear(altarLv.altar.x, altarLv.altar.y) : signView), // Phase 2B: its sign's board draws the scheme's glyphs (co-op: the nearest player's)
   world: () => world, octo: () => octo, run: () => run, corpses: () => corpses, kindName: (id) => corpseKindName(id),
   enemies: () => enemies.all(), keepers: () => keepers, keeperDead: KM_DEAD,
   found: (id) => journal.has(id), discover: (id) => discover(id), bump: (id, st) => journal.bump(id, st), statCollected: STAT_COLLECTED, statAngered: STAT_ANGERED,
@@ -550,7 +551,10 @@ const ui = createUI(hudEl, {
   onToggleSettings() { settingsPanel.toggle(); },
   onOpenJournal() { if (settingsPanel.isOpen()) settingsPanel.hide(); journalScreen.show(); },
 });
-if (getHelpDone()) ui.retireControlsHelp(); // finished two levels in an earlier visit: the controls line stays away (Settings lists the controls)
+// finished two levels in an earlier visit: the controls line stays away (Settings lists the controls). Co-op polish: per scheme,
+// so a keyboard player who picks up a pad later still gets the pad's line until two levels are cleared on it.
+if (getHelpDone('keyboard')) ui.retireControlsHelp('keyboard');
+if (getHelpDone('pad')) ui.retireControlsHelp('pad');
 
 // v2 journal (B1-4): entries persisted through save.js; the book opens from Tab / I, the pause menu and Settings (the hub board is gone, 2026-10-08).
 const journal = createJournal({ load: getJournalIds, save: saveJournalIds, loadStats: getJournalStats, saveStats: saveJournalStats });
@@ -607,6 +611,12 @@ hotbarUI.setCompact(isCoarsePointer());
 let inventoryOpen = false;
 /** What the octopus carries, for the Carried page (carried.js). */
 function carriedState() {
+  // co-op polish item 4: the Carried page's "How" line names the controls of the player reading it (co-op: the last to press,
+  // who opened the book), in that scheme's glyphs (carried.js)
+  if (coop()) {
+    const p = presser >= 0 && roster.slots[presser] && PR[presser] ? PR[presser] : focusP(), sc = schemeOf(p);
+    return { ...hotbarState(), items: run.items.slice(), touch: sc.scheme === 'touch', pad: sc.scheme === 'pad' ? sc.style : '' };
+  }
   const m = input.mode() || (matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
   return { ...hotbarState(), items: run.items.slice(), touch: m === 'touch', pad: m === 'pad' ? input.padStyle() : '' };
 }
@@ -740,6 +750,7 @@ let keyboardSeen = false;
 // Controller Phase 2B: the signs (signs.js). signView = the scheme their words are drawn in; openSign = the prompt whose board
 // is open this step; bombWarn = a lit tutorial bomb that says "swim away"; mirrorTag = the mirror shell names its verb.
 const signView = { scheme: 'desktop', style: 'xbox' };
+let p1Dev = 'keyboard'; // co-op polish: the device solo player 1 last used in play (players.js KEYBOARD or a pad key); a pad on another joins
 let openSign = null, bombWarn = null, mirrorTag = false, diveTagUntil = -1;
 /** A hub prompt that does not apply now: the sealed-dive ones once the tutorial is done, the welcome once a dive was cleared. */
 function promptHidden(p) {
@@ -768,8 +779,10 @@ window.addEventListener('keydown', (e) => {
     const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
     if (!typing && quickKey(e.code === 'KeyR')) { e.preventDefault(); return; }
   }
-  // local co-op: Enter on the keyboard in the pause menu adds the keyboard player
-  if (V2 && (e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat && pauseMenuUp() && tryJoin(KEYBOARD)) { e.preventDefault(); return; }
+  // local co-op: Enter on the keyboard adds the keyboard player only on the focused Add line (co-op polish: elsewhere Enter is the
+  // focused button's own press); the arrow keys walk the pause menu like the pad's d-pad (menu-nav.js)
+  if (V2 && (e.code === 'Enter' || e.code === 'NumpadEnter') && pauseMenuUp() && addFocused()) { e.preventDefault(); if (!e.repeat) tryJoin(KEYBOARD); return; }
+  if (V2 && pauseMenuUp() && KB_NAV[e.code]) { e.preventDefault(); kbMenuNav = true; menuNav.handle(KB_NAV[e.code]); return; }
   if (e.code !== 'Escape' || everyoneDead()) return;
   manualPaused = !manualPaused;
   applyPaused();
@@ -781,6 +794,23 @@ const qs = (sel) => document.querySelector(sel);
  *  tutorial offer), or null in play. Phase 2A: the journal and the looks picker keep their own selection (pad, focus: menu-nav.js). */
 const PAD_JOURNAL = { root: null, back: () => closeInventory(), pad: (a) => journalScreen.pad(a), focus: () => journalScreen.padFocus() };
 const PAD_LOOKS = { root: null, back: () => looksPicker.hide(), pad: (a) => looksPicker.pad(a), focus: () => looksPicker.padFocus() };
+/** The pause menu's Add line (coop-ui.js) has the menu focus (the pad's ring, or the keyboard's arrows). */
+function addFocused() { const a = coopUI.addBtn; return !!a && (menuNav.focused() === a || document.activeElement === a); }
+const KB_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+let kbMenuNav = false; // the arrow keys moved the menu focus: the ring shows for the keyboard too, until the mouse moves
+window.addEventListener('mousemove', () => { if (kbMenuNav) { kbMenuNav = false; if (input.mode() !== 'pad') menuNav.hideRing(); } });
+/** The pause menu's first button, where the focus starts (not the Add line: A or Enter there joins, co-op polish item 3). */
+function pauseFirst() {
+  for (const b of document.querySelectorAll('.octo-pause-overlay .octo-pause-btns button')) if (b.style.display !== 'none') return b;
+  return null;
+}
+/** A pad's menu action (`key`: the pad, '' / undefined for the primary one). Local co-op (polish item 3): A joins only on the
+ *  focused Add line (a pad that already plays: nothing); elsewhere it is the focused button's press, never a join. */
+function menuPress(a, key) {
+  kbMenuNav = false;
+  if (a === 'confirm' && pauseMenuUp() && addFocused()) { tryJoin(key || pad.primaryKey()); return; }
+  menuNav.handle(a);
+}
 function padMenu() {
   if (V2 && ui.isOfferShown()) return { root: qs('.octo-offer-overlay'), back: () => ui.answerOffer(false) };
   if (settingsPanel.isOpen()) return { root: settingsPanel.el, back: () => settingsPanel.back() };
@@ -788,10 +818,10 @@ function padMenu() {
   if (V2 && (inventoryOpen || journalScreen.isOpen())) { PAD_JOURNAL.root = journalScreen.el; return PAD_JOURNAL; }
   if (V2 && ui.isEndShown()) return { root: qs('.octo-end-overlay') };
   if (ui.isGameOverShown()) return { root: qs('.octo-gameover-overlay') };
-  if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), back: () => { manualPaused = false; applyPaused(); } };
+  if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), first: pauseFirst(), back: () => { manualPaused = false; applyPaused(); } };
   return null;
 }
-const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' });
+const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' || kbMenuNav });
 let padMenuFrames = 0;
 const pad = createGamepad(input, {
   menuActive() {
@@ -802,17 +832,23 @@ const pad = createGamepad(input, {
     if (!m) padMenuFrames = 0;
     return !!m;
   },
-  onMenu(a) {
-    // local co-op: in solo, the pad's first A in the pause menu while player 1 was on the keyboard adds that pad as a player
-    if (a === 'confirm' && !coop() && pauseMenuUp() && modeFresh && modeBefore !== 'pad' && pad.primaryKey() && tryJoin(pad.primaryKey())) return;
-    menuNav.handle(a);
-  },
+  onMenu(a, key) { menuPress(a, key); },
   primaryKey() { return coop() ? '' : undefined; },
-  beforeMode(m) { modeBefore = m; modeFresh = true; setTimeout(() => { modeFresh = false; }, 0); }, // local co-op: the scheme the primary pad's first press leaves
   isPlayer(key) { return deviceTaken(roster, key); },
-  onFree(key, btn) { if ((btn === 'a' || btn === 'start') && pauseMenuUp()) tryJoin(key); },
+  // a free pad (no player yet) walks the menus of a paused game like any pad (the pause menu, the book opened from it); Start
+  // in the pause menu, or A on its Add line, is how it joins
+  onFree(key, btn) {
+    if (btn === 'start') { if (pauseMenuUp()) tryJoin(key); return; }
+    if (btn === 'back' || !manualPaused || !loop.paused || !padMenu()) return;
+    if (input.mode() !== 'pad') input.setMode('pad'); // the ring shows for the pad that walks the menu
+    menuPress(btn === 'a' ? 'confirm' : btn === 'b' ? 'back' : btn, key);
+  },
   onOtherGone(key) { const p = roster.slots.find((q) => q && q.device === key); if (p) removeSlot(p.slot, true); },
-  onPause() { // Start (Menu): as Esc
+  onOtherActivity(key) { const p = coop() ? roster.slots.find((q) => q && q.device === key) : null; if (p) notePress(p.slot); }, // co-op: whose scheme the controls line shows
+  onPause(key) { // Start (Menu): as Esc
+    if (key && input.mode() !== 'pad') input.setMode('pad'); // co-op: a player's pad opens a menu: it drives it (the ring, the pad's legends)
+    // local co-op (polish item 3): in solo, Start on a pad player 1 is not on (they paused from the keyboard) joins that pad
+    if (!coop() && pauseMenuUp() && pad.primaryKey() && p1Dev !== pad.primaryKey() && tryJoin(pad.primaryKey())) return;
     if (settingsPanel.isOpen()) { settingsPanel.hide(); return; }
     if (looksOpen) { looksPicker.hide(); return; }
     if (V2 && (inventoryOpen || journalScreen.isOpen())) { closeInventory(); return; }
@@ -821,7 +857,8 @@ const pad = createGamepad(input, {
     manualPaused = !manualPaused;
     applyPaused();
   },
-  onInventory() { // Back (View): as Tab
+  onInventory(key) { // Back (View): as Tab
+    if (key && input.mode() !== 'pad') input.setMode('pad');
     if (!V2 || settingsPanel.isOpen() || looksOpen || ui.isOfferShown()) return;
     if (inventoryOpen || journalScreen.isOpen()) closeInventory(); else openInventory();
   },
@@ -944,6 +981,7 @@ function step(dt) {
   }
   cur.snap = snap;
   sim.lastInput = snap;
+  noteLevelSchemes(ps, solo);
   const dashAny = solo ? snap.dash.pressed : ps.some((p) => p.snap.dash.pressed);
 
   // v2 states that freeze the simulation: the fade between levels, the journal, the end screen.
@@ -1751,6 +1789,13 @@ function nearP(x, y) {
   return best || focusP();
 }
 /** Each player's input for this step: the keyboard + mouse snapshot for the keyboard player, each pad's own for a pad player. */
+/** Which schemes played this level (co-op polish item 1: the controls line retires per scheme). Solo: the active mode; co-op:
+ *  each player's device. Reads only, the simulation never sees it. */
+const levelSchemes = { keyboard: false, pad: false };
+function noteLevelSchemes(ps, solo) {
+  if (solo) { const m = input.mode(); if (m === 'pad') levelSchemes.pad = true; else if (m !== 'touch') levelSchemes.keyboard = true; return; }
+  for (const p of ps) { const d = roster.slots[p.slot].device; if (d === KEYBOARD) levelSchemes.keyboard = true; else if (d) levelSchemes.pad = true; }
+}
 function readSnaps(ps) {
   const kb = input.snapshot(); // (in co-op no pad writes into the merged snapshot: gamepad.js has no primary pad then)
   if (kb.mode !== 'test' && input.mode() === 'pad') kb.mode = input.kbMode();
@@ -1814,17 +1859,62 @@ function bringOthers(x, y) {
 }
 
 // --- joining and leaving (pause menu only, plan decisions 3 and 4) ---
-// The scheme before the press that is joining now: a key (a capture listener runs before input.js switches the mode) or the
-// primary pad's first press (gamepad.js beforeMode) may have just switched it.
-let modeBefore = '', modeFresh = false;
-window.addEventListener('keydown', () => { modeBefore = input.mode(); modeFresh = true; setTimeout(() => { modeFresh = false; }, 0); }, true);
-/** The device solo player 1 is on: the one it used last before the press that is joining now. */
-function p1Device() {
-  const m = modeFresh ? modeBefore : (input.mode() || 'keyboard');
-  return m === 'pad' && pad.primaryKey() ? pad.primaryKey() : KEYBOARD;
-}
+/** The device solo player 1 is on: the one it used last in play (p1Dev, set on a scheme change outside the pause menu). */
+function p1Device() { return p1Dev; }
 function pauseMenuUp() { return manualPaused && loop.paused && !settingsOpen && !inventoryOpen && !looksOpen && !journalScreen.isOpen(); }
-const coopUI = createCoopUI(hudEl, { onRemove: (slot) => removeSlot(slot) });
+const coopUI = createCoopUI(hudEl, { onRemove: (slot) => removeSlot(slot), onAdd: () => tryJoin(KEYBOARD) });
+
+// --- co-op polish item 1: the bottom-left controls line shows the scheme of the player who last pressed something, with a small
+// dot in their colour (MULTIPLAYER-PLAN decision 12). Solo: the global scheme, no dot, exactly as before.
+let presser = -1; // the roster slot of the last player to press a key, a mouse button or a pad button (co-op)
+function notePress(slot) { if (presser !== slot) { presser = slot; refreshControlsLine(); if (journalScreen.isOpen()) journalScreen.refresh(); } } // (the Carried page names the presser's buttons)
+/** The input scheme and pad make of player `p` (co-op): the keyboard player's last keyboard / mouse mode, else their pad's. */
+function schemeOf(p) {
+  const dev = roster.slots[p.slot] ? roster.slots[p.slot].device : KEYBOARD;
+  if (dev === KEYBOARD || dev === null) { const m = input.kbMode(); return { scheme: m === 'touch' ? 'touch' : m === 'mouse' ? 'mouse' : 'keyboard', style: 'xbox' }; }
+  return { scheme: 'pad', style: padStyleOf(dev) };
+}
+// --- co-op polish item 2: a prompt on an object (the hand's key over a portal, a curtain, a ware; the mirror's; a sign's board)
+// names the controls of the player nearest it, the one who would use it. Solo: the one global view (signView), as before.
+const VIEWS = [];
+/** Player `p`'s sign view {scheme: 'desktop' | 'pad' | 'touch', style} (co-op). */
+function viewOf(p) {
+  const v = VIEWS[p.slot] || (VIEWS[p.slot] = { scheme: 'desktop', style: 'xbox' });
+  const sc = schemeOf(p);
+  v.scheme = sc.scheme === 'pad' ? 'pad' : sc.scheme === 'touch' ? 'touch' : 'desktop';
+  v.style = sc.style;
+  return v;
+}
+/** The view of the player nearest world point (x, y) (solo: signView). */
+function viewNear(x, y) { return coop() ? viewOf(nearP(x, y)) : signView; }
+const promptView = (p) => viewNear(p.x, p.y);
+/** Co-op: the prompt nearest any live player, as pickPrompt for one octopus. */
+function partyPrompt(prompts, skip) {
+  let best = null, bd = Infinity;
+  for (const p of players()) {
+    const o = oOf(p);
+    if (!targetable(o)) continue;
+    const q = pickPrompt(prompts, o.x, o.y, skip);
+    if (!q) continue;
+    const d = Math.hypot(o.x - q.x, o.y - q.y);
+    if (d < bd) { bd = d; best = q; }
+  }
+  return best;
+}
+const hintSeen = []; // test hook: per slot, the hand hint drawn last frame {kind, scheme, label}
+function refreshControlsLine() {
+  if (!coop()) { presser = -1; ui.setControlsScheme(input.mode(), input.padStyle()); return; }
+  const p = presser >= 0 && roster.slots[presser] && PR[presser] ? PR[presser] : focusP();
+  const sc = schemeOf(p);
+  ui.setControlsScheme(sc.scheme, sc.style, PLAYER_COLOURS[p.slot].ui);
+}
+function noteKeyboardPress() {
+  if (!coop()) return;
+  const p = roster.slots.find((q) => q && q.device === KEYBOARD);
+  if (p) notePress(p.slot);
+}
+window.addEventListener('keydown', noteKeyboardPress);
+window.addEventListener('mousedown', noteKeyboardPress);
 /** Device `dev` claims the next free slot (or its own, when it played this run: its record comes back). */
 function tryJoin(dev) {
   if (!V2 || !run || transitioning || entry || pull || !pauseMenuUp()) return false;
@@ -1847,6 +1937,7 @@ function tryJoin(dev) {
   p.prevHearts = o.hearts;
   sfx.chime();
   for (let i = 0; i < 4; i++) particles.trailBubble(o.x + (i - 1.5) * 0.2, o.y - 0.3 - i * 0.15);
+  presser = r.player.slot; // the join was their press: the controls line is theirs
   refreshRows();
   coopHud();
   return true;
@@ -1875,7 +1966,8 @@ function refreshRows() {
     const o = p.octo, d = roster.slots[p.slot].device;
     return { slot: p.slot, device: d, style: d && d !== KEYBOARD ? padStyleOf(d) : 'xbox', hearts: o.hearts, heartMax: o.heartMax, dead: !!o.dead };
   });
-  coopUI.setRows(rows, rows.length >= MAX_PLAYERS);
+  coopUI.setRows(rows, rows.length >= MAX_PLAYERS, input.padStyle());
+  refreshControlsLine(); // a join or a leave: whose line it is (solo again: the plain line, no dot)
 }
 const hudRows = [];
 let hudCoop = false;
@@ -2036,6 +2128,7 @@ function coopHooks() {
         camera: { zoom: camZoom, x: renderer.camera.x, y: renderer.camera.y, ppu: renderer.camera.pxPerUnit, solo: computePxPerUnit(canvas.width, canvas.height) },
         pull: pull ? { t: pull.t } : null, gameOver: ui.isGameOverShown(), primary: pad.primaryKey(), others: pad.others(), tints: tintStats(),
         rows: [...document.querySelectorAll('.octo-coop-row')].map((r) => r.textContent), add: (document.querySelector('.octo-coop-add') || {}).textContent || '',
+        addFocused: addFocused(), focus: menuNav.focused() ? menuNav.focused().textContent : '', presser, line: ui.controlsHelpRead(),
         strips: [...document.querySelectorAll('.octo-coop-strip')].filter((e) => e.offsetParent !== null).map((e) => e.textContent),
       };
     },
@@ -2175,6 +2268,7 @@ function liveWorld() { return !isSafeState(run) || run.state === S_TUTORIAL; }
 function v2Event(ev, cause) {
   if (!V2 || transitioning) return false;
   const prevState = run.state;
+  const clearedBefore = run.levelsCleared | 0;
   const carry = { hearts: octo.hearts, bombs: octo.bombs };
   saveCur();
   const carries = players().map((p) => ({ p, hearts: p.octo.hearts, bombs: p.octo.bombs, dead: !!p.octo.dead })); // local co-op: every player
@@ -2189,7 +2283,15 @@ function v2Event(ev, cause) {
   const quick = ev === EV_RESTART;
   const sameDive = prevState === S_BIOME && run.state === S_BIOME && !quick;
   if (!sameDive) seenDive.clear();
-  if (prevState === S_BIOME && (run.levelsCleared >= 2 || run.state === S_END)) { setHelpDone(true); ui.retireControlsHelp(); } // two levels done: the controls line goes for good
+  // co-op polish item 1: the controls line retires per scheme: a level cleared counts for each scheme played on it (saved), and
+  // two levels on a scheme (or the end of the game) retire that scheme's line for good
+  if (prevState === S_BIOME && ((run.levelsCleared | 0) > clearedBefore || run.state === S_END)) {
+    for (const sc of ['keyboard', 'pad']) {
+      if (!levelSchemes[sc] || getHelpDone(sc)) continue;
+      if (addHelpLevel(sc) >= 2 || run.state === S_END) { setHelpDone(true, sc); ui.retireControlsHelp(sc); }
+    }
+  }
+  levelSchemes.keyboard = levelSchemes.pad = false; // the next level counts afresh
   if (prevState === S_BIOME && (run.state === S_HUB || run.state === S_END || quick)) endOfDiveNpcs(); // the dive ended: whoever was killed has one dive less to stay away
   if (!sameDive) resetMoods(npcMoods); // a new dive or the hub: everybody is calm again
   timed('save', () => { journal.flush(); if (prevState === S_TUTORIAL && ev === EV_EXIT) setTutorialDone(true); });
@@ -2468,7 +2570,7 @@ function stepV2(snap) {
   signView.style = input.padStyle();
   openSign = null; bombWarn = null; mirrorTag = false;
   if (lv.prompts && lv.prompts.length) {
-    let best = pickPrompt(lv.prompts, octo.x, octo.y, promptHidden);
+    let best = coop() ? partyPrompt(lv.prompts, promptHidden) : pickPrompt(lv.prompts, octo.x, octo.y, promptHidden); // co-op: whoever is nearest a sign opens it
     // tutorial: bombs never run out while the wall stands, and an idle player gets the bomb hint back
     if (run.state === S_TUTORIAL) {
       const floorUp = wallIntact(lv);
@@ -2488,7 +2590,7 @@ function stepV2(snap) {
   }
   if (run.state === S_HUB && lv.mirror && !looksOpen && !unlockAnim) { // skins: the mirror shell says what it is when you are beside it (on the shell)
     const mp = mirrorPoint(lv.mirror);
-    mirrorTag = Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2;
+    mirrorTag = coop() ? players().some((p) => targetable(oOf(p)) && Math.hypot(oOf(p).x - mp.x, oOf(p).y - mp.y) < 2.2) : Math.hypot(octo.x - mp.x, octo.y - mp.y) < 2.2;
   }
   if ((seeTick & 7) === 0 && run.state === S_BIOME) {
     for (const hk of hazards.seen(octo.x, octo.y, SEE_RANGE, solidForSight)) discover(hazardJournalId(hk));
@@ -2555,7 +2657,7 @@ function v2Extra(c, camera, w2s, cw, ch) {
     drawHubRooms(c, camera, cw, ch, lv, hubRooms, t, d);
   }
   // Phase 2B: every level's prompts are signs (the hub's welcome board, the grotto's, the tutorial's planks)
-  if (lv.prompts && lv.prompts.length) drawSigns(c, camera, cw, ch, lv.prompts, openSign, signView, t, promptHidden);
+  if (lv.prompts && lv.prompts.length) drawSigns(c, camera, cw, ch, lv.prompts, openSign, coop() ? promptView : signView, t, promptHidden); // (co-op: each board in its nearest player's controls)
   if (run.state === S_TUTORIAL) {
     if (lv.walls && lv.walls.length) drawWallCue(c, camera, cw, ch, { walls: lv.walls, tileAt: world.tileAt, attention: tutState.hint ? 1 : 0 }, t);
     if (lv.sticky && lv.sticky.length) drawWallCue(c, camera, cw, ch, { walls: lv.sticky, tileAt: world.tileAt, attention: 0 }, t);
@@ -2606,12 +2708,16 @@ function v2Extra(c, camera, w2s, cw, ch) {
       drawHandTell(c, camera, cw, ch, octo.x, octo.y, hand.target.x, hand.target.y, t, hand.target.priority > 10);
       const k = hand.target.kind;
       const hy = k === 'portal' ? 1.45 : k === 'backdoor' ? 2.0 : k === 'ware' ? 0.95 : 0; // over the whirlpool / the back-room curtain / the ware
-      if (hy && signView.scheme !== 'touch') { // (phones: the Spell button reads Enter)
-        if (k === 'ware') drawAnchorTag(c, camera, cw, ch, hand.target.x, hand.target.y - hy, '{hand} buy', signView, t, 0.92); // Phase 2B: on the ware itself
-        else if (signView.scheme === 'pad') { // controller Phase 1: the pad's own button, drawn as its glyph (glyphs.js), bobbing like the key cap
+      const hv = coop() ? viewOf(cur) : signView; // co-op polish item 2: the controls of the player whose hand it is
+      const gather = k === 'backdoor' && partyApart(); // co-op polish item 6: the party goes through the curtain together
+      if (coop()) hintSeen[cur.slot] = { kind: k, scheme: hv.scheme, label: gather ? GATHER_TEXT : k === 'ware' ? plainText('{hand} buy', hv.scheme, hv.style) : (glyph('hand', hv.scheme === 'pad' ? 'pad' : 'desktop', hv.style) || {}).label || '', t: sim.time };
+      if (hy && gather) drawAnchorTag(c, camera, cw, ch, hand.target.x, hand.target.y - hy, GATHER_TEXT, hv, t, 0.92); // (words, no key: nothing to press yet)
+      else if (hy && hv.scheme !== 'touch') { // (phones: the Spell button reads Enter)
+        if (k === 'ware') drawAnchorTag(c, camera, cw, ch, hand.target.x, hand.target.y - hy, '{hand} buy', hv, t, 0.92); // Phase 2B: on the ware itself
+        else if (hv.scheme === 'pad') { // controller Phase 1: the pad's own button, drawn as its glyph (glyphs.js), bobbing like the key cap
           const sp = worldToScreen(camera, cw, ch, hand.target.x, hand.target.y - hy);
           c.save(); c.globalAlpha = 0.75 + 0.25 * Math.sin(t * 3);
-          drawGlyph(c, glyph('hand', 'pad', signView.style), sp.x, sp.y + Math.sin(t * 2.2) * camera.pxPerUnit * 0.04, camera.pxPerUnit * 0.21);
+          drawGlyph(c, glyph('hand', 'pad', hv.style), sp.x, sp.y + Math.sin(t * 2.2) * camera.pxPerUnit * 0.04, camera.pxPerUnit * 0.21);
           c.restore();
         } else drawKeyHint(c, camera, cw, ch, hand.target.x, hand.target.y - hy, glyph('hand', 'desktop').label, t);
       }
@@ -2741,14 +2847,16 @@ function v2People(c, camera, w2s, cw, ch) {
 /** Phase 2B: the prompts fixed to their object (CONTROLLER-PLAN "Text in the world"): what they say, for tests too. */
 function objectTags() {
   const out = [];
-  if (bombWarn) out.push({ id: 'bomb', x: bombWarn.x, y: bombWarn.y - 0.85, text: 'Swim away! {dash}' });
-  if (mirrorTag && world.level.mirror) { const mp = mirrorPoint(world.level.mirror); out.push({ id: 'mirror', x: mp.x, y: mp.y - 1.35, text: signView.scheme === 'touch' ? 'Stay still, tap {use}: your look' : '{hand} change your look' }); }
-  if (octo.held && !octo.dead) out.push({ id: 'grab', x: octo.x, y: octo.y - 1.05, text: '{dash} break free!' });
-  if (run.state === S_HUB && sim.time < diveTagUntil) { const lv = world.level; out.push({ id: 'dive', x: lv.exitX + 0.5, y: lv.exitY - 1.6, text: signView.scheme === 'touch' ? 'Swim in, tap Enter: a run' : 'Swim in, {hand}: a run' }); }
+  // co-op polish item 2: each tag names the controls of the player nearest its object (`view`; solo: signView)
+  if (bombWarn) out.push({ id: 'bomb', x: bombWarn.x, y: bombWarn.y - 0.85, text: 'Swim away! {dash}', view: viewNear(bombWarn.x, bombWarn.y) });
+  if (mirrorTag && world.level.mirror) { const mp = mirrorPoint(world.level.mirror), v = viewNear(mp.x, mp.y); out.push({ id: 'mirror', x: mp.x, y: mp.y - 1.35, text: v.scheme === 'touch' ? 'Stay still, tap {use}: your look' : '{hand} change your look', view: v }); }
+  if (coop()) { for (const p of players()) { const o = oOf(p); if (o.held && !o.dead) out.push({ id: 'grab', x: o.x, y: o.y - 1.05, text: '{dash} break free!', view: viewOf(p) }); } }
+  else if (octo.held && !octo.dead) out.push({ id: 'grab', x: octo.x, y: octo.y - 1.05, text: '{dash} break free!', view: signView });
+  if (run.state === S_HUB && sim.time < diveTagUntil) { const lv = world.level, v = viewNear(lv.exitX + 0.5, lv.exitY); out.push({ id: 'dive', x: lv.exitX + 0.5, y: lv.exitY - 1.6, text: v.scheme === 'touch' ? 'Swim in, tap Enter: a run' : 'Swim in, {hand}: a run', view: v }); }
   return out;
 }
 function drawObjectTags(c, camera, cw, ch, t) {
-  for (const g of objectTags()) drawAnchorTag(c, camera, cw, ch, g.x, g.y, g.text, signView, t);
+  for (const g of objectTags()) drawAnchorTag(c, camera, cw, ch, g.x, g.y, g.text, g.view || signView, t);
 }
 
 // --- V2-PLAN 16: ambush creatures (js/creatures.js) ---
@@ -2978,6 +3086,23 @@ function grabScreen() {
   const c = acquireCanvas(w, h);
   c.getContext('2d').drawImage(canvas, 0, 0, w, h);
   return c;
+}
+// co-op polish item 6: with one camera the whole party goes through the curtain together, so it opens only when every live
+// player is within GATHER_R tiles of it; until then the prompt on the curtain says so (drawn on the curtain, no popup). Ghosts
+// (dead players, MULTIPLAYER-PLAN phase 2) are never waited for.
+const GATHER_R = 6;
+const GATHER_TEXT = 'Gather the party';
+const gatherPt = { x: 0, y: 0 };
+/** Co-op: some live player is further than GATHER_R from the curtain in use (solo: never). */
+function partyApart() {
+  if (!back || !coop()) return false;
+  const lv = back.lv, c = curtainPoint(back.inside ? lv.retX : lv.doorX, back.inside ? lv.retY : lv.doorY, gatherPt);
+  for (const p of players()) {
+    const o = oOf(p);
+    if (o.dead || o.ghost || !targetable(o)) continue;
+    if (Math.hypot(o.x - c.x, o.y - c.y) > GATHER_R) return true;
+  }
+  return false;
 }
 /** Through the curtain: into the grotto (`inside`) or back out to the front. */
 function backHop(inside) {
@@ -3332,7 +3457,7 @@ if (V2) {
       const lv = back.lv, p = curtainPoint(back.inside ? lv.retX : lv.doorX, back.inside ? lv.retY : lv.doorY, backPt);
       return Math.hypot(o.x - p.x, o.y - p.y) <= Math.min(reach, DOOR_REACH) ? { x: p.x, y: p.y, ref: 'backdoor', label: back.inside ? 'out' : 'in' } : null;
     },
-    use() { return back ? backHop(!back.inside) : false; },
+    use() { return back && !partyApart() ? backHop(!back.inside) : false; }, // co-op: only with the party gathered (partyApart)
   });
   registerInteract('talk', {
     priority: PRI_TALK,
@@ -4158,8 +4283,10 @@ window.__octo = {
     return {
       scheme: sc, style: st, mode: input.mode(),
       open: os ? { title: os.title || '', label: os.label || '', where: os.sign ? 'sign' : os.hang ? 'hang' : 'anchor', ...read(signText(os, sc)) } : null,
-      list: (lv.prompts || []).filter((p) => !promptHidden(p)).map((p) => ({ title: p.title, label: p.label || '', where: p.sign ? 'sign' : p.hang ? 'hang' : 'anchor', at: p.sign || p.hang || p.anchor, ...read(signText(p, sc)) })),
-      tags: objectTags().map((g) => ({ id: g.id, ...read(g.text) })),
+      list: (lv.prompts || []).filter((p) => !promptHidden(p)).map((p) => ({ title: p.title, label: p.label || '', x: p.x, y: p.y, r: p.r, where: p.sign ? 'sign' : p.hang ? 'hang' : 'anchor', at: p.sign || p.hang || p.anchor, ...read(signText(p, sc)) })),
+      tags: objectTags().map((g) => { const v = g.view || signView; return { id: g.id, scheme: v.scheme, text: plainText(g.text, v.scheme, v.style), glyphs: glyphLabels(g.text, v.scheme, v.style) }; }),
+      openView: os && coop() ? ((v) => ({ scheme: v.scheme, style: v.style, text: plainText(signText(os, v.scheme), v.scheme, v.style), glyphs: glyphLabels(signText(os, v.scheme), v.scheme, v.style) }))(promptView(os)) : null,
+      hints: hintSeen.map((h, slot) => (h ? { slot, ...h } : null)).filter(Boolean),
       painting: lv.painting ? { rect: lv.painting.rect.slice(), rows: CONTROL_ROWS.map(([a, n]) => ({ action: a, name: n, glyphs: glyphLabels('{' + a + '+}', sc, st) })) } : null,
       popup: shown('.octo-prompt') || shown('.octo-offer-overlay'),
     };
@@ -4180,6 +4307,7 @@ window.__octo = {
       spring: back.spring ? { ...back.spring } : null, spawns: lv.spawns.map((s) => ({ type: s.type, x: s.x, y: s.y, kind: s.kind || s.ck || s.lk || s.hk || s.sk || 0 })),
       inside: back.inside, entered: back.entered, hops: back.hops, snaps: (back.frontSnap ? 1 : 0) + (back.hopSnap && back.hopSnap !== back.frontSnap ? 1 : 0),
       cam: { x: cam.x, y: cam.y, ppu: cam.pxPerUnit }, octo: { x: octo.x, y: octo.y }, target: hand.target ? hand.target.kind : '', depth: world.depth(), hearts: octo.hearts, heartMax: octo.heartMax, juice: run.juice,
+      apart: partyApart(), gatherR: GATHER_R,
     };
   },
   /** Test hook: set the octopus's hearts (1 .. heartMax). */

@@ -82,11 +82,14 @@ function plank(ctx, label, ppu, lit) {
 }
 
 /**
- * Draw the signs of a level. `open` = the prompt being read (or null); `view` = {scheme: 'desktop'|'pad'|'touch', style}.
+ * Draw the signs of a level. `open` = the prompt being read (or null); `view` = {scheme: 'desktop'|'pad'|'touch', style}, or
+ * a function (prompt) -> view.
  * Signs whose `when` the caller filtered out are skipped through `hidden(p)`.
  */
 export function drawSigns(ctx, camera, cw, ch, prompts, open, view, time, hidden = null) {
   if (!prompts || !prompts.length) return;
+  // co-op polish: `view` may be a function of the prompt (each board names the controls of the player nearest it)
+  const vOf = typeof view === 'function' ? view : null;
   const ppu = camera.pxPerUnit;
   ctx.save();
   ctx.lineJoin = 'round';
@@ -98,9 +101,9 @@ export function drawSigns(ctx, camera, cw, ch, prompts, open, view, time, hidden
     p._open = p._open === undefined ? target : p._open + Math.sign(target - p._open) * Math.min(Math.abs(target - p._open), dt / OPEN_S);
     if (hidden && hidden(p)) { p._open = 0; continue; }
     if (p === open) { last = p; continue; }
-    drawOne(ctx, camera, cw, ch, p, ppu, view, time);
+    drawOne(ctx, camera, cw, ch, p, ppu, vOf ? vOf(p) : view, time);
   }
-  if (last) drawOne(ctx, camera, cw, ch, last, ppu, view, time);
+  if (last) drawOne(ctx, camera, cw, ch, last, ppu, vOf ? vOf(last) : view, time);
   ctx.restore();
 }
 

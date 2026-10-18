@@ -31,7 +31,7 @@ const STORY_KEYS = ['diverFreed', 'critterFreed', 'marlo', 'pip', 'quill', 'reli
   'hubRooms', 'hubSecret', 'hubPractice'];
 function freshStory() { const o = {}; for (const k of STORY_KEYS) o[k] = 0; return o; }
 function freshMemory() {
-  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory(), skins: null, skin: DEFAULT_SKIN };
+  return { v: 1, best: 0, runs: 0, muted: false, tutorialDone: false, helpDone: false, helpPadDone: false, helpLevels: { keyboard: 0, pad: 0 }, journal: [], bestRuns: [], shortcut: false, meta: freshMeta(), settings: defaultSettings(), journalStats: {}, story: freshStory(), skins: null, skin: DEFAULT_SKIN };
 }
 
 /** @type {ReturnType<typeof freshMemory>} */
@@ -71,6 +71,9 @@ export function loadBest() {
         muted: !!obj.muted,
         tutorialDone: !!obj.tutorialDone,
         helpDone: !!obj.helpDone || !!obj.shortcut, // a player who cleared the biome once does not need the bottom-left controls line
+        // co-op polish: the pad line is retired on its own (an old save's helpDone retired the keyboard line only)
+        helpPadDone: !!obj.helpPadDone,
+        helpLevels: { keyboard: Math.max(0, Number(obj.helpLevels && obj.helpLevels.keyboard) || 0), pad: Math.max(0, Number(obj.helpLevels && obj.helpLevels.pad) || 0) },
         journal: Array.isArray(obj.journal) ? obj.journal.filter((id) => typeof id === 'string').slice(0, 1000) : [],
         bestRuns: cleanBestRuns(obj.bestRuns),
         shortcut: !!obj.shortcut,
@@ -84,7 +87,7 @@ export function loadBest() {
       if (memory.skins && !memory.skins.includes(memory.skin)) memory.skin = DEFAULT_SKIN;
     }
   }
-  return { ...memory, skins: memory.skins ? memory.skins.slice() : null, journal: memory.journal.slice(), bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } } };
+  return { ...memory, skins: memory.skins ? memory.skins.slice() : null, journal: memory.journal.slice(), helpLevels: { ...memory.helpLevels }, bestRuns: memory.bestRuns.map((r) => ({ ...r })), meta: { ...memory.meta, deaths: { ...memory.meta.deaths } } };
 }
 
 /** Records a finished run's score: bumps `runs`, raises `best` if beaten,
@@ -130,13 +133,23 @@ export function setTutorialDone(done) {
   writeToStorage();
 }
 
-/** The bottom-left controls line is retired once the player has finished two levels (Settings > Help keeps the list). */
-export function getHelpDone() { return loadBest().helpDone; }
-export function setHelpDone(done) {
+/** The bottom-left controls line is retired once the player has finished two levels (Settings > Help keeps the list). Co-op
+ *  polish: per scheme, 'keyboard' (helpDone, as old saves have it) or 'pad' (helpPadDone). */
+export function getHelpDone(scheme = 'keyboard') { const m = loadBest(); return scheme === 'pad' ? m.helpPadDone : m.helpDone; }
+export function setHelpDone(done, scheme = 'keyboard') {
   loadBest();
-  if (memory.helpDone === !!done) return;
-  memory.helpDone = !!done;
+  const k = scheme === 'pad' ? 'helpPadDone' : 'helpDone';
+  if (memory[k] === !!done) return;
+  memory[k] = !!done;
   writeToStorage();
+}
+/** A level was cleared on `scheme` ('keyboard' | 'pad'): returns how many levels have been cleared on it (saved). */
+export function addHelpLevel(scheme) {
+  loadBest();
+  const k = scheme === 'pad' ? 'pad' : 'keyboard';
+  memory.helpLevels[k] = (memory.helpLevels[k] | 0) + 1;
+  writeToStorage();
+  return memory.helpLevels[k];
 }
 
 /** Test hook: forget the in-memory copy so the next load re-reads localStorage. */
