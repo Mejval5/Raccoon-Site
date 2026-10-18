@@ -6,7 +6,7 @@
 
 import { layoutRich, drawRichLayout } from './rich.js';
 import { LOOK_WOOD } from './glyphs.js';
-import { signText, placeBoard, signPosts, boardView } from './signs.js';
+import { signText, placeBoard, signPosts, boardView, hungBoardRect } from './signs.js';
 
 const WOOD = '#c09056', WOOD_LIT = '#d6a96a', WOOD_EDGE = '#3a2410', BURNT = '#3a2410', POST = '#6b4a22';
 const FONT = 'Quicksand, sans-serif';
@@ -202,8 +202,12 @@ export function drawSignBoards(ctx, camera, cw, ch, avoid = null) {
     const a = attachOf(p);
     a.w = b.w / ppu; a.h = b.h / ppu;
     const posts = signPosts(q.prompts, p, q.hidden);
-    // only the open board looks for its spot; a folding one stays where it was
-    if (q.open || !p._pl) {
+    // Daniel 2026-10-18: a board hung on ropes from the rock is a fixture: it stays where it hangs and scrolls off like any
+    // prop (never clamped or slid into view). Only a post-mounted board looks for its spot; a folding one stays where it was.
+    if (p.hang) {
+      const f = hungBoardRect(a);
+      p._pl = { x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, w: a.w, up: false, clear: true };
+    } else if (q.open || !p._pl) {
       const pick = placeBoard(a, targets, posts, discs, view, solid, p._pl);
       const dt = p._plT === undefined ? 1 : Math.max(0, Math.min(0.1, q.time - p._plT));
       p._plT = q.time;
