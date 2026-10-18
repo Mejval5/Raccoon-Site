@@ -2,6 +2,7 @@
 // (hotbar-ui.js); everything else sits here, right-aligned next to the pause / mute / settings column, top to bottom:
 //   1. the run line:  hourglass + level time / run time ('00:05.4 / 01:28.7'), the Swift Current target, the level (place + '1-2')
 //   2. the vitals:    heart, bomb, juice jar (casts) and shell, each a chunky icon with an integer on its lower right (Spelunky)
+//                     (a lost heart pulses the heart; in co-op the players' strips carry the vitals and the shell count moves up into the run line)
 //   3. the timer:     a thin slider for the dash cooldown, a soft brighten when ready (the Ink Jet's cooldown fills its tile
 //                     next to the hotbar, hotbar-ui.js)
 //   4. the perks:     the carried passive items as small icons (wraps), hover / tap for a tooltip
@@ -219,7 +220,7 @@ export function createHudStrip() {
   const shown = new Map(); // node -> last text written
   const setText = (node, t) => { if (shown.get(node) !== t) { shown.set(node, t); node.textContent = t; } };
   const setShown = (node, on) => { const k = on ? '' : 'none'; if (node.style.display !== k) node.style.display = k; };
-  let jarKey = null, itemsKey = '', placeKey = '', swiftKey = '', lowKey = null, bombsEmpty = null;
+  let jarKey = null, itemsKey = '', placeKey = '', swiftKey = '', lowKey = null, bombsEmpty = null, lastHearts = null, hitFlip = false, coopKey = false;
   onSpritesReady(() => { drawBomb(); jarKey = null; redrawEffectIcons(); }); // the painted bomb, jar and spell icons arrive with the atlas
 
   return {
@@ -233,7 +234,16 @@ export function createHudStrip() {
     update(s) {
       const v2 = s.stage !== undefined;
       // vitals
-      setText(hearts.num, String(Math.max(0, s.hearts | 0)));
+      const hn = Math.max(0, s.hearts | 0);
+      if (lastHearts !== null && hn < lastHearts) { // a lost heart: a short pulse (two classes take turns: it restarts without a reflow)
+        hitFlip = !hitFlip;
+        hearts.el.classList.toggle('is-hit-a', hitFlip); hearts.el.classList.toggle('is-hit-b', !hitFlip);
+      }
+      lastHearts = hn;
+      setText(hearts.num, String(hn));
+      // co-op (#hud.octo-coop-on: the players' strips carry the vitals): the shared shell count moves up into the clock row
+      const co = !!(bar.parentNode && bar.parentNode.classList && bar.parentNode.classList.contains('octo-coop-on'));
+      if (co !== coopKey) { coopKey = co; if (co) runLine.prepend(shells.el); else vitals.append(shells.el); }
       const low = s.hearts <= 1;
       if (low !== lowKey) { lowKey = low; hearts.el.classList.toggle('is-low', low); }
       setText(bombs.num, String(Math.max(0, s.bombs | 0)));
@@ -330,7 +340,7 @@ export function createHudStrip() {
     /** What the column shows, for the tests. */
     read() {
       const vis = (n) => n.style.display !== 'none';
-      return { hearts: hearts.num.textContent, bombs: bombs.num.textContent, casts: vis(jar.el) ? jar.num.textContent : null,
+      return { hearts: hearts.num.textContent, heartHit: hearts.el.classList.contains('is-hit-a') || hearts.el.classList.contains('is-hit-b'), bombs: bombs.num.textContent, casts: vis(jar.el) ? jar.num.textContent : null,
         shells: vis(shells.el) ? shells.num.textContent : null,
         level: vis(clock) ? lvlT.textContent : null, run: vis(clock) ? runT.textContent : null,
         swift: vis(swiftEl) ? swiftText.textContent : '',

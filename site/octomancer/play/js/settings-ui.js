@@ -218,7 +218,8 @@ export function createSettingsPanel(root, handlers) {
         const on = effectiveToggle(c.def);
         c.sw.setAttribute('aria-checked', on ? 'true' : 'false');
         c.sw.classList.toggle('is-on', on);
-        c.tag.textContent = k === 'reducedMotion' && (all[k] === null || all[k] === undefined) ? 'system' : on ? 'On' : 'Off';
+        // night batch 2: the carved pill shows Off | On itself; the tag only says when the choice follows the device
+        c.tag.textContent = k === 'reducedMotion' && (all[k] === null || all[k] === undefined) ? 'system' : '';
       }
     }
     const mode = handlers.inputMode();

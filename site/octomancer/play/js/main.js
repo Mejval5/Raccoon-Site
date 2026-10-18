@@ -80,7 +80,7 @@ import { createJournalScreen } from './journal-ui.js';
 import { hasLineOfSight } from './pathfind.js';
 import { drawV2Marks, drawV2Labels } from './v2-draw.js';
 import { resetPortalStates, setPortalHold, portalEnter, portalCenter, portalKey, portalMode, whirlpoolReady } from './portal-draw.js';
-import { drawPocketCracks, drawWallCue, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
+import { drawPocketCracks, drawWallCue, drawCrackTile, drawCritter, drawCage, drawDiver, drawCollector, drawHubLantern, drawSpeech, drawShop, drawRubble, drawDecorBoulders, drawWrecks } from './v2-props-draw.js';
 import { generateLevel } from './level.js';
 import { buildLevelSpawns } from './level-spawns.js';
 import { fetchQuests, planQuest, createQuestState, questUpdate, questOnExit, questBlast, questInk, questSpeaker, hubResidents, hubVisit, collectorArrives, nextStage, DIVER_RUNS, RELICS_NEEDED, Q_RESCUE, Q_VAULT, Q_MEET, ST_ACTIVE, ST_DONE, ST_FAILED as ST_FAILED_Q, questReact } from './quests.js';
@@ -384,8 +384,9 @@ function handleChainEvents() {
   }
   if (chain.events.length) { handleCreatureEvents(); handleLootEvents(); }
 }
-// materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded)
-if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); });
+// materials: the always-visible basic shells are baked into the main-rock wall cells (the goggles view stays live, drawEmbedded),
+// and so are the painted "breakable here" cracks (v2-props-draw.js drawCrackTile: tutorial walls, pocket walls, the hub's bone wall)
+if (V2) setTileDrawHook((ctx, tx, ty, mat, px, py, s) => { if (mat === MAT_ROCK) drawTreasureTile(ctx, embedded.data, tx, ty, px, py, s, false); drawCrackTile(ctx, world.level, world.tileAt, tx, ty, px, py, s); });
 let embedBaked = null; // the embedded set whose tiles were last marked for a re-bake
 let bombs = createBombs(V2 ? props : null);
 let particles = createParticles();
@@ -794,7 +795,7 @@ function padMenu() {
   if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), back: () => { manualPaused = false; applyPaused(); } };
   return null;
 }
-const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' });
+const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad', audio }); // night batch 5: menu sounds (ui-sfx.js)
 let padMenuFrames = 0;
 const pad = createGamepad(input, {
   menuActive() {

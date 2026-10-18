@@ -49,6 +49,12 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       await sleep(150);
       h = await H(page);
       check('values: bombs, shells, casts and the item row follow a change', h.bombs === '2' && h.shells === '14' && h.casts === '0' && h.items === 1, JSON.stringify(h));
+      // a lost heart pulses the heart badge (IMPROVEMENTS.md night item 3); a gained one does not
+      check('hearts: no pulse before a loss', !h.heartHit);
+      await page.evaluate(() => __octo.setHearts(1)); await sleep(100);
+      check('hearts: a lost heart pulses the heart badge', (await H(page)).heartHit && await page.evaluate(() => getComputedStyle(document.querySelector('.octo-hud-hearts')).animationName.startsWith('octo-heart-hit')));
+      await page.evaluate(() => __octo.setHearts(99)); await sleep(100);
+      check('desktop: a soft dark backing behind the column (a radial gradient, no box)', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.octo-hud-bar'), '::before'); return /radial-gradient/.test(c.backgroundImage) && c.borderStyle === 'none'; }));
       // writes only on a change: a quiet second mutates nothing but the clocks, and those at most ~10 times a second
       const mut = await page.evaluate(async () => {
         const bar = document.querySelector('.octo-hud-bar'); let clockN = 0, other = 0;
@@ -92,8 +98,9 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       await page.evaluate(() => { __octo.god(false); __octo.kill('crab'); }); await sleep(1500);
       const d0 = await H(page); await sleep(800); const d1 = await H(page);
       check('death: both clocks stop', d0.levelClock === d1.levelClock && d0.runClock === d1.runClock);
-      const row = await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay .octo-summary-row')].map((r) => r.textContent).find((t) => /Time/.test(t)) || '');
-      check('death: the summary shows level / run time as on the strip', row.includes(d1.level + ' / ' + d1.run), row);
+      // night batch 2: the summary splits the time into a Level time and a Run time row
+      const row = await page.evaluate(() => [...document.querySelectorAll('.octo-gameover-overlay .octo-summary-row')].map((r) => r.textContent).filter((t) => /time/i.test(t)).join(' | '));
+      check('death: the summary shows the level and run times as on the strip', row.includes('Level time' + d1.level) && row.includes('Run time' + d1.run), row);
       if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'hud-1440-death.png') });
       // a new run: the run clock starts again
       await page.evaluate(() => __octo.runEvent('death'));
@@ -194,6 +201,7 @@ const clock = (sec) => { const d = Math.max(0, Math.floor(sec * 10 + 1e-6)); ret
       r.touch.forEach((x, i) => { if (ov(x, r.hotbar)) hits.push('hotbar x touch control ' + i); });
       check(`${tag}: nothing overlaps the buttons, the touch controls, the hotbar or each other`, hits.length === 0, hits.join('; '));
       check(`${tag}: the pause / mute / settings buttons stay 44 px`, !r.small);
+      check(`${tag}: every badge reads on one line`, await page.evaluate(() => [...document.querySelectorAll('.octo-hud-badge')].filter((b) => getComputedStyle(b).display !== 'none').every((b) => { const n = b.querySelector('.octo-hud-num'); return n.getBoundingClientRect().height <= parseFloat(getComputedStyle(n).fontSize) * 1.3 + 1; })));
       check(`${tag}: a long run reads 59:5x and shells 14500, five perks`, /01:0[56]\.\d/.test(r.times) && /59:5\d\.\d/.test(r.times) && (await H(page)).shells === '14500' && (await H(page)).items === 5, r.times);
       // a perk's tooltip on a tap / hover
       const tipText = await page.evaluate(() => { const c = document.querySelector('.octo-hud-item'); c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); const t = document.querySelector('.octo-hud-tip'); return t.style.display === 'none' ? '' : t.textContent; });

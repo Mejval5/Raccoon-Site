@@ -236,6 +236,9 @@ import { runFragileTests } from './fragile.test.js';
   const bank = createRoomBank(await (await fetch('../data/biome1-rooms.json')).json());
   await runFragileTests(assert, bank);
 }
+// --- night batch 8 (2026-10-18): the breakable-here mark is painted cracks baked into the rock (no pale box) ---
+import { runWallCueTests } from './wallcue.test.js';
+await runWallCueTests(assert);
 
 // --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
 import { runShopTests } from './shop.test.js';
@@ -310,6 +313,10 @@ await runBackroomTests(assert);
 // --- the offering altar (altar.js: favour, hollows, anger, the offering check, the floor finder) ---
 import { runAltarTests } from './altar.test.js';
 await runAltarTests(assert);
+
+// --- night batch 5: the sound modules (voice pool and cap, cooldown, jitter, ducks, the unlock on a pad press, menu sounds) ---
+import { runAudioTests } from './audio.test.js';
+runAudioTests(assert);
 
 const pass = results.filter(r => r.pass).length;
 const total = results.length;

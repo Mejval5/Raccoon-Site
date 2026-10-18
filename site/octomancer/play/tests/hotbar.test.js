@@ -74,7 +74,7 @@ export async function runHotbarTests(assert) {
     inv.show(istate);
     assert('inventory: isOpen after show, the root is a modal', inv.isOpen() === true && inv.el.dataset.octoModal === '1' && inv.el.style.display !== 'none');
     const text = inv.el.textContent;
-    assert('inventory: lists both spells with name, blurb and cost', text.includes('Ink Cloud') && text.includes('Test Spark') && text.includes('enemies lose sight of you') && text.includes('costs 1 cast'));
+    assert('inventory: lists both spells with name, blurb and cost', text.includes('Ink Cloud') && text.includes('Test Spark') && text.includes('creatures lose sight of you') && text.includes('costs 1 cast'));
     const passive = [...inv.el.querySelectorAll('.octo-inv-passive')];
     const names = passive.map((p) => p.querySelector('.octo-inv-name').textContent);
     assert('inventory: passive items listed once each, stacks shown as x2', passive.length === 3 && names.includes('Flippers') && names.includes('Lantern') && names.includes('Bomb bag x2'));

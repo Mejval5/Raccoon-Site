@@ -10,6 +10,7 @@ import { FN } from './journal-art.js';
 import { wrapLines } from './speech.js';
 import { visibleAt, cullFlags, cullView } from './cull.js';
 import { drawSprite, spriteRect, drawBombSprite } from './sprites.js';
+import { MAT_BONE } from './materials.js';
 
 const TAU = Math.PI * 2;
 const INK = '#3a2410';
@@ -91,30 +92,6 @@ export function itemGlyph(ctx, glyph, x, y, r, time) {
   } else bombGlyph(ctx, x, y, r * 0.85, time);
 }
 
-/** Deterministic irregular crack polylines through the tile box (x0,y0,w,h): downward wanderers with side branches. */
-function makeCracks(x0, y0, w, hgt, count, vertical = true, branchChance = 0.45) {
-  let seed = (x0 * 374761393 + y0 * 668265263) >>> 0;
-  const rnd = () => { seed = (Math.imul(seed ^ (seed >>> 15), 2246822519) + 0x9e3779b9) >>> 0; return (seed >>> 8) / 16777216; };
-  const cracks = [];
-  for (let k = 0; k < count; k++) {
-    // vertical: cracks run down the box; otherwise they run across it (x and y swapped while building)
-    const A = vertical ? w : hgt, B = vertical ? hgt : w;
-    let pa = 0.25 + rnd() * (A - 0.5), pb = (k + rnd() * 0.6) * (B / count);
-    const pts = [], branches = [];
-    const put = (a, b) => (vertical ? [x0 + a, y0 + b] : [x0 + b, y0 + a]);
-    pts.push(...put(pa, pb));
-    const len = 3 + Math.floor(rnd() * 3);
-    for (let j = 0; j < len; j++) {
-      pa = Math.min(A - 0.05, Math.max(0.05, pa + (rnd() - 0.5) * 0.9));
-      pb += 0.35 + rnd() * 0.75;
-      pts.push(...put(pa, pb));
-      if (rnd() < branchChance) branches.push([...put(pa, pb), ...put(pa + (rnd() < 0.5 ? -1 : 1) * (0.3 + rnd() * 0.5), pb + 0.2 + rnd() * 0.5)]);
-    }
-    cracks.push({ pts, branches });
-  }
-  return cracks;
-}
-
 /** r36: one short zig-zag crack (4-5 hard turns, a side branch) inside the tile box, along its long axis; never reaches the box edge. */
 export function makeZigCrack(x0, y0, w, hgt, vertical) {
   let seed = (x0 * 374761393 + y0 * 668265263 + 17) >>> 0;
@@ -133,173 +110,291 @@ export function makeZigCrack(x0, y0, w, hgt, vertical) {
   return [{ pts, branches }];
 }
 
-function strokeCracks(ctx, sx, sy, ppu, cracks, soft = false) {
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  // soft: a thin crack in a darker shade of the rock, no bright edge (the vault wall: cracked rock, not a shatter mark)
-  const passes = soft
-    ? [[Math.max(1.2, ppu * 0.035), 'rgba(18,40,50,0.55)']]
-    : [[Math.max(2, ppu * 0.06), 'rgba(12,6,20,0.45)'], [Math.max(1, ppu * 0.022), 'rgba(255,238,205,0.5)']];
-  for (const [lw, style] of passes) {
-    ctx.strokeStyle = style; ctx.lineWidth = lw;
-    ctx.beginPath();
-    for (const c of cracks) {
-      ctx.moveTo(sx(c.pts[0]), sy(c.pts[1]));
-      for (let i = 2; i < c.pts.length; i += 2) ctx.lineTo(sx(c.pts[i]), sy(c.pts[i + 1]));
-      for (const b of c.branches) { ctx.moveTo(sx(b[0]), sy(b[1])); ctx.lineTo(sx(b[2]), sy(b[3])); }
-    }
-    ctx.stroke();
-  }
+// ---- Painted cracks: the one "breakable here" mark (night batch 8, 2026-10-18) ----
+// The tutorial's bomb floor and sticky-mine wall, a sealed pocket's weak wall and the hub's fish-bone wall (the keepsake behind
+// it) all carry the same mark: charcoal fracture lines painted on the rock, tapered like a brush stroke, a soft darkening round
+// them, a faint lighter chip edge on the lit (upper) side and a few flakes; the bomb walls add a small ochre cave-painting bomb
+// (the hand of cave-paint.js). No tint, no box, no glow. They are painted INTO the wall cells when render.js bakes them
+// (materials.js tile hook, set in main.js), one tile at a time and clipped to that tile, so they cost nothing per frame and a
+// tile that is blown away stops showing them with the rebake. The only live part is drawWallCue's silt dribble.
+
+const CRACK_CHAR = 'rgba(20,14,24,0.9)';
+const CRACK_SHADE = 'rgba(6,10,28,0.24)';
+const CRACK_CHIP = 'rgba(200,218,226,0.3)';
+const MARK_OCHRE = '#9a4a28', MARK_FILL = 'rgba(164,92,52,0.52)', MARK_CHAR = '#2a2220';
+const SILT = [214, 202, 170];
+
+function seeded(a, b, salt) {
+  let seed = (a * 374761393 + b * 668265263 + salt * 1274126177) >>> 0;
+  return () => { seed = (Math.imul(seed ^ (seed >>> 15), 2246822519) + 0x9e3779b9) >>> 0; return (seed >>> 8) / 16777216; };
 }
 
 /**
- * Crack marks on the two rock tiles between a sealed pocket and the spot you bomb it from (same crack style as
- * the tutorial wall), so a bombable pocket reads as a weak wall instead of a lit window. Standing rock only.
- * @param {Int16Array} pockets x, y, entrance side (ANCH_*) per pocket
+ * Fracture strokes through the box (x0, y0, w, h) in world units, along its long axis: brush runs of 2.5-5 tiles that overlap
+ * a little where the painter lifted the brush, each jagged, with tapering side branches and loose flakes beside it.
+ * @returns {{strokes:{pts:number[], w:number, branch:boolean}[], chips:number[]}} chips: x, y, size, angle per flake
  */
-export function drawPocketCracks(ctx, camera, cw, ch, pockets, n, tileAt) {
-  const { ppu, sx, sy } = view(camera, cw, ch);
-  const inset = Math.max(3, ppu * 0.12);
-  for (let i = 0; i < n; i++) {
-    const px = pockets[i * 3], py = pockets[i * 3 + 1], side = pockets[i * 3 + 2];
-    // the two rock tiles on the entrance side (columns for left/right, rows for up/down)
-    let bx, by, bw, bh;
-    if (side === 3) { bx = px - 2; by = py; bw = 2; bh = 2; }
-    else if (side === 4) { bx = px + 2; by = py; bw = 2; bh = 2; }
-    else if (side === 1) { bx = px; by = py - 2; bw = 2; bh = 2; }
-    else { bx = px; by = py + 2; bw = 2; bh = 2; }
-    const x = sx(bx), y = sy(by);
-    if (x < -ppu * 3 || x > cw + ppu * 3 || y < -ppu * 3 || y > ch + ppu * 3) continue;
-    ctx.save();
-    ctx.beginPath();
-    for (let dy = 0; dy < bh; dy++) for (let dx = 0; dx < bw; dx++) {
-      if (tileAt(bx + dx, by + dy) === 0) continue;
-      const l = tileAt(bx + dx - 1, by + dy) === 0, r = tileAt(bx + dx + 1, by + dy) === 0;
-      const u = tileAt(bx + dx, by + dy - 1) === 0, d = tileAt(bx + dx, by + dy + 1) === 0;
-      const x0 = sx(bx + dx) + (l ? inset : -1), x1 = sx(bx + dx + 1) - (r ? inset : -1);
-      const y0 = sy(by + dy) + (u ? inset : -1), y1 = sy(by + dy + 1) - (d ? inset : -1);
-      ctx.rect(x0, y0, x1 - x0, y1 - y0);
+export function fractureLines(x0, y0, w, h, horiz) {
+  const rnd = seeded(x0, y0, 3);
+  const L = horiz ? w : h, A = horiz ? h : w;           // along, across
+  const put = (a, b) => (horiz ? [x0 + b, y0 + a] : [x0 + a, y0 + b]);
+  const m = Math.min(0.32, A * 0.24), lo = m, hi = A - m;
+  const clampA = (a) => Math.min(hi, Math.max(lo, a));
+  const strokes = [], chips = [];
+  let b = 0.18 + rnd() * 0.25, a = clampA(A / 2 + (rnd() - 0.5) * A * 0.3);
+  for (let run = 0; b < L - 0.45 && run < 64; run++) {
+    const end = Math.min(L - 0.15, b + 2.5 + rnd() * 2.5);
+    const pts = [...put(a, b)], k = [1];
+    let zig = rnd() < 0.5 ? -1 : 1;
+    while (b < end - 1e-6) {
+      b = Math.min(end, b + 0.1 + rnd() * 0.22);
+      zig = rnd() < 0.62 ? -zig : zig;                     // mostly alternating: a jagged zig-zag, not a wander
+      a = clampA(a + zig * (0.06 + rnd() * 0.14) + (rnd() < 0.12 ? zig * 0.18 : 0));
+      pts.push(...put(a, b)); k.push(0.6 + rnd() * 0.7);  // the brush presses and lifts
+      if (b < end - 0.2 && rnd() < 0.32) { // a side branch, thick where it leaves the crack
+        const sgn = rnd() < 0.5 ? -1 : 1, bl = 0.28 + rnd() * 0.32;
+        const a1 = a + sgn * bl * 0.6, b1 = b + (rnd() - 0.3) * bl * 0.7;
+        const a2 = a1 + sgn * bl * 0.4, b2 = b1 + (rnd() - 0.5) * bl * 0.5;
+        strokes.push({ pts: [...put(a, b), ...put(a1, b1), ...put(a2, b2)], w: 0.065 + rnd() * 0.02, branch: true, k: null });
+      }
+      if (rnd() < 0.3) { const sgn = rnd() < 0.5 ? -1 : 1; chips.push(...put(a + sgn * (0.1 + rnd() * 0.1), b - rnd() * 0.15), 0.035 + rnd() * 0.035, rnd() * TAU); }
     }
-    ctx.clip();
-    // r36: a short jagged crack with a branch, kept inside the tile NEXT TO the pocket (the far end of the two-tile
-    // box). It used to run the whole box and end on the ground the entrance stands on, so over a hanging urchin or
-    // horns it read as a rope holding it. The crack box is the tile beside the pocket; the entrance tile stays clean.
-    let cx0 = bx, cy0 = by, cw0 = bw, ch0 = bh;
-    if (side === 3) { cx0 = bx + 1; cw0 = 1; } else if (side === 4) { cx0 = bx; cw0 = 1; }
-    else if (side === 1) { cy0 = by + 1; ch0 = 1; } else { cy0 = by; ch0 = 1; }
-    strokeCracks(ctx, sx, sy, ppu, makeZigCrack(cx0, cy0, cw0, ch0, side === 1 || side === 2), true);
-    ctx.restore();
+    strokes.push({ pts, w: 0.11 + rnd() * 0.035, branch: false, k });
+    b -= 0.12 + rnd() * 0.18;                             // the next run starts a little back, a little off the line
+    a = clampA(a + (rnd() - 0.5) * 0.3);
   }
+  return { strokes, chips };
+}
+
+/** A tapered brush stroke along pts (world units), appended to the current path: pointed ends, or (branch) thick at its root. */
+function taperPath(ctx, pts, w, branch, dx = 0, dy = 0, k = null) {
+  const n = pts.length / 2;
+  if (n < 2) return;
+  const L = new Array(n * 2), R = new Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const i0 = Math.max(0, i - 1), i1 = Math.min(n - 1, i + 1);
+    let tx = pts[i1 * 2] - pts[i0 * 2], ty = pts[i1 * 2 + 1] - pts[i0 * 2 + 1];
+    const len = Math.hypot(tx, ty) || 1; tx /= len; ty /= len;
+    const t = i / (n - 1);
+    const hw = 0.5 * w * (k ? k[i] : 1) * (branch ? Math.pow(1 - t, 0.8) * 0.9 + 0.1 * (1 - t) : Math.pow(Math.sin(Math.PI * (0.04 + 0.92 * t)), 0.6));
+    const x = pts[i * 2] + dx, y = pts[i * 2 + 1] + dy;
+    L[i * 2] = x - ty * hw; L[i * 2 + 1] = y + tx * hw;
+    R[i * 2] = x + ty * hw; R[i * 2 + 1] = y - tx * hw;
+  }
+  ctx.moveTo(L[0], L[1]);
+  for (let i = 1; i < n; i++) ctx.lineTo(L[i * 2], L[i * 2 + 1]);
+  for (let i = n - 1; i >= 0; i--) ctx.lineTo(R[i * 2], R[i * 2 + 1]);
+  ctx.closePath();
+}
+
+/** The small cave-painting bomb (world units, centre mx, my): an ochre body in a wobbly line, a charcoal fuse and three spark ticks. */
+function paintBombMark(ctx, mx, my, r) {
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let k = 0; k <= 28; k++) {
+    const an = (k % 28) * (TAU / 28), rr = r * (1 + 0.05 * Math.sin(an * 3 + 1.3) + 0.025 * Math.sin(an * 7));
+    if (k === 0) ctx.moveTo(mx + Math.cos(an) * rr, my + Math.sin(an) * rr); else ctx.lineTo(mx + Math.cos(an) * rr, my + Math.sin(an) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = MARK_FILL; ctx.fill();
+  ctx.strokeStyle = MARK_OCHRE; ctx.lineWidth = r * 0.24; ctx.stroke();
+  ctx.strokeStyle = MARK_CHAR; ctx.lineWidth = r * 0.17;
+  const fx = mx + r * 0.55, fy = my - r * 0.78, ex = mx + r * 1.12, ey = my - r * 1.28;
+  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(mx + r * 1.05, my - r * 0.8, ex, ey); ctx.stroke();
+  ctx.lineWidth = r * 0.13;
+  ctx.beginPath();
+  for (const an of [-2.1, -1.2, -0.3]) { ctx.moveTo(ex + Math.cos(an) * r * 0.2, ey + Math.sin(an) * r * 0.2); ctx.lineTo(ex + Math.cos(an) * r * 0.48, ey + Math.sin(an) * r * 0.48); }
+  ctx.stroke();
+}
+
+/** Paint a crack group in world units (the caller's transform maps one unit to one tile). */
+function paintCrackGroup(ctx, g) {
+  const S = g.strokes;
+  ctx.beginPath();                                        // 1: a soft darkening of the rock round the fracture (one union fill)
+  for (const s of S) taperPath(ctx, s.pts, s.w * 2.6, s.branch, 0, 0, s.k);
+  ctx.fillStyle = CRACK_SHADE; ctx.fill('nonzero');
+  ctx.beginPath();                                        // 2: the chip edge: the lit upper lip, peeking out above the charcoal
+  for (const s of S) if (!s.branch) taperPath(ctx, s.pts, s.w * 0.95, false, -0.018, -0.032, s.k);
+  ctx.fillStyle = CRACK_CHIP; ctx.fill('nonzero');
+  ctx.beginPath();                                        // 3: the charcoal fracture
+  for (const s of S) taperPath(ctx, s.pts, s.w, s.branch, 0, 0, s.k);
+  ctx.fillStyle = CRACK_CHAR; ctx.fill('nonzero');
+  const C = g.chips;                                      // 4: loose flakes, a dark sliver with a pale fleck
+  if (C.length) {
+    ctx.beginPath();
+    for (let i = 0; i < C.length; i += 4) {
+      const x = C[i], y = C[i + 1], r = C[i + 2], an = C[i + 3];
+      ctx.moveTo(x + Math.cos(an) * r, y + Math.sin(an) * r);
+      ctx.lineTo(x + Math.cos(an + 2.3) * r * 0.8, y + Math.sin(an + 2.3) * r * 0.8);
+      ctx.lineTo(x + Math.cos(an + 4.1) * r * 0.6, y + Math.sin(an + 4.1) * r * 0.6);
+      ctx.closePath();
+    }
+    ctx.fill('nonzero');
+    ctx.beginPath();
+    for (let i = 0; i < C.length; i += 4) { const r = C[i + 2] * 0.45; ctx.rect(C[i] - r * 1.6, C[i + 1] - r * 1.8, r, r); }
+    ctx.fillStyle = CRACK_CHIP; ctx.fill();
+  }
+  if (g.mark) paintBombMark(ctx, g.mx, g.my, g.markR);
+}
+
+/** Pick a few points (at most SILT_MAX) along the main fractures where silt dribbles out (drawWallCue). */
+const SILT_MAX = 6;
+function siltPoints(strokes) {
+  const all = [];
+  for (const s of strokes) {
+    if (s.branch) continue;
+    const n = s.pts.length / 2;
+    for (let i = 1; i < n - 1; i++) all.push(s.pts[i * 2], s.pts[i * 2 + 1]);
+  }
+  const n = all.length / 2, k = Math.min(SILT_MAX, n), out = [];
+  for (let j = 0; j < k; j++) { const i = Math.floor((j + 0.5) * n / k); out.push(all[i * 2], all[i * 2 + 1]); }
+  return out;
+}
+
+const groupCache = new WeakMap(); // a cue's tile list -> its crack group (tutorial walls; built once, at the first bake or draw)
+/**
+ * The crack group of a breakable barrier (the tutorial's bomb floor or sticky wall): its tiles, the fracture strokes across the
+ * cells that face the passage (never into the rock round it) and the bomb mark at its middle.
+ */
+function wallGroup(list, tileAt) {
+  let g = groupCache.get(list);
+  if (g) return g;
+  const open = (x, y) => tileAt(x, y) === 0;
+  let wMinX = 1e9, wMaxX = -1e9, wMinY = 1e9, wMaxY = -1e9;
+  for (let i = 0; i < list.length; i += 2) { wMinX = Math.min(wMinX, list[i]); wMaxX = Math.max(wMaxX, list[i]); wMinY = Math.min(wMinY, list[i + 1]); wMaxY = Math.max(wMaxY, list[i + 1]); }
+  const horiz = wMaxX - wMinX > wMaxY - wMinY;
+  let n = 0, cx = 0, cy = 0, cMinX = 1e9, cMaxX = -1e9, cMinY = 1e9, cMaxY = -1e9;
+  const tiles = [];
+  for (let i = 0; i < list.length; i += 2) {
+    const tx = list[i], ty = list[i + 1];
+    if (open(tx, ty)) continue;
+    tiles.push(tx, ty); n++; cx += tx + 0.5; cy += ty + 0.5;
+    if (horiz ? open(tx, ty - 1) || open(tx, ty + 1) : open(tx - 1, ty) || open(tx + 1, ty)) {
+      cMinX = Math.min(cMinX, tx); cMaxX = Math.max(cMaxX, tx); cMinY = Math.min(cMinY, ty); cMaxY = Math.max(cMaxY, ty);
+    }
+  }
+  const f = n && cMaxX >= cMinX ? fractureLines(cMinX, cMinY, cMaxX - cMinX + 1, cMaxY - cMinY + 1, horiz) : { strokes: [], chips: [] };
+  g = { tiles, strokes: f.strokes, chips: f.chips, mark: n > 0, mx: n ? cx / n : 0, my: n ? cy / n : 0, markR: 0.4, silt: siltPoints(f.strokes) };
+  groupCache.set(list, g);
+  return g;
 }
 
 /**
- * The tutorial's bomb wall: a lighter tint, code-drawn crack lines and a pulsing bomb marker, so the wall
- * reads as "breakable" instead of plain rock. Wall tiles that are already gone are skipped.
- * @param {{walls:Int16Array, tileAt:(x:number,y:number)=>number, attention:number}} cue attention 0..1 (idle hint: pulse harder)
+ * A sealed pocket's weak wall: a short fracture in the tile beside the pocket, along the pocket's side, in the same hand (no
+ * mark). As in r36 it stops short of both ends, so it never runs down onto the ground the entrance stands on.
+ */
+function pocketGroup(px, py, side, tileAt) {
+  let bx, by, bw = 1, bh = 1;
+  if (side === 3) { bx = px - 1; by = py; bh = 2; } else if (side === 4) { bx = px + 2; by = py; bh = 2; }
+  else if (side === 1) { bx = px; by = py - 1; bw = 2; } else { bx = px; by = py + 2; bw = 2; }
+  const tiles = [];
+  for (let dy = 0; dy < bh; dy++) for (let dx = 0; dx < bw; dx++) if (tileAt(bx + dx, by + dy) !== 0) tiles.push(bx + dx, by + dy);
+  if (!tiles.length) return null;
+  const horiz = bw > bh, cut = 0.3;
+  const f = fractureLines(bx + (horiz ? cut : 0), by + (horiz ? 0 : cut), bw - (horiz ? 2 * cut : 0), bh - (horiz ? 0 : 2 * cut), horiz);
+  return { tiles, strokes: f.strokes, chips: f.chips, mark: false, mx: 0, my: 0, markR: 0, silt: [] };
+}
+
+/** The hub's fish-bone wall (the keepsake behind it): each connected patch of bone gets one fracture along its long axis. */
+function boneGroups(level, tileAt, out) {
+  const W = level.w | 0, H = level.h | 0;
+  if (!W || !H) return;
+  const seen = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (seen[y * W + x] || tileAt(x, y) !== MAT_BONE) continue;
+    const tiles = [], stack = [x, y];
+    let x0 = x, x1 = x, y0 = y, y1 = y;
+    seen[y * W + x] = 1;
+    while (stack.length) {
+      const ty = stack.pop(), tx = stack.pop();
+      tiles.push(tx, ty);
+      x0 = Math.min(x0, tx); x1 = Math.max(x1, tx); y0 = Math.min(y0, ty); y1 = Math.max(y1, ty);
+      for (const [nx, ny] of [[tx - 1, ty], [tx + 1, ty], [tx, ty - 1], [tx, ty + 1]]) {
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H || seen[ny * W + nx] || tileAt(nx, ny) !== MAT_BONE) continue;
+        seen[ny * W + nx] = 1; stack.push(nx, ny);
+      }
+    }
+    const horiz = x1 - x0 > y1 - y0;
+    const f = fractureLines(x0, y0, x1 - x0 + 1, y1 - y0 + 1, horiz);
+    out.push({ tiles, strokes: f.strokes, chips: f.chips, mark: false, mx: 0, my: 0, markR: 0, silt: [] });
+  }
+}
+
+const crackIdxCache = new WeakMap(); // level -> Map(tile key -> crack group); built at the level's first wall bake
+const tileKey = (tx, ty) => ty * 65536 + tx;
+/** Every crack group of a level, by tile. */
+function crackIndex(level, tileAt) {
+  let idx = crackIdxCache.get(level);
+  if (idx) return idx;
+  idx = new Map();
+  const groups = [];
+  if (level.walls && level.walls.length) groups.push(wallGroup(level.walls, tileAt));
+  if (level.sticky && level.sticky.length) groups.push(wallGroup(level.sticky, tileAt));
+  if (level.nPockets && level.pockets) {
+    const P = level.pockets;
+    for (let i = 0; i < level.nPockets; i++) { const g = pocketGroup(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], tileAt); if (g) groups.push(g); }
+  }
+  if (level.village) boneGroups(level, tileAt, groups);
+  for (const g of groups) for (let i = 0; i < g.tiles.length; i += 2) idx.set(tileKey(g.tiles[i], g.tiles[i + 1]), g);
+  crackIdxCache.set(level, idx);
+  return idx;
+}
+
+/**
+ * The bake hook (render.js paintMaterialCell via materials.js setTileDrawHook, wired in main.js): paint this tile's share of
+ * any crack group over it, clipped to the tile (inset from its water faces so the green rim stays clean). Canvas px: the tile's
+ * top-left is (px, py), s px per tile. Nothing happens for a tile no crack crosses.
+ */
+export function drawCrackTile(ctx, level, tileAt, tx, ty, px, py, s) {
+  if (!level || tx < 0 || ty < 0) return;
+  const g = crackIndex(level, tileAt).get(tileKey(tx, ty));
+  if (!g) return;
+  const inset = Math.round(Math.max(3, s * 0.12));
+  const l = tileAt(tx - 1, ty) === 0, r = tileAt(tx + 1, ty) === 0, u = tileAt(tx, ty - 1) === 0, d = tileAt(tx, ty + 1) === 0;
+  const x0 = px + (l ? inset : 0), y0 = py + (u ? inset : 0), x1 = px + s - (r ? inset : 0), y1 = py + s - (d ? inset : 0);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+  ctx.translate(px - tx * s, py - ty * s); ctx.scale(s, s);
+  paintCrackGroup(ctx, g);
+  ctx.restore();
+}
+
+/** Sheets and tests: paint a whole cue's cracks to a screen canvas the way the bake does (tile by tile). */
+export function paintCrackCue(ctx, camera, cw, ch, walls, tileAt) {
+  const { ppu, sx, sy } = view(camera, cw, ch);
+  const level = { walls, w: 0, h: 0 };
+  for (let i = 0; i < walls.length; i += 2) drawCrackTile(ctx, level, tileAt, walls[i], walls[i + 1], sx(walls[i]), sy(walls[i + 1]), ppu);
+}
+
+/** Pocket cracks are baked into the wall cells now (drawCrackTile); kept so old callers still link. Draws nothing. */
+export function drawPocketCracks() {}
+
+/**
+ * The tutorial's bomb wall, live part: the cracks and the bomb mark are baked into the rock (drawCrackTile); here only a few
+ * grains of silt dribble out of the fractures now and then, more often while the idle hint is up (attention 1).
+ * @param {{walls:Int16Array, tileAt:(x:number,y:number)=>number, attention:number}} cue
  */
 export function drawWallCue(ctx, camera, cw, ch, cue, time) {
+  const g = wallGroup(cue.walls, cue.tileAt);
+  const P = g.silt;
+  if (!P.length) return;
   const { ppu, sx, sy } = view(camera, cw, ch);
-  const walls = cue.walls;
-  const open = (x, y) => cue.tileAt(x, y) === 0;
-  let n = 0, cx = 0, cy = 0, minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-  const inset = Math.max(3, ppu * 0.12); // keep the green rim of the water faces visible
-  // one clip over the standing wall cells (inset from water faces), so the tint stays a faint hint and the rim shows
-  ctx.save();
-  ctx.beginPath();
-  let any = false;
-  // r41: the barrier is a floor (wider than tall) or a wall (taller than wide); the cracks run across the water-facing cells either way
-  let wMinX = 1e9, wMaxX = -1e9, wMinY = 1e9, wMaxY = -1e9;
-  for (let i = 0; i < walls.length; i += 2) { wMinX = Math.min(wMinX, walls[i]); wMaxX = Math.max(wMaxX, walls[i]); wMinY = Math.min(wMinY, walls[i + 1]); wMaxY = Math.max(wMaxY, walls[i + 1]); }
-  const horiz = wMaxX - wMinX > wMaxY - wMinY;
-  const crackRects = []; // cells that border water along the passage: cracks stay on the barrier, never on the rock around it
-  let cMinY = 1e9, cMaxY = -1e9, cMinX = 1e9, cMaxX = -1e9;
-  for (let i = 0; i < walls.length; i += 2) {
-    const tx = walls[i], ty = walls[i + 1];
-    if (open(tx, ty)) continue;
-    n++; cx += tx + 0.5; cy += ty + 0.5;
-    if (tx < minX) minX = tx; if (tx > maxX) maxX = tx; if (ty < minY) minY = ty; if (ty > maxY) maxY = ty;
-    const l = open(tx - 1, ty), r = open(tx + 1, ty), u = open(tx, ty - 1), d = open(tx, ty + 1);
-    if (horiz ? (u || d) : (l || r)) { if (ty < cMinY) cMinY = ty; if (ty > cMaxY) cMaxY = ty; if (tx < cMinX) cMinX = tx; if (tx > cMaxX) cMaxX = tx; }
-    const x = sx(tx), y = sy(ty);
-    if (x < -ppu || x > cw + ppu || y < -ppu || y > ch + ppu) continue;
-    // the rect grows into neighbouring wall cells (no seams) and stays inset from water faces
-    const x0 = x + (l ? inset : -1), x1 = x + ppu - (r ? inset : -1);
-    const y0 = y + (u ? inset : -1), y1 = y + ppu - (d ? inset : -1);
-    ctx.rect(x0, y0, x1 - x0, y1 - y0); any = true;
-    if (horiz ? (u || d) : (l || r)) crackRects.push(x0, y0, x1 - x0, y1 - y0);
-  }
-  if (any) {
-    ctx.clip();
-    const pulse = 0.5 + 0.5 * Math.sin(time * 3);
-    ctx.fillStyle = `rgba(255,232,190,${0.01 + 0.012 * pulse + 0.05 * cue.attention})`;
-    ctx.fillRect(0, 0, cw, ch);
-    const crackImg = artImg('crackWall');
-    ctx.restore(); ctx.save();
-    ctx.beginPath();
-    for (let k = 0; k < crackRects.length; k += 4) ctx.rect(crackRects[k], crackRects[k + 1], crackRects[k + 2], crackRects[k + 3]);
-    ctx.clip();
-    if (!crackRects.length) { /* nothing borders water: no cracks */ }
-    else if (crackImg) {
-      // generated crack sprite, repeated down the wall in 4 tile segments (alternate flips and sway), inside the clip
-      const segH = 4, segW = segH * (crackImg.naturalWidth / crackImg.naturalHeight);
-      ctx.globalAlpha = 0.9;
-      if (horiz) {
-        // a floor: the (tall) crack sprite lies on its side, repeated along the floor
-        const mid = (cMinY + cMaxY + 1) / 2;
-        for (let k = 0, x = cMinX; x < cMaxX + 1; x += segH - 0.2, k++) {
-          const flip = k & 1, jy = ((k * 7) % 5 - 2) * 0.12;
-          ctx.save();
-          ctx.translate(sx(x), sy(mid + jy));
-          ctx.rotate(-Math.PI / 2);
-          if (flip) ctx.scale(-1, 1);
-          ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
-          ctx.restore();
-        }
-      } else {
-        const mid = (cMinX + cMaxX + 1) / 2;
-        for (let k = 0, y = cMinY; y < cMaxY + 1; y += segH - 0.2, k++) {
-          const flip = k & 1, jx = ((k * 7) % 5 - 2) * 0.18;
-          ctx.save();
-          ctx.translate(sx(mid + jx), sy(y));
-          if (flip) ctx.scale(-1, 1);
-          ctx.drawImage(crackImg, -segW * ppu / 2, 0, segW * ppu, segH * ppu);
-          ctx.restore();
-        }
-      }
-      ctx.globalAlpha = 1;
-    } else {
-      // a few irregular cracks running through the whole wall (world space, deterministic)
-      strokeCracks(ctx, sx, sy, ppu, makeCracks(cMinX, cMinY, cMaxX - cMinX + 1, cMaxY - cMinY + 1, Math.max(2, Math.round((horiz ? cMaxX - cMinX + 1 : cMaxY - cMinY + 1) / 3)), !horiz));
+  const att = cue.attention > 0, period = att ? 1.3 : 2.8, life = 1.1;
+  const rad = Math.max(1, ppu * 0.03);
+  for (let k = 0, i = 0; i < P.length; i += 2, k++) {
+    const ph = ((time + k * 0.97 + (k % 3) * 0.41) % period) / life;
+    if (ph >= 1 || (!att && k % 2)) continue;
+    const x = P[i], y = P[i + 1];
+    const X = sx(x), Y = sy(y);
+    if (X < -ppu || X > cw + ppu || Y < -ppu || Y > ch + ppu) continue;
+    if (cue.tileAt(Math.floor(x), Math.floor(y)) === 0) continue; // that bit of the wall is gone
+    const a = 0.6 * Math.sin(ph * Math.PI);
+    ctx.fillStyle = `rgba(${SILT[0]},${SILT[1]},${SILT[2]},${a.toFixed(3)})`;
+    for (let j = 0; j < 2; j++) {
+      const fy = Y + (ph * 0.42 + j * 0.07) * ppu, fx = X + ((j - 0.5) * 0.06 + Math.sin(ph * 5 + k) * 0.03) * ppu;
+      ctx.beginPath(); ctx.arc(fx, fy, rad * (1 - j * 0.3), 0, TAU); ctx.fill();
     }
   }
-  ctx.restore();
-  if (!n) return;
-  // pulsing bomb marker on the wall's middle, with a ring that grows and fades
-  const mx = sx(cx / n), my = sy(cy / n);
-  if (spriteRect('bombMark')) { // the painted carved glyph, breathing, with a few bubbles rising off it
-    const att = cue.attention, pulse = 0.5 + 0.5 * Math.sin(time * (2.4 + 2.4 * att));
-    ctx.save();
-    ctx.globalAlpha = 0.55 + (0.3 + 0.1 * att) * pulse;
-    const sc = 1 + 0.05 * Math.sin(time * 3);
-    drawSprite(ctx, 'bombMark', mx, my, 0, ppu * 1.3 * sc, 0.5, 0.5);
-    ctx.strokeStyle = 'rgba(210,238,255,0.8)'; ctx.lineWidth = Math.max(1, ppu * 0.025);
-    for (let k = 0; k < 4; k++) {
-      const ph = (time * (0.45 + 0.4 * att) + k / 4) % 1;
-      ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.85;
-      ctx.beginPath(); ctx.arc(mx + (k - 1.5) * ppu * 0.2 + Math.sin(ph * 7 + k * 2) * ppu * 0.05, my + ppu * 0.15 - ph * ppu * 0.85, ppu * (0.035 + 0.03 * ph), 0, TAU); ctx.stroke();
-    }
-    ctx.restore();
-    return;
-  }
-  const p = (time * (0.9 + 0.8 * cue.attention)) % 1;
-  ctx.strokeStyle = `rgba(239,227,198,${(1 - p) * (0.75 + 0.25 * cue.attention)})`;
-  ctx.lineWidth = Math.max(2, ppu * 0.1);
-  ctx.beginPath(); ctx.arc(mx, my, ppu * (0.4 + 0.4 * p), 0, TAU); ctx.stroke(); // the ring stays inside the 2 tile thick barrier
-  const s = 1 + 0.08 * Math.sin(time * 5);
-  ctx.fillStyle = 'rgba(6,22,34,0.75)';
-  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.fill();
-  ctx.strokeStyle = 'rgba(239,227,198,0.95)'; ctx.lineWidth = Math.max(1.5, ppu * 0.07);
-  ctx.beginPath(); ctx.arc(mx, my, ppu * 0.6 * s, 0, TAU); ctx.stroke();
-  bombGlyph(ctx, mx - ppu * 0.04, my + ppu * 0.06, ppu * 0.3 * s, time);
 }
 
 /**

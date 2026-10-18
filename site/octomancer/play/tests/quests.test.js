@@ -224,7 +224,7 @@ export async function runQuestTests(assert) {
     assert('hub: the first visit after a stage change says the thank-you, then the whole stage, and notes it was said', first.lines[0] === marlo.thanks[1] && first.lines.length === 1 + marlo.hub[1].length && first.set.some(([k, v]) => k === 'saidMarlo' && v === 1) && first.discover.includes('person-diver'));
     const later = hubVisit(table, { marlo: 1, saidMarlo: 1 }, 'marlo', 1), later4 = hubVisit(table, { marlo: 1, saidMarlo: 1 }, 'marlo', 3);
     assert('hub: later visits say one line at a time, rotating, and set nothing', later.lines.length === 1 && later.lines[0] === marlo.hub[1][1] && later4.lines[0] === marlo.hub[1][1] && later.set.length === 0);
-    assert('hub: Marlo at stage 3 talks about the ring in the floor', hubVisit(table, { marlo: 3, saidMarlo: 2 }, 'marlo', 0).lines.some((l) => /ring/.test(l)));
+    assert('hub: Marlo at stage 3 talks about the whirlpool in the floor', hubVisit(table, { marlo: 3, saidMarlo: 2 }, 'marlo', 0).lines.some((l) => /whirlpool/.test(l)));
     const q0 = hubVisit(table, { quill: 1, saidQuill: 1, relics: 0, relicsGiven: 2 }, 'quill', 1);
     assert('hub: Quill counts the relics handed over: "{n} of 3 so far. {left} to go."', q0.lines.length === 1 && q0.lines[0] === '2 of 3 so far. 1 to go.' && RELICS_NEEDED === 3);
     const r1 = hubVisit(table, { quill: 1, saidQuill: 1, relics: 1, relicsGiven: 0 }, 'quill', 3);
