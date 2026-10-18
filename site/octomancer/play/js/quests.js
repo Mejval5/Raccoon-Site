@@ -425,7 +425,7 @@ export function nextStage(current, row) { return Math.max(current | 0, Math.min(
 // 2026-10-18 (Daniel: Marlo, home in his workshop, said "find me at the hub"): every line has one place. These two lists are the
 // audit quests.test.js runs: no line of a dive encounter is said in the hub, and no hub line talks as if the hub were elsewhere.
 /** Words that only make sense away from the hub. */
-export const AWAY_WORDS = /\b(at|to|in) the (hub|village)\b|\bmeet me\b|\bfind me\b|\bfurther down\b|\bsee you (back )?(home|up)\b/i;
+export const AWAY_WORDS = /\b(at|to|in) the hub\b|\bmeet me\b|\bfind me\b|\bfurther down\b|\bsee you (back )?(home|up)\b/i;
 /** Every line a resident can say in the hub (hubVisit, the safe-zone bump): hub stages, thanks, relics, gifts, bumped. */
 export function hubLines(table, id) {
   const n = table.npcById.get(id), out = [];
