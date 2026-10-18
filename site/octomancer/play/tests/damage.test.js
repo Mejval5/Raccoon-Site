@@ -242,6 +242,15 @@ export async function runDamageTests(assert) {
     const flat = Object.assign(base(), { dead: true, deathStyle: 'splat', flat: 1 }), norm = base();
     const f = draw(flat), n = draw(norm);
     assert(`octopus draw: the splat pancake is wide and thin (${f.w}x${f.h} px against ${n.w}x${n.h} for the live body)`, f.w > f.h * 1.8 && f.h < n.h * 0.55 && f.w > n.w * 1.3);
+    { // 2026-10-18 regression: the ink under a pancake stays within about 1.5 tiles of the body (it was a 5-tile dark sheet)
+      const W = 720, PPU = 60, wv = document.createElement('canvas'); wv.width = W; wv.height = 200;
+      const g = wv.getContext('2d', { willReadFrequently: true });
+      g.translate(W / 2, 100); g.scale(PPU, PPU);
+      drawOctopus(g, flat);
+      const px = g.getImageData(0, 0, W, 200).data; let reach = 0;
+      for (let y = 0; y < 200; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 40) reach = Math.max(reach, Math.abs(x + 0.5 - W / 2) / PPU);
+      assert(`octopus draw: the splat ink and pancake reach ${reach.toFixed(2)} tiles from the body's centre (at most 1.5)`, reach > 0.6 && reach <= 1.5);
+    }
     const s1 = Object.assign(base(), { stunT: 1, hurting: true, __t: 0.1 }), s2 = Object.assign(base(), { stunT: 1, hurting: true, __t: 0.37 });
     const a = draw(s1), b = draw(s2);
     assert('octopus draw: a stunned body is held on one frame (the same picture at two times), an idle one is not required to be', !isBaked() || (a.sum === b.sum && a.n === b.n));
