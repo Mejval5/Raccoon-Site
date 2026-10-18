@@ -197,6 +197,10 @@ await runEnemyR36Tests(assert);
 import { runCannonTests } from './cannon.test.js';
 await runCannonTests(assert);
 
+// --- 2026-10-18: the manta is a glider (loops, banks over you, slams, rests on the floor) ---
+import { runMantaTests } from './manta.test.js';
+await runMantaTests(assert);
+
 // --- Round 36: level detail (dense rooms, 2x props and decor, set pieces) ---
 import { runDetailTests } from './detail.test.js';
 await runDetailTests(assert);

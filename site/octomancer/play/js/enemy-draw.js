@@ -381,14 +381,22 @@ function enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha)
       drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, hornsImg, ex, ey + dy + shift, 0.9, false, flip, fl, 0, 1, sy);
       sc = worldToScreen(camera, canvasW, canvasH, ex, ey + dy);
     } else if (e.kind === 'manta') {
+      // 2026-10-18 the glider (enemies.js MA_*: 0 glide, 1 tell / bank, 2 dive, 3 lift-off, 4 rest). No glow, no mark: the
+      // tell is the body (wings spread wide, squashed flat) and its shadow growing on the floor where it will land.
       const face = e.face !== undefined ? e.face : e.dir;
-      let tilt = wob, py = ey;
-      if (tell > 0) { tilt += face * 0.35 * tell; py += Math.sin(time * 60) * 0.02; } // the tell: it banks nose-down
-      else if (e.st === 2 && !e.ghost) tilt += face * 0.7;
+      const st = e.ghost ? 0 : e.st;
+      let tilt = 0, py = ey, sx = 1, sy = 1;
+      const vx = e.vx || 0, vy = e.vy || 0;
+      if (st === 4) { sx = 1.1; sy = 0.78; py += 0.9 * (1 - sy) * 0.5; } // flat on the floor (its stun stars say it is dazed)
+      else if (st === 1) { const k = tell * tell * (3 - 2 * tell); sx = 1 + 0.16 * k; sy = 1 - 0.16 * k; py += Math.sin(time * 9) * 0.03 * k; }
+      else if (st === 2) { tilt = face * Math.atan2(vy, Math.abs(vx) + 1e-3) * 0.55; sx = 0.94; sy = 1.08; } // nose down along the slam
+      else {
+        tilt = face * Math.max(-0.4, Math.min(0.4, Math.atan2(vy, Math.abs(vx) + 0.6))) + wob; // banks with its curve
+        sy = 1 + 0.05 * Math.sin(time * 2.6 + (e.id | 0)); // a slow wing beat
+      }
+      if ((st === 1 || st === 2) && e.ld > 0) drawMantaShadow(ctx, camera, worldToScreen, canvasW, canvasH, e, ex, ey, st === 2 ? 1 : tell);
       sc = worldToScreen(camera, canvasW, canvasH, ex, py);
-      if (tell > 0) drawTellGlow(ctx, sc.x, sc.y, ppu, tell, time);
-      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, ex, py, 0.9, face < 0, false, fl, tilt);
-      if (tell > 0) drawBang(ctx, sc.x, sc.y - ppu * 0.6, ppu, tell);
+      drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, mantaImg, ex, py, 0.9, face < 0, false, st === 1 ? (e.hitFlash || 0) : fl, tilt, sx, sy); // the bank does not flicker
     }
     if (e.inkStain > 0 && sc) drawInkStain(ctx, sc.x, sc.y, ppu, e);
     if (e.stun > 0 && sc) drawStunStars(ctx, sc.x, sc.y, ppu, time);
@@ -419,6 +427,22 @@ export function drawEnemyBody(ctx, kind, sx, sy, ppu, rot, flipX, flipY, filter)
 
 /** Like `drawSprite`, but can mirror horizontally (walk direction) and/or vertically (hanging from a ceiling), tilt
  * (`rot`, radians, applied before the mirror) and squash / stretch (`sx`, `sy`) for the M6 creatures. */
+/** The manta's shadow on the floor where its slam will land (e.lx, e.ly): a dark flat ellipse that widens and darkens with
+ * the tell (k 0..1), darker still as the diving body closes in. Plain fills, no gradient, nothing allocated. */
+function drawMantaShadow(ctx, camera, worldToScreen, canvasW, canvasH, e, ex, ey, k) {
+  if (k <= 0) return;
+  const ppu = camera.pxPerUnit, s = worldToScreen(camera, canvasW, canvasH, e.lx, e.ly);
+  const near = Math.max(0, 1 - Math.hypot(e.lx - ex, e.ly - ey) / 6);
+  const w = ppu * 1.5 * (0.35 + 0.65 * k), h = ppu * 0.24 * (0.5 + 0.5 * k);
+  const ga = ctx.globalAlpha;
+  ctx.fillStyle = '#071219';
+  ctx.globalAlpha = ga * (0.25 + 0.35 * k + 0.2 * near);
+  ctx.beginPath(); ctx.ellipse(s.x, s.y - h * 0.3, w, h, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = ga * (0.2 + 0.35 * k);
+  ctx.beginPath(); ctx.ellipse(s.x, s.y - h * 0.3, w * 0.55, h * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = ga;
+}
+
 function drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, worldSize, flipX, flipY, hitFlash, rot = 0, sx = 1, sy = 1) {
   if (!ready(img)) return;
   const s = worldToScreen(camera, canvasW, canvasH, x, y);

@@ -93,6 +93,25 @@ export function createParticles() {
       }
       shakeScreen(0.1 + 0.3 * Math.max(0, 1 - fromOcto / 14)); // a bigger shake the nearer the blast is to the octopus
     },
+    /** A manta slamming onto the floor at (x, y) (the floor surface under its belly): a thick sandy silt cloud rolls out
+     * along the floor and up, about 3 tiles wide, dense enough to hide the ray inside it for most of a second, then thins
+     * out; a few grains of grit are thrown. Reduced motion: fewer blobs, no grit. */
+    siltPuff(x, y) {
+      const calm = prefersReducedMotion(), n = calm ? 7 : 16;
+      for (let i = 0; i < n; i++) {
+        const u = ((i % 8) / 7) * 2 - 1, side = u < 0 ? -1 : 1; // two rows spread along the floor, rolling outward
+        const low = i < 8;
+        const p = spawnOne(x + u * 1.35 + (Math.random() - 0.5) * 0.3, y - (low ? 0.25 : 0.6) - Math.random() * 0.3, side * (0.35 + Math.abs(u) * 1.3) * (0.7 + Math.random() * 0.5), (low ? -0.15 : -0.45) - Math.random() * 0.35,
+          1.1 + Math.random() * 0.5, 0.58 + Math.random() * 0.22, i % 3 === 0 ? 'rgba(122,128,106,1)' : i % 3 === 1 ? 'rgba(150,138,108,1)' : 'rgba(136,126,100,1)');
+        if (p) { p.damp = 0.94; p.soft = 1; }
+      }
+      if (calm) return;
+      for (let i = 0; i < 8; i++) {
+        const a = -Math.PI * (0.1 + 0.8 * Math.random()), sp = 1.5 + Math.random() * 2.2;
+        const p = spawnOne(x + (Math.random() - 0.5) * 2.2, y - 0.1, Math.cos(a) * sp, Math.sin(a) * sp, 0.45 + Math.random() * 0.3, 0.035 + Math.random() * 0.02, i & 1 ? '#a39878' : '#857c62');
+        if (p) p.damp = 0.93;
+      }
+    },
     /** Fragile terrain (fragile.js): a fish-bone tile crumbling at (x, y): 7-9 bone shards (short slivers that tumble, sink
      * and bounce off rock, gone in about a second), thrown along (dx, dy) when a dash broke it, else every way, plus a few
      * grey-green silt puffs that hang a moment. Reduced motion: fewer shards, no spin, no silt. */

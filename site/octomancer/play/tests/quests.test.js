@@ -3,7 +3,7 @@
 import {
   parseQuests, planQuest, questPathFor, createQuestState, questUpdate, questOnExit, questBlast, questSpeaker, eligibleRows, nextStage, hubResidents, hubVisit, collectorArrives,
   RELICS_NEEDED, DIVER_RUNS, Q_RESCUE, Q_VAULT, ST_ACTIVE, ST_DONE,
-  Q_MEET, questReact,
+  Q_MEET, questReact, hubLines, diveLines, AWAY_WORDS,
 } from '../js/quests.js';
 import { pickOutcome, beatSeed, owedFrom, findFloorNear, createVisitor, visitorStep, DUE_REST } from '../js/visitors.js';
 import { createIdle, idleStep, idleReact, idleLift } from '../js/idle.js';
@@ -233,6 +233,34 @@ export async function runQuestTests(assert) {
     assert('hub: the third relic unlocks the third entry and moves Quill to stage 2 (the lantern)', r3.set.some(([k, v]) => k === 'relicsGiven' && v === 3) && r3.set.some(([k, v]) => k === 'quill' && v === 2) && r3.discover.includes('loot-relic-3'));
     assert('hub: relics are handed over one per visit, never past three', hubVisit(table, { quill: 2, saidQuill: 2, relics: 5, relicsGiven: 3 }, 'quill', 0).set.every(([k]) => k !== 'relicsGiven'));
     assert('journal: every relic the Collector takes has its own entry', [1, 2, 3].every((n) => ENTRIES.some((e) => e.id === 'loot-relic-' + n)));
+  }
+
+  // ---- 2026-10-18, the lines audit (Daniel: Marlo, home in his workshop, said "find me at the hub") ----
+  {
+    const dive = new Set(diveLines(table));
+    const bad = [];
+    // every stage, first visit or later, with and without each promised gift, Quill with and without a relic in hand
+    for (const n of table.npcs) {
+      const own = new Set(hubLines(table, n.id));
+      const gifts = [0]; table.gifts.forEach((g, k) => { if (g.npc === n.id) gifts.push(k + 1); });
+      for (let stage = 0; stage <= 5; stage++) for (const said of [0, stage]) for (const gift of gifts) for (const relics of [[0, 0], [1, 0], [3, 2], [2, 2]]) for (let visit = 0; visit < 4; visit++) {
+        const cap = n.id.charAt(0).toUpperCase() + n.id.slice(1);
+        const story = { [n.id]: stage, ['said' + cap]: said, ['gift' + cap]: gift, relics: relics[0], relicsGiven: relics[1] };
+        for (const l of hubVisit(table, story, n.id, visit).lines) {
+          if (dive.has(l) || AWAY_WORDS.test(l) || (!own.has(l) && !/\d of 3/.test(l))) bad.push(`${n.id} stage ${stage} said ${said} gift ${gift}: ${l}`);
+        }
+      }
+      for (const l of own) if (AWAY_WORDS.test(l) || dive.has(l)) bad.push(`${n.id} hub line: ${l}`);
+    }
+    assert('lines audit: no dive-stage line (and nothing like "meet me at the hub") is reachable in the hub, for any person and stage', bad.length === 0, bad.slice(0, 6).join(' | '));
+    const rooms = await (await fetch('../data/hub-rooms.json')).json();
+    const roomLines = [];
+    for (const r of rooms.rooms) roomLines.push(...(r.lines || []), r.moved || '');
+    if (rooms.target) roomLines.push(rooms.target.lines.start, rooms.target.lines.miss, ...rooms.target.lines.win);
+    if (rooms.keepsake) roomLines.push(...rooms.keepsake.lines);
+    assert('lines audit: hub-rooms.json (the den, the practice target, the keepsake) speaks as if in the hub', roomLines.every((l) => !AWAY_WORDS.test(l) && !dive.has(l)), roomLines.filter((l) => AWAY_WORDS.test(l)).join(' | '));
+    assert('lines audit: the words test catches the old line', AWAY_WORDS.test('Out of the rock! Find me at the hub.') && AWAY_WORDS.test('Meet me at the hub') && !AWAY_WORDS.test('Welcome to my workshop.'));
+    assert('lines audit: every resident has a "bumped" line for the safe zone', table.npcs.every((n) => n.bumped.length > 0 && n.bumped.every((l) => !AWAY_WORDS.test(l))));
   }
 
   // ---- owners round 3 (quests rework): people stay, thank you, pay now or later ----

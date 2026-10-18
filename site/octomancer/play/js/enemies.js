@@ -345,8 +345,12 @@ export function setHpMode(on) { hpMode = !!on; }
 //            CN_CHARGE  0.6 s: it squashes down against its rock (the Unity CanonShoot squish), still turning at 40%
 //                       rate; then it snaps long and spits the ball from its mouth, along its facing, not at you
 //            CN_RELOAD  2 s (the first 0.75 s of it the snap-and-settle recoil, `kick`)
-//   manta    MA_GLIDE   wide sine glide; octopus below and within 1.2 tiles sideways with a clear drop -> MA_TELL
-//            MA_TELL    0.6 s stops, tilts and flashes; MA_DIVE steep dive to where you were; MA_RISE climbs back; 3 s cooldown
+//   manta    MA_GLIDE   a glider: slow figure-eight loops around its home, steered on smooth curves; it ignores the octopus
+//                       and never bites. The octopus passing underneath (|dx| < 1.6, 0.8 < dy < 5.5, clear line) -> MA_TELL
+//            MA_TELL    (the bank) 0.6 s: it slows to a hover, wings spread, body squashed, its shadow grows where it will land
+//            MA_DIVE    straight slam along the line to where the octopus was at the end of the tell, to the floor (the slam)
+//            MA_REST    1.5 s flat on the floor in a silt puff: stunned (e.stun), harmless, grabbable, jets carry it
+//            MA_RISE    0.9 s lift-off on a curve, then it glides home again; 3 s before it can dive again
 //   urchin, horns: static; the spikes pulse slowly (2.6 s) and the contact radius pulses with them
 // ---------------------------------------------------------------------------------------------------------------
 export const PS_PATROL = 0, PS_WINDUP = 1, PS_LUNGE = 2, PS_RECOVER = 3;
@@ -360,8 +364,9 @@ export const CANNON_WINDUP = 0.6, CANNON_RELOAD = 2.0, CANNON_TURN = 1.2, CANNON
 // (enemy-draw.js draws it there). Its mouth is the slit at the top of the spout: CANNON_MOUTH_ALONG tiles out along the
 // facing and CANNON_MOUTH_SIDE to the side its lip curls (e.lip: +1 the art's own right, -1 mirrored).
 export const CANNON_SEAT = 0.15, CANNON_MOUTH_ALONG = 0.4, CANNON_MOUTH_SIDE = 0.14, CANNON_RECOIL = 0.75;
-export const MA_GLIDE = 0, MA_TELL = 1, MA_DIVE = 2, MA_RISE = 3;
-export const MANTA_TELL = 0.6, MANTA_DIVE_SPEED = 6.5, MANTA_DIVE_MAX = 1.1, MANTA_RISE_SPEED = 2.8, MANTA_DIVE_COOLDOWN = 3;
+export const MA_GLIDE = 0, MA_TELL = 1, MA_DIVE = 2, MA_RISE = 3, MA_REST = 4, MA_BANK = MA_TELL;
+export const MANTA_TELL = 0.6, MANTA_DIVE_SPEED = 9, MANTA_DIVE_MAX = 1.2, MANTA_DIVE_COOLDOWN = 3, MANTA_REST = 1.5, MANTA_LIFT = 0.9;
+export const MANTA_GLIDE_SPEED = 2.2, MANTA_TURN = 1.8, MANTA_NOTICE = 5.5, MANTA_UNDER = 1.6, MANTA_LOOP_A = 4.5, MANTA_LOOP_B = 1.3;
 export const URCHIN_PULSE_PERIOD = 2.6;
 export const HIT_STOP = 0.06; // s the whole sim freezes on a dash kill
 const TAU = Math.PI * 2;
@@ -462,6 +467,10 @@ function makeEnemy(kind, x, y, chunkIndex, placement, wallDir = 0) {
     return {
       ...base, radius: MANTA_RADIUS, contactDamage: true, dashKillable: dashKillable(kind), moving: true,
       dir, face: dir, baseX: x, baseY: y, st: MA_GLIDE, cool: 1.5, stuck: 0, flipCd: 0, tx: 0, ty: 1, dived: 0,
+      // the glide loop: centre (cx, cy), half width ax, half height by (fitted to the water on its first step), curve
+      // parameter ph (0 at the centre heading right, PI heading left), heading hd and speed spd; lx/ly/ld: where the slam lands
+      cx: x, cy: y, ax: 0, by: 0, fit: 0, fcx: x, fcy: y, ph: dir > 0 ? 0 : Math.PI, hd: dir > 0 ? 0 : Math.PI, spd: MANTA_GLIDE_SPEED,
+      lx: x, ly: y, ld: 0,
     };
   }
   return base;
@@ -643,7 +652,7 @@ export function createEnemies() {
     if (e.kind === 'piranha') { e.st = PS_PATROL; e.t = 0.5; e.flipCd = 0; }
     else if (e.kind === 'crab') { e.st = CS_WALK; e.cool = 0.5; }
     else if (e.kind === 'cannon') { e.st = CN_RELOAD; e.t = 1.0; e.sq = 0; e.kick = 0; }
-    else if (e.kind === 'manta') { e.st = MA_GLIDE; e.cool = 1.5; }
+    else if (e.kind === 'manta') mantaWake(e);
   }
 
   /** r36: is another live enemy's hull in the way ahead of `e` (direction `dir`, within `margin` tiles of touching)?
@@ -890,76 +899,164 @@ export function createEnemies() {
   }
 
   // ------------------------------------------------------------------------------------------ manta
+  // 2026-10-18, the glider (CREATURES.md "Manta"). Everything it does is on smooth curves: its heading turns at most
+  // MANTA_TURN rad/s while it glides, chasing a point that runs along a figure-eight around its home; it never bites. Only
+  // the octopus passing underneath it makes it bank, hover (the tell: wings spread, body squashed, a shadow grows where it
+  // will land) and slam straight down through where she was; then it lies stunned on the floor for MANTA_REST s and lifts off.
   function mantaFits(world, x, y) {
-    for (const dy of [-MANTA_BODY_HALF_HEIGHT, 0, MANTA_BODY_HALF_HEIGHT]) {
-      if (world.isSolid(x - MANTA_WING_HALF_LEN - 0.2, y + dy) || world.isSolid(x + MANTA_WING_HALF_LEN + 0.2, y + dy)) return false;
+    for (let k = -1; k <= 1; k++) {
+      const yy = y + k * MANTA_BODY_HALF_HEIGHT;
+      if (world.isSolid(x - MANTA_WING_HALF_LEN - 0.2, yy) || world.isSolid(x + MANTA_WING_HALF_LEN + 0.2, yy)) return false;
     }
     return true;
   }
-  function updateManta(e, dt, octo, world) {
+  /** mantaFits, and clear of every rooted enemy (an urchin, horns, a cannon): the loop is never laid through one. */
+  function mantaRoom(e, world, x, y) {
+    if (!mantaFits(world, x, y)) return false;
+    for (let i = 0; i < stepList.length; i++) {
+      const o = stepList[i];
+      if (o === e || o.dead || o.moving) continue;
+      const eo = sepExtent(o.kind);
+      if (Math.abs(o.x - x) < MANTA_WING_HALF_LEN + eo.hx + 0.2 && Math.abs(o.y - y) < MANTA_BODY_HALF_HEIGHT + eo.hy + 0.1) return false;
+    }
+    return true;
+  }
+  function loopFits(e, world, A, B) {
+    for (let k = 0; k < 24; k++) {
+      const p = k * (TAU / 24);
+      if (!mantaRoom(e, world, e.cx + A * Math.sin(p), e.cy - B * Math.sin(2 * p))) return false;
+    }
+    return true;
+  }
+  /** Lay the figure-eight around (cx, cy): as wide as the water lets it (MANTA_LOOP_A down to 1), then as tall. */
+  function fitLoop(e, world) {
+    let A = MANTA_LOOP_A, B = MANTA_LOOP_B;
+    for (let n = 0; n < 24 && !loopFits(e, world, A, B); n++) {
+      if (A > 1.01) A -= 0.25; else if (B > 0.45) B -= 0.2; else break;
+    }
+    e.ax = A; e.by = B; e.fit = 1; e.fcx = e.cx; e.fcy = e.cy;
+  }
+  /** Turn heading `hd` toward `want` by at most `rate * dt`. */
+  function turnToward(hd, want, rate, dt) {
+    const d = angDiff(want, hd), m = rate * dt;
+    const h = hd + (d > m ? m : d < -m ? -m : d);
+    return h > Math.PI ? h - TAU : h < -Math.PI ? h + TAU : h;
+  }
+  /** Fly one step along heading e.hd at e.spd, against rock; returns how far it got. */
+  function mantaMove(e, dt, world) {
     const px = e.x, py = e.y;
-    e.ph += dt * MANTA_SINE_FREQ;
+    e.vx = Math.cos(e.hd) * e.spd; e.vy = Math.sin(e.hd) * e.spd;
+    e.x += e.vx * dt; e.y += e.vy * dt;
+    collideMantaWithWalls(e, world);
+    if (Math.abs(e.vx) > 0.35 * MANTA_GLIDE_SPEED) e.face = e.dir = e.vx > 0 ? 1 : -1; // hysteresis: no flicker while it climbs or sinks
+    return Math.hypot(e.x - px, e.y - py);
+  }
+  /** Steer toward the point running along the loop (and away from rock ahead), at most MANTA_TURN rad/s. */
+  function mantaSteer(e, dt, world) {
+    const tx = e.cx + e.ax * Math.sin(e.ph), ty = e.cy - e.by * Math.sin(2 * e.ph);
+    const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy);
+    // the point runs at glide speed while the manta is near it; it waits while the manta is off its loop (knocked, lured, lifting off)
+    if (d < 2.5) e.ph += MANTA_GLIDE_SPEED * dt / Math.max(0.5, Math.hypot(e.ax * Math.cos(e.ph), 2 * e.by * Math.cos(2 * e.ph)));
+    if (e.ph > TAU) e.ph -= TAU;
+    let rate = MANTA_TURN;
+    let want = d > 0.05 ? Math.atan2(dy, dx) : e.hd;
+    // rock ahead: bank away from it toward whichever side is open (still a curve, a little tighter)
+    if (!mantaFits(world, e.x + Math.cos(e.hd), e.y + Math.sin(e.hd))) {
+      const l = mantaFits(world, e.x + Math.cos(e.hd - 0.7), e.y + Math.sin(e.hd - 0.7));
+      const r = mantaFits(world, e.x + Math.cos(e.hd + 0.7), e.y + Math.sin(e.hd + 0.7));
+      want = e.hd + (l && !r ? -1.2 : r && !l ? 1.2 : angDiff(want, e.hd) < 0 ? -1.2 : 1.2);
+      rate = MANTA_TURN * 1.6;
+    }
+    e.hd = turnToward(e.hd, want, rate, dt);
+    // trail the point by about a tile: faster when behind it, slower when on it
+    const target = MANTA_GLIDE_SPEED * Math.max(0.7, Math.min(1.35, 0.7 + 0.3 * d));
+    e.spd += (target - e.spd) * Math.min(1, 2.5 * dt);
+  }
+  /** Re-centre the loop where the manta is now (it got stuck against rock): the point starts on it, running back the way it came. */
+  function mantaReanchor(e, world) {
+    e.cx = e.x; e.cy = e.y; e.ph = Math.cos(e.hd) >= 0 ? Math.PI : 0;
+    fitLoop(e, world);
+  }
+  /** Its stun ran out (resetPattern): off the floor it lifts off; knocked about mid-glide it just glides on. */
+  function mantaWake(e) {
+    e.tell = 0; e.kvx = e.kvy = 0;
+    if (e.st === MA_REST || e.st === MA_DIVE) { e.st = MA_RISE; e.t = MANTA_LIFT; e.hd = -Math.PI / 2 + (e.face || 1) * 0.35; e.spd = 0.2; e.cool = MANTA_DIVE_COOLDOWN; }
+    else { e.st = MA_GLIDE; e.cool = Math.max(e.cool, 1.0); }
+  }
+  /** Cast from the manta along (ux, uy) to the first rock (the floor it will hit): lx/ly the surface, ld the centre's travel. */
+  function mantaLanding(e, world, ux, uy) {
+    let k = 0.5;
+    for (; k <= 12; k += 0.25) if (world.isSolid(e.x + ux * k, e.y + uy * k)) break;
+    e.lx = e.x + ux * k; e.ly = e.y + uy * k;
+    e.ld = Math.max(0.2, k - MANTA_BODY_HALF_HEIGHT - 0.05);
+  }
+  let mantaWorld = null;
+  const mantaSolid = (x, y) => mantaWorld.isSolid(x, y);
+  /** The octopus is passing underneath it: within MANTA_UNDER sideways, 0.8..MANTA_NOTICE below, in sight, not in ink. */
+  function mantaSeesBelow(e, octo, world) {
+    if (octo.sealed || octo.safe) return false;
+    const dx = octo.x - e.x, dy = octo.y - e.y;
+    if (Math.abs(dx) >= MANTA_UNDER || dy <= 0.8 || dy >= MANTA_NOTICE || lost(e, octo)) return false;
+    mantaWorld = world;
+    return hasLineOfSight(mantaSolid, e.x, e.y, octo.x, octo.y);
+  }
+  function updateManta(e, dt, octo, world) {
     e.cool = Math.max(0, e.cool - dt);
-    e.flipCd = Math.max(0, e.flipCd - dt);
-    const glideY = e.baseY + Math.sin(e.ph) * MANTA_SINE_AMPLITUDE;
+    if (!e.fit) fitLoop(e, world);
     switch (e.st) {
       case MA_GLIDE: {
         if (inf && inf.lureAt(e.x, e.y)) {
-          // the target override (a lure, infight.setLure): its glide line moves to the point of interest
-          const L = inf.lurePoint, k = MANTA_SPEED * dt;
-          e.baseX += Math.max(-k, Math.min(k, L.x - e.baseX));
-          const by = e.baseY + Math.max(-k * 0.5, Math.min(k * 0.5, L.y - e.baseY));
-          if (mantaFits(world, e.x, by)) e.baseY = by;
-          if (e.flipCd <= 0 && Math.abs(L.x - e.x) > 1.5 && sgn(L.x - e.x) !== e.dir) { e.dir = -e.dir; e.flipCd = 0.6; }
+          // the target override (a lure, infight.setLure): the loop's centre drifts to the point of interest
+          const L = inf.lurePoint, k = 1.2 * dt;
+          e.cx += Math.max(-k, Math.min(k, L.x - e.cx));
+          e.cy += Math.max(-k, Math.min(k, L.y - e.cy));
+          e.baseX = e.cx; e.baseY = e.cy; // its home moves with it
         }
-        e.vx = e.dir * MANTA_SPEED;
-        let nx = e.x + e.vx * dt;
-        // wide back-and-forth around its spawn point; it turns while a wingtip (plus margin) is still clear of rock
-        if (Math.abs(nx - e.baseX) > MANTA_PATROL_RANGE) e.dir *= -1;
-        if (!mantaFits(world, nx, e.y) || (e.flipCd <= 0 && enemyAhead(e, e.dir, 0.3))) { e.dir = -e.dir; nx = e.x; e.flipCd = 0.6; }
-        e.x = nx;
-        const ny = e.y + Math.max(-3 * dt, Math.min(3 * dt, glideY - e.y));
-        if (mantaFits(world, e.x, ny)) e.y = ny;
-        e.vy = (e.y - py) / dt;
-        collideMantaWithWalls(e, world);
-        const moved = Math.abs(e.x - px);
-        e.stuck = moved < 0.55 * MANTA_SPEED * dt ? e.stuck + dt : 0;
-        if (e.stuck > 0.3) { e.dir = -e.dir; e.stuck = 0; }
-        e.face = e.dir;
-        // octopus below it, in line, with a clear drop: tell, then dive
-        if (e.cool <= 0) {
-          const dy = octo.y - e.y;
-          if (Math.abs(octo.x - e.x) < 1.2 && dy > 1.5 && dy < 7 && !lost(e, octo) && hasLineOfSight((tx, ty) => world.isSolid(tx, ty), e.x, e.y, octo.x, octo.y)) {
-            e.st = MA_TELL; e.t = MANTA_TELL; e.vx = e.vy = 0; e.tell = 0;
-          }
-        }
+        if (Math.abs(e.cx - e.fcx) + Math.abs(e.cy - e.fcy) > 1) fitLoop(e, world);
+        mantaSteer(e, dt, world);
+        const moved = mantaMove(e, dt, world);
+        e.stuck = moved < 0.4 * e.spd * dt ? e.stuck + dt : 0;
+        if (e.stuck > 0.8) { e.stuck = 0; mantaReanchor(e, world); }
+        // the octopus passing underneath: bank and hover over her
+        if (e.cool <= 0 && mantaSeesBelow(e, octo, world)) { e.st = MA_TELL; e.t = MANTA_TELL; e.tell = 0; }
         break;
       }
-      case MA_TELL:
-        e.vx = e.vy = 0; e.t -= dt; e.tell = Math.min(1, 1 - e.t / MANTA_TELL);
-        if (e.t <= 0 && lost(e, octo)) { e.st = MA_GLIDE; e.tell = 0; e.cool = 1.0; break; } // ink: it sweeps on past
-        if (e.t <= 0) {
-          const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
-          e.tx = dx / d; e.ty = dy / d; e.tell = 0;
-          if (e.ty < 0.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; break; }
-          e.st = MA_DIVE; e.t = MANTA_DIVE_MAX; e.dived = 0;
-        }
+      case MA_TELL: { // the bank: it slows to a hover, its shadow grows where it will land
+        e.t -= dt; e.tell = Math.min(1, 1 - e.t / MANTA_TELL);
+        e.spd *= Math.exp(-7 * dt);
+        mantaMove(e, dt, world);
+        const dx = octo.x - e.x, dy = octo.y - e.y, d = Math.hypot(dx, dy) || 1;
+        mantaLanding(e, world, dx / d, dy / d);
+        if (e.t > 0) break;
+        e.tell = 0;
+        if (lost(e, octo) || dy / d < 0.55) { e.st = MA_GLIDE; e.cool = 1.0; break; } // ink, or she got out from under it: it sweeps on
+        e.tx = dx / d; e.ty = dy / d; e.st = MA_DIVE; e.t = MANTA_DIVE_MAX; e.dived = 0;
         break;
-      case MA_DIVE: {
+      }
+      case MA_DIVE: { // the slam: straight down the locked line to the floor
+        const px = e.x, py = e.y;
         e.vx = e.tx * MANTA_DIVE_SPEED; e.vy = e.ty * MANTA_DIVE_SPEED;
         e.x += e.vx * dt; e.y += e.vy * dt;
         collideMantaWithWalls(e, world);
         const moved = Math.hypot(e.x - px, e.y - py);
         e.t -= dt; e.dived += moved;
-        if (moved < 0.4 * MANTA_DIVE_SPEED * dt || e.t <= 0 || e.dived > 6.5) { e.st = MA_RISE; e.cool = MANTA_DIVE_COOLDOWN; }
+        if (moved < 0.4 * MANTA_DIVE_SPEED * dt || (e.ld > 0 && e.dived >= e.ld)) {
+          // on the floor: a silt puff, and it lies there stunned (no AI, no contact, grabbable, carried by jets)
+          e.st = MA_REST; e.vx = e.vy = 0; e.kvx = e.kvy = 0; e.stun = Math.max(e.stun, MANTA_REST); e.hd = e.tx >= 0 ? 0 : Math.PI;
+          events.push({ type: 'mantaSlam', x: e.x, y: e.y + MANTA_BODY_HALF_HEIGHT });
+        } else if (e.t <= 0) mantaWake(e); // nothing under it after all: it pulls out and lifts off
         break;
       }
-      default: { // MA_RISE: climb back to its glide line
-        const dy = glideY - e.y;
-        e.vx = 0; e.vy = Math.max(-MANTA_RISE_SPEED, Math.min(MANTA_RISE_SPEED, dy * 3));
-        e.y += e.vy * dt;
-        collideMantaWithWalls(e, world);
-        if (Math.abs(glideY - e.y) < 0.2 || Math.abs(e.y - py) < 0.2 * MANTA_RISE_SPEED * dt) e.st = MA_GLIDE;
+      case MA_REST: // only reached when its stun was cleared some other way
+        mantaWake(e);
+        break;
+      default: { // MA_RISE: lift-off, up and forward on a curve, easing up to glide speed, then it glides home
+        e.t -= dt;
+        e.spd += (MANTA_GLIDE_SPEED - e.spd) * Math.min(1, 2.2 * dt);
+        mantaSteer(e, dt, world);
+        if (e.t > MANTA_LIFT * 0.5) e.hd = turnToward(e.hd, -Math.PI / 2 + (e.face || 1) * 0.35, MANTA_TURN * 2, dt); // climb first
+        mantaMove(e, dt, world);
+        if (e.t <= 0) { e.st = MA_GLIDE; e.stuck = 0; }
       }
     }
   }
@@ -1111,7 +1208,7 @@ export function createEnemies() {
             } else if (octoPhasing(octo)) {
               // dash i-frames: the contact does nothing to either side (no hurt, no bite recoil, no manta slam)
             } else {
-              if (e.kind === 'manta' && e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); // V2-PLAN 16: the dive slam incapacitates; gliding contact stays one hit
+              if (e.kind === 'manta') { if (e.st === MA_DIVE) octoHit(octo, 'slam', e.x, e.y, 'manta'); } // V2-PLAN 16: only the dive slam hurts (it incapacitates); a gliding manta never bites
               else octoHit(octo, 'bite', e.x, e.y, e.kind);
               if (e.kind === 'piranha' && e.st === PS_LUNGE) piranhaRecover(e, true); // it bit: it recoils
             }

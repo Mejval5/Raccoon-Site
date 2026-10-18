@@ -19,6 +19,7 @@
 //   5. knock = src.knock / row.mass, 0 when the row is anchored (bolted to rock: stunned in place, never thrown)
 //   6. stun  = src.stun * row.stunScale, 0 when row.immuneKnockout
 // Aggro (the keeper, the NPCs) follows the hit's blame: only a hit the octopus caused turns them on her (byOcto).
+// In a safe zone (SAFE_ZONES: the hub, the rest grotto) a holder passes the outcome through safeZoneHit: a shove, never harm.
 
 import { STUN_S, STUN_KNOCKBACK, HEAVY_HIT_DMG, HEAVY_KNOCKBACK, BOMB_RADIUS } from './config.js';
 
@@ -113,6 +114,20 @@ export const CREATURES = {
   octopus:  { family: 'octo', hp: 3, mass: 1, physics: PH_SWIM },
 };
 export const CREATURE_KINDS = Object.keys(CREATURES);
+
+// Safe zones (2026-10-18, Daniel: "In the hub everyone should be invincible; you can only knock them around"). Keyed on the
+// LEVEL, not on the body: in the hub and the rest grotto no source hurts, angers or kills anyone there (every NPC, resident and
+// visitor; the octopus is octo.safe). A hit still shoves (at least knockMin u/s) and staggers; nothing else.
+export const SAFE_ZONES = { hub: 1, rest: 1 };
+export const SAFE_ZONE = { knockMin: 3, why: 'a safe zone (the hub, the rest grotto): hits only knock people about' };
+/** Is this level kind ('hub' | 'rest' | 'biome' | 'tutorial' ...) a safe zone? */
+export function isSafeZone(level) { return SAFE_ZONES[level] === 1; }
+/** A resolveHit outcome as it lands in a safe zone: no damage, no kill, no stun, the shove kept (at least knockMin). */
+export function safeZoneHit(o) {
+  if (o.ignore) return o;
+  o.dmg = 0; o.kill = false; o.stun = 0; o.knock = Math.max(o.knock, SAFE_ZONE.knockMin); o.why = 'safe zone';
+  return o;
+}
 
 /** The table row of a kind (an unknown kind gets a plain one-hit swimmer, so a new creature is never silently immune). */
 const DEFAULT_ROW = { family: 'enemy', hp: 4, mass: 1, physics: PH_SWIM, oneHitSplat: true };
