@@ -5,8 +5,9 @@
 // Mapping (Xbox names; a DualSense shows its own glyphs, glyphs.js):
 //   left stick   swim                       right stick  aim (`snap.aim`, active past its deadzone)
 //   RT           ink jet (held: auto-repeat) RB           use the selected hotbar slot (spell, bomb throw / drop)
-//   A            the hand (grab, talk, buy, throw; hold = drop)
-//   B or LT      dash                       LB           next hotbar slot
+//   LB           the hand (grab, talk, buy; again throws toward the aim stick; hold = drop). A is a second hand button in
+//                play (2026-10-18, Daniel: "LB should grab so I can throw while aiming"); prompts name LB
+//   B or LT      dash
 //   d-pad < >    previous / next slot       d-pad up     the bomb slot
 //   View (Back)  journal / inventory        Menu (Start) pause
 // In a menu (pause, settings, the death and clear screens: main.js says which) the pad drives menu-nav.js instead:
@@ -195,8 +196,7 @@ export function createGamepad(input, hooks = {}) {
     input.padButton('dash', held('b') || held('lt'));
     input.padButton('attack', held('rt'));
     input.padButton('use', held('rb'));
-    input.padButton('hand', held('a'));
-    if (edge('lb')) input.padCycle(1);
+    input.padButton('hand', held('lb') || held('a')); // LB is the hand (throw while the right thumb aims); A still works
     if (edge('left')) input.padCycle(-1);
     if (edge('right')) input.padCycle(1);
     if (edge('up')) input.padSelect(0); // the bomb slot (slot 1 of the bar)
@@ -297,8 +297,7 @@ export function createGamepad(input, hooks = {}) {
     setBtn(s.dash, hd('b') || hd('lt'));
     setBtn(s.attack, hd('rt'));
     setBtn(s.use, hd('rb'));
-    setBtn(s.hand, hd('a'));
-    if (ed('lb')) s.cycle += 1;
+    setBtn(s.hand, hd('lb') || hd('a'));
     if (ed('left')) s.cycle -= 1;
     if (ed('right')) s.cycle += 1;
     if (ed('up')) s.select = 0;
