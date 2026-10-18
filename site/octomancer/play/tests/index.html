@@ -236,6 +236,9 @@ import { runFragileTests } from './fragile.test.js';
   const bank = createRoomBank(await (await fetch('../data/biome1-rooms.json')).json());
   await runFragileTests(assert, bank);
 }
+// --- night batch 8 (2026-10-18): the breakable-here mark is painted cracks baked into the rock (no pale box) ---
+import { runWallCueTests } from './wallcue.test.js';
+await runWallCueTests(assert);
 
 // --- 2026-10-07: destructible shop, buff shopkeeper, Spelunky aggro ---
 import { runShopTests } from './shop.test.js';

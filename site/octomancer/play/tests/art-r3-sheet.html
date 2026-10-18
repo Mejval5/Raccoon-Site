@@ -12,7 +12,7 @@ import { drawJuiceDrops, drawInkClouds } from '../js/spells-draw.js';
 import { drawBombs } from '../js/enemy-draw.js';
 import { drawBombItem } from '../js/loot-draw.js';
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from '../js/spell-icons.js';
-import { drawWallCue } from '../js/v2-props-draw.js';
+import { drawWallCue, paintCrackCue } from '../js/v2-props-draw.js';
 import { ensureSprites, onSpritesReady } from '../js/sprites.js';
 
 const PPU = 144, W = 2200, H = 1950;
@@ -85,7 +85,9 @@ async function main() {
   const walls = []; for (let y = 9; y < 13; y++) for (let x = 8; x < 10; x++) walls.push(x, y);
   ctx.fillStyle = '#4a4553'; ctx.fillRect(7 * PPU, 9 * PPU, 4 * PPU, 4 * PPU);
   ctx.fillStyle = '#24485a'; ctx.fillRect(7 * PPU, 9 * PPU, PPU, 4 * PPU); ctx.fillRect(10 * PPU, 9 * PPU, PPU, 4 * PPU);
-  drawWallCue(ctx, cam, W, H, { walls: Int16Array.from(walls), tileAt: (x, y) => (x >= 8 && x < 10 ? 1 : 0), attention: 0 }, T);
+  const wl = Int16Array.from(walls), wt = (x, y) => (x >= 8 && x < 10 ? 1 : 0);
+  paintCrackCue(ctx, cam, W, H, wl, wt); // baked into the rock in the game
+  drawWallCue(ctx, cam, W, H, { walls: wl, tileAt: wt, attention: 1 }, T);
   window.__sheetDone = true;
 }
 main().catch((e) => { document.body.append(String(e)); window.__sheetDone = 'error: ' + e; });
