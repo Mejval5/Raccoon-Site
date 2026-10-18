@@ -76,6 +76,9 @@ import { runGamepadTests } from './gamepad.test.js';
 runGamepadTests(assert, approx);
 import { runCoopTests } from './coop.test.js';
 runCoopTests(assert, approx);
+// --- local co-op Phase 2: the ghost of a dead player (ghost.js; enemies.js freeze and blow) ---
+import { runGhostTests } from './ghost.test.js';
+await runGhostTests(assert);
 // --- controller Phase 2B: sign / painting text through glyph tokens, scheme switching, the journal's Controls tab ---
 import { runSignsTests } from './signs.test.js';
 await runSignsTests(assert);

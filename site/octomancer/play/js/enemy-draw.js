@@ -115,6 +115,27 @@ function surfaceDrawOffsetXY(placement, wallDir, worldSize, inset = GROUND_RIM_I
   return { dx: 0, dy };
 }
 
+// Local co-op (ghost.js): a creature a ghost froze (e.frozen = s left) is drawn pale and grey, with a few frost motes drifting
+// round it. Natural, not shiny: no glow, no sparkle, just the colour drained and some pale specks in the water.
+let frostK = 0; // 0..1 for the creature being drawn now (fades out over the last FROST_FADE s)
+const FROST_FADE = 0.5;
+// the colour drained, a little sepia turned cold (about 200 degrees: a pale blue-grey), lighter and flatter. Held whole until the
+// thaw (a partial hue turn would tint the returning colours for a moment); the motes fade out instead.
+const FROST = 'saturate(0.2) sepia(0.35) hue-rotate(165deg) brightness(1.5) contrast(0.75)';
+function frostFilter(hitFlash) { return hitFlash > 0 ? FROST + ` brightness(${(1 + hitFlash).toFixed(2)})` : FROST; }
+/** Pale frost motes round a frozen creature: a handful of specks slowly drifting up and round, fading as it thaws. */
+function drawFrostMotes(ctx, sx, sy, ppu, time, k, seed) {
+  ctx.save();
+  for (let i = 0; i < 6; i++) {
+    const ph = seed * 1.7 + i * 1.047, u = (time * 0.35 + i / 6 + seed * 0.13) % 1;
+    const x = sx + Math.cos(ph + time * 0.6) * ppu * (0.32 + 0.12 * Math.sin(ph * 3)), y = sy + ppu * (0.3 - 0.75 * u);
+    ctx.globalAlpha = k * 0.75 * Math.sin(Math.PI * u);
+    ctx.fillStyle = i & 1 ? '#e4eef2' : '#cfdde6';
+    ctx.beginPath(); ctx.arc(x, y, ppu * (0.028 + 0.012 * (i % 3)), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 /** Draw one image centered at world (x,y), sized to `worldSize` units tall
  * (width follows the image's own aspect ratio), tinted red briefly on hit. */
 function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, worldSize, angle, hitFlash) {
@@ -125,7 +146,8 @@ function drawSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, x, y, wor
   ctx.save();
   ctx.translate(s.x, s.y);
   if (angle) ctx.rotate(angle);
-  if (hitFlash > 0) {
+  if (frostK > 0) ctx.filter = frostFilter(hitFlash);
+  else if (hitFlash > 0) {
     ctx.filter = `brightness(${1 + hitFlash * 2}) saturate(${1 - hitFlash * 0.6})`;
   }
   ctx.drawImage(img, -w / 2, -h / 2, w, h);
@@ -269,6 +291,7 @@ function enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha)
     const ppu = camera.pxPerUnit;
     if (drawTrace.on) traceDraw('enemy', e);
     const { x: ex, y: ey } = interpPos(e, alpha);
+    frostK = e.frozen > 0 ? Math.min(1, e.frozen / FROST_FADE) : 0;
     const fl = flashOf(e, time);
     const tell = e.tell || 0;
     const wob = e.stun > 0 ? Math.sin(time * 28) * 0.18 : 0; // a stunned enemy wobbles
@@ -332,6 +355,8 @@ function enemyBody(ctx, camera, worldToScreen, canvasW, canvasH, e, time, alpha)
     }
     if (e.inkStain > 0 && sc) drawInkStain(ctx, sc.x, sc.y, ppu, e);
     if (e.stun > 0 && sc) drawStunStars(ctx, sc.x, sc.y, ppu, time);
+    if (frostK > 0 && sc) drawFrostMotes(ctx, sc.x, sc.y, ppu, time, frostK, (e.id | 0) % 7);
+    frostK = 0;
 }
 
 // V2-PLAN 16: corpses reuse each enemy's own sprite. kind -> [image, drawn height in tiles]
@@ -366,7 +391,8 @@ function drawFlippableSprite(ctx, camera, worldToScreen, canvasW, canvasH, img, 
   ctx.translate(s.x, s.y);
   if (rot) ctx.rotate(rot);
   ctx.scale((flipX ? -1 : 1) * sx, (flipY ? -1 : 1) * sy);
-  if (hitFlash > 0) {
+  if (frostK > 0) ctx.filter = frostFilter(hitFlash);
+  else if (hitFlash > 0) {
     ctx.filter = `brightness(${1 + hitFlash * 2}) saturate(${Math.max(0, 1 - hitFlash * 0.6)})`;
   }
   ctx.drawImage(img, -w / 2, -h / 2, w, h);
