@@ -129,7 +129,7 @@ export async function runPearlTests(assert) {
   // ---- the Swift Current pays nothing; the moon shell comes from the pearl (main.js) ----
   {
     const src = await (await fetch(new URL('../js/main.js', import.meta.url))).text();
-    const body = (name) => { const a = src.indexOf('function ' + name + '('); if (a < 0) return ''; const b = src.indexOf('\n}\n', a); return src.slice(a, b); };
+    const body = (name) => { const a = src.indexOf('function ' + name + '('); if (a < 0) return ''; const m = /\r?\n\}\r?\n/.exec(src.slice(a)); return m ? src.slice(a, a + m.index) : ''; }; // (CRLF or LF)
     const es = body('earnSwift'), pw = body('pearlIntoWhirlpool'), fp = body('finishPortal');
     assert('swift: reaching the whirlpool in time pays nothing any more (no moon shell dropped, no shells)', es && !/gainShells|dropShell|SK_MOON|MOON_VALUE/.test(es) && !/paySwiftShell/.test(src));
     assert(`pearl: the exit whirlpool converts only a HELD pearl into the moon shell (+${MOON_VALUE}, journal item-moon), on entering the exit`,
