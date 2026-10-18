@@ -203,8 +203,12 @@ export function createInkJet() {
         const x = px + data.vx[i] * sdt, y = py + data.vy[i] * sdt;
         if (world.isSolid(x, y)) { // splat at the last free spot, so it sits on the wall face
           const sp = Math.hypot(data.vx[i], data.vy[i]) || 1;
-          // a fish-bone block crumbles under the blob (fragile.js): weak, so the blob splashes there and flies on
-          if (crumbleAt(world, x, y, CR_INK) && BONE_PIERCE && !world.isSolid(x, y)) { events.pierced++; splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); }
+          // a fish-bone block crumbles under the blob (fragile.js): with BONE_PIERCE the blob splashes there and flies on;
+          // without it (Daniel 2026-10-18: one tile per shot) it splashes without a stain, since the rock is gone, and stops
+          if (crumbleAt(world, x, y, CR_INK)) {
+            if (BONE_PIERCE && !world.isSolid(x, y)) { events.pierced++; splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); }
+            else { splat(x, y, data.vx[i] / sp, data.vy[i] / sp, true); data.alive[i] = 0; done = true; break; }
+          }
           else { splat(px, py, data.vx[i] / sp, data.vy[i] / sp, false); data.alive[i] = 0; done = true; break; }
         }
         data.x[i] = x; data.y[i] = y;
