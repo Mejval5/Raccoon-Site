@@ -7,7 +7,11 @@ import { setDefaultBank, generateLevel, finalPathOk, LEVEL_W, LEVEL_H } from '..
 import { buildLevelSpawns, blockCanMove } from '../js/level-spawns.js';
 import { hazardBlockers } from '../js/hazards.js';
 import { createLevelWorld } from '../js/world-v2.js';
-import { createProps, PK_BLOCK, PK_BOMB, PS_REST } from '../js/props.js';
+import { createProps, PK_BLOCK, PK_BOMB, PS_REST, BLOCK_BLAST_CARRY } from '../js/props.js';
+import { STEP } from '../js/loop.js';
+import { updateCamera } from '../js/camera.js';
+import { createBotSim, tick } from './bot.js';
+import { place } from './movement.js';
 import { createEnemies } from '../js/enemies.js';
 import { createOctopus } from '../js/octopus.js';
 import { mulberry32 } from '../js/rng.js';
@@ -90,6 +94,99 @@ export async function runBlocksTests(assert) {
     octo.vx = 0; octo.x = 5; octo.y = 5;
     run(props, world, 200, octo);
     assert(`blocks: pushed off a ledge it falls and lands on the lower floor (x ${d.x[i].toFixed(2)}, bottom ${(d.y[i] + R).toFixed(3)} vs 20)`, d.x[i] > 20.4 && Math.abs(d.y[i] + R - 20) < 0.02 && d.state[i] === PS_REST && !inRock(world, d.x[i], d.y[i]));
+  }
+
+  // ---- 2026-10-18 Spelunky rules: support, the 1/16 snap on losing it, a straight fall, no sideways carry, the grid on landing ----
+  {
+    // support: anything under any part of the footprint holds it; nothing under the whole footprint does not
+    const world = room(40, 26, (x, y) => (x < 20 ? y >= 14 : y >= 20));
+    const props = createProps(), d = props.data;
+    const a = props.add(PK_BLOCK, 20 + R - 0.05, 13.5), b = props.add(PK_BLOCK, 30.5, 13.5); // a: 0.05 of it over the ledge; b: over open water
+    d.y[a] = d.y[b] = 14 - R;
+    assert('blocks: support: a block with 0.05 of its bottom over the ledge is held up, one over open water is not',
+      props.blockSupported(a, world) === true && props.blockSupported(b, world) === false);
+    run(props, world, 80);
+    assert(`blocks: ... the held one stays on the ledge (x ${d.x[a].toFixed(3)}, bottom ${(d.y[a] + R).toFixed(3)})`, Math.abs(d.y[a] + R - 14) < 0.02 && Math.abs(d.x[a] - (20 + R - 0.05)) < 1e-4);
+  }
+  {
+    // pushed off a one-tile ledge by the real swim (bot sim): the moment it loses support its sideways speed is gone and x is on
+    // the 1/16 grid; it falls straight down that column and lands on the tile grid in the next column, x 20.5
+    const world = room(40, 26, (x, y) => (x < 20 ? y >= 14 : y >= 15));
+    const sim = createBotSim(world), d = sim.props.data;
+    const i = sim.props.add(PK_BLOCK, 17.5, 13.5);
+    for (let k = 0; k < 40; k++) sim.props.step(STEP, world, null);
+    place(sim, 15, 13.5);
+    let lostAt = null, fallXs = new Set(), carry = 0, n = 0;
+    for (; n < 400 && d.state[i] !== PS_REST || n < 60; n++) {
+      const was = d.grounded[i];
+      tick(sim, d.x[i] < 20.5 && !lostAt ? 1 : 0, 0);
+      if (was && !d.grounded[i] && !lostAt) lostAt = { x: d.x[i], vx: d.vx[i] };
+      if (lostAt && !d.grounded[i]) { fallXs.add(d.x[i]); if (d.vx[i] !== 0) carry++; }
+    }
+    assert(`blocks: losing support: sideways speed 0 and x on the 1/16 grid (x ${lostAt && lostAt.x}, vx ${lostAt && lostAt.vx})`, !!lostAt && lostAt.vx === 0 && Math.abs(lostAt.x * 16 - Math.round(lostAt.x * 16)) < 1e-4);
+    assert(`blocks: ... it falls straight down (${fallXs.size} distinct x in the air, ${carry} steps with sideways speed)`, fallXs.size === 1 && carry === 0);
+    assert(`blocks: ... and lands in the next column on the tile grid (x ${d.x[i]}, bottom ${(d.y[i] + R).toFixed(3)} vs 15)`, d.x[i] === 20.5 && Math.abs(d.y[i] + R - 15) < 0.02 && d.state[i] === PS_REST);
+  }
+  {
+    // Daniel's wedge: off the ledge onto a lower floor with a 1-wide hole right under the next column; it drops into the hole
+    const world = room(40, 30, (x, y) => (x < 20 ? y >= 14 : x === 20 ? y >= 24 : y >= 18));
+    const props = createProps(), d = props.data;
+    const i = props.add(PK_BLOCK, 17.5, 13.5);
+    run(props, world, 40);
+    const octo = createOctopus(15, 13.5);
+    for (let n = 0; n < 300; n++) { octo.vx = d.x[i] < 20.6 ? 3 : 0; octo.vy = 0; octo.x += octo.vx * DT; props.step(DT, world, octo); }
+    assert(`blocks: pushed off a ledge above a 1-wide hole it drops into the hole, never wedged on its lip (x ${d.x[i]}, bottom ${(d.y[i] + R).toFixed(3)} vs 24)`, d.x[i] === 20.5 && Math.abs(d.y[i] + R - 24) < 0.02 && d.state[i] === PS_REST);
+    // and slid across a 1-wide hole in its own floor it drops in, as in Spelunky
+    const w2 = room(40, 26, (x, y) => (x === 22 ? y >= 18 : y >= 14));
+    const p2 = createProps(), e = p2.data;
+    const j = p2.add(PK_BLOCK, 18.5, 13.5);
+    run(p2, w2, 40);
+    const o2 = createOctopus(16, 13.5);
+    for (let n = 0; n < 320; n++) { o2.vx = 3; o2.vy = 0; o2.x += o2.vx * DT; if (e.y[j] > 14) o2.x = Math.min(o2.x, 21); p2.step(DT, w2, o2); }
+    assert(`blocks: shoved over a 1-wide hole in its floor it drops in (x ${e.x[j]}, bottom ${(e.y[j] + R).toFixed(3)} vs 18)`, e.x[j] === 22.5 && Math.abs(e.y[j] + R - 18) < 0.02);
+  }
+  {
+    // no sideways carry in the air: a block thrown sideways falls straight; a blast is the one explicit carry, capped
+    const world = room(40, 26, (x, y) => y >= 20);
+    const props = createProps(), d = props.data;
+    const i = props.add(PK_BLOCK, 10.3, 6, 4, 0);
+    let xs = new Set();
+    for (let n = 0; n < 200; n++) { props.step(DT, world, null); if (!d.grounded[i]) xs.add(d.x[i]); }
+    assert(`blocks: no sideways carry: a block given vx 4 in open water falls straight and lands on the grid (x ${d.x[i]}, ${xs.size} x in the air)`, xs.size === 1 && d.x[i] === 10.5);
+    const k = props.add(PK_BLOCK, 20.5, 19.5);
+    run(props, world, 40);
+    props.blast(19.2, 19.6, 1.5);
+    const vx0 = d.vx[k];
+    let maxVx = 0;
+    for (let n = 0; n < 300; n++) { props.step(DT, world, null); maxVx = Math.max(maxVx, Math.abs(d.vx[k])); }
+    assert(`blocks: a blast is the one carry: capped (vx ${vx0.toFixed(2)}, max ${maxVx.toFixed(2)} <= ${BLOCK_BLAST_CARRY}), and it ends on the tile grid (x ${d.x[k]})`,
+      vx0 > 0 && maxVx <= BLOCK_BLAST_CARRY + 1e-6 && d.x[k] * 2 === Math.round(d.x[k] * 2) && !inRock(world, d.x[k], d.y[k]));
+  }
+  {
+    // steady push with the real swim: once in contact the block slides at exactly BLOCK_PUSH_SPEED, the octopus keeps its speed
+    // (no stop-go), and the camera (camera.js updateCamera at 60 Hz on the interpolated position) never reverses or jumps
+    const world = room(60, 30, (x, y) => y >= 14);
+    const sim = createBotSim(world), d = sim.props.data;
+    const i = sim.props.add(PK_BLOCK, 20.5, 13.5);
+    for (let k = 0; k < 40; k++) sim.props.step(STEP, world, null);
+    place(sim, 17, 13.5);
+    const o = sim.octo, cam = {};
+    let acc = 0, last = null, contactF = -1, worstDv = 0, worstBv = 0, back = 0, maxD = 0, prevVx = null;
+    for (let f = 0; f < 60 * 6; f++) {
+      acc += 1 / 60;
+      while (acc >= STEP) {
+        tick(sim, 1, 0); acc -= STEP;
+        if (contactF < 0 && d.vx[i] > 0) contactF = f;
+        if (contactF >= 0 && f > contactF + 6) { worstBv = Math.max(worstBv, Math.abs(d.vx[i] - 1.6)); if (prevVx !== null) worstDv = Math.max(worstDv, Math.abs(o.vx - prevVx)); }
+        prevVx = o.vx;
+      }
+      const a = acc / STEP;
+      updateCamera(cam, 1440, 900, o.prevX + (o.x - o.prevX) * a, o.prevY + (o.y - o.prevY) * a, 60, 30, 1 / 60, o.vx, o.vy);
+      if (last !== null && contactF >= 0 && f > contactF + 45) { const dc = cam.x - last; if (dc < -1e-6) back++; maxD = Math.max(maxD, Math.abs(dc)); }
+      last = cam.x;
+    }
+    assert(`blocks: pushed by the real swim the block slides at a steady speed (worst |vx - 1.6| ${worstBv.toFixed(4)}) and the octopus speed does not stop-go (worst step change ${worstDv.toFixed(4)})`, contactF >= 0 && worstBv < 1e-4 && worstDv < 0.05);
+    assert(`blocks: ... the camera follows smoothly while pushing (${back} frames moving back, worst per-frame move ${maxD.toFixed(4)} vs swim ${(5.5 / 60).toFixed(4)})`, back === 0 && maxD <= 5.5 / 60);
   }
 
   // ---- it cannot be pushed into rock: the next column must be free ----

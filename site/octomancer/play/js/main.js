@@ -1101,7 +1101,7 @@ function step(dt) {
     questClear = null;
   }
   const enemyAll = V2 ? enemies.all() : null; // one list for the props step and the hazards below (boulders, spikes, jets read enemies)
-  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
+  if (V2) { addBlocks(world.residentChunks()); syncBodies(); props.step(dt, world, worldOctos(), enemyAll); syncBodies(dt); blockLandingFx(); } // sink, bounce, roll; hazards, loot and bombs read their bodies from here
   if (V2) { damage.tick(dt); infight.tick(dt); }
   if (V2 && liveWorld()) infight.stepThrown(); // INFIGHT.projectile: a thrown bomb or a flung pot hits the creature it meets
   if (V2) corpses.update(dt, world, hazards.data);
@@ -2939,6 +2939,17 @@ function addBlocks(resident) {
     for (const s of chunk.spawns) if (s.type === 'block') props.add(PK_BLOCK, s.x, s.y);
   }
 }
+let blockLands = 0; // test hook: hard block landings so far (thud and dust)
+/** A block that came down hard (props.js blockLandings, after each props step): a thud and a puff of dust off the floor. */
+function blockLandingFx() {
+  const L = props.blockLandings();
+  for (let k = 0; k < L.length; k += 3) {
+    blockLands++;
+    particles.bouncePuff(L[k], L[k + 1] - 0.05, 0, -1);
+    sfx.thud();
+    if (L[k + 2] > 3.5) particles.shakeFx(1.5, 0.12);
+  }
+}
 function paintPass(c, camera, cw, ch) { drawCavePainting(c, camera, cw, ch, world.level.painting, signView); }
 /** Materials: wall traps (hazards) and pushable blocks draw BEFORE the terrain, so every terrain material's edge overlaps them. */
 function v2PreWall(c, camera, cw, ch) {
@@ -4365,6 +4376,9 @@ window.__octo = {
     for (let i = 0; i < d.n; i++) if (d.alive[i]) out.push({ i, kind: PROP_NAMES[d.kind[i]], x: d.x[i], y: d.y[i], vx: d.vx[i], vy: d.vy[i], r: d.radius[i], state: d.state[i], timer: d.timer[i] });
     return out;
   },
+  /** Test hook: a pushable block at (x, y) (it settles onto what is under it); returns its prop index. `blockLands`: hard landings so far. */
+  addBlock(x, y) { return props.add(PK_BLOCK, x, y); },
+  blockLands() { return blockLands; },
   addCorpse(kind, x, y, vx, vy, face) { return corpses.add(kind, x, y, vx || 0, vy || 0, face || 1); },
   dropShellAt(x, y, sk) { return pickups.dropShell(x, y, 0, 0, sk || 1); },
   /** Test hook (chest-cdp.js): the live dropped shells not yet taken (the objects themselves: a test may hide one for a frame). */
