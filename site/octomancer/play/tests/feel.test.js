@@ -1,8 +1,10 @@
 // Round 37: game feel (idle sink, dash recoil, landing squash, shake and hit-stop scale, contact shadows).
 import { STEP } from '../js/loop.js';
 import { createOctopus, stepOctopus, tryDash } from '../js/octopus.js';
-import { OCTO_IDLE_SINK, SHAKE_MAX_PX, SHAKE_HURT_PX, HITSTOP_S, SWIM_MAX_SPEED } from '../js/config.js';
-import { createParticles, blastShakePx } from '../js/particles.js';
+import { OCTO_IDLE_SINK, SHAKE_MAX_PX, SHAKE_HURT_PX, SHAKE_HURT_S, HITSTOP_S, SWIM_MAX_SPEED, BLAST_SHAKE_S, KILL_FLASH_S, KILL_POOF_N, PICKUP_SPECKS, RUMBLE, RUMBLE_GAIN, RUMBLE_MAX_MS, setMotionSettings } from '../js/config.js';
+import { createParticles, blastShakePx, blastHitStop, blastFalloff, blastGain } from '../js/particles.js';
+import { createEnemies, setHpMode } from '../js/enemies.js';
+import { createGamepad, fakePad, fakeRumbleLog } from '../js/gamepad.js';
 import { floorBelow, shadowStrength } from '../js/feel-draw.js';
 
 const open = { isSolid: () => false };
@@ -10,7 +12,7 @@ const idle = { move: { x: 0, y: 0 }, dash: { pressed: false } };
 
 export function runFeelTests(assert) {
   assert('default idle sink is 0.35 u/s^2', OCTO_IDLE_SINK === 0.35);
-  assert('shake, hurt shake and hit-stop constants', SHAKE_MAX_PX === 6 && SHAKE_HURT_PX === 3 && HITSTOP_S === 0.06);
+  assert('shake, hurt shake and hit-stop constants (impact pass: 9 px blast over 0.3 s, 5 px over 0.2 s hurt)', SHAKE_MAX_PX === 9 && SHAKE_HURT_PX === 5 && SHAKE_HURT_S === 0.2 && HITSTOP_S === 0.06 && BLAST_SHAKE_S === 0.3);
 
   // sink: drifts down while idle (up to ~0.175 u/s terminal), none without the feel flag
   {
@@ -67,22 +69,30 @@ export function runFeelTests(assert) {
     let sb = 0; for (let i = 0; i < 200; i++) { stepOctopus(s, right, STEP, wall); if (s.bouncedThisStep) sb++; }
     assert('swimming into a wall does not bounce', sb === 0);
   }
-  // shake: scaled by distance, never above 6 px, 0.25 s; reduced motion switches it off
+  // shake: scaled by distance, never above 9 px, 0.3 s; reduced motion switches it off
   {
-    assert('explosion shake is 6 px at point blank, smaller far away, never below 1 px', blastShakePx(0) === 6 && blastShakePx(7) < 4 && blastShakePx(7) > 2.5 && blastShakePx(99) === 1);
+    assert('explosion shake is 9 px at point blank, smaller far away, never below 1 px', blastShakePx(0) === 9 && blastShakePx(7) < 6 && blastShakePx(7) > 3.5 && blastShakePx(99) === 1);
     const pt = createParticles();
     pt.blastFeel(5, 5, 0);
     let m = pt.shakePx(), peak = Math.max(Math.abs(m.x), Math.abs(m.y));
     for (let i = 0; i < 50; i++) { m = pt.shakePx(i * 16.7); peak = Math.max(peak, Math.abs(m.x), Math.abs(m.y)); }
-    assert('shake stays within 6 px', peak <= 6.001 && peak > 0);
-    for (let i = 0; i < 12; i++) pt.update(0.02);
-    assert('shake lasts 0.25 s and then is exactly zero', (m = pt.shakePx(), Math.abs(m.x) + Math.abs(m.y) > 0));
+    assert('shake stays within 9 px', peak <= 9.001 && peak > 0);
+    for (let i = 0; i < 14; i++) pt.update(0.02);
+    assert('a blast shake still runs at 0.28 s', (m = pt.shakePx(), Math.abs(m.x) + Math.abs(m.y) > 0));
     for (let i = 0; i < 2; i++) pt.update(0.02);
     m = pt.shakePx();
-    assert('shake is gone after 0.25 s', m.x === 0 && m.y === 0);
-    pt.shakeFx(SHAKE_HURT_PX);
-    let hp = 0; for (let i = 0; i < 40; i++) { m = pt.shakePx(i * 16.7); hp = Math.max(hp, Math.abs(m.x), Math.abs(m.y)); }
-    assert('damage shake peaks at 3 px', hp <= 3.001 && hp > 0);
+    assert('shake is gone after 0.3 s', m.x === 0 && m.y === 0);
+    // the wobble's phase is the time passed in, so the peak is read exactly where sin = 1 (no sampling, no clock)
+    const PEAK_MS = Math.PI / 2 / 0.06;
+    pt.shakeFx(SHAKE_HURT_PX, SHAKE_HURT_S);
+    const hx = pt.shakePx(PEAK_MS).x;
+    assert('hurt shake: 5 px at its start (>= 5 px, never above)', hx >= 4.999 && hx <= 5.001, String(hx));
+    for (let i = 0; i < 5; i++) pt.update(0.02);
+    assert('hurt shake: half strength after 0.1 s', Math.abs(pt.shakePx(PEAK_MS).x - 2.5) < 0.01);
+    for (let i = 0; i < 6; i++) pt.update(0.02);
+    assert('hurt shake: gone after 0.2 s', pt.shakePx(PEAK_MS).x === 0);
+    const b9 = createParticles(); b9.blastFeel(5, 5, 0);
+    assert('blast shake: 9 px point blank', Math.abs(b9.shakePx(PEAK_MS).x - 9) < 1e-6);
     const old = globalThis.matchMedia;
     globalThis.matchMedia = () => ({ matches: true });
     try {
@@ -91,6 +101,54 @@ export function runFeelTests(assert) {
       const mm = q.shakePx();
       assert('reduced motion: no shake and no bubbles', mm.x === 0 && mm.y === 0 && live === 0);
     } finally { globalThis.matchMedia = old; }
+  }
+  // impact pass (IMPROVEMENTS.md 2026-10-18 #4): blast hit-stop and loudness, one shake path, the kill flash, the pickup pop, rumble
+  {
+    setMotionSettings(false, true);
+    assert('blast hit-stop: point blank 0.05 s, at 1 tile > 0, at 12 tiles none (k = 0 from 10 tiles on)', Math.abs(blastHitStop(0) - 0.05) < 1e-9 && blastHitStop(1) > 0.04 && blastHitStop(12) === 0 && blastFalloff(10) === 0 && blastFalloff(12) === 0);
+    assert('blast hit-stop: a sliver under 10 ms is skipped (it would still freeze a whole step)', blastHitStop(9) === 0 && blastHitStop(7) > 0);
+    assert('blast loudness: 1 point blank, quieter far away, never under 0.25', blastGain(0) === 1 && blastGain(8) < 0.7 && blastGain(8) > 0.6 && blastGain(40) === 0.25);
+    const q = createParticles();
+    q.blastBurst(5, 5, 0); q.blastFeel(5, 5, 0); // what main.js calls for one blast
+    const so = q.shakeOffset(), sp = q.shakePx(Math.PI / 2 / 0.06);
+    assert('one shake source per blast: the old world-unit shake stays still, the pixel shake moves', so.x === 0 && so.y === 0 && sp.x > 8.9);
+    q.bombDebris(5, 5);
+    assert('one shake source: a pot or rock break does not start the old shake either', q.shakeOffset().x === 0 && q.shakeOffset().y === 0);
+    // kill poof: 14 specks in the creature's tint
+    const k = createParticles(); k.killPoof(5, 5, 'crab');
+    const kp = k.pool.filter((p) => p.active);
+    assert('kill poof: 14 specks, most in the crab tint, the rest pale', kp.length === KILL_POOF_N && kp.filter((p) => p.color === '#c98466').length >= 9);
+    const pp = createParticles(); pp.pickupPop(5, 5, '#e8f1e4');
+    assert('pickup: 8 specks', pp.pool.filter((p) => p.active).length === PICKUP_SPECKS);
+    // the kill flash: an ink kill leaves a pale after-image for 60 ms with no hit-stop; a dash kill keeps its white one
+    setHpMode(true);
+    try {
+      const en = createEnemies(); const pir = en.spawnAt('piranha', 5, 5); const o = { x: 40, y: 40, vx: 0, vy: 0, radius: 0.5, hearts: 3, dead: false };
+      en.hurt(pir, 999);
+      const ghost = en.all().find((e) => e.ghost && e.kind === 'piranha');
+      const evs = en.events.map((e) => e.type);
+      assert('ink kill: the flash (a pale ghost, weaker than the dash kill white) and no hit-stop event', pir.dead && ghost && ghost.hitFlash >= 0.2 && ghost.hitFlash < 1 && Math.abs(ghost.t - KILL_FLASH_S) < 1e-9 && evs.includes('enemyKilled') && !evs.includes('hitStop'));
+      const OPEN = { isSolid: () => false, tileAt: () => 0, isBreakable: () => false };
+      for (let i = 0; i < 3; i++) en.update(0.02, 0, o, OPEN, []);
+      assert('ink kill: the flash is gone after 60 ms of sim', !en.all().some((e) => e.ghost));
+    } finally { setHpMode(false); }
+    // rumble: a fake pad's actuator records each effect; the cap holds; shake off or reduced motion sends nothing
+    fakeRumbleLog.length = 0;
+    const fp = fakePad({}, 0), key = String(fp.id) + '#0';
+    const gp = createGamepad({ pad: { x: 0, y: 0 }, padButton() {}, padCycle() {}, padSelect() {}, mode: () => 'pad', setMode() {} }, { getPads: () => [fp] });
+    assert('rumble: hurt reaches the pad, scaled by the 0.7 cap', gp.rumble(key, ...RUMBLE.hurt) && fakeRumbleLog.length === 1 && fakeRumbleLog[0].type === 'dual-rumble' && Math.abs(fakeRumbleLog[0].weakMagnitude - 0.8 * RUMBLE_GAIN) < 1e-9 && fakeRumbleLog[0].duration === 120);
+    assert('rumble: a weaker effect does not cut off a stronger one still playing', !gp.rumble(key, 0.1, 0.1, 60) && fakeRumbleLog.length === 1);
+    gp.rumble(key, 1, 1, 5000);
+    const last = fakeRumbleLog[fakeRumbleLog.length - 1];
+    assert('rumble: never above the cap or longer than 300 ms', last.strongMagnitude <= RUMBLE_GAIN + 1e-9 && last.duration === RUMBLE_MAX_MS);
+    assert('rumble: no pad key (keyboard player) sends nothing', !gp.rumble('', 1, 1, 100));
+    const n0 = fakeRumbleLog.length;
+    setMotionSettings(false, false);
+    const offShake = gp.rumble(key, 1, 1, 300);
+    setMotionSettings(true, true);
+    const offReduced = gp.rumble(key, 1, 1, 300);
+    setMotionSettings(null, true);
+    assert('rumble: off with screen shake off and with reduced motion', !offShake && !offReduced && fakeRumbleLog.length === n0);
   }
   // contact shadows
   {

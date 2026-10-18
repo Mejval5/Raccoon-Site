@@ -43,9 +43,24 @@ export const TILE_SIZE = 1;
 // Game feel (round 37, v2 only: the octopus carries `feel = true`, endless never sets it).
 /** Slow sink of the octopus while it is NOT swimming, u/s^2 (drag 2 makes the terminal speed half of it). Swimming cancels it. ?sink=<value> overrides. */
 export const OCTO_IDLE_SINK = 0.35;
-export const SHAKE_MAX_PX = 6;      // explosion shake at point blank
-export const SHAKE_HURT_PX = 3;     // shake on taking damage
+export const SHAKE_MAX_PX = 9;      // explosion shake at point blank (impact pass 2026-10-18: was 6)
+export const SHAKE_HURT_PX = 5;     // shake on taking damage (impact pass: was 3, read as the same wobble as minor events)
+export const SHAKE_HURT_S = 0.2;    // s the hurt shake lasts
 export const SHAKE_DURATION = 0.25; // s
+// Impact pass (IMPROVEMENTS.md 2026-10-18 #4): Spelunky 2 weight, not mobile-game excess.
+export const BLAST_SHAKE_S = 0.3;   // s a blast shakes (SHAKE_MAX_PX at point blank, particles.js blastShakePx)
+export const BLAST_FEEL_RANGE = 10; // tiles: the blast falloff k (hit-stop, rumble) is 1 at the blast and 0 from here on
+export const BLAST_HITSTOP_S = 0.05; // s the sim freezes on a blast at point blank (x k; under one step it is skipped)
+export const KILL_FLASH_S = 0.06;   // s the pale after-image of every kill stays (no extra sim freeze outside a dash kill)
+export const KILL_FLASH = 0.3;      // its strength (enemy-draw.js hitFlash: brightness 1 + 2f = 1.6): a pale tint, not a white-out
+export const KILL_POOF_N = 14;      // specks in a kill poof, tinted by the creature (6 under reduced motion)
+export const PICKUP_POP_S = 0.12;   // s of the octopus's pickup pop
+export const PICKUP_POP = 0.08;     // its peak scale (1.0 -> 1.08 -> 1.0)
+export const PICKUP_SPECKS = 8;     // pale specks on a pickup
+// Pad rumble (gamepad.js rumble): [weak, strong, ms] per event, before the fixed cap below. Off with screen shake off or reduced motion.
+export const RUMBLE = { hurt: [0.8, 0.4, 120], blast: [1.0, 0.6, 180], splat: [1, 1, 300], dashKill: [0.3, 0.6, 60] };
+export const RUMBLE_GAIN = 0.7;     // the cap that holds whatever the settings say: every magnitude is scaled by this (the strongest is 0.7)
+export const RUMBLE_MAX_MS = 300;   // no effect lasts longer
 export const HITSTOP_S = 0.06;      // s the sim freezes on damage and on dash kills
 export const DASH_RECOIL = 3;       // u/s kicked back off a wall after a dash hits it
 export const DASH_BOUNCE_MIN = 3.5; // u/s: a dash faster than this that hits a wall bounces (drag 2 slows a dash to ~3 u/s after 3.5 tiles)

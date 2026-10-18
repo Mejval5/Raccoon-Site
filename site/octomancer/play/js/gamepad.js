@@ -20,6 +20,8 @@
 // The poll runs once per display frame from loop.js's frame callback (paused or not: Start still has to unpause and the
 // d-pad still has to move through the pause menu), not in the fixed step and not on a second requestAnimationFrame.
 
+import { prefersReducedMotion, shakeEnabled, RUMBLE_GAIN, RUMBLE_MAX_MS } from './config.js';
+
 export const MOVE_DEADZONE = 0.2;
 export const AIM_DEADZONE = 0.3;
 export const TRIGGER_DOWN = 0.5;   // an analogue trigger counts as pressed past this
@@ -316,8 +318,30 @@ export function createGamepad(input, hooks = {}) {
     return out;
   }
 
+  // --- rumble (impact pass 2026-10-18): Gamepad.vibrationActuator 'dual-rumble', sent to one pad by its roster key -------------
+  const rumbleUntil = new Map(); // key -> {t: performance.now() when the effect ends, m: its strength}
+  /**
+   * Rumble the pad `key` (players.js padKey; '' or a missing pad does nothing): `weak` / `strong` 0..1 for `ms`. Off with screen
+   * shake off or reduced motion. Whatever the settings, magnitudes are scaled by RUMBLE_GAIN (0.7) and `ms` capped at
+   * RUMBLE_MAX_MS, and a weaker effect never cuts off a stronger one still playing. Returns whether an effect was sent.
+   */
+  function rumble(key, weak, strong, ms) {
+    if (!key || prefersReducedMotion() || !shakeEnabled() || !(ms > 0)) return false;
+    let list = null;
+    try { list = getPads(); } catch (e) { list = null; }
+    const g = padByKey(list, key), act = g && g.vibrationActuator;
+    if (!act || typeof act.playEffect !== 'function') return false;
+    const w = Math.max(0, Math.min(1, weak)) * RUMBLE_GAIN, st = Math.max(0, Math.min(1, strong)) * RUMBLE_GAIN, m = Math.max(w, st);
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now(), prev = rumbleUntil.get(key);
+    if (prev && now < prev.t && m < prev.m) return false;
+    const dur = Math.min(RUMBLE_MAX_MS, ms);
+    rumbleUntil.set(key, { t: now + dur, m });
+    try { const pr = act.playEffect('dual-rumble', { startDelay: 0, duration: dur, weakMagnitude: w, strongMagnitude: st }); if (pr && pr.catch) pr.catch(() => {}); } catch (e) { return false; }
+    return true;
+  }
+
   return {
-    poll, frame, snapshotOf,
+    poll, frame, snapshotOf, rumble,
     /** Local co-op: the connected pads other than the primary one ({key, id, index, style}). */
     others() { return [...others.values()].map((r) => ({ key: r.key, id: r.id, index: r.index, style: r.style })); },
     /** The key (players.js padKey) of the primary pad now, or ''. */
@@ -334,6 +358,9 @@ export function createGamepad(input, hooks = {}) {
  * Build a Gamepad-shaped object from a short state: {lx, ly, rx, ry, a, b, x, y, lb, rb, lt, rt, back, start, up, down,
  * left, right, id}. Trigger values may be numbers (0..1); other buttons booleans.
  */
+/** Every playEffect sent to a fake pad (tests: `import('./js/gamepad.js')` in the page and read it). */
+export const fakeRumbleLog = [];
+const fakeActuator = { type: 'dual-rumble', playEffect(type, p) { fakeRumbleLog.push({ type, ...p }); return Promise.resolve('complete'); }, reset() { return Promise.resolve('complete'); } };
 export function fakePad(state = {}, index = 0) {
   const buttons = [];
   for (const n of NAMES) {
@@ -346,5 +373,6 @@ export function fakePad(state = {}, index = 0) {
     id: state.id || 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index, connected: true,
     mapping: 'standard', timestamp: performance.now(),
     axes: [state.lx || 0, state.ly || 0, state.rx || 0, state.ry || 0], buttons,
+    vibrationActuator: state.noRumble ? null : fakeActuator,
   };
 }

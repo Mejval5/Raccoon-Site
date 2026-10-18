@@ -37,6 +37,7 @@ import { octoHit } from './damage.js';
 import { FRENZY_R } from './creature-rules.js';
 import { LURE_ARRIVE } from './infight.js';
 import { pickTarget, leadOf, octoList } from './players.js';
+import { KILL_FLASH_S, KILL_FLASH } from './config.js';
 
 const ONE = [null]; // octoList's reusable slot for a single octopus (solo play passes one, co-op an array)
 
@@ -514,6 +515,10 @@ export function createEnemies() {
       // r36: the ghost is only a white silhouette: no wind-up cue, '!' or glow (the enemy it copies is dead)
       ghosts.push({ ...e, dead: false, ghost: true, t: HIT_STOP, hitFlash: 1.2, stun: 0, tell: 0, st: 0, prevX: e.x, prevY: e.y });
       events.push({ type: 'hitStop', dur: HIT_STOP });
+    } else {
+      // impact pass (2026-10-18): every other kill (ink, bomb, boulder, spikes, a creature) gets a brief pale after-image too,
+      // weaker than the dash kill's white and with no sim freeze: it fades with the sim in KILL_FLASH_S
+      ghosts.push({ ...e, dead: false, ghost: true, t: KILL_FLASH_S, hitFlash: KILL_FLASH, stun: 0, tell: 0, st: 0, prevX: e.x, prevY: e.y });
     }
   }
 
