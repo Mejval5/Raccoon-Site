@@ -9,7 +9,7 @@ import {
   insertBestRun, recordDive, getBestRuns, getMeta, getShortcut, setShortcut, loadBest, _resetForTests, BEST_RUNS_MAX,
 } from '../js/save.js';
 import { formatTime, formatClock, depthLabel, summaryRows, summaryHeadline, bestRunLines, statsRows, causeText } from '../js/runstats.js';
-import { createUI } from '../js/ui.js';
+import { createUI, summaryDisplayRows } from '../js/ui.js';
 import { createJournal } from '../js/journal.js';
 import { createJournalScreen } from '../js/journal-ui.js';
 import { createOctopus, hurtOctopus, killOctopus } from '../js/octopus.js';
@@ -177,7 +177,7 @@ export async function runMetaTests(assert) {
     assert('runstats: best run lines', bestRunLines([runOf(4, 40, 300), runOf(2, 5, 61)]).join('|') === '1. Cleared, 40 shells, 5:00|2. Shallows 1-2, 5 shells, 1:01');
     const st = statsRows({ dives: 5, clears: 1, bestDepth: 4, shells: 120, kills: 33, deaths: { eel: 1, crab: 3, bomb: 3 } });
     assert('runstats: stats page rows (runs, best depth, total shells) and deaths most first',
-      st.rows[0].join() === 'Runs,5' && st.rows[2].join() === 'Best depth,Cleared' && st.rows[3].join() === 'Total shells,120' && st.deaths.map((x) => x.join(':')).join() === 'Own bomb:3,Crab:3,Electric eel:1');
+      st.rows[0].join() === 'Runs,5' && st.rows[2].join() === 'Best depth,Cleared' && st.rows[3].join() === 'Total shells,120' && st.deaths.map((x) => x.join(':')).join() === 'Your own bomb:3,Crab:3,Electric eel:1');
   }
 
   // --- cause of death comes from the thing that hurt the octopus ---
@@ -209,6 +209,26 @@ export async function runMetaTests(assert) {
     const txt = ov.textContent;
     assert('death screen: shown with title, headline and every stat row', ui.isGameOverShown() && txt.includes('The dark took you') && txt.includes('Taken by a crab in Shallows 1-2')
       && txt.includes('Levels reached') && txt.includes('1:23') && txt.includes('Shells') && txt.includes('Kills') && txt.includes('People helped') && txt.includes('Cause of death') && txt.includes('a crab'));
+    // night batch 2: the time row splits in two; the clear screen drops 'Levels reached'; "Leave the game" is last and asks first
+    const shownRows = summaryDisplayRows(summaryRows({ ...dead, levelTime: 5.43 }));
+    assert('summary: the time shows as Level time and Run time rows', shownRows.map((r) => r[0]).join() === 'Levels reached,Level time,Run time,Shells,Kills,People helped,Cause of death' && shownRows[1][1] === '00:05.4' && shownRows[2][1] === '01:23.0');
+    assert('summary: the clear screen drops Levels reached', summaryDisplayRows([['Levels reached', '3 of 3'], ['Shells', '4']], true).map((r) => r[0]).join() === 'Shells');
+    let left = 0;
+    const ui2root = document.createElement('div'); document.body.appendChild(ui2root);
+    const ui2 = createUI(ui2root, { onRestart() {}, onExit() { left++; }, onTogglePause() {}, muted: true });
+    ui2.setGameOverLabels('Pinched', 'Restart run', 'Back to the hub');
+    ui2.showGameOver(0, 0, detail);
+    const acts = [...ui2root.querySelectorAll('.octo-go-actions > button')];
+    assert('death screen: "Leave the game" is the last button', acts[acts.length - 1].textContent === 'Leave the game' && ui2.buttons().exit.label === 'Leave the game');
+    acts[acts.length - 1].click();
+    assert('death screen: Leave the game asks first (no leaving yet)', left === 0 && ui2.leaveAsked() && ui2.buttons().leaveAsk && !ui2.buttons().restart.shown && !ui2.buttons().hub.shown);
+    ui2.answerLeave(false);
+    assert('death screen: Stay closes the question, the buttons are back', !ui2.leaveAsked() && ui2.buttons().restart.shown && ui2.buttons().hub.shown && left === 0);
+    acts[acts.length - 1].click(); ui2root.querySelector('.octo-go-leave-yes').click();
+    assert('death screen: Yes leaves', left === 1);
+    ui2.hideGameOver();
+    assert('death screen: closing it drops an open question', !ui2.leaveAsked());
+    ui2root.remove();
     assert('death screen: uses the generated banner art', /title-banner\.webp/.test(ov.querySelector('.octo-banner').style.backgroundImage));
     const lis = ov.querySelectorAll('.octo-summary-bestrun');
     assert('death screen: lists the best runs and marks this one', lis.length === 2 && lis[1].classList.contains('is-new') && !lis[0].classList.contains('is-new'));

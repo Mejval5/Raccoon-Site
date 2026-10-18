@@ -35,7 +35,7 @@
    "aim": "self",
    "uses": ["heavy", "delayed", "lingering"],
    "journal": "spell-ink-cloud",
-   "blurb": "a puff of ink: enemies lose sight of you"
+   "blurb": "a puff of ink: creatures lose sight of you"
   },
   {
    "id": "riptide",

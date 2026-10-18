@@ -120,6 +120,29 @@ export function createJournalScreen(root, journal, handlers = {}) {
     mode = frame.clientWidth >= 600 ? 'spread' : 'single';
     book.dataset.mode = mode;
   }
+  /** The bookmark names fit their tabs: measured on open and on a resize (not per page turn). When the longest name ("Progress",
+   *  "Bestiary") would run past its tab's ends, all of them first lose their letter-spacing, then share one smaller font size. */
+  function fitTabs() {
+    const names = [...tabsEl.querySelectorAll('.octo-bk-tabname')];
+    for (const n of names) { n.style.fontSize = ''; n.style.letterSpacing = ''; }
+    let fs = 0;
+    const scale = () => {
+      let k = 1;
+      for (const n of names) {
+        const b = n.parentNode;
+        if (!b.offsetHeight) continue; // a hidden bookmark (Controls on a short landscape phone)
+        const cs = getComputedStyle(b);
+        const room = b.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 1;
+        if (!fs) fs = parseFloat(getComputedStyle(n).fontSize);
+        if (n.offsetHeight > room) k = Math.min(k, room / n.offsetHeight);
+      }
+      return k;
+    };
+    if (scale() >= 1) return;
+    for (const n of names) n.style.letterSpacing = '0';
+    const k = scale();
+    if (k < 1) { const px = Math.max(8, Math.floor(fs * k * 10) / 10) + 'px'; for (const n of names) n.style.fontSize = px; }
+  }
   let fitting = false;
   /** Rows of cards that fit the left page (measured from a real card), so the grid never shows a cut-off row. */
   function fitRows(head, grid) {
@@ -690,7 +713,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
   closeBtn.addEventListener('click', hide);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) hide(); });
   onArtReady(() => { if (open && !drag) render(); });
-  window.addEventListener('resize', () => { if (open) render(); });
+  window.addEventListener('resize', () => { if (open) { render(); fitTabs(); } });
 
   const api = {
     /** Open the book on a tab (default: the first bookmark, the Carried page when the game provides it). */
@@ -702,6 +725,7 @@ export function createJournalScreen(root, journal, handlers = {}) {
       measure();
       entryId = tab === 'progress' ? null : (items(tab)[0] || {}).id || null;
       render();
+      fitTabs();
     },
     hide,
     isOpen() { return open; },

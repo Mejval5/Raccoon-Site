@@ -13,7 +13,7 @@ import { createJuiceDrops, createInkClouds } from '../js/spells.js';
 import { drawJuiceDrops, drawInkClouds } from '../js/spells-draw.js';
 import { drawBombs } from '../js/enemy-draw.js';
 import { drawBombItem } from '../js/loot-draw.js';
-import { drawWallCue, itemGlyph } from '../js/v2-props-draw.js';
+import { drawWallCue, paintCrackCue, itemGlyph } from '../js/v2-props-draw.js';
 import { drawSpellIcon, drawJarIcon, drawBombSlotIcon } from '../js/spell-icons.js';
 
 const NAMES = ['gclamCup', 'gclamLid', 'gclamCavity', 'gclamPearl', 'tentLimb', 'juiceDrop0', 'juiceDrop1', 'juiceDrop2', 'juiceDrop3',
@@ -65,7 +65,7 @@ function cases() {
     ['bomb slot icon', (g) => drawBombSlotIcon(g, 40, 40, 30)],
     ['spell icons (ink cloud, unknown)', (g) => { drawSpellIcon(g, 'ink-cloud', 40, 40, 30); drawSpellIcon(g, 'nope', 120, 40, 30); }],
     ['jar icon', (g) => { drawJarIcon(g, 10, 10, 40, 64, 0.5, 3); drawJarIcon(g, 70, 10, 40, 64, 0, 0); }],
-    ['tutorial bomb marker', (g) => drawWallCue(g, { x: 10.5, y: 8.5, pxPerUnit: 40 }, W, H, cue, 1)],
+    ['tutorial bomb marker (baked cracks and the live silt)', (g) => { paintCrackCue(g, { x: 10.5, y: 8.5, pxPerUnit: 40 }, W, H, cue.walls, cue.tileAt); drawWallCue(g, { x: 10.5, y: 8.5, pxPerUnit: 40 }, W, H, cue, 1); }],
   ];
 }
 

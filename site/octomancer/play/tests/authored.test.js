@@ -77,15 +77,16 @@ export async function runAuthoredTests(assert) {
     return ids === 'swim,ink,hand,bomb,sticky,cloud,shop,hazards,exit' && tut.rooms.every((r) => tut.prompts.some((p) => inRect(r.rect, p.x, p.y)))
       && tut.rooms.filter((r) => r.door).map((r) => r.goal).join(',') === 'bone,throw,cast,buy' && Object.keys(tut.doors).length === 4;
   })());
-  assert('authored tutorial: bomb prompt names C (drop), B / X (quick bomb), RB on a pad and the touch Bomb button; the sticky prompt the right click (RMB) and RS + RB on a pad', (() => {
+  assert('authored tutorial: bomb prompt names B (the {bomb} token), RB on a pad and the touch Bomb button; the sticky prompt the right click (RMB) and RS + RB on a pad', (() => {
     const b = tut.prompts.find((p) => p.title.toLowerCase().includes('bomb')), st = tut.prompts.find((p) => p.title.toLowerCase().includes('sticky'));
     const dk = (p) => plainText(signText(p, 'desktop'), 'desktop'), pd = (p) => plainText(signText(p, 'pad'), 'pad');
-    return /press C/.test(dk(b)) && /B or X/.test(dk(b)) && /press RB/.test(pd(b)) && /tap Bomb/.test(b.touch) && /press RMB/.test(dk(st)) && /RS/.test(pd(st)) && /press RB/.test(pd(st)) && /tap Bomb/.test(st.touch);
+    return /press B\b/.test(dk(b)) && /\{bomb\}/.test(b.desktop) && /press RB/.test(pd(b)) && /tap Bomb/.test(b.touch) && /press RMB/.test(dk(st)) && /RS/.test(pd(st)) && /press RB/.test(pd(st)) && /tap Bomb/.test(st.touch);
   })());
-  assert('authored tutorial: the dive prompt names F (A on a pad), the Beholder, the Swift Current and the journal (Tab / View)', (() => {
-    const d = tut.prompts.find((p) => p.title === 'Dive');
+  assert('authored tutorial: the dive prompt names F (A on a pad), the whirlpool, the Beholder and the Swift Current; the open hub sign names the journal (Tab / View / Pause)', (() => {
+    const d = tut.prompts.find((p) => p.title === 'Dive'), w = hub.prompts.find((p) => p.when === 'open');
     const dk = plainText(signText(d, 'desktop'), 'desktop'), pd = plainText(signText(d, 'pad'), 'pad');
-    return /press F/.test(dk) && /Beholder/.test(dk) && /Swift Current/.test(dk) && /Tab/.test(dk) && /press A\b/.test(pd) && /View/.test(pd) && /journal/.test(d.touch);
+    return /press F/.test(dk) && /whirlpool/.test(dk) && /Beholder/.test(dk) && /Swift Current/.test(dk) && /press A\b/.test(pd) && /tap Enter/.test(d.touch) &&
+      /Tab/.test(plainText(signText(w, 'desktop'), 'desktop')) && /View/.test(plainText(signText(w, 'pad'), 'pad')) && /Pause opens your journal/.test(w.touch);
   })());
   const clear = (base, lists) => { const t = base.slice(); for (const l of lists) for (let i = 0; i < l.length; i += 2) t[l[i + 1] * tut.w + l[i]] = 0; return t; };
   const doorLists = Object.values(tut.doors);

@@ -90,5 +90,7 @@ export function runRunTests(assert) {
   assert('run: every CAUSE_NAME key has a death title', Object.keys(CAUSE_NAME).every((k) => DEATH_TITLE[k]));
   const dark = Object.keys(DEATH_TITLE).filter((k) => DEATH_TITLE[k] === 'The dark took you').sort().join();
   assert('run: only the Beholder and unknown keep "The dark took you"', dark === 'beholder,unknown');
+  assert('run: the barnacle clam (loot "chest") reads as the journal names it: a barnacle clam, Snapped shut; no trapped chests', CAUSE_TEXT.chest === 'a barnacle clam' && CAUSE_NAME.chest === 'Barnacle clam' && deathTitle('chest') === 'Snapped shut' &&
+    !Object.values(CAUSE_TEXT).concat(Object.values(CAUSE_NAME), Object.values(DEATH_TITLE)).some((s) => /chest|treasure|loot/i.test(s)));
   assert('run: death titles are cause specific', deathTitle('spikes') === 'Impaled' && deathTitle('rock') === 'Crushed' && deathTitle('shopkeeper') === "Shopkeeper's justice" && deathTitle('nonsense') === 'The dark took you' && deathTitle(undefined) === 'The dark took you');
 }
