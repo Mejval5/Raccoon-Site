@@ -532,6 +532,14 @@ export function createEnemies() {
     if (e.moving) collideWithWalls(e, world);
     if (e.stun <= 0) resetPattern(e);
   }
+  /** Local co-op (ghost.js): a ghost's blow is a soft drift that dies away over about half a second; no stun, no damage. */
+  function stepBlown(e, dt, world) {
+    e.x += e.gvx * dt; e.y += e.gvy * dt;
+    const f = Math.exp(-5 * dt);
+    e.gvx *= f; e.gvy *= f;
+    if (Math.abs(e.gvx) + Math.abs(e.gvy) < 0.05) e.gvx = e.gvy = 0;
+    if (e.moving) collideWithWalls(e, world);
+  }
   /**
    * 2026-10-08, the one way an enemy takes a hit: creature-rules.js resolveHit for its kind and `src`, then the outcome on the
    * record. dmg < 0: the source's own damage; knockScale: a blast's falloff; (kx, ky): the corpse's shove when it dies (NaN: the
@@ -1034,6 +1042,8 @@ export function createEnemies() {
         const e = stepList[i];
         if (e.dead) continue;
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
+        if (e.frozen > 0) { e.frozen = Math.max(0, e.frozen - dt); e.vx = e.vy = 0; e.tell = 0; continue; } // co-op ghost.js: frozen still, no AI, no contact damage (hits still land: applyHit)
+        if (e.gvx || e.gvy) stepBlown(e, dt, world); // co-op ghost.js: a ghost's blow drifts it a little, on top of its own pattern
         if (e.stun > 0) { stepKnock(e, dt, world); continue; } // knocked about by a blast: no AI, no contact damage
         if (e.kind === 'piranha') updatePiranha(e, dt, pickTarget(octos, e.x, e.y), world);
         else if (e.kind === 'cannon') updateCannon(e, dt, pickTarget(octos, e.x, e.y), world);
@@ -1099,6 +1109,21 @@ export function createEnemies() {
     /** The damage.js family adapter (register it with damage.register). */
     family,
 
+    /** Local co-op (ghost.js): a ghost's blow nudges `e` along (ux, uy) at `dv` u/s (a walker only sideways; an emplacement and
+     *  the Beholder not at all). Returns true when it moved. */
+    nudge(e, ux, uy, dv) {
+      if (!e || e.dead || e.ghost || e.kind === 'beholder' || !e.moving) return false;
+      const row = rowOf(e.kind);
+      if (row.physics === PH_ANCHORED) return false;
+      e.gvx = (e.gvx || 0) + ux * dv; e.gvy = (e.gvy || 0) + (row.physics === PH_WALK ? 0 : uy * dv);
+      return true;
+    },
+    /** Local co-op (ghost.js): a ghost's freeze holds `e` still for `s` seconds (no AI, no attack; hits still land). */
+    freeze(e, s) {
+      if (!e || e.dead || e.ghost || e.kind === 'beholder') return false;
+      e.frozen = Math.max(e.frozen || 0, s); e.tell = 0; e.vx = e.vy = 0; e.gvx = e.gvy = 0;
+      return true;
+    },
     /** Kill one enemy record by the regular path (corpse, journal, score events); materials: a pushable block crushing it. */
     kill(e, reason = 'crush') { killEnemy(e, reason); },
 
