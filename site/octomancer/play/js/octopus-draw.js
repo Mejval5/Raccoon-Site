@@ -172,11 +172,12 @@ function drawBaked(ctx, o, bakeData) {
   const justDashed = !limp && o.dashCooldown && o.dashCooldown > 0.45;
   const squash = limp ? 1 : Math.min(justDashed ? 0.85 : 1, 1 - 0.18 * (o.squash || 0)); // dash squash, and a soft squash on landing
 
-  ctx.save();
-  ctx.scale(1 / squash, squash);
   // local co-op: players 2-4 wear their colour (o.tint, players.js PLAYER_COLOURS) through the same recolour, no accessory
   const tint = o.tint || null;
   const skinImg = tint ? tintSheet(tint, bakeData) : wornSkin !== DEFAULT_SKIN ? skinSheet(wornSkin, bakeData) : null; // null while it builds: Milan's own colours
+  if (tint && !skinImg) return; // co-op Phase 2: a player's colour sheet still building (a few frames after the join): not drawn yet, never in player 1's red
+  ctx.save();
+  ctx.scale(1 / squash, squash);
   const socket = tint && skinImg ? tint : skinImg ? skinBodyColor(wornSkin) : BODY;
   ctx.drawImage(skinImg || img, frameIndex * cell, 0, cell, cell, -half, -half, worldSize, worldSize);
   ctx.restore();
@@ -538,6 +539,55 @@ export function drawOctopus(ctx, o, alpha = 1) {
   }
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(compositeCanvas, 0, 0, w, h, ox, oy, w, h);
+  ctx.restore();
+}
+
+/** Local co-op: start building a player colour's sheet now (a join), so it is ready by the time the octopus shows. */
+export function prepareTint(body) { if (body && bake && !FORCE_CODE && !bakeFailed) tintSheet(body, bake); }
+
+// Local co-op, Phase 2 (ghost.js): the ghost is the octopus sprite drawn pale and see-through, with a faint rim in the player's
+// colour. All in a small offscreen buffer the size of the octopus: the body is drawn opaque, washed pale (source-atop), its
+// silhouette grown a little and hollowed out for the rim, then both go on the canvas once at the ghost's alpha.
+let rimCanvas = null, rimCtx = null;
+const GHOST_RIM_GROW = 1.16;
+/**
+ * @param {CanvasRenderingContext2D} ctx pre-transformed to the ghost's frame (as for drawOctopus)
+ * @param {object} o an octopus-like pose ({swimming, __t, __speed, tint, angle ...}, alive)
+ * @param {string} wash the pale colour laid over the body (rgba), @param {string} rim the player's colour, @param {number} alpha
+ */
+export function drawOctopusGhost(ctx, o, wash, rim, alpha) {
+  if (!ctx.canvas.width || !ctx.canvas.height) return;
+  const m = ctx.getTransform();
+  const scale = Math.hypot(m.a, m.b);
+  const w = Math.max(8, Math.ceil(scale * 3.2)), h = w;
+  const ox = Math.round(m.e - w / 2), oy = Math.round(m.f - h / 2);
+  const cctx = getCompositeCtx(w, h);
+  cctx.setTransform(m.a, m.b, m.c, m.d, m.e - ox, m.f - oy);
+  drawOctopusUnclipped(cctx, o);
+  cctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (!rimCanvas) { rimCanvas = sharedCanvas(document.createElement('canvas')); rimCtx = rimCanvas.getContext('2d'); }
+  if (rimCanvas.width < w || rimCanvas.height < h) { rimCanvas.width = Math.max(w, rimCanvas.width); rimCanvas.height = Math.max(h, rimCanvas.height); }
+  const r = rimCtx;
+  r.setTransform(1, 0, 0, 1, 0, 0);
+  r.globalCompositeOperation = 'source-over';
+  r.clearRect(0, 0, w, h);
+  const gw = w * GHOST_RIM_GROW;
+  r.drawImage(compositeCanvas, 0, 0, w, h, (w - gw) / 2, (h - gw) / 2, gw, gw); // the silhouette, grown about its centre
+  r.globalCompositeOperation = 'source-in';
+  r.fillStyle = rim; r.fillRect(0, 0, w, h);
+  r.globalCompositeOperation = 'destination-out';
+  r.drawImage(compositeCanvas, 0, 0, w, h, 0, 0, w, h); // hollowed: only the rim round the body is left
+  r.globalCompositeOperation = 'source-over';
+  cctx.save();
+  cctx.globalCompositeOperation = 'source-atop';
+  cctx.fillStyle = wash; cctx.fillRect(0, 0, w, h); // the body goes pale (the shapes and the eyes still read through)
+  cctx.restore();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha * 0.8;
+  ctx.drawImage(rimCanvas, 0, 0, w, h, ox, oy, w, h);
   ctx.globalAlpha = alpha;
   ctx.drawImage(compositeCanvas, 0, 0, w, h, ox, oy, w, h);
   ctx.restore();
