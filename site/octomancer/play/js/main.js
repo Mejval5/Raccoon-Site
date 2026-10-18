@@ -544,6 +544,7 @@ const ui = createUI(hudEl, {
   onEndContinue() { v2Event(EV_CONTINUE); },
   onQuickRestart() { quickRestart(); },
   onLeaveTutorial() { leaveTutorial(); },
+  onReturnHub() { returnToHub(); },
   onExit() {
     location.href = '/octomancer/';
   },
@@ -791,6 +792,7 @@ window.addEventListener('keydown', (e) => {
   if (V2 && (e.code === 'Enter' || e.code === 'NumpadEnter') && pauseMenuUp() && addFocused()) { e.preventDefault(); if (!e.repeat) tryJoin(KEYBOARD); return; }
   if (V2 && pauseMenuUp() && KB_NAV[e.code]) { e.preventDefault(); kbMenuNav = true; menuNav.handle(KB_NAV[e.code]); return; }
   if (e.code !== 'Escape' || everyoneDead()) return;
+  if (V2 && pauseMenuUp() && ui.hubAsked()) { ui.answerHub(false); return; } // Esc on the Return to hub question: Stay
   manualPaused = !manualPaused;
   applyPaused();
 });
@@ -813,10 +815,10 @@ let kbMenuNav = false; // the arrow keys moved the menu focus: the ring shows fo
 window.addEventListener('mousemove', () => { if (kbMenuNav) { kbMenuNav = false; if (input.mode() !== 'pad') menuNav.hideRing(); } });
 /** The pause menu's first button, where the focus starts (not the Add line: A or Enter there joins, co-op polish item 3). */
 function pauseFirst() {
+  if (ui.hubAsked()) return ui.pauseFirst(); // Stay while Return to hub asks
   const act = document.activeElement; // (join fix: a button the mouse is over has the focus already: keep it)
   if (act && act.tagName === 'BUTTON' && act.closest && act.closest('.octo-pause-overlay')) return act;
-  for (const b of document.querySelectorAll('.octo-pause-overlay .octo-pause-btns button')) if (b.style.display !== 'none') return b;
-  return null;
+  return ui.pauseFirst(); // Resume
 }
 /** A pad's menu action (`key`: the pad, '' / undefined for the primary one). Local co-op (polish item 3): A joins only on the
  *  focused Add line (a pad that already plays: nothing); elsewhere it is the focused button's press, never a join. */
@@ -832,7 +834,7 @@ function padMenu() {
   if (V2 && (inventoryOpen || journalScreen.isOpen())) { PAD_JOURNAL.root = journalScreen.el; return PAD_JOURNAL; }
   if (V2 && ui.isEndShown()) return { root: qs('.octo-end-overlay') };
   if (ui.isGameOverShown()) return { root: qs('.octo-gameover-overlay') };
-  if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), first: pauseFirst(), back: () => { manualPaused = false; applyPaused(); } };
+  if (manualPaused && loop.paused) return { root: qs('.octo-pause-overlay'), first: pauseFirst(), back: () => { if (ui.hubAsked()) { ui.answerHub(false); return; } manualPaused = false; applyPaused(); } };
   return null;
 }
 const menuNav = createMenuNav({ current: padMenu, padMode: () => input.mode() === 'pad' || kbMenuNav, audio }); // night batch 5: menu sounds (ui-sfx.js)
@@ -2513,6 +2515,14 @@ function quickRestart() {
 /** The pause menu's 'Leave the tutorial': back to the hub, the tutorial not finished. */
 function leaveTutorial() {
   if (!V2 || transitioning || run.state !== S_TUTORIAL) return false;
+  manualPaused = false; applyPaused();
+  return v2Event(EV_LEAVE);
+}
+/** The pause menu's 'Return to hub' (in a dive, after its question): the dive is dropped and the hub loads, the way the death
+ *  screen's Back to the hub goes there (v2Event: the run's items, juice, hotbar and co-op records go), but alive it is not a death,
+ *  like the pause menu's Restart run. */
+function returnToHub() {
+  if (!V2 || transitioning || entry || !canQuickRestart(run) || everyoneDead()) return false;
   manualPaused = false; applyPaused();
   return v2Event(EV_LEAVE);
 }

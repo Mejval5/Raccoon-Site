@@ -809,6 +809,8 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
 }
 #hud > .octo-toast.is-small { padding: 4px 12px; font-size: 11px; font-weight: 600; background: rgba(6, 22, 34, 0.74); border-color: rgba(186, 255, 234, 0.4); color: #cfeee4; bottom: calc(18px + var(--safe-b)); }
 .octo-pause-btns { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+/* the pause menu's Return to hub asks first: the question takes the buttons' (and the player rows') place until it is answered */
+.octo-overlay-panel.is-asking .octo-pause-btns > button, .octo-overlay-panel.is-asking .octo-coop { display: none !important; }
 
 
 /* a full-screen panel (settings, journal) hides the HUD row under it: the hearts and stats never peek out or show through */
