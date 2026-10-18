@@ -54,6 +54,34 @@ const inView = (c, x, y, m = 0) => {
 };
 async function camInfo(page) { const c = await C(page); c.dpr = await page.evaluate(() => __octo.metrics().dpr); return c; }
 
+/** The co-op HUD (IMPROVEMENTS.md night item 3): each strip on one line (no "3 ink" wrapped under itself), the jar drawn, no word
+ *  "ink"; the vitals row empty (the shared shell count sits in the clock row); the strips clear of the HUD column. */
+const coopLayout = (p) => p.evaluate(() => {
+  const vis = (e) => e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
+  const strips = [...document.querySelectorAll('.octo-coop-strip')].filter(vis);
+  const oneLine = strips.every((s) => {
+    const sb = s.getBoundingClientRect();
+    const kids = [...s.querySelectorAll('span, img, canvas')].filter(vis).map((k) => k.getBoundingClientRect());
+    const mid = (b) => (b.top + b.bottom) / 2;
+    return s.scrollHeight <= s.clientHeight + 1 && sb.height <= 36 && kids.every((b) => Math.abs(mid(b) - mid(sb)) < 6 && b.height <= sb.height + 0.5);
+  });
+  const shells = document.querySelector('.octo-hud-shells');
+  const vitals = document.querySelector('.octo-hud-vitals');
+  const vitalKids = [...vitals.children].filter(vis);
+  const runline = document.querySelector('.octo-hud-runline').getBoundingClientRect();
+  const ov = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const hits = strips.filter((s) => ov(s.getBoundingClientRect(), runline)).length;
+  return { n: strips.length, oneLine, ink: strips.some((s) => /ink/.test(s.textContent)), jars: strips.filter((s) => vis(s.querySelector('.octo-coop-jarc'))).length,
+    shellInClock: !!shells && shells.parentNode.classList.contains('octo-hud-runline') && vis(shells), vitalKids: vitalKids.length, hits,
+    w: strips.map((s) => Math.round(s.getBoundingClientRect().width)) };
+});
+async function checkLayout(p, tag, n) {
+  const L = await coopLayout(p);
+  check(tag + ': ' + n + ' strips, each on one line with the jar drawn (no "ink" word)', L.n === n && L.oneLine && !L.ink && L.jars === n, JSON.stringify(L));
+  check(tag + ': no orphan shell count (it sits in the clock row; the vitals row is empty)', L.shellInClock && L.vitalKids === 0, JSON.stringify(L));
+  check(tag + ': the strips stay clear of the clock row', L.hits === 0, JSON.stringify(L));
+}
+
 (async () => {
   const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', args: ['--no-sandbox'], protocolTimeout: 180000 });
   try {
@@ -82,6 +110,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     check('the pause menu offers Add player', /^Add player/.test(c.add) && /Menu on a free pad, or A \/ Enter here/.test(c.add), c.add);
     await tapPads(page, [{}, { start: true }]);
     c = await C(page);
+    check('the Add line now asks for another pad (pad A plays) and still offers the keyboard', /Menu on another pad, or A \/ Enter here/.test(c.add), c.add);
     check('pad B joins as player 2 (teal), player 1 is bound to pad A', c.players.length === 2 && c.players[1].slot === 1 && /#1$/.test(c.players[1].device) && /#0$/.test(c.players[0].device) && c.players[1].colour === 'teal' && !!c.players[1].tint, JSON.stringify(c.players.map((p) => [p.slot, p.device, p.colour])));
     check('player 2 starts with base stats (3 hearts, 3 bombs, a full jar, the starting bar)', c.players[1].hearts === 3 && c.players[1].bombs === 3 && c.players[1].juice > 0);
     check('player 2 appears beside player 1', Math.hypot(c.players[1].x - c.players[0].x, c.players[1].y - c.players[0].y) < 3.2);
@@ -109,6 +138,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     await page.waitForFunction(() => __octo.coop().tints.ready >= 1, { timeout: 10000, polling: 100 }).catch(() => {}); // the teal sheet builds in a few short tasks
     await step(page, 1);
     check('two HUD strips, one per player', c.strips.length === 2 && /P1/.test(c.strips[0]) && /P2/.test(c.strips[1]), JSON.stringify(c.strips));
+    await checkLayout(page, '1440x900, two players', 2);
     await shot(page, 'level-two');
 
     // ---- spread out: the camera zooms out, capped at 1.6x
@@ -148,6 +178,8 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
 
     // ---- Remove, then Add again: the hearts come back
     await page.evaluate(() => __octo.setPlayerHearts(1, 1));
+    await page.evaluate(() => __octo.stepDraw(1));
+    check('a lost heart pulses on its strip (P2 only)', await page.evaluate(() => { const hb = [...document.querySelectorAll('.octo-coop-hb')]; const on = (e) => e && /is-hit-[ab]/.test(e.className); return on(hb[1]) && !on(hb[0]); }));
     await tapPads(page, [{ start: true }, {}]);
     await sleep(100);
     const removed = await page.evaluate(() => { const b = [...document.querySelectorAll('.octo-coop-row')].find((r) => r.dataset.slot === '1'); const btn = b && b.querySelector('.octo-coop-remove'); if (btn) btn.click(); return !!btn; });
@@ -164,6 +196,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     c = await C(page);
     check('Enter on the keyboard joins as player 3 (ochre)', c.players.length === 3 && c.players[2].device === 'keyboard' && c.players[2].colour === 'ochre', JSON.stringify(c.players.map((p) => [p.slot, p.device])));
     check('three player rows in the pause menu', c.rows.length === 3);
+    check('the keyboard plays: the Add line no longer offers Enter', /Menu on another pad, or A here$/.test(c.add), c.add);
     await shot(page, 'pause-three');
     await tapPads(page, [{ start: true }, {}]);
     await page.evaluate(() => __octo.freeze(true));
@@ -173,6 +206,7 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     c = await C(page);
     check('the keyboard swims player 3 only', c.players[2].x < k0.x - 0.3 && Math.abs(c.players[0].x - c.players[0].x) < 1e-9, k0.x.toFixed(2) + ' -> ' + c.players[2].x.toFixed(2));
     check('three strips, smaller', c.strips.length === 3);
+    await checkLayout(page, '1440x900, three players', 3);
     await page.waitForFunction(() => __octo.coop().tints.ready >= 2, { timeout: 10000, polling: 100 }).catch(() => {});
     await step(page, 1);
     await shot(page, 'level-three');
@@ -257,6 +291,28 @@ async function camInfo(page) { const c = await C(page); c.dpr = await page.evalu
     check('hub, four players: frames stay smooth (median under 20 ms)', m4.frameMsMedian < 20, m4.frameMsMedian + ' ms');
     check('no page errors (hub)', hub.errs.length === 0, hub.errs.slice(0, 3).join(' | '));
     await hub.close();
+
+    // ---- 412x915 (a phone held upright): two, then four players
+    {
+      const ph = await browser.newPage();
+      await ph.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+      ph.on('pageerror', (e) => fails.push('phone page error ' + e));
+      await ph.evaluateOnNewDocument(SAVE); await ph.evaluateOnNewDocument(STUB);
+      await ph.goto(BASE + '?at=1&seed=5', { waitUntil: 'networkidle0', timeout: 60000 });
+      await ph.waitForFunction(() => window.__octo && !__octo.level().transitioning, { timeout: 30000 }); await sleep(1000);
+      await ph.evaluate(() => __octo.god(true));
+      await PADS(ph, [{ lx: 0.3 }, {}, {}]); await sleep(100); await PADS(ph, [{}, {}, {}]);
+      await tapPads(ph, [{ start: true }, {}, {}]);
+      await tapPads(ph, [{}, { a: true }, {}]);
+      await tapPads(ph, [{ start: true }, {}, {}]); await sleep(400);
+      await checkLayout(ph, '412x915, two players', 2);
+      await tapPads(ph, [{ start: true }, {}, {}]);
+      await tapPads(ph, [{}, {}, { a: true }]);
+      await ph.keyboard.press('Enter');
+      await tapPads(ph, [{ start: true }, {}, {}]); await sleep(400);
+      await checkLayout(ph, '412x915, four players', 4);
+      await ph.close();
+    }
 
     // ---- frame time in a level: solo vs four players spread out (the zoomed-out camera)
     const pf = await open(browser, '?at=1&seed=5');

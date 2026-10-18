@@ -88,8 +88,10 @@ const SEEDS = [11, 23, 77];
           const ov = document.querySelector('.octo-gameover-overlay');
           const tint = __octo.deathTint(), body = __octo.body(); // the tint is drawn on the game canvas (main.js render), not in CSS
           const pr = ov.querySelector('.octo-overlay-panel').getBoundingClientRect();
-          const btn = [...ov.querySelectorAll('button')].map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent, top: r.top, bottom: r.bottom }; });
-          return { tint, body: body && { x: body.screenX, y: body.screenY, r: body.rCss }, w: pr.width, h: pr.height, top: pr.top, right: pr.right, btn, vh: innerHeight, vw: innerWidth };
+          const btn = [...ov.querySelectorAll('button')].filter((b) => b.offsetWidth > 0).map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), top: r.top, bottom: r.bottom }; });
+          // night batch 2: no stat value is cut (one column, nowrap)
+          const cut = [...ov.querySelectorAll('.octo-summary-val, .octo-summary-key')].filter((v) => v.scrollWidth > v.clientWidth + 1 || v.getBoundingClientRect().right > v.closest('.octo-summary-row').getBoundingClientRect().right + 1).map((v) => v.textContent);
+          return { tint, body: body && { x: body.screenX, y: body.screenY, r: body.rCss }, w: pr.width, h: pr.height, top: pr.top, right: pr.right, btn, cut, rows: [...ov.querySelectorAll('.octo-summary-key')].map((k) => k.textContent), vh: innerHeight, vw: innerWidth };
         });
         const tn = look.tint, bd = look.body;
         const holeOk = tn && bd && Math.hypot(tn.x - bd.x, tn.y - bd.y) <= bd.r * 0.75 + 4 && tn.hole >= bd.r * 1.2 && tn.outer > tn.hole;
@@ -97,7 +99,25 @@ const SEEDS = [11, 23, 77];
           tn ? `(max alpha ${tn.alpha.toFixed(2)}, hole ${Math.round(tn.hole)} px at ${Math.round(tn.x)},${Math.round(tn.y)}, body r ${bd ? Math.round(bd.r) : '-'} at ${bd ? Math.round(bd.x) + ',' + Math.round(bd.y) : '-'})` : '');
         if (kind === 'side') check(`${tag} a side panel on the right (${Math.round(look.w)} px wide)`, look.w <= look.vw * 0.36 && look.right > look.vw - 30);
         else check(`${tag} a bottom sheet (${Math.round(look.h)} px tall of ${look.vh})`, look.w >= look.vw - 2 && look.h <= look.vh * 0.52 && Math.abs(look.top + look.h - look.vh) < 2);
-        check(`${tag} the three buttons (Restart run, Back to the hub, Exit) are on screen without scrolling`, look.btn.length === 3 && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh));
+        check(`${tag} the three buttons (Restart run, Back to the hub, Leave the game, last) are on screen without scrolling`, look.btn.length === 3 && look.btn[2].t === 'Leave the game' && look.btn.every((b) => b.top >= 0 && b.bottom <= look.vh), look.btn.map((b) => b.t).join(','));
+        check(`${tag} no stat label or value is cut, and the time is two rows (Level time, Run time)`, look.cut.length === 0 && look.rows.includes('Level time') && look.rows.includes('Run time'), look.cut.join(','));
+        if (seed === SEEDS[0]) {
+          // "Leave the game" asks first: Leave Octomancer? Yes / Stay, the focus on Stay; Stay brings the buttons back; the page stays
+          const href0 = await page.evaluate(() => location.href);
+          await page.evaluate(() => document.querySelector('.octo-gameover-overlay .octo-go-leave').click());
+          await sleep(150);
+          const ask = await page.evaluate(() => {
+            const ov = document.querySelector('.octo-gameover-overlay');
+            const vis = [...ov.querySelectorAll('button')].filter((b) => b.offsetWidth > 0);
+            const r = ov.querySelector('.octo-go-confirm').getBoundingClientRect();
+            return { text: ov.querySelector('.octo-go-confirm').offsetWidth ? ov.querySelector('.octo-go-confirmtext').textContent : '', btns: vis.map((b) => b.textContent.trim()), focus: document.activeElement && document.activeElement.textContent.trim(), inView: r.top >= 0 && r.bottom <= innerHeight, href: location.href };
+          });
+          check(`${tag} "Leave the game" asks "Leave Octomancer?" with Yes / Stay, focus on Stay, and does not leave yet`, ask.text === 'Leave Octomancer?' && ask.btns.join() === 'Yes,Stay' && ask.focus === 'Stay' && ask.inView && ask.href === href0, JSON.stringify(ask));
+          await page.evaluate(() => document.querySelector('.octo-gameover-overlay .octo-go-leave-stay').click());
+          await sleep(150);
+          const back = await page.evaluate(() => ({ btns: [...document.querySelectorAll('.octo-gameover-overlay button')].filter((b) => b.offsetWidth > 0).map((b) => b.textContent.trim()), focus: document.activeElement && document.activeElement.textContent.trim() }));
+          check(`${tag} Stay brings the three buttons back, the focus on Leave the game`, back.btns.length === 3 && back.focus === 'Leave the game', JSON.stringify(back));
+        }
         if (seed === SEEDS[0]) {
           await page.screenshot({ path: path.join(process.env.TEMP || '.', `death-cdp-${vn}.png`) });
           await page.evaluate(() => document.querySelector('.octo-gameover-overlay .octo-go-hub').click());

@@ -49,7 +49,7 @@ const VPS = [
       // Phase 2B: no offer card any more; the welcome board hung over the start says the dive is sealed until the tutorial is done
       const sg = await page.evaluate(() => __octo.signs());
       check(`[${vn}] a fresh save starts in the hub, the dive sealed, no offer card: the welcome board over the start says why`, (await stage(page)) === 'Hub' && !s.offer && s.seal === 1 && !s.open &&
-        !sg.popup && sg.open && sg.open.where === 'hang' && /sealed/.test(sg.open.text) && /tutorial/.test(sg.open.text), JSON.stringify(sg.open));
+        !sg.popup && sg.open && sg.open.where === 'hang' && /seals the dive/.test(sg.open.text) && /tutorial/.test(sg.open.text), JSON.stringify(sg.open));
       check(`[${vn}] the dive event is refused while sealed`, (await page.evaluate(() => __octo.runEvent('enter'))) === false && (await stage(page)) === 'Hub');
       const lv = await page.evaluate(() => __octo.level());
       await page.evaluate((x, y) => __octo.teleport(x, y), lv.exitX + 0.5, lv.exitY + 0.4);

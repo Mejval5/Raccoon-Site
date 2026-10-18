@@ -1,15 +1,17 @@
 // Local co-op, Phase 1 (octomancer-web/MULTIPLAYER-PLAN.md): the two bits of DOM co-op adds.
 //  1. The pause menu's player rows (the only place to join or leave, Daniel's rule: no popup in the world): one row per player
-//     with their colour, device and hearts (or "ghost" when dead until the next level), a Remove button, and the Add line. The
-//     buttons are ordinary buttons, so the pad's menu cursor (menu-nav.js) walks them. Co-op polish: the Add line is a button
-//     too, and joining is explicit: a free pad joins with Start, or with A while the Add line has the focus; the keyboard with
-//     Enter there (or a click on it). A or Enter anywhere else is that button's own press (main.js menuPress / addFocused).
+//     with their colour, device and hearts (or "ghost" when dead until the next level), a Remove button, and the Add line (it names
+//     only the devices still free). The buttons are ordinary buttons, so the pad's menu cursor (menu-nav.js) walks them. Co-op
+//     polish: the Add line is a button too, and joining is explicit: a free pad joins with Start, or with A while the Add line has
+//     the focus; the keyboard with Enter there (or a click on it). A or Enter anywhere else is that button's own press (main.js
+//     menuPress / addFocused).
 //  2. The HUD strips: with two or more players, one compact strip per player along the top in the player's colour (hearts,
-//     bombs, the jar's casts, the selected hotbar slot). Solo shows none of it: the solo HUD is unchanged.
+//     bombs, the jar and its casts, the selected hotbar slot), each on one line; a lost heart pulses. Solo shows none of it.
 // DOM only, keyed writes (a strip's text changes only when its value does), no per-frame layout.
 
 import { PLAYER_COLOURS, KEYBOARD } from './players.js';
-import { drawSpellIcon, drawBombSlotIcon } from './spell-icons.js';
+import { drawSpellIcon, drawBombSlotIcon, drawJarIcon } from './spell-icons.js';
+import { onSpritesReady } from './sprites.js';
 
 const asset = (p) => new URL(p, import.meta.url).href;
 const HEART_SRC = asset('../assets/ui-heart.webp');
@@ -44,6 +46,16 @@ export function deviceName(dev, style = 'xbox') {
   if (dev === KEYBOARD) return 'Keyboard';
   return style === 'ps' ? 'PlayStation pad' : 'Pad';
 }
+
+/** How to join, naming only the devices that are still free: the keyboard drops out once it plays, "a free pad" becomes "another
+ *  pad" once one plays. Co-op polish: Start on a free pad, or A (Enter) on the focused Add line. `style`: the pad make. */
+export function joinHow(rows, style = 'xbox') {
+  const kb = rows.some((r) => r.device === KEYBOARD), pads = rows.some((r) => r.device && r.device !== KEYBOARD);
+  const A = style === 'ps' ? 'Cross' : 'A', S = style === 'ps' ? 'Options' : 'Menu';
+  return S + ' on ' + (pads ? 'another pad' : 'a free pad') + ', or ' + A + (kb ? '' : ' / Enter') + ' here';
+}
+/** The whole Add line as it reads ('Add player' and how). */
+export function addLine(rows, style = 'xbox') { return 'Add player: ' + joinHow(rows, style); }
 
 /**
  * @param {HTMLElement} hudEl the #hud root
@@ -100,8 +112,7 @@ export function createCoopUI(hudEl, handlers) {
     }
     add.disabled = !!full;
     addName.textContent = full ? 'The party is full' : 'Add player';
-    const A = style === 'ps' ? 'Cross' : 'A', S = style === 'ps' ? 'Options' : 'Menu';
-    addHow.textContent = full ? 'four play' : S + ' on a free pad, or ' + A + ' / Enter here';
+    addHow.textContent = full ? 'four play' : joinHow(rows, style);
   }
 
   // --- 2. HUD strips
@@ -118,11 +129,14 @@ export function createCoopUI(hudEl, handlers) {
     const hearts = el('span', 'octo-coop-n');
     const bombC = el('canvas', 'octo-coop-icon'); bombC.width = bombC.height = 40;
     const bombs = el('span', 'octo-coop-n');
-    const jar = el('span', 'octo-coop-jar');
+    const hb = el('span', 'octo-coop-hb'); // the heart (or the ghost mark) and its number: they pulse together on a lost heart
+    const jarC = el('canvas', 'octo-coop-icon octo-coop-jarc'); jarC.width = 30; jarC.height = 40; // the solo HUD's jar, not a word
+    const jar = el('span', 'octo-coop-n octo-coop-jar');
     const slotC = el('canvas', 'octo-coop-icon octo-coop-slot'); slotC.width = slotC.height = 40;
-    s.append(tag, heart, ghost, hearts, bombC, bombs, jar, slotC);
+    hb.append(heart, ghost, hearts);
+    s.append(tag, hb, bombC, bombs, jarC, jar, slotC);
     strips.appendChild(s);
-    return (made[i] = { s, tag, heart, ghost, hearts, bombs, jar, bombC, slotC, k: {} });
+    return (made[i] = { s, tag, hb, heart, ghost, hearts, bombs, jar, bombC, jarC, slotC, k: {} });
   }
   /** players: [{slot, hearts, dead, bombs, casts, slotId}] (solo or none: the strips hide). */
   function update(players) {
@@ -140,11 +154,16 @@ export function createCoopUI(hudEl, handlers) {
         if (p.dead) drawGhostMark(m.ghost.getContext('2d'), c.ui);
       }
       const ht = p.dead ? 'ghost' : String(p.hearts);
-      if (k.h !== ht) { k.h = ht; m.hearts.textContent = ht; }
+      if (k.h !== ht) {
+        // a lost heart: a short pulse (two classes with the same keyframes take turns, so it restarts without a reflow)
+        if (!p.dead && k.slot === k.hs && k.hn > p.hearts) { k.flip = !k.flip; m.hb.classList.toggle('is-hit-a', k.flip); m.hb.classList.toggle('is-hit-b', !k.flip); }
+        k.h = ht; k.hs = p.slot; k.hn = p.dead ? 0 : p.hearts; m.hearts.textContent = ht;
+      }
       if (k.b !== p.bombs) { k.b = p.bombs; m.bombs.textContent = String(p.bombs); }
       if (!k.bombDrawn) { const g = m.bombC.getContext('2d'); g.clearRect(0, 0, 40, 40); drawBombSlotIcon(g, 20, 20, 17); k.bombDrawn = true; }
-      const jt = p.casts + ' ink';
-      if (k.j !== jt) { k.j = jt; m.jar.textContent = jt; }
+      if (!k.jarDrawn) { const g = m.jarC.getContext('2d'); g.clearRect(0, 0, 30, 40); drawJarIcon(g, 1, 1, 28, 38, 1, 0); k.jarDrawn = true; }
+      const jt = String(p.casts);
+      if (k.j !== jt) { k.j = jt; m.jar.textContent = jt; m.jarC.classList.toggle('is-empty', p.casts <= 0); }
       if (k.sl !== p.slotId) {
         k.sl = p.slotId;
         const g = m.slotC.getContext('2d'); g.clearRect(0, 0, 40, 40);
@@ -153,6 +172,7 @@ export function createCoopUI(hudEl, handlers) {
     }
   }
   /** The sprites came in: redraw the icons on the next update. */
-  function refreshIcons() { for (const m of made) if (m) { m.k.bombDrawn = false; m.k.sl = undefined; } }
+  function refreshIcons() { for (const m of made) if (m) { m.k.bombDrawn = m.k.jarDrawn = false; m.k.sl = undefined; } }
+  onSpritesReady(refreshIcons); // a strip made before the atlas came in redraws its painted icons
   return { setRows, update, refreshIcons, el: box, strips, addBtn: add };
 }

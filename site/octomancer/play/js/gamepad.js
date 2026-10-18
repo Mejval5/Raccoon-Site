@@ -155,6 +155,7 @@ export function createGamepad(input, hooks = {}) {
     // the last device used wins: a fresh press, or a stick leaving its deadzone
     let fresh = (moveIn && !moveOut) || (aimIn && !aimOut);
     for (const n of NAMES) if (down[n] && !was[n] && !latched[n]) fresh = true;
+    if (fresh && typeof dispatchEvent === 'function') dispatchEvent(new Event('octo-padpress')); // night batch 5: audio.js PAD_PRESS, the first one unlocks the AudioContext
     moveOut = moveIn; aimOut = aimIn;
     if (fresh && input.mode() !== 'pad') { if (hooks.beforeMode) hooks.beforeMode(input.mode()); input.setMode('pad'); } // (co-op: main.js notes the scheme it leaves)
 

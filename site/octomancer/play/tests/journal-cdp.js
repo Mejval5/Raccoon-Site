@@ -205,7 +205,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
             __octo.openJournal('people'); await new Promise((r) => setTimeout(r, 120));
             const L = document.querySelector('.octo-bk-left').getBoundingClientRect();
             const cut = [...document.querySelectorAll('.octo-bk-card')].filter((c) => c.getBoundingClientRect().bottom > L.bottom - 1).length;
-            const tabs = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => { const n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(), b = t.getBoundingClientRect(); return n.top < b.top - 0.5 || n.bottom > b.bottom + 0.5; }).length;
+            const tabs = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => t.offsetHeight > 0).filter((t) => { const n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(), b = t.getBoundingClientRect(); const bb = parseFloat(getComputedStyle(t).borderBottomWidth); return n.top < b.top + t.clientTop - 0.5 || n.bottom > b.bottom - bb + 0.5; }).length; // inside the tab's border (night item 3)
             const out = { cut, tabs };
             for (const t of ['places', 'bestiary', 'items', 'traps', 'progress']) {
               __octo.openJournal(t); await new Promise((r) => setTimeout(r, 120));
@@ -317,7 +317,7 @@ const SAVE = "try{localStorage.setItem('octomancer.best.v1',JSON.stringify({v:1,
         const R = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
         return { book: R('.octo-book'), gear: R('.octo-gear-btn'), pause: R('.octo-pause-btn'), mute: R('.octo-mute-btn'), vw: innerWidth, vh: innerHeight };
       });
-      const tabInfo = () => ev(() => { const a = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => t.style.display !== 'none' && getComputedStyle(t).display !== 'none'); return { n: a.length, ok: a.every((t) => { const b = t.getBoundingClientRect(), n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(); return b.left >= -0.5 && b.right <= innerWidth + 1 && b.top >= -0.5 && b.bottom <= innerHeight + 1 && n.top >= b.top - 0.5 && n.bottom <= b.bottom + 0.5 && n.left >= b.left - 0.5 && n.right <= b.right + 0.5; }), minH: Math.min(...a.map((t) => t.getBoundingClientRect().height)) }; });
+      const tabInfo = () => ev(() => { const a = [...document.querySelectorAll('.octo-bk-tab')].filter((t) => t.style.display !== 'none' && getComputedStyle(t).display !== 'none'); return { n: a.length, ok: a.every((t) => { const b = t.getBoundingClientRect(), n = t.querySelector('.octo-bk-tabname').getBoundingClientRect(); return b.left >= -0.5 && b.right <= innerWidth + 1 && b.top >= -0.5 && b.bottom <= innerHeight + 1 && n.top >= b.top + t.clientTop - 0.5 && n.bottom <= b.bottom - parseFloat(getComputedStyle(t).borderBottomWidth) + 0.5 && n.left >= b.left - 0.5 && n.right <= b.right + 0.5; }), minH: Math.min(...a.map((t) => t.getBoundingClientRect().height)) }; });
       const bookOk = (r) => r.book.l >= 0 && r.book.t >= 0 && r.book.b <= r.vh && r.book.r <= r.vw && r.book.r <= Math.min(r.pause.l, r.mute.l, r.gear.l) + 1;
       const toGrid = () => ev(() => { const b = document.querySelector('.octo-book'); if (b && b.dataset.view === 'entry') { const p = document.querySelector('.octo-bk-plate-big'); if (p) p.click(); } });
       for (const [w, h, mobile] of [[1440, 900, false], [412, 915, true], [915, 412, true]]) {

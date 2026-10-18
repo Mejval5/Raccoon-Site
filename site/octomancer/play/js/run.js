@@ -33,9 +33,9 @@ export const EV_LEAVE = 9;
 
 /** Why the octopus died: what hurtOctopus / killOctopus were told (octopus.js `cause`) -> text for the death screen. */
 export const CAUSE_TEXT = {
-  piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'horned growth', manta: 'a manta',
-  shot: 'a stray shot', bomb: 'its own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
-  eel: 'an electric eel', anemone: 'an anemone', clam: 'a giant clam', tentacle: 'a tentacle', jet: 'a current jet', chest: 'a trapped chest', shopkeeper: 'the Shopkeeper', unknown: 'the dark',
+  piranha: 'a piranha', crab: 'a crab', urchin: 'an urchin', horns: 'a horned growth', manta: 'a manta',
+  shot: 'a stray shot', bomb: 'your own bomb', beholder: 'the Beholder', spikes: 'a spike wall', rock: 'a falling rock',
+  eel: 'an electric eel', anemone: 'an anemone', clam: 'a giant clam', tentacle: 'a tentacle', jet: 'a current jet', chest: 'a barnacle clam', shopkeeper: 'the Shopkeeper', unknown: 'the dark',
   harpoon: "Marlo's harpoon", pip: "Pip's bite", quill: "Quill's bite", host: "the pool host's bite", block: 'a falling block',
   thrown: "a friend's throw", // local co-op friendly fire
 };
@@ -43,17 +43,17 @@ export const CAUSE_TEXT = {
 /** The same causes as capitalised nouns, for list rows (the journal stats page: 'Piranha', 'Spike wall'). */
 export const CAUSE_NAME = {
   piranha: 'Piranha', crab: 'Crab', urchin: 'Urchin', horns: 'Horned growth', manta: 'Manta',
-  shot: 'Stray shot', bomb: 'Own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
-  eel: 'Electric eel', anemone: 'Anemone', clam: 'Giant clam', tentacle: 'Tentacle', jet: 'Current jet', chest: 'Trapped chest', shopkeeper: 'Shopkeeper', unknown: 'The dark',
+  shot: 'Stray shot', bomb: 'Your own bomb', beholder: 'Beholder', spikes: 'Spike wall', rock: 'Falling rock',
+  eel: 'Electric eel', anemone: 'Anemone', clam: 'Giant clam', tentacle: 'Tentacle', jet: 'Current jet', chest: 'Barnacle clam', shopkeeper: 'Shopkeeper', unknown: 'The dark',
   harpoon: 'Harpoon', pip: 'Pip', quill: 'Quill', host: 'Pool host', block: 'Falling block',
   thrown: 'Friendly throw',
 };
 
 /** The death screen's title per cause (Spelunky style). 'The dark took you' stays for the Beholder and for unknown causes. */
 export const DEATH_TITLE = {
-  piranha: 'Shredded by a piranha', crab: 'Pinched', urchin: 'Spined', horns: 'Gored', manta: 'Rammed by a manta',
+  piranha: 'Shredded', crab: 'Pinched', urchin: 'Spined', horns: 'Gored', manta: 'Rammed',
   shot: 'Shot', bomb: 'Blown up', beholder: 'The dark took you', spikes: 'Impaled', rock: 'Crushed',
-  eel: 'Shocked', anemone: 'Stung', clam: 'Clammed', tentacle: 'Swallowed', jet: 'Swept away', chest: 'A trapped chest',
+  eel: 'Shocked', anemone: 'Stung', clam: 'Clammed', tentacle: 'Held under', jet: 'Swept away', chest: 'Snapped shut',
   shopkeeper: "Shopkeeper's justice", unknown: 'The dark took you',
   harpoon: 'Harpooned', pip: 'Bitten', quill: 'Bitten', host: 'Bitten', block: 'Crushed',
   thrown: 'Hit by a friend',

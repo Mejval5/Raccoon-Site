@@ -5,7 +5,20 @@
 // the selected hotbar slot. The mouse and keyboard keep working on the same menus as before; the ring shows only while
 // the pad drives.
 
+// Night batch 5: menu sounds (ui-sfx.js). With `opts.audio` (or a ready `opts.ui`), a focus move ticks, A / Enter on a button
+// knocks (confirm), B knocks lower (back), a journal page or chapter swishes, a slider notch ticks. One delegated click and one
+// input listener on the document cover the mouse on #hud buttons and sliders; the pad's own click / slider step is not counted
+// twice.
+
+import { createUiSfx } from './ui-sfx.js';
+
 const FOCUSABLE = 'button, input[type="range"]';
+const BACKISH = /close|back|cancel|resume/i; // a #hud button with one of these in its class sounds as back, not confirm
+
+function sliderFrac(e) {
+  const lo = Number(e.min) || 0, hi = Number(e.max), v = Number(e.value);
+  return hi > lo ? (v - lo) / (hi - lo) : 0.5;
+}
 
 /** A control that can take the focus: shown, not disabled, with a size (display:none parents give 0 x 0). */
 function usable(e) {
@@ -55,10 +68,36 @@ export function pickNeighbour(from, rects, dx, dy, skip = -1) {
  * grid, the looks picker) gives `pad(action)`, which gets every pad action first and returns true when it used it, and
  * `focus()`, the element its selection is on now: the ring goes there instead of to a control the generic cursor picked.
  * An action the screen leaves (returns false) falls through to the generic cursor (B: the menu's back).
- * @param {{ current: () => ({ root: Element, back?: () => void, first?: Element, pad?: (a: string) => boolean, focus?: () => Element | null } | null), padMode: () => boolean }} opts
+ * @param {{ current: () => ({ root: Element, back?: () => void, first?: Element, pad?: (a: string) => boolean, focus?: () => Element | null } | null), padMode: () => boolean, audio?: object, ui?: ReturnType<typeof createUiSfx>, doc?: Document }} opts
  */
 export function createMenuNav(opts) {
   let focused = null, root = null;
+  const ui = opts.ui || (opts.audio ? createUiSfx(opts.audio) : null);
+  let own = false; // the pad's own click / slider step is in progress: the delegated listeners stay quiet
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  if (ui && opts.audio && doc && doc.addEventListener) {
+    doc.addEventListener('click', (e) => {
+      if (own) return;
+      const b = e.target && e.target.closest ? e.target.closest('button') : null;
+      if (!b || b.disabled || !b.closest('#hud')) return;
+      if (BACKISH.test(b.className || '')) ui.back(); else ui.confirm();
+    }, true);
+    doc.addEventListener('input', (e) => {
+      const t = e.target;
+      if (own || !t || t.type !== 'range' || !t.closest || !t.closest('#hud')) return;
+      ui.slider(sliderFrac(t));
+    }, true);
+    // the keyboard: Tab / arrows moving the browser focus between #hud controls tick like the pad's cursor
+    let keyAt = -1e9;
+    doc.addEventListener('keydown', (e) => { keyAt = e.timeStamp || 0; }, true);
+    doc.addEventListener('focusin', (e) => {
+      const t = e.target;
+      if (own || !t || !t.matches || !t.matches(FOCUSABLE) || !t.closest('#hud')) return;
+      if ((e.timeStamp || 0) - keyAt < 150) ui.focus();
+    }, true);
+  }
+  const PAD_SOUND = { up: 'focus', down: 'focus', left: 'focus', right: 'focus', confirm: 'confirm', x: 'confirm', y: 'confirm', back: 'back', tabprev: 'page', tabnext: 'page' };
+  function sound(name) { if (ui && name && ui[name]) ui[name](); }
 
   function clear() {
     if (focused) ringOf(focused).classList.remove('octo-pad-focus');
@@ -70,7 +109,9 @@ export function createMenuNav(opts) {
     focused = e;
     if (!e) return;
     if (opts.padMode()) ringOf(e).classList.add('octo-pad-focus');
+    own = true;
     try { e.focus({ preventScroll: true }); } catch (err) { /* old browsers */ }
+    own = false;
     if (e.scrollIntoView) e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   /** Make sure the focus is on a control of the open menu (the menu changed, or a control vanished). */
@@ -101,17 +142,21 @@ export function createMenuNav(opts) {
       const nv = Math.min(Number(focused.max), Math.max(Number(focused.min), v));
       if (nv !== Number(focused.value)) {
         focused.value = String(nv);
-        focused.dispatchEvent(new Event('input', { bubbles: true }));
-        focused.dispatchEvent(new Event('change', { bubbles: true }));
+        own = true;
+        try {
+          focused.dispatchEvent(new Event('input', { bubbles: true }));
+          focused.dispatchEvent(new Event('change', { bubbles: true }));
+        } finally { own = false; }
+        if (ui) ui.slider(sliderFrac(focused));
       }
       return;
     }
     const rects = s.items.map((e) => e.getBoundingClientRect());
     const at = s.items.indexOf(focused);
-    if (at < 0) { if (s.items[0]) setFocus(s.items[0]); return; }
+    if (at < 0) { if (s.items[0]) { setFocus(s.items[0]); sound('focus'); } return; }
     let i = pickNeighbour(rects[at], rects, dx, dy, at);
     if (i < 0 && dy) i = at + dy >= 0 && at + dy < s.items.length ? at + dy : -1; // nothing that way on screen: the list order
-    if (i >= 0) setFocus(s.items[i]);
+    if (i >= 0) { setFocus(s.items[i]); sound('focus'); }
   }
 
   return {
@@ -119,9 +164,16 @@ export function createMenuNav(opts) {
     handle(action) {
       const s = sync();
       if (!s) return false;
-      if (s.m.pad && s.m.pad(action)) { sync(); return true; }
-      if (action === 'confirm') { if (focused) focused.click(); sync(); return true; }
-      if (action === 'back') { if (s.m.back) s.m.back(); sync(); return true; }
+      if (s.m.pad && s.m.pad(action)) { sound(PAD_SOUND[action]); sync(); return true; }
+      if (action === 'confirm') {
+        if (focused) {
+          if (focused.tagName === 'BUTTON' && BACKISH.test(focused.className || '')) sound('back'); else sound('confirm');
+          own = true;
+          try { focused.click(); } finally { own = false; }
+        }
+        sync(); return true;
+      }
+      if (action === 'back') { if (s.m.back) { sound('back'); s.m.back(); } sync(); return true; }
       if (action === 'up' || action === 'down' || action === 'left' || action === 'right') { step(action); return true; }
       return true; // tabprev / tabnext / x / y on a menu without them: nothing
     },

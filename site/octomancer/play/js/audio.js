@@ -15,11 +15,25 @@
 // format, fetched only after the first input"); only the chosen extension's
 // file is ever assigned a `src`, so only it is requested (network-log
 // verified in m4/s1 metrics).
+//
+// Night batch 5 (IMPROVEMENTS.md): every one-shot effect plays on a pooled voice (a filter and a gain that stay wired to the
+// effects bus): MAX_VOICES for the world, UI_VOICES for the menus (their own bus, never ducked). A play takes a free voice or
+// steals the one nearest its end (a 12 ms fade, so no click); only the oscillator / buffer source is new per play (Web Audio
+// sources are one-shot), never per frame. Pause ducks the effects to DUCK_PAUSE and stops the swim whoosh; the death
+// screen ducks the music to DUCK_DEATH (the tracks themselves are untouched). The context unlocks on the first key, click,
+// touch or pad press (PAD_PRESS from gamepad.js) and retries resume() on later gestures until it runs: Chrome may not count
+// a pad press as a user gesture, so a pad-only player's context can start suspended.
 
 import { getMuted, setMuted, getSettings } from './save.js';
 
 const SWIM_ON = 0.1; // r41: the whoosh loop is only built once the octopus really swims (a slow sink or drift never starts it)
 const CROSSFADE = 1.0; // seconds, DECISIONS §1 Q7 / OVERNIGHT §2
+export const MAX_VOICES = 24;  // world effect layers alive at once (a 4-player blast, a chain reaction); past it the voice nearest its end is stolen
+export const UI_VOICES = 4;    // menu clicks
+export const DUCK_PAUSE = 0.3; // the effects while paused
+export const DUCK_DEATH = 0.5; // the music while the death screen is up
+const STEAL_FADE = 0.012;      // s: a stolen voice fades out this fast before the new layer starts on it
+export const PAD_PRESS = 'octo-padpress'; // gamepad.js fires it on a fresh pad press
 
 function pickExt() {
   const probe = document.createElement('audio');
@@ -28,7 +42,7 @@ function pickExt() {
 }
 
 /** Builds a looping <audio> element for `./audio/<base>.<ext>`, not yet added to the DOM. */
-function makeTrack(base, ext) {
+function makeTrackEl(base, ext) {
   const a = document.createElement('audio');
   a.loop = true;
   a.preload = 'auto';
@@ -46,10 +60,21 @@ function makeNoiseBuffer(ctx, seconds = 2) {
   return buffer;
 }
 
-export function createAudio() {
+/**
+ * @param {{ AudioContext?: Function, events?: EventTarget, doc?: Document, makeTrack?: (base: string, ext: string) => HTMLAudioElement, ext?: string }} [opts]
+ * test seams: a fake context class, where the input / pause events arrive (window), the document, the music elements.
+ */
+export function createAudio(opts = {}) {
+  const win = opts.events || window;
+  const doc = opts.doc || document;
+  const makeTrack = opts.makeTrack || makeTrackEl;
   let ctx = null;
   let master = null;
   let musicBus = null, sfxBus = null; // the settings menu's two volume sliders: music tracks / everything synthesised
+  let musicDuck = null, sfxDuck = null, uiBus = null; // after the volume buses: the death / pause ducks; the menu clicks' own bus (sfx volume, never ducked)
+  let duckPause = false, duckDeath = false;
+  const voices = [], uiVoices = []; // the pools, built in start()
+  const stats = { stolen: 0 };
   let musicVol = getSettings().musicVol, sfxVol = getSettings().sfxVol;
   let medles = null, flute = null;
   let medlesGain = null, fluteGain = null;
@@ -64,29 +89,87 @@ export function createAudio() {
   let dreadOsc = null, dreadGain = null;
   // r41: every synthesised source (one-shot or looping) is registered here, so a level change can stop and disconnect
   // them all (stopSfx) and a test can list what is still alive. Only the music elements and the master / bus gains outlive a level.
-  /** @type {Map<AudioScheduledSourceNode, {kind:string, loop:boolean, nodes:AudioNode[]}>} */
+  /** @type {Map<AudioScheduledSourceNode, {kind:string, loop:boolean, nodes:AudioNode[], voice:object|null}>} */
   const live = new Map();
   let noiseBuf = null;
-  const bufCache = new Map(); // duration -> shared white-noise buffer for the bomb thump
   function untrack(src) {
     const e = live.get(src);
     if (!e) return;
     live.delete(src);
     try { src.disconnect(); } catch (err) { /* already gone */ }
+    if (e.voice) { const i = e.voice.srcs.indexOf(src); if (i >= 0) e.voice.srcs.splice(i, 1); return; } // a pooled voice stays wired
     for (const n of e.nodes) { try { n.disconnect(); } catch (err) { /* already gone */ } }
   }
-  /** Register a started (or about to start) source with the nodes it feeds; they are disconnected when it ends or on stopSfx. */
-  function track(src, kind, nodes, loop = false) {
-    live.set(src, { kind, loop, nodes });
+  /** Register a started (or about to start) source with the nodes it feeds (disconnected when it ends or on stopSfx), or with
+   *  the pooled voice it plays on (the voice stays wired, only the source goes). */
+  function track(src, kind, nodes, loop = false, voice = null) {
+    live.set(src, { kind, loop, nodes, voice });
+    if (voice) voice.srcs.push(src);
     src.addEventListener('ended', () => untrack(src), { once: true });
     return src;
+  }
+  function makeVoice(bus) {
+    const filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+    filter.type = 'lowpass'; filter.frequency.value = 20000; filter.Q.value = 0.0001;
+    gain.gain.value = 0;
+    filter.connect(gain).connect(bus);
+    return { filter, gain, srcs: [], until: 0, t0: 0 };
+  }
+  /** A voice to play one layer on, ready at `v.t0`: a free one, else the one nearest its end (faded out, its sources stopped). */
+  function takeVoice(ui) {
+    const pool = ui ? uiVoices : voices;
+    if (!ctx || !pool.length) return null;
+    const now = ctx.currentTime;
+    let pick = null;
+    for (let i = 0; i < pool.length; i++) {
+      const v = pool[i];
+      if (v.until <= now) { pick = v; break; }
+      if (!pick || v.until < pick.until) pick = v;
+    }
+    if (pick.until <= now) { // free: whatever is still listed on it has played out (its ended event is due)
+      while (pick.srcs.length) { const s = pick.srcs[0]; untrack(s); if (pick.srcs[0] === s) pick.srcs.shift(); }
+    } else { // steal: a quick fade, then its old sources stop
+      const g = pick.gain.gain;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(0, now + STEAL_FADE);
+      while (pick.srcs.length) {
+        const s = pick.srcs[0];
+        try { s.stop(now + STEAL_FADE + 0.002); } catch (err) { /* already stopped */ }
+        untrack(s);
+        if (pick.srcs[0] === s) pick.srcs.shift(); // (not tracked: never loop forever)
+      }
+      pick.t0 = now + STEAL_FADE + 0.003;
+      stats.stolen++;
+      pick.until = pick.t0 + 0.05; // the caller sets the layer's real end
+      return pick;
+    }
+    pick.t0 = now;
+    pick.until = pick.t0 + 0.05; // the caller sets the layer's real end
+    return pick;
   }
   function stopSfx() {
     for (const src of [...live.keys()]) {
       try { src.stop(); } catch (err) { /* never started or already stopped */ }
       untrack(src);
     }
+    for (const v of voices) { v.until = 0; v.srcs.length = 0; }
+    for (const v of uiVoices) { v.until = 0; v.srcs.length = 0; }
     swimSrc = null; swimFilter = null; swimGain = null; dreadOsc = null; dreadGain = null;
+  }
+  /** Pause: the swim whoosh stops for real (it is built again the next time the octopus swims). */
+  function stopSwim() {
+    if (!swimSrc) return;
+    const s = swimSrc;
+    try { s.stop(); } catch (err) { /* already stopped */ }
+    untrack(s);
+    swimSrc = null; swimFilter = null; swimGain = null;
+  }
+  function applyDucks() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    if (sfxDuck) sfxDuck.gain.setTargetAtTime(duckPause ? DUCK_PAUSE : 1, t, 0.06);
+    if (musicDuck) musicDuck.gain.setTargetAtTime(duckDeath ? DUCK_DEATH : 1, t, 0.25);
   }
   /** The swim whoosh loop: at most one, built the first time it is needed (again after a stopSfx). */
   function ensureSwim() {
@@ -129,7 +212,7 @@ export function createAudio() {
   }
 
   function crossfadeTo(which) {
-    if (!started || which === current) return;
+    if (!started || !ctx || which === current) return;
     current = which;
     if (which === 'flute') {
       flute.currentTime = flute.currentTime || 0;
@@ -146,20 +229,32 @@ export function createAudio() {
   function start() {
     if (started) return;
     started = true;
-    const AC = window.AudioContext || window.webkitAudioContext;
+    const AC = opts.AudioContext || (typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext));
     if (!AC) return; // unsupported browser: play silently, no crash
-    ctx = new AC();
+    try { ctx = new AC(); } catch (e) { ctx = null; return; }
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 1;
     master.connect(ctx.destination);
+    musicDuck = ctx.createGain();
+    musicDuck.gain.value = duckDeath ? DUCK_DEATH : 1;
+    musicDuck.connect(master);
     musicBus = ctx.createGain();
     musicBus.gain.value = musicVol;
-    musicBus.connect(master);
+    musicBus.connect(musicDuck);
+    sfxDuck = ctx.createGain();
+    sfxDuck.gain.value = duckPause ? DUCK_PAUSE : 1;
+    sfxDuck.connect(master);
     sfxBus = ctx.createGain();
     sfxBus.gain.value = sfxVol;
-    sfxBus.connect(master);
+    sfxBus.connect(sfxDuck);
+    uiBus = ctx.createGain();
+    uiBus.gain.value = sfxVol;
+    uiBus.connect(master);
+    for (let i = 0; i < MAX_VOICES; i++) voices.push(makeVoice(sfxBus));
+    for (let i = 0; i < UI_VOICES; i++) uiVoices.push(makeVoice(uiBus));
+    noiseBuf = makeNoiseBuffer(ctx);
 
-    const ext = pickExt();
+    const ext = opts.ext || pickExt();
     medles = makeTrack('medles', ext);
     flute = makeTrack('flute', ext);
 
@@ -181,24 +276,39 @@ export function createAudio() {
     // the swim whoosh and the Beholder drone are built on demand (ensureSwim / ensureDread), not kept running silent
   }
 
-  // First input, any modality: keydown, pointerdown (mouse and touch alike)
-  // or touchstart. `once:true` self-removes each listener after it fires.
-  const kickoff = () => start();
-  window.addEventListener('keydown', kickoff, { once: true });
-  window.addEventListener('pointerdown', kickoff, { once: true });
-  window.addEventListener('touchstart', kickoff, { once: true, passive: true });
+  // First input, any modality: keydown, pointerdown (mouse and touch alike), touchstart, or a pad press (gamepad.js
+  // PAD_PRESS). The first one builds the context; each later one retries resume() (and the music's play()) until the
+  // context runs and the track plays, then the listeners go. A pad press may not count as a gesture: the context then
+  // stays suspended (sfx.js skips every effect meanwhile) until the first key, click or touch.
+  const UNLOCK_ON = ['keydown', 'pointerdown', 'touchstart', PAD_PRESS];
+  let unlockTries = 0, unlocked = false;
+  function release() {
+    unlocked = true;
+    for (const t of UNLOCK_ON) win.removeEventListener(t, unlock);
+  }
+  function unlock() {
+    if (unlocked) return;
+    unlockTries++;
+    if (!started) { start(); if (!ctx) { release(); return; } } // (no Web Audio at all: nothing to unlock)
+    else if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const el = current === 'flute' ? flute : medles;
+    if (ctx.state === 'running' && el && !el.paused) { release(); return; }
+    if (el && el.paused && unlockTries > 1) el.play().catch(() => {});
+  }
+  for (const t of UNLOCK_ON) win.addEventListener(t, unlock, t === 'touchstart' ? { passive: true } : false);
 
   // In play and focused: Flûte. Paused, game over or tab unfocused: Medles.
   let playing = true;
-  let focused = !document.hidden && document.hasFocus();
+  const hasFocus = () => !doc.hidden && (!doc.hasFocus || doc.hasFocus());
+  let focused = hasFocus();
   const pick = () => crossfadeTo(playing && focused ? 'flute' : 'medles');
-  window.addEventListener('pause', () => { playing = false; pick(); });
-  window.addEventListener('gameover', () => { playing = false; pick(); });
-  window.addEventListener('resume', () => { playing = true; pick(); });
-  window.addEventListener('restart', () => { playing = true; pick(); });
-  window.addEventListener('blur', () => { focused = false; pick(); });
-  window.addEventListener('focus', () => { focused = true; pick(); });
-  document.addEventListener('visibilitychange', () => { focused = !document.hidden && document.hasFocus(); pick(); });
+  win.addEventListener('pause', () => { playing = false; duckPause = true; stopSwim(); applyDucks(); pick(); });
+  win.addEventListener('gameover', () => { playing = false; duckDeath = true; applyDucks(); pick(); });
+  win.addEventListener('resume', () => { playing = true; duckPause = false; applyDucks(); pick(); });
+  win.addEventListener('restart', () => { playing = true; duckPause = false; duckDeath = false; applyDucks(); pick(); });
+  win.addEventListener('blur', () => { focused = false; pick(); });
+  win.addEventListener('focus', () => { focused = true; pick(); });
+  doc.addEventListener('visibilitychange', () => { focused = hasFocus(); pick(); });
 
   return {
     isMuted() { return muted; },
@@ -207,7 +317,23 @@ export function createAudio() {
     // created lazily on the first input, so sfx calls before that must see
     // `null` and skip rather than capture a stale `undefined`.
     getCtx() { return ctx; },
-    getDest() { return sfxBus; }, // sfx.js plays through the SFX volume bus (which feeds the master / mute gain)
+    getDest() { return sfxBus; }, // sfx.js plays through the SFX volume bus (which feeds the pause duck and the master / mute gain)
+    /** True while effects may be scheduled: the context exists and runs (a suspended one would play them all at once later). */
+    canPlay() { return !!(ctx && sfxBus && ctx.state === 'running'); },
+    /** Night batch 5: a pooled voice for one layer ({filter, gain, t0, until}: schedule from t0, set until to the layer's end), or null. */
+    voice(ui = false) { return takeVoice(ui); },
+    /** The shared 2 s white-noise buffer (start it at a random offset for variety), or null before the first input. */
+    noise() { return noiseBuf; },
+    /** Test hook: the pools, the ducks and the unlock. */
+    voiceStats() {
+      const now = ctx ? ctx.currentTime : 0;
+      let busy = 0, uiBusy = 0, oneShots = 0;
+      for (const v of voices) if (v.until > now) busy++;
+      for (const v of uiVoices) if (v.until > now) uiBusy++;
+      for (const e of live.values()) if (!e.loop) oneShots++;
+      return { voices: voices.length, uiVoices: uiVoices.length, busy, uiBusy, stolen: stats.stolen, oneShots, duckPause, duckDeath,
+        unlocked, unlockTries, state: ctx ? ctx.state : null, sfxDuck: sfxDuck ? sfxDuck.gain.value : null, musicDuck: musicDuck ? musicDuck.gain.value : null };
+    },
     toggleMute() {
       muted = !muted;
       setMuted(muted);
@@ -219,24 +345,20 @@ export function createAudio() {
       musicVol = Math.max(0, Math.min(1, v));
       if (musicBus) musicBus.gain.value = musicVol;
     },
-    /** Settings menu: volume of the synthesised effects (dash, hurt, bomb, swim whoosh, Beholder drone), 0..1. */
+    /** Settings menu: volume of the synthesised effects (dash, hurt, bomb, swim whoosh, Beholder drone, menu clicks), 0..1. */
     setSfxVolume(v) {
       sfxVol = Math.max(0, Math.min(1, v));
       if (sfxBus) sfxBus.gain.value = sfxVol;
+      if (uiBus) uiBus.gain.value = sfxVol;
     },
     /** Test hook: the bus gain nodes' targets and current values (null before the first input creates them). */
     busGains() {
       return { music: musicVol, sfx: sfxVol, musicNow: musicBus ? musicBus.gain.value : null, sfxNow: sfxBus ? sfxBus.gain.value : null, masterNow: master ? master.gain.value : null };
     },
-    /** r41: register a synthesised source (sfx.js) so it is stopped on teardown. */
-    track(src, kind, nodes) { return track(src, kind, nodes || [], false); },
-    /** r41: a shared white-noise buffer of `dur` seconds (the bomb thump), built once per duration. */
-    noiseBuffer(dur) {
-      if (!ctx) return null;
-      let b = bufCache.get(dur);
-      if (!b) { b = makeNoiseBuffer(ctx, dur); bufCache.set(dur, b); }
-      return b;
-    },
+    /** r41: register a synthesised source (sfx.js) so it is stopped on teardown; with `voice`, the pooled voice it plays on. */
+    track(src, kind, nodes, voice) { return track(src, kind, nodes || [], false, voice || null); },
+    /** r41: a white-noise buffer (the shared one; kept for callers that ask by duration). */
+    noiseBuffer() { return noiseBuf; },
     /** r41: level teardown: stop and disconnect every one-shot and looping synthesised source. Music and the master / bus gains stay. */
     stopSfx,
     /** r41 test hook: what is playing now. Synthesised sources (kind, loop) and the two music elements (kind 'music'). */
@@ -252,11 +374,11 @@ export function createAudio() {
     /** For `__octo` test hooks: play/gameover-driven state without waiting on real audio playback. */
     currentTrack() { return current; },
     /** M7-2 swim whoosh: `frac` is speed/maxSpeed in [0,1]. A no-op before
-     * the first input (swimGain doesn't exist yet). */
+     * the first input (swimGain doesn't exist yet) and while paused. */
     setSwimIntensity(frac) {
       if (!ctx) return;
       const f = Math.max(0, Math.min(1, frac));
-      if (!swimSrc) { if (f < SWIM_ON) return; ensureSwim(); }
+      if (!swimSrc) { if (f < SWIM_ON || duckPause) return; ensureSwim(); }
       swimGain.gain.setTargetAtTime(f * 0.06, ctx.currentTime, 0.1);
       swimFilter.frequency.setTargetAtTime(300 + f * 900, ctx.currentTime, 0.15);
     },
