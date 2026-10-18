@@ -33,7 +33,7 @@ export const PH_NONE = 'none';         // not a body anything can shove (the Beh
  * impact: only a body that hits it (moving at least IMPACT_SPEED or knocked out) is hurt, one that drifts past is not;
  * blame: who is to blame by default ('octo' her own attack, 'cause' set by the caller, 'none' the world);
  * octoOnly: it only ever reaches the octopus (the manta's dive slam, the Beholder); projectile: it flies and the first body it
- * touches takes it (INFIGHT.projectile);
+ * touches takes it (INFIGHT.projectile); pierce: it flies on through the weak targets of PIERCE (pierces());
  * octo: what it does to the octopus {hearts, knock, stun} or {kill: style}.
  */
 export const SOURCES = {
@@ -43,7 +43,8 @@ export const SOURCES = {
   spikes:   { dmg: 20, crush: true,  knock: 6,  stun: 0,    blame: 'cause', impact: true, octo: { kill: 'impale' } },
   block:    { dmg: 20, crush: true,  knock: 3,  stun: 0.35, blame: 'cause', octo: { hearts: 1 } },
   jet:      { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'none',  push: true, octo: {} },
-  ink:      { dmg: 4,  crush: false, knock: 0.5, stun: 0,   blame: 'octo',  octo: {} },
+  // pierce: a projectile that flies on through the weak targets of PIERCE (2026-10-18), see pierces() below
+  ink:      { dmg: 4,  crush: false, knock: 0.5, stun: 0,   blame: 'octo',  pierce: true, octo: {} },
   // Actions tuning (2026-10-08): a bare dash hurts nothing (it only gives the octopus i-frames); the Urchin Cap's ram is 'helmet'
   dash:     { dmg: 0,  crush: false, knock: 0,  stun: 0,    blame: 'octo',  octo: {} },
   helmet:   { dmg: 2,  crush: true,  knock: 1,  stun: 0,    blame: 'octo',  octo: {} }, // the old dash, now only with the Urchin Cap (strikes.js)
@@ -242,4 +243,48 @@ export function infightReach(rule, kind, wounded = false, stun = 0, corpse = fal
   if (r.reach === 'prey') return corpse || !!wounded || stun > 0;
   if (r.reach === 'free') { const row = rowOf(kind); return !corpse && !row.invulnerable && (row.physics === PH_SWIM || row.physics === PH_WALK); }
   return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Piercing (2026-10-18, Daniel: "the smaller and weaker objects, like easy-to-crash vases, the background fish, and such should
+// not stop the ink. They should take damage and let the ink continue.")
+//
+// A projectile whose source has `pierce` (today only 'ink', the Ink Jet; a spell may join later) passes through every WEAK
+// target: the target takes the hit as before (a pot breaks, a fish dies, a corpse is shoved, a bone tile crumbles), the blob
+// splashes on it and flies on with its direction, speed and full damage unchanged. Range is unchanged too. Each weak target
+// is hit at most once per blob. A STRONG target stops the blob as before. See octomancer-web/CREATURES.md section 6.
+// Juice droplets and loose shells are weak too, but the jet never touched them anyway (no hit check at all).
+// ---------------------------------------------------------------------------------------------------------------------------
+export const PIERCE = {
+  // weak: the blob flies on
+  pot:      { weak: true,  why: 'a clay pot or vase (loot.js LK_POT, props PK_POT): it breaks and spills its shells' },
+  lootclam: { weak: true,  why: 'a breakable loot clam (loot.js LK_CLAM, props PK_CLAM, also one held on its wall); not the giant clam' },
+  ambient:  { weak: true,  why: 'a background fish (decor fish, the foliage greenranha): it dies in one hit and has no attack' },
+  corpse:   { weak: true,  why: 'a dead body (corpses.js): it is shoved along the flight' },
+  bone:     { weak: false, why: 'a fish-bone block (fragile.js): it crumbles under the blob, which stops there (Daniel 2026-10-18: one tile per shot, so bone shortcuts stay work)' },
+  rubble:   { weak: true,  why: 'a chip of bombed rock (props PK_RUBBLE): it is shoved' },
+  find:     { weak: true,  why: 'a shell, bomb or item dropped out of the rock (props PK_FIND, a small pickup): it is shoved' },
+  droplet:  { weak: true,  why: 'a fish juice droplet: never touched by the jet' },
+  pickup:   { weak: true,  why: 'a loose shell: never touched by the jet' },
+  // strong: the blob stops
+  enemy:    { weak: false, why: 'an enemy with health (piranha, crab, manta, cannon) or a hazard (urchin, horns, the Beholder)' },
+  gclam:    { weak: false, why: 'the giant clam (open: hurt; shut: its shell catches the blob)' },
+  tentacle: { weak: false, why: 'the tentacle and its shell' },
+  keeper:   { weak: false, why: 'a shopkeeper' },
+  npc:      { weak: false, why: 'a person (Marlo, Pip, Quill, the host), calm or hostile' },
+  ware:     { weak: false, why: 'a ware on its pedestal (it is knocked off: theft)' },
+  target:   { weak: false, why: "the hub's practice target" },
+  wall:     { weak: false, why: 'rock, bedrock, timber, masonry' },
+  block:    { weak: false, why: 'a pushable block' },
+  bomb:     { weak: false, why: 'a bomb (shoved)' },
+  rock:     { weak: false, why: 'a boulder (shoved)' },
+  chest:    { weak: false, why: 'a chest' },
+  relic:    { weak: false, why: 'the relic' },
+};
+export const PIERCE_KINDS = Object.keys(PIERCE);
+
+/** Does a projectile of source `src` (default the Ink Jet) fly on through a target of `kind` (a PIERCE name)? */
+export function pierces(kind, src = 'ink') {
+  const s = SOURCES[src], t = PIERCE[kind];
+  return !!(s && s.pierce && t && t.weak);
 }

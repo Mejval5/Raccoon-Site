@@ -1,7 +1,7 @@
 // Node script (not part of tests/index.html): controller Phase 2B (octomancer-web/CONTROLLER-PLAN.md "Text in the world, not
 // over it") in real Chrome with a fake standard gamepad (navigator.getGamepads stubbed before load, driven by __octo.pad).
-//   - the tutorial's first room is a cave painting of the whole scheme: keyboard glyphs first, pad glyphs (LS RS RT RB A B LB
-//     View Menu) once the pad is touched, keyboard again on a key press;
+//   - the tutorial's first room is a cave painting of the whole scheme: keyboard glyphs first, pad glyphs (LS RS RT RB LB A B
+//     d-pad View Menu; the hand is LB, then A) once the pad is touched, keyboard again on a key press;
 //   - each later room's sign opens into a board naming only its own controls, in the active scheme;
 //   - no floating box (the old prompt banner, the offer card) shows anywhere in the tutorial or the hub;
 //   - the hub's welcome is a board hung over the start; the mirror shell and the whirlpool carry their own prompt;
@@ -42,7 +42,7 @@ const at = (p, x, y, n = 24) => p.evaluate((x, y, n) => { for (let i = 0; i < n;
 const padOn = (p) => p.evaluate(() => { __octo.pad({ lx: 0.6 }); __octo.stepDraw(1); __octo.pad({}); __octo.stepDraw(16); });
 const keyOn = async (p) => { await p.keyboard.press('KeyQ'); await p.evaluate(() => __octo.stepDraw(16)); };
 const shot = async (p, tag) => { await p.evaluate(() => __octo.stepDraw(2)); await p.screenshot({ path: OUT + tag + '.png' }); };
-const PAD_ALL = ['LS', 'RS', 'RT', 'RB', 'A', 'B', 'LB', 'View', 'Menu'];
+const PAD_ALL = ['LS', 'RS', 'RT', 'RB', 'LB', 'A', 'B', 'D-pad left / right', 'View', 'Menu'];
 const KEY_ALL = ['WASD', 'Cursor', 'LMB', 'RMB', 'F', 'Space', 'Q', 'Tab', 'Esc'];
 const rowGlyphs = (s) => s.painting.rows.flatMap((r) => r.glyphs);
 const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
@@ -59,7 +59,7 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     await shot(p, 'paint-keyboard-1440');
     await padOn(p);
     s = await G(p);
-    check('room 1: the pad touched, the painting switches to pad glyphs (LS RS RT RB A B LB View Menu)', s.scheme === 'pad' && PAD_ALL.every((g) => rowGlyphs(s).includes(g)) && !rowGlyphs(s).includes('WASD'), rowGlyphs(s).join());
+    check('room 1: the pad touched, the painting switches to pad glyphs (LS RS RT RB, the hand LB then A, B, the d-pad bar, View Menu)', s.scheme === 'pad' && PAD_ALL.every((g) => rowGlyphs(s).includes(g)) && (s.painting.rows.find((r) => r.glyphs.includes('LB')) || { glyphs: [] }).glyphs.join() === 'LB,A' && !rowGlyphs(s).includes('WASD'), rowGlyphs(s).join());
     check('room 1: and the sign names LS', s.open && s.open.glyphs.join() === 'LS' && !KEYISH.test(s.open.text), JSON.stringify(s.open));
     await shot(p, 'paint-pad-1440');
     await keyOn(p);
@@ -70,12 +70,12 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     const rooms = [
       ['dash', 15.5, 11.4, ['Space', 'Shift'], ['B', 'LT']],
       ['ink', 28, 9, ['LMB', 'J'], ['RT', 'RS']],
-      ['grab', 41, 10, ['F', 'MMB'], ['A', 'RS']],
+      ['grab', 41, 10, ['F', 'MMB'], ['LB', 'RS']],
       ['bomb', 61.5, 10, ['B'], ['RB']],
       ['sticky', 58, 30, ['RMB'], ['RS', 'RB']],
-      ['cloud', 42, 29, ['Q', 'E', 'Wheel', 'RMB'], ['LB', 'D-pad left / right', 'RB']],
-      ['shop', 27, 30, ['F'], ['A']],
-      ['exit', 4.5, 30.5, ['F'], ['A']],
+      ['cloud', 42, 29, ['Q', 'E', 'Wheel', 'RMB'], ['D-pad left / right', 'RB']],
+      ['shop', 27, 30, ['F'], ['LB']],
+      ['exit', 4.5, 30.5, ['F'], ['LB']],
     ];
     let popups = 0;
     for (const [tag, x, y, keys, pads] of rooms) {
@@ -87,7 +87,7 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
       check(`room ${tag}: its sign names only its own controls (keyboard ${keys.join(' ')}, pad ${pads.join(' ')})`,
         k.open && q.open && [...new Set(k.open.glyphs)].join() === keys.join() && [...new Set(q.open.glyphs)].join() === pads.join() && !KEYISH.test(q.open.text), JSON.stringify([k.open && k.open.glyphs, q.open && q.open.glyphs, q.open && q.open.text.slice(0, 80)]));
       if (tag === 'ink') await shot(p, 'room-ink-pad-1440');
-      if (tag === 'grab') { await keyOn(p); await shot(p, 'room-grab-keyboard-1440'); }
+      if (tag === 'grab') { await shot(p, 'room-grab-pad-1440'); await keyOn(p); await shot(p, 'room-grab-keyboard-1440'); }
       await keyOn(p);
     }
     check('tutorial: no floating prompt box in any room', popups === 0);
@@ -120,7 +120,7 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
     await shot(h, 'hub-keyboard-1440');
     await padOn(h);
     s = await G(h);
-    check('hub: with a pad the board names A', s.open && s.open.glyphs.includes('A') && !KEYISH.test(s.open.text));
+    check('hub: with a pad the board names LB (the hand)', s.open && s.open.glyphs.includes('LB') && !KEYISH.test(s.open.text));
     await shot(h, 'hub-pad-1440');
     // the tutorial ring: the hand's prompt over the whirlpool, the pad glyph
     const hs = await h.evaluate(() => __octo.hubSeal());
@@ -139,7 +139,7 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
       check('hub: the mirror shell carries its prompt (F change your look), no box', s.tags.some((t) => t.id === 'mirror' && t.glyphs.includes('F')) && !s.popup, JSON.stringify(s.tags));
       await padOn(h);
       s = await G(h);
-      check('hub: with a pad the mirror says A', s.tags.some((t) => t.id === 'mirror' && t.glyphs.includes('A')));
+      check('hub: with a pad the mirror says LB', s.tags.some((t) => t.id === 'mirror' && t.glyphs.includes('LB')));
       await shot(h, 'mirror-pad-1440');
     } else check('hub: the level exposes the mirror', false);
     check('hub: no page errors', h.errs.length === 0, h.errs.slice(0, 3).join(' | '));
@@ -182,6 +182,26 @@ const KEYISH = /\b(F|WASD|LMB|RMB|MMB|Space|Shift|Tab|click)\b/;
       const rs = D.boardRects();
       return { ok: rs.length === 1 && rs.every((r) => !targets.some((t) => S.rectsHit(r, t)) && !S.rectHitsDisc(r, o.x, o.y, S.OCTO_CLEAR)), rs: JSON.stringify(rs) };
     }, which);
+    // Daniel 2026-10-18: the hub's welcome board hangs on ropes from the rock, a fixture: it never slides or clamps into view.
+    for (const vp of ['desktop', 'phone']) {
+      const tag = vp === 'phone' ? '412' : '1440';
+      const hb = await open(browser, vp, '?seed=7');
+      const rect = () => hb.evaluate(async () => { const D = await import('/octomancer/play/js/signs-draw.js'); const r = D.boardRects()[0]; return r ? [r.title, r.x0, r.y0, r.x1, r.y1] : null; });
+      const start = await hb.evaluate(() => { const o = __octo.state().octopus; return [o.x, o.y]; });
+      await at(hb, start[0], start[1], 20);
+      const r0 = await rect();
+      await shot(hb, 'board-hub-start-' + tag);
+      const drift = [];
+      for (let i = 1; i <= 6; i++) { // swim down and right, still inside the sign's reach (9 tiles)
+        await at(hb, start[0] + i * 0.9, start[1] + i * 1.0, 12);
+        drift.push(await rect());
+      }
+      await shot(hb, 'board-hub-away-' + tag);
+      const same = !!r0 && drift.every((r) => !r || (r[0] === r0[0] && Math.abs(r[1] - r0[1]) < 1e-6 && Math.abs(r[2] - r0[2]) < 1e-6 && Math.abs(r[3] - r0[3]) < 1e-6));
+      check(tag + ' hub: the hung welcome board stays at its anchor while the octopus swims away', same && drift.some((r) => r), JSON.stringify({ r0, drift }));
+      check(tag + ' hub board: no page errors', hb.errs.length === 0, hb.errs.slice(0, 3).join(' | '));
+      await hb.close();
+    }
     for (const vp of ['desktop', 'phone']) {
       const tag = vp === 'phone' ? '412' : '1440';
       const b = await open(browser, vp, '?at=tutorial&seed=7');

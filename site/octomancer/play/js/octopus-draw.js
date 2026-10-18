@@ -457,19 +457,21 @@ function drawSplatInk(ctx, o) {
   ctx.save();
   ctx.globalAlpha = 0.9 * a;
   ctx.fillStyle = '#070b17';
-  ctx.beginPath(); ctx.ellipse(0, fy - 0.02, 0.55 + 0.75 * f, 0.07 + 0.03 * f, 0, 0, Math.PI * 2); ctx.fill();
-  // thin spreading tongues of ink along the floor, uneven left and right
+  // 2026-10-18 (Daniel: "a very wide dark ellipse across the floor"): the pool and its tongues stay within about 1.4 tiles of the
+  // body's centre (they reached 2.6 tiles each side, a 5-tile sheet); the pancake itself is about 1.6 tiles wide
+  ctx.beginPath(); ctx.ellipse(0, fy - 0.02, 0.5 + 0.4 * f, 0.07 + 0.03 * f, 0, 0, Math.PI * 2); ctx.fill();
+  // short tongues of ink along the floor, uneven left and right
   for (let s = -1; s <= 1; s += 2) {
-    ctx.beginPath(); ctx.ellipse(s * (0.95 + 0.55 * f), fy - 0.01, 0.34 + 0.26 * f, 0.032, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(s * (1.42 + 0.9 * f), fy - 0.005, 0.12 + 0.12 * f, 0.02, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(s * (0.75 + 0.25 * f), fy - 0.01, 0.22 + 0.12 * f, 0.032, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(s * (1.15 + 0.15 * f), fy - 0.005, 0.06 + 0.06 * f, 0.02, 0, 0, Math.PI * 2); ctx.fill();
   }
   // drops spattered beside and just above the pool (fixed offsets, so nothing shimmers)
-  const drops = [[-0.78, -0.02, 0.05], [0.7, -0.05, 0.045], [-1.15, 0.04, 0.03], [1.2, 0.03, 0.035], [-0.42, -0.1, 0.03], [0.34, -0.12, 0.025]];
+  const drops = [[-0.78, -0.02, 0.05], [0.7, -0.05, 0.045], [-1.05, 0.04, 0.03], [1.1, 0.03, 0.035], [-0.42, -0.1, 0.03], [0.34, -0.12, 0.025]];
   for (const [dx, dy, r] of drops) { ctx.beginPath(); ctx.arc(dx * (0.6 + 0.4 * f), fy + dy, r, 0, Math.PI * 2); ctx.fill(); }
   // a faint cold sheen on the pool's upper rim, so it reads wet and teal-black rather than a flat hole
   ctx.globalAlpha = 0.22 * a;
   ctx.strokeStyle = '#4a6a8a'; ctx.lineWidth = 0.012;
-  ctx.beginPath(); ctx.ellipse(0, fy - 0.03, 0.5 + 0.7 * f, 0.055 + 0.03 * f, 0, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, fy - 0.03, 0.45 + 0.35 * f, 0.055 + 0.03 * f, 0, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
   ctx.restore();
 }
 

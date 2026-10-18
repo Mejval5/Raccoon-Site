@@ -1810,8 +1810,10 @@ export function createRenderer(ctx, world) {
       // rock bake occludes.
       if (G(2)) drawCritters(ctx, camera, worldToScreen, canvasW, canvasH, critters, time, true);
       if (G(2)) drawBubbles(canvasW, canvasH, bubbles);
-      if (G(2)) drawPickups(canvasW, canvasH, pickups, time);
+      // the set-piece wreck and the contact shadows (main.js shadowPass) go UNDER the pickups: a giant clam's shells pop up
+      // into the wreck's hold, and drawn after them the hull hid every one (2026-10-18, "this shell doesn't do anything")
       if (G(3) && preEnemyDraw) preEnemyDraw(ctx, camera, canvasW, canvasH);
+      if (G(2)) drawPickups(canvasW, canvasH, pickups, time);
       if (G(3)) drawEnemies(ctx, camera, worldToScreen, canvasW, canvasH, enemies, shots, time, alpha, skipEnemy); // skip*: what the hand holds is drawn after the octopus (main.js v2People)
       if (G(3)) drawBombs(ctx, camera, worldToScreen, canvasW, canvasH, bombs, time, skipBomb);
       if (G(4) && extraDraw) extraDraw(ctx, camera, worldToScreen, canvasW, canvasH);
