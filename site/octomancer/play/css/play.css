@@ -308,23 +308,29 @@ body {
   opacity: .8;
   margin-bottom: 6px;
 }
+/* night batch 2: the menu buttons in the journal's palette, flat (no glow, no gloss): the primary is the journal's parchment
+   button (paper fill, dark sea-ink outline, ink text), the others are outlined in the paper colour on the dark panel */
 .octo-btn-wide {
   width: 100%;
-  padding: 12px 20px;
+  padding: 11px 20px;
   border-radius: 999px;
-  border: none;
-  background: #3fd6a8;
-  color: #04231a;
+  border: 2px solid #0f3039;
+  background: #efe3bf;
+  color: #3a2a1b;
   font: 700 15px 'Quicksand', sans-serif;
   cursor: pointer;
+  box-shadow: 0 2px 0 rgba(0,0,0,.35);
 }
-.octo-btn-wide:active { background: #2fb890; }
+.octo-btn-wide:hover { background: #f4ead0; }
+.octo-btn-wide:active { background: #d9c794; box-shadow: none; transform: translateY(1px); }
 .octo-btn-wide.octo-btn-ghost {
   background: transparent;
-  border: 2px solid rgba(255,255,255,0.35);
-  color: #eafffa;
+  border: 2px solid rgba(239, 227, 191, 0.45);
+  color: #efe3bf;
+  box-shadow: none;
 }
-.octo-btn-wide.octo-btn-ghost:active { background: rgba(255,255,255,0.12); }
+.octo-btn-wide.octo-btn-ghost:hover { background: rgba(239, 227, 191, 0.07); border-color: rgba(239, 227, 191, 0.65); }
+.octo-btn-wide.octo-btn-ghost:active { background: rgba(239, 227, 191, 0.14); transform: none; }
 /* a button's keyboard shortcut ('Restart run [R]'); never on touch screens */
 .octo-key { display: inline-block; margin-left: 8px; padding: 0 6px; min-width: 10px; border: 1.5px solid currentColor; border-radius: 6px; font: 700 11px/17px 'Quicksand', sans-serif; opacity: .7; vertical-align: 1px; }
 .octo-key:empty { display: none; }
@@ -464,15 +470,15 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   filter: drop-shadow(0 3px 8px rgba(0,0,0,.35));
 }
 .octo-banner-text { font-size: clamp(16px, 4.8vw, 22px); font-weight: 700; color: #eafffa; text-shadow: 0 2px 3px rgba(0,0,0,.6); white-space: nowrap; }
-.octo-summary-headline { font-size: 14px; font-weight: 600; color: #a8f0d8; margin-bottom: 2px; }
+.octo-summary-headline { font-size: 14px; font-weight: 600; color: #bfe0d4; margin-bottom: 2px; }
 .octo-summary-rows { display: flex; flex-direction: column; gap: 3px; text-align: left; }
 .octo-summary-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 10px; border-radius: 8px; background: rgba(255,255,255,0.06); font-size: 14px; }
 .octo-summary-key { opacity: .8; }
-.octo-summary-val { font-weight: 700; color: #fff; text-align: right; }
-.octo-summary-besthead { font: 700 12px 'Quicksand', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7cf0d0; margin-top: 6px; text-align: left; }
+.octo-summary-val { font-weight: 700; color: #fff; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.octo-summary-besthead { font: 700 12px 'Quicksand', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #8ec9ba; margin-top: 6px; text-align: left; }
 .octo-summary-best { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; text-align: left; font-size: 13px; }
 .octo-summary-bestrun { padding: 2px 10px; border-radius: 8px; opacity: .85; }
-.octo-summary-bestrun.is-new { background: rgba(124, 240, 208, 0.14); color: #f1e4c3; opacity: 1; font-weight: 700; }
+.octo-summary-bestrun.is-new { background: rgba(98, 181, 168, 0.16); color: #f1e4c3; opacity: 1; font-weight: 700; }
 .octo-summary-note { font-size: 13px; font-weight: 700; color: #f1e4c3; margin-top: 4px; }
 .octo-stat-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 14px; }
 .octo-stat-row b { color: #fff; }
@@ -495,38 +501,46 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   overflow-y: auto; min-height: 0;
   -webkit-overflow-scrolling: touch; touch-action: pan-y;
   padding-right: 2px;
+  /* the scroll edge fades out, so a Controls box running under Close reads as "more below", not as a clip */
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 16px), transparent); mask-image: linear-gradient(#000 calc(100% - 16px), transparent);
 }
-.octo-settings-head { font: 700 12px 'Quicksand', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7cf0d0; margin-top: 8px; }
+#hud .octo-settings-panel .octo-settings-body { padding-bottom: 18px; } /* the last control clears the fade */
+.octo-settings-head { font: 700 12px 'Quicksand', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #8ec9ba; margin-top: 8px; }
 .octo-set-row { padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 2px; }
 .octo-set-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .octo-set-label { font-size: 14px; font-weight: 700; color: #fff; }
 .octo-set-out { font-size: 13px; font-weight: 700; color: #f1e4c3; font-variant-numeric: tabular-nums; }
 .octo-set-hint { font-size: 12px; opacity: .72; line-height: 1.3; }
-.octo-set-range { width: 100%; height: 44px; margin: 0; background: transparent; accent-color: #3fd6a8; cursor: pointer; touch-action: pan-y; -webkit-appearance: none; appearance: none; }
+.octo-set-range { width: 100%; height: 44px; margin: 0; background: transparent; accent-color: #3d8c7a; cursor: pointer; touch-action: pan-y; -webkit-appearance: none; appearance: none; }
 .octo-set-range::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.22); }
-.octo-set-range::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -10px; border-radius: 50%; background: #3fd6a8; border: 3px solid #04231a; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.octo-set-range::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; margin-top: -9px; border-radius: 50%; background: #efe3bf; border: 2px solid #0f3039; box-shadow: 0 2px 0 rgba(0,0,0,.35); }
 .octo-set-range::-moz-range-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.22); }
-.octo-set-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #3fd6a8; border: 3px solid #04231a; }
+.octo-set-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #efe3bf; border: 2px solid #0f3039; }
 .octo-switch { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
 .octo-switch .octo-set-label { flex: 1; }
 .octo-set-tag { font-size: 12px; font-weight: 700; opacity: .75; }
-.octo-switch-knob { position: relative; flex: none; width: 48px; height: 28px; border-radius: 999px; background: rgba(255,255,255,0.22); transition: background .15s; }
-.octo-switch-knob::after { content: ''; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #eafffa; transition: transform .15s; }
-.octo-switch.is-on .octo-switch-knob { background: #3fd6a8; }
-.octo-switch.is-on .octo-switch-knob::after { transform: translateX(20px); background: #04231a; }
+/* night batch 2: a two-state pill carved into the panel (Off | On), the chosen half a raised piece of parchment; no sliding knob */
+.octo-switch-knob { flex: none; display: flex; width: 84px; height: 30px; padding: 3px; gap: 2px; border-radius: 999px; background: #08161f; box-shadow: inset 0 2px 4px rgba(0,0,0,.6), inset 0 0 0 1.5px rgba(239, 227, 191, 0.22); }
+.octo-switch-knob::before, .octo-switch-knob::after { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 999px; font: 700 12px/1 'Quicksand', sans-serif; color: rgba(239, 227, 191, 0.42); }
+.octo-switch-knob::before { content: 'Off'; }
+.octo-switch-knob::after { content: 'On'; }
+.octo-switch:not(.is-on) .octo-switch-knob::before, .octo-switch.is-on .octo-switch-knob::after { background: #efe3bf; color: #3a2a1b; box-shadow: 0 1px 0 rgba(0,0,0,.45), inset 0 0 0 1px #0f3039; }
 .octo-set-seedline { display: flex; gap: 8px; }
 .octo-set-seed { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.3); background: rgba(4,18,30,0.6); color: #fff; font: 700 16px 'Quicksand', sans-serif; -webkit-user-select: text; user-select: text; touch-action: manipulation; }
-.octo-set-seed:focus { outline: none; border-color: #7cf0d0; }
-.octo-set-clear { height: 44px; padding: 0 14px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.3); background: transparent; color: #eafffa; font: 700 13px 'Quicksand', sans-serif; cursor: pointer; }
-.octo-set-clear:active { background: rgba(255,255,255,0.12); }
+.octo-set-seed:focus { outline: none; border-color: #8ec9ba; }
+.octo-set-clear { height: 44px; padding: 0 14px; border-radius: 10px; border: 2px solid rgba(239, 227, 191, 0.45); background: transparent; color: #efe3bf; font: 700 13px 'Quicksand', sans-serif; cursor: pointer; }
+.octo-set-clear:active { background: rgba(239, 227, 191, 0.14); }
+/* the Controls boxes take their full height in the scroll flow (never squeezed by the column) */
+.octo-settings-body > *, .octo-set-col > * { flex: none; }
 .octo-set-help { padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid transparent; }
-.octo-set-help.is-current { border-color: rgba(124, 240, 208, 0.5); background: rgba(124, 240, 208, 0.08); }
-.octo-set-helptitle { font-size: 13px; font-weight: 700; color: #7cf0d0; }
+.octo-set-help.is-current { border-color: rgba(98, 181, 168, 0.55); background: rgba(98, 181, 168, 0.08); }
+.octo-set-helptitle { font-size: 13px; font-weight: 700; color: #8ec9ba; }
 .octo-set-helpline { font-size: 12.5px; line-height: 1.4; opacity: .9; }
 .octo-set-reset { gap: 8px; background: none; padding: 0; }
-.octo-btn-danger { border-color: rgba(255, 154, 138, 0.6) !important; color: #ffb4a6 !important; min-height: 44px; }
-.octo-btn-danger-solid { background: #ff8a76; color: #2a0a04; min-height: 44px; }
-.octo-btn-danger-solid:active { background: #e8725e; }
+.octo-btn-danger { border-color: rgba(214, 140, 118, 0.6) !important; color: #e8ab98 !important; min-height: 44px; }
+.octo-btn-danger-solid { background: #c97a64; color: #2a0d06; min-height: 44px; }
+.octo-btn-danger-solid:hover { background: #d18670; }
+.octo-btn-danger-solid:active { background: #b06650; }
 .octo-set-confirm { display: flex; flex-direction: column; gap: 8px; }
 .octo-set-confirmtext { font-size: 13px; font-weight: 600; color: #ffd0c6; line-height: 1.35; }
 .octo-settings-close { flex: none; min-height: 44px; }
@@ -781,6 +795,11 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
    (desktop) or a bottom sheet (phones, portrait and landscape). The panel size is fixed per layout, so main.js can frame
    the body in the free part of the screen from the moment of death, before the panel fades in. */
 .octo-go-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+/* night batch 2: "Leave the game" asks first; the question takes the buttons' place */
+.octo-go-confirm { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.octo-go-confirmtext { font-size: 15px; font-weight: 700; color: #f1e4c3; text-align: center; }
+.octo-go-confirmbtns { display: flex; gap: 8px; }
+.octo-go-confirmbtns .octo-btn-wide { flex: 1; }
 .octo-gameover-overlay.octo-death-ui {
   --bx: 50%; --by: 50%; --hole: 90px;
   justify-content: flex-end; align-items: center;
@@ -808,15 +827,17 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   }
   .octo-death-ui .octo-summary { width: min(100%, 460px); gap: 4px; }
   .octo-death-ui .octo-banner { width: min(100%, 300px); align-self: center; }
-  .octo-death-ui .octo-summary-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
-  .octo-death-ui .octo-summary-row { font-size: 13px; padding: 2px 8px; gap: 6px; min-width: 0; }
-  .octo-death-ui .octo-summary-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* night batch 2: one stat per line (a value is never cut), the buttons right under the list (sticky when it scrolls) */
+  .octo-death-ui .octo-summary-rows { gap: 2px; }
+  .octo-death-ui .octo-summary-row { font-size: 13px; padding: 2px 10px; gap: 8px; min-width: 0; }
   .octo-death-ui .octo-summary-best { font-size: 12px; }
-  .octo-death-ui .octo-go-actions { width: min(100%, 460px); flex-direction: row; gap: 8px; bottom: 0; margin-top: auto; margin-bottom: 0; padding: 8px 0 calc(10px + var(--safe-b)); }
-  .octo-death-ui .octo-go-actions .octo-btn-wide { flex: 1; padding: 10px 12px; }
-  .octo-death-ui .octo-go-actions .octo-go-restart { flex: 1.25; }
-  .octo-death-ui .octo-go-actions .octo-go-hub { flex: 1.25; white-space: nowrap; padding: 10px 8px; }
-  .octo-death-ui .octo-go-actions .octo-btn-ghost:last-child { flex: 0.6; padding: 10px 6px; }
+  .octo-death-ui .octo-go-actions { width: min(100%, 460px); flex-direction: row; flex-wrap: wrap; gap: 8px; bottom: 0; margin-top: 2px; margin-bottom: 0; padding: 8px 0 calc(10px + var(--safe-b)); }
+  .octo-death-ui .octo-go-actions > .octo-btn-wide { flex: 1 1 auto; width: auto; padding: 10px 10px; white-space: nowrap; font-size: 14px; }
+  .octo-death-ui .octo-go-actions .octo-go-restart { flex-grow: 1.3; }
+  .octo-death-ui .octo-go-actions .octo-go-confirm { flex-direction: row; align-items: center; }
+  .octo-death-ui .octo-go-actions .octo-go-confirmtext { flex: none; font-size: 14px; padding: 0 4px; }
+  .octo-death-ui .octo-go-actions .octo-go-confirmbtns { flex: 1; }
+  .octo-death-ui .octo-go-actions .octo-go-confirmbtns .octo-btn-wide { padding: 10px 8px; font-size: 14px; }
 }
 /* landscape phone: a low sheet in columns (summary | best runs | buttons) */
 @media (orientation: landscape) and (max-height: 520px) {
@@ -832,7 +853,9 @@ input.octo-pad-focus { outline-offset: 5px; border-radius: 6px; }
   .octo-death-ui .octo-summary-besthead { grid-column: 2; grid-row: 1; margin: 0 0 2px; align-self: end; }
   .octo-death-ui .octo-summary-best { grid-column: 2; grid-row: 2 / span 2; }
   .octo-death-ui .octo-summary-note { grid-column: 2; grid-row: 4; font-size: 12px; }
-  .octo-death-ui .octo-go-actions { grid-column: 3; grid-row: 1 / span 3; width: 100%; flex-direction: column; position: sticky; top: 0; margin-top: 0; padding: 4px 0 0; background: none; }
+  .octo-death-ui .octo-go-actions { grid-column: 3; grid-row: 1 / span 3; width: 100%; flex-direction: column; flex-wrap: nowrap; position: sticky; top: 0; margin-top: 0; padding: 4px 0 0; background: none; }
+  .octo-death-ui .octo-go-actions > .octo-btn-wide { flex: none; width: 100%; }
+  .octo-death-ui .octo-go-actions .octo-go-confirm, .octo-death-ui .octo-go-actions .octo-go-confirmbtns { flex-direction: column; align-items: stretch; }
 }
 
 /* --- looks picker (2026-10-08, skins: the hub's mirror shell, Settings > Looks) --- */

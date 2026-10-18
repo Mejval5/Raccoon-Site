@@ -26,6 +26,22 @@ function keyButton(className, label, key) {
 }
 
 /**
+ * The rows as the summary shows them (night batch 2): the combined 'Time (level / run)' row becomes two rows, 'Level time' and
+ * 'Run time', so a phone's single column never cuts a value; with `dropLevels` (the clear screen, whose headline already says
+ * all levels were cleared) the 'Levels reached' row goes.
+ */
+export function summaryDisplayRows(rows, dropLevels = false) {
+  const out = [];
+  for (const [k, v] of rows) {
+    if (dropLevels && k === 'Levels reached') continue;
+    const m = k === 'Time (level / run)' && /^(.+?) \/ (.+)$/.exec(v);
+    if (m) { out.push(['Level time', m[1]], ['Run time', m[2]]); continue; }
+    out.push([k, v]);
+  }
+  return out;
+}
+
+/**
  * Run summary block (round 33): the generated title banner carrying the headline, a result line, label / value
  * rows, the best-runs list and a note. One per overlay (death, biome clear); `set` fills it, `el` is the node.
  */
@@ -48,7 +64,7 @@ function createSummaryBlock() {
       bannerText.textContent = d.title;
       headline.textContent = d.headline;
       rowsEl.textContent = '';
-      for (const [k, v] of d.rows) {
+      for (const [k, v] of summaryDisplayRows(d.rows, d.dropLevels)) {
         const row = el('div', 'octo-summary-row');
         row.append(el('span', 'octo-summary-key', k), el('span', 'octo-summary-val', v));
         rowsEl.appendChild(row);
@@ -227,13 +243,25 @@ export function createUI(root, handlers) {
   const hubBtn = keyButton('octo-btn-wide octo-btn-ghost octo-go-hub', 'Back to the hub', 'H');
   hubBtn.style.display = 'none';
   let quickMode = false;
-  const exitBtn = el('button', 'octo-btn-wide octo-btn-ghost', 'Exit');
+  // night batch 2: leaving the page is the last button and asks first (the settings reset confirm's pattern: the button gives way to
+  // a question with Yes / Stay, the safe answer takes the focus). The pad's default focus stays on the first button, Restart run.
+  const exitBtn = el('button', 'octo-btn-wide octo-btn-ghost octo-go-leave', 'Leave the game');
   exitBtn.type = 'button';
+  const leaveBox = el('div', 'octo-go-confirm');
+  const leaveText = el('div', 'octo-go-confirmtext', 'Leave Octomancer?');
+  const leaveYes = el('button', 'octo-btn-wide octo-btn-ghost octo-go-leave-yes', 'Yes');
+  leaveYes.type = 'button';
+  const leaveStay = el('button', 'octo-btn-wide octo-go-leave-stay', 'Stay');
+  leaveStay.type = 'button';
+  const leaveBtns = el('div', 'octo-go-confirmbtns');
+  leaveBtns.append(leaveYes, leaveStay);
+  leaveBox.append(leaveText, leaveBtns);
+  leaveBox.style.display = 'none';
   const goCredit = el('div', 'octo-credit', CREDIT_TEXT);
   const goSummary = createSummaryBlock(); // v2: the run summary replaces the score lines
   goSummary.el.style.display = 'none';
   const goActions = el('div', 'octo-go-actions'); // V2-PLAN 14: stays in view at the bottom of the side panel / sheet
-  goActions.append(restartBtn, hubBtn, exitBtn);
+  goActions.append(restartBtn, hubBtn, exitBtn, leaveBox);
   gameover.panel.append(goTitle, goSummary.el, goScore, goBest, goActions, goCredit);
   // V2-PLAN 14: the death screen is a side panel (desktop) or a bottom sheet (phones) over a light tint with a clear hole
   // around the body, which keeps simulating. It is laid out (hidden) at the moment of death so the camera can frame the
@@ -245,7 +273,18 @@ export function createUI(root, handlers) {
     else if (handlers.onRestart) handlers.onRestart();
   });
   hubBtn.addEventListener('click', () => handlers.onRestart && handlers.onRestart());
-  exitBtn.addEventListener('click', () => handlers.onExit && handlers.onExit());
+  let hubShown = false;
+  function askLeave(on) {
+    if (on === (leaveBox.style.display !== 'none')) return;
+    leaveBox.style.display = on ? '' : 'none';
+    restartBtn.style.display = exitBtn.style.display = on ? 'none' : '';
+    hubBtn.style.display = !on && hubShown ? '' : 'none';
+    goActions.classList.toggle('is-asking', on);
+    try { (on ? leaveStay : exitBtn).focus({ preventScroll: true }); } catch (e) { /* old browsers */ }
+  }
+  exitBtn.addEventListener('click', () => askLeave(true));
+  leaveStay.addEventListener('click', () => askLeave(false));
+  leaveYes.addEventListener('click', () => handlers.onExit && handlers.onExit());
 
   // --- v2 end-of-biome screen ---
   const endScreen = makeOverlay('octo-end-overlay');
@@ -333,7 +372,7 @@ export function createUI(root, handlers) {
       endTitle.textContent = title; endSub.textContent = sub;
       endTitle.style.display = endSub.style.display = detail ? 'none' : '';
       endSummary.el.style.display = detail ? '' : 'none';
-      if (detail) endSummary.set(detail);
+      if (detail) endSummary.set({ ...detail, dropLevels: true });
       endScreen.overlayEl.style.display = 'flex';
       endScreen.panel.scrollTop = 0;
     },
@@ -345,7 +384,8 @@ export function createUI(root, handlers) {
       goTitle.textContent = title;
       quickMode = !!hubButton;
       restartBtn.setLabel(button, quickMode ? 'R' : '');
-      hubBtn.style.display = quickMode ? '' : 'none';
+      hubShown = quickMode;
+      hubBtn.style.display = quickMode && leaveBox.style.display === 'none' ? '' : 'none';
       if (quickMode) hubBtn.setLabel(hubButton, 'H');
     },
     /** Which extra pause-menu buttons show: Restart run (in a dive), Leave the tutorial (in the tutorial). */
@@ -356,7 +396,7 @@ export function createUI(root, handlers) {
     /** Test hook: the death screen's and the pause menu's buttons as shown ({label, key, shown}). */
     buttons() {
       const b = (x) => ({ label: x.querySelector('.octo-btn-label') ? x.querySelector('.octo-btn-label').textContent : x.textContent, key: x.querySelector('.octo-key') ? x.querySelector('.octo-key').textContent : '', shown: x.style.display !== 'none' });
-      return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
+      return { restart: b(restartBtn), hub: b(hubBtn), exit: b(exitBtn), leaveAsk: leaveBox.style.display !== 'none', pauseRestart: b(pauseRestartBtn), pauseLeave: b(pauseLeaveBtn), journal: b(journalBtn) };
     },
     hideControlsHelp() { controlsHelp.style.display = 'none'; },
     /** The input scheme changed (input.js modechange): the line re-renders with that scheme's glyphs. */
@@ -378,6 +418,7 @@ export function createUI(root, handlers) {
     isGameOverShown() { return gameover.overlayEl.style.display !== 'none' && !gameover.overlayEl.classList.contains('is-pending'); },
     /** The octopus just died: lay the death screen out, invisible, so its rect is known before it shows. */
     prepareGameOver() {
+      askLeave(false);
       gameover.overlayEl.classList.add('octo-death-ui', 'is-pending'); // v2 only (endless keeps the centred card)
       root.classList.add('octo-death-open');
       gameover.overlayEl.style.display = 'flex';
@@ -406,7 +447,10 @@ export function createUI(root, handlers) {
       gameover.panel.scrollTop = 0;
       goRect = null;
     },
-    hideGameOver() { gameover.overlayEl.style.display = 'none'; gameover.overlayEl.classList.remove('is-pending'); root.classList.remove('octo-death-open'); goRect = null; },
+    /** The leave question is open on the death screen (B / Esc there answers Stay: `answerLeave(false)`). */
+    leaveAsked() { return leaveBox.style.display !== 'none'; },
+    answerLeave(yes) { if (yes) leaveYes.click(); else askLeave(false); },
+    hideGameOver() { askLeave(false); gameover.overlayEl.style.display = 'none'; gameover.overlayEl.classList.remove('is-pending'); root.classList.remove('octo-death-open'); goRect = null; },
     focusRestart() { restartBtn.focus({ preventScroll: true }); },
   };
   return api;
