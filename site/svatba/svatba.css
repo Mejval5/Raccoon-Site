@@ -224,10 +224,10 @@ html[data-state="locked"] #locked {
   .lang-toggle button { font-size: 0.68rem; padding: 3px 5px; }
 }
 
-/* Admin button, only in the couple's browsers (see initAdminLink): under the
-   language switch, pinned to the screen on PC, scrolling away on phones. */
+/* Admin button, only in the couple's browsers (see initAdminLink) and only
+   on PC: at the top of the page under the language switch, scrolling with it. */
 .admin-link {
-  position: fixed;
+  position: absolute;
   top: calc(max(16px, env(safe-area-inset-top)) + 64px);
   right: max(16px, env(safe-area-inset-right));
   z-index: 50;
@@ -247,7 +247,7 @@ html[data-state="locked"] #locked {
 body.svatba a.admin-link { color: var(--sv-paper); }
 .admin-link:hover { background: rgba(226, 180, 95, 0.25); }
 @media (max-width: 699px) {
-  .admin-link { position: absolute; top: calc(max(16px, env(safe-area-inset-top)) + 58px); }
+  .admin-link { display: none; }
 }
 
 /* ---------- Main content stacking ---------- */
