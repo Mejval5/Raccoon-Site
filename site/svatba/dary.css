@@ -281,7 +281,10 @@
 .dary-tag:empty { display: none; }
 .dary-tag { white-space: nowrap; }
 .dary-level.is-next .dary-tag {
-  padding: 2px 8px;
+  /* Josefin's capitals sit low in their line box: a fixed line height and a
+     little more padding on top centre the text in the pill. */
+  line-height: 1;
+  padding: 4px 9px 2px;
   border-radius: 999px;
   background: var(--sv-wine);
   color: var(--sv-paper);

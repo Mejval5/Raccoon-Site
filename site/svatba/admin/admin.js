@@ -2,7 +2,8 @@
  * Svatba gift admin page. Private, noindex, plain-but-tidy Czech UI.
  *
  * The admin key never lives in any file: it arrives as a URL hash fragment
- * (#key=...), gets copied into sessionStorage, and the hash is cleared
+ * (#key=...), gets copied into localStorage (so this browser stays signed in
+ * and the invitation shows an Admin button), and the hash is cleared
  * immediately so the key never sits in browser history or gets sent to any
  * server as part of a URL. Every request after that carries it as the
  * X-Admin-Key header instead.
@@ -56,13 +57,13 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
   function getStoredKey() {
-    try { return window.sessionStorage.getItem(SESSION_KEY); } catch (e) { return null; }
+    try { return window.localStorage.getItem(SESSION_KEY) || window.sessionStorage.getItem(SESSION_KEY); } catch (e) { return null; }
   }
   function storeKey(key) {
-    try { window.sessionStorage.setItem(SESSION_KEY, key); } catch (e) { /* private mode etc: key just won't persist across reloads */ }
+    try { window.localStorage.setItem(SESSION_KEY, key); } catch (e) { /* private mode etc: key just won't persist across reloads */ }
   }
   function clearStoredKey() {
-    try { window.sessionStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+    try { window.localStorage.removeItem(SESSION_KEY); window.sessionStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
   }
 
   var adminKey = null;

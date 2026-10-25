@@ -299,8 +299,8 @@
     if (lang === 'fr') return 'fr-FR';
     return 'cs-CZ';
   }
-  function formatAmount(amount) {
-    var rounded = Math.round(amount / 100) * 100;
+  function formatAmount(amount, exact) {
+    var rounded = exact ? Math.round(amount) : Math.round(amount / 100) * 100;
     try {
       return new Intl.NumberFormat(localeTag(currentLang()), { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(rounded);
     } catch (e) {
@@ -589,7 +589,7 @@
     doneEl.setAttribute('d', pathD(prog.done, prog.frac));
     var pos = positionOf(prog);
     place(avatarEl, pos.s, pos.c);
-    if (debugEl) debugEl.textContent = formatAmount(realAmount);
+    if (debugEl) debugEl.textContent = formatAmount(realAmount, true);
     if (prog.done === shownDone) return;
 
     var items = levelsEl.children;

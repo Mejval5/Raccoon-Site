@@ -31,6 +31,12 @@ const FIXTURE = JSON.parse(
 
 // --- date helpers ---------------------------------------------------------
 
+test("formatFioDate: takes the date part of Fio's text form (rrrr-mm-dd+GMT)", () => {
+  assert.equal(formatFioDate("2026-10-14+0200"), "2026-10-14");
+  assert.equal(formatFioDate("2026-01-05+0100"), "2026-01-05");
+  assert.equal(formatFioDate("not a date"), null);
+});
+
 test("formatFioDate: converts Fio's ms-since-epoch (Prague local midnight) to rrrr-mm-dd", () => {
   assert.equal(formatFioDate(1788300000000), "2026-09-02");
   assert.equal(formatFioDate(1788386400000), "2026-09-03");
@@ -39,10 +45,9 @@ test("formatFioDate: converts Fio's ms-since-epoch (Prague local midnight) to rr
   assert.equal(formatFioDate(1788645600000), "2026-09-06");
 });
 
-test("formatFioDate: null for non-numeric/non-finite input", () => {
+test("formatFioDate: null for missing or non-finite input", () => {
   assert.equal(formatFioDate(null), null);
   assert.equal(formatFioDate(undefined), null);
-  assert.equal(formatFioDate("2026-09-02"), null);
   assert.equal(formatFioDate(NaN), null);
 });
 

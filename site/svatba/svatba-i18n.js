@@ -42,36 +42,33 @@ window.SVATBA_I18N = {
     "hero.family": "Nečesalovi",
 
     "card.greeting": "Milí naši,",
-    "card.p1": "s radostí v srdci vám oznamujeme, že jsme se rozhodli jít spolu dál – tentokrát už jako manželé. Bude nám ctí, když tento den prožijete s námi.",
-    "card.p2": "Strávíme spolu dlouhý letní den pod korunami meruňkových stromů – s dobrým jídlem, vínem a lidmi, které máme rádi. Stačí přinést dobrou náladu, o všechno ostatní se postaráme.",
+    "card.p1": "máme pro vás novinku: bereme se! A moc bychom si přáli, abyste u toho byli s námi.",
+    "card.p2": "Čeká nás dlouhý letní den pod meruňkami – s dobrým jídlem, vínem a lidmi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
 
     "card.kdy.label": "Kdy",
-    "card.kdy.text": "sobota 19. června 2027, obřad ve 14:00", // TODO Daniel: confirm ceremony time
+    "card.kdy.text": "sobota 19. června 2027, obřad v 11:00",
     "card.kde.label": "Kde",
     "card.kde.text": "Stodola v Meruňkovém sadu, Dolní Kounice, Jihomoravský kraj",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Program",
-    "card.program.item1": "14:00 &ndash; obřad", // TODO Daniel: confirm programme
-    "card.program.item2": "15:00 &ndash; přípitek a focení",
-    "card.program.item3": "17:00 &ndash; hostina",
-    "card.program.item4": "20:00 &ndash; první tanec a zábava do rána",
+    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Žádný rozpis nemáme – zůstaňte, jak dlouho se vám bude chtít. Odpoledne v sadu, večer tanec, klidně až do rána.",
 
     "card.dress.label": "Dress code",
     "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí.",
 
     "card.kids.label": "Děti",
-    "card.kids.text": "Budeme rádi, když si tenhle den užijete naplno s námi a své ratolesti necháte doma v klidu vychillovat.",
+    "card.kids.text": "Tenhle den bude bez dětí. Nechte ratolesti doma v klidu vychillovat a užijte si ho s námi naplno.",
 
     "card.gifts.label": "Dary",
-    "card.gifts.text": "Největší radost nám uděláte příspěvkem do společné kasičky. Na místě najdete obálku i QR kód pro platbu.",
+    "card.gifts.text": "Největší radost nám uděláte příspěvkem do společné kasičky. Na místě najdete obálku i QR kód.",
 
     "card.acc.label": "Ubytování",
     "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu. Na konci večera zajistíme rozvoz do Brna a okolí.",
 
     "card.contact.label": "Kontakt",
-    "card.contact.text": "S čímkoliv se na nás neváhejte obrátit:",
+    "card.contact.text": "S čímkoliv se nám klidně ozvěte:",
 
     "countdown.heading": "Odpočet do svatby",
 
@@ -107,7 +104,6 @@ window.SVATBA_I18N = {
 
     "rsvp.captcha.label": "Nejsem robot",
     "rsvp.captcha.verifying": "Ověřujeme…",
-    "rsvp.captcha.verified": "Ověřeno",
     "rsvp.captcha.error": "Ověření se nezdařilo, zkuste to prosím znovu.",
     "rsvp.captcha.expired": "Platnost ověření vypršela, zkuste to prosím znovu.",
     "rsvp.captcha.wait": "Ještě ověřujeme, že nejste robot…",
@@ -279,37 +275,34 @@ window.SVATBA_I18N = {
     "hero.scrollAria": "Scroll to the invitation",
     "hero.family": "The Nečesals",
 
-    "card.greeting": "Dear ones,",
-    "card.p1": "With joy in our hearts we're letting you know that we've decided to keep going together – this time as a married couple. It would mean the world to have you with us on this day.",
-    "card.p2": "We'll spend a long summer day together under the apricot trees, with good food, good wine and the people we love. Just bring your good mood – we'll take care of everything else.",
+    "card.greeting": "Dear all,",
+    "card.p1": "we have news: we're getting married! And we'd love you to be there with us.",
+    "card.p2": "A long summer day under the apricot trees is waiting for us – with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
 
     "card.kdy.label": "When",
-    "card.kdy.text": "Saturday 19 June 2027, ceremony at 2:00 PM", // TODO Daniel: confirm ceremony time
+    "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00",
     "card.kde.label": "Where",
-    "card.kde.text": "Stodola v Meruňkovém sadu (a barn in an apricot orchard), Dolní Kounice, South Moravia, Czechia",
+    "card.kde.text": "Stodola v Meruňkovém sadu (the Barn in the Apricot Orchard), Dolní Kounice, South Moravia",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.item1": "2:00 PM &ndash; ceremony", // TODO Daniel: confirm programme
-    "card.program.item2": "3:00 PM &ndash; toast &amp; photos",
-    "card.program.item3": "5:00 PM &ndash; dinner",
-    "card.program.item4": "8:00 PM &ndash; first dance &amp; party till dawn",
+    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's no schedule – stay as long as you like. An afternoon in the orchard, dancing in the evening, and on into the night if you're up for it.",
 
     "card.dress.label": "Dress code",
-    "card.dress.text": "There isn't one. Come in whatever you can dance in comfortably.",
+    "card.dress.text": "There isn't one. Come in whatever you can dance in.",
 
-    "card.kids.label": "Kids",
-    "card.kids.text": "We'd love for you to enjoy the day fully with us, so let the little ones have a relaxing night at home.",
+    "card.kids.label": "Children",
+    "card.kids.text": "It's a grown-ups-only day. Leave the little ones at home to chill in peace and enjoy it with us to the full.",
 
     "card.gifts.label": "Gifts",
-    "card.gifts.text": "The best gift would be a contribution to our shared kitty. You'll find an envelope and a QR code for payment on the day.",
+    "card.gifts.text": "The best gift is a contribution to our shared kitty. You'll find an envelope and a QR code on the day.",
 
     "card.acc.label": "Accommodation",
-    "card.acc.text": "If you'd like, you can camp overnight right in the orchard. At the end of the evening we'll arrange a ride back to Brno and the surrounding area.",
+    "card.acc.text": "If you fancy it, you can camp overnight right in the orchard. At the end of the evening we'll arrange rides back to Brno and the surrounding area.",
 
     "card.contact.label": "Contact",
-    "card.contact.text": "Reach out any time, about anything:",
+    "card.contact.text": "Whatever you need, just get in touch:",
 
     "countdown.heading": "Countdown to the wedding",
 
@@ -345,7 +338,6 @@ window.SVATBA_I18N = {
 
     "rsvp.captcha.label": "I'm not a robot",
     "rsvp.captcha.verifying": "Verifying…",
-    "rsvp.captcha.verified": "Verified",
     "rsvp.captcha.error": "Verification failed, please try again.",
     "rsvp.captcha.expired": "Verification expired, please try again.",
     "rsvp.captcha.wait": "We're still checking you're not a robot…",
@@ -517,37 +509,34 @@ window.SVATBA_I18N = {
     "hero.scrollAria": "Faire défiler vers le faire-part",
     "hero.family": "Les Nečesal",
 
-    "card.greeting": "Chers proches,",
-    "card.p1": "C'est avec le cœur rempli de joie que nous vous annonçons notre décision de poursuivre notre chemin ensemble – cette fois en tant qu'époux. Votre présence à nos côtés en ce jour nous honorerait profondément.",
-    "card.p2": "Nous passerons ensemble une longue journée d'été sous les abricotiers, avec de bons plats, du bon vin et les personnes que nous aimons. Apportez simplement votre bonne humeur – nous nous occupons du reste.",
+    "card.greeting": "Chers tous,",
+    "card.p1": "on a une nouvelle à vous annoncer : on se marie ! Et on aimerait beaucoup que vous soyez là avec nous.",
+    "card.p2": "Une longue journée d'été nous attend sous les abricotiers – avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
 
     "card.kdy.label": "Quand",
-    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 14 h 00", // TODO Daniel: confirm ceremony time
+    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h",
     "card.kde.label": "Où",
-    "card.kde.text": "Stodola v Meruňkovém sadu (une grange dans un verger d'abricotiers), Dolní Kounice, Moravie du Sud, Tchéquie",
+    "card.kde.text": "Stodola v Meruňkovém sadu (la Grange du verger d'abricotiers), Dolní Kounice, Moravie-du-Sud",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.item1": "14 h 00 &ndash; cérémonie", // TODO Daniel: confirm programme
-    "card.program.item2": "15 h 00 &ndash; toast et photos",
-    "card.program.item3": "17 h 00 &ndash; dîner",
-    "card.program.item4": "20 h 00 &ndash; ouverture du bal et fête jusqu'au matin",
+    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite, pas de programme : restez aussi longtemps que vous voulez. Un après-midi dans le verger, de la danse le soir, et jusqu'au bout de la nuit si le cœur vous en dit.",
 
-    "card.dress.label": "Tenue",
-    "card.dress.text": "Aucun. Venez dans une tenue qui vous permette de danser à l'aise.",
+    "card.dress.label": "Dress code",
+    "card.dress.text": "Il n'y en a pas. Venez dans la tenue où vous dansez le mieux.",
 
     "card.kids.label": "Enfants",
-    "card.kids.text": "Nous serions ravis que vous profitiez pleinement de cette journée avec nous — laissez donc vos bambins passer une soirée tranquille à la maison.",
+    "card.kids.text": "Ce sera une journée entre grands. Laissez les petits chiller tranquillement à la maison et profitez-en pleinement avec nous.",
 
     "card.gifts.label": "Cadeaux",
-    "card.gifts.text": "Le plus beau des cadeaux sera une contribution à notre cagnotte commune. Vous trouverez sur place une enveloppe et un QR code pour régler.",
+    "card.gifts.text": "Le plus beau cadeau, c'est une participation à notre cagnotte commune. Vous trouverez une enveloppe et un QR code sur place.",
 
     "card.acc.label": "Hébergement",
-    "card.acc.text": "Si vous le souhaitez, vous pourrez dormir sous tente directement dans le verger. En fin de soirée, nous organiserons des navettes vers Brno et ses environs.",
+    "card.acc.text": "Pour ceux qui le souhaitent, il est possible de camper sous tente directement dans le verger. En fin de soirée, on organise des navettes vers Brno et les environs.",
 
     "card.contact.label": "Contact",
-    "card.contact.text": "N'hésitez pas à nous contacter, pour quoi que ce soit :",
+    "card.contact.text": "Pour n'importe quelle question, écrivez-nous :",
 
     "countdown.heading": "Compte à rebours avant le mariage",
 
@@ -583,7 +572,6 @@ window.SVATBA_I18N = {
 
     "rsvp.captcha.label": "Je ne suis pas un robot",
     "rsvp.captcha.verifying": "Vérification…",
-    "rsvp.captcha.verified": "Vérifié",
     "rsvp.captcha.error": "Échec de la vérification, veuillez réessayer.",
     "rsvp.captcha.expired": "La vérification a expiré, veuillez réessayer.",
     "rsvp.captcha.wait": "Nous vérifions encore que vous n'êtes pas un robot…",

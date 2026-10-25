@@ -1117,7 +1117,7 @@
   })();
 
   // ---------------------------------------------------------------------
-  // 7. Countdown — days / hours / minutes to 2027-06-19 14:00 Europe/Prague
+  // 7. Countdown — days / hours / minutes to 2027-06-19 11:00 Europe/Prague (the ceremony)
   // ---------------------------------------------------------------------
 
   function pluralKey(lang, n) {
@@ -1161,8 +1161,8 @@
 
     if (!daysEl && !hoursEl && !minsEl && !secsEl && !countdownEl && !apricotsEl) return;
 
-    // 19 June 2027 14:00 Europe/Prague (CEST, UTC+2) = 12:00 UTC.
-    var target = Date.UTC(2027, 5, 19, 12, 0, 0);
+    // 19 June 2027 11:00 Europe/Prague (CEST, UTC+2) = 09:00 UTC.
+    var target = Date.UTC(2027, 5, 19, 9, 0, 0);
     var timer = null;
     var done = false;
     var doneEl = null;
@@ -1364,7 +1364,8 @@
         for (var k in base) merged[k] = base[k];
         if (d['rsvp.captcha.label'] != null) merged.label = d['rsvp.captcha.label'];
         if (d['rsvp.captcha.verifying'] != null) merged.verifying = d['rsvp.captcha.verifying'];
-        if (d['rsvp.captcha.verified'] != null) merged.verified = d['rsvp.captcha.verified'];
+        // Once ticked, keep saying "I'm not a robot": a bare "Verified" next to the box confused people.
+        if (merged.label != null) merged.verified = merged.label;
         if (d['rsvp.captcha.error'] != null) merged.error = d['rsvp.captcha.error'];
         if (d['rsvp.captcha.expired'] != null) merged.expired = d['rsvp.captcha.expired'];
         window.$altcha.i18n.set(lang, merged);
@@ -1817,9 +1818,23 @@
   // Wire countdown + RSVP once the gate state is known (open only)
   // ---------------------------------------------------------------------
 
+  // Admin button: shown only in a browser that has opened /svatba/admin/ with
+  // the key (the admin page keeps it in localStorage under 'daryAdminKey').
+  function initAdminLink() {
+    var hasKey = false;
+    try { hasKey = !!window.localStorage.getItem('daryAdminKey'); } catch (e) { /* storage blocked */ }
+    if (!hasKey) return;
+    var a = document.createElement('a');
+    a.className = 'admin-link';
+    a.href = '/svatba/admin/';
+    a.textContent = 'Admin';
+    document.body.appendChild(a);
+  }
+
   gate.ready.then(function (state) {
     if (state !== 'open') return;
     initCountdown();
     initRsvp();
+    initAdminLink();
   });
 })();

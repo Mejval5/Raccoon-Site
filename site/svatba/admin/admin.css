@@ -143,9 +143,8 @@ body.dary-admin {
   font-variant-numeric: tabular-nums;
 }
 .admin-total-big {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  font-weight: 500;
+  font-size: 1.2rem;
+  font-weight: 700;
   color: var(--sv-gold-deep);
 }
 .status-good { color: #2f6f3e; font-weight: 600; }

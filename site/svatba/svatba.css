@@ -224,6 +224,32 @@ html[data-state="locked"] #locked {
   .lang-toggle button { font-size: 0.68rem; padding: 3px 5px; }
 }
 
+/* Admin button, only in the couple's browsers (see initAdminLink): under the
+   language switch, pinned to the screen on PC, scrolling away on phones. */
+.admin-link {
+  position: fixed;
+  top: calc(max(16px, env(safe-area-inset-top)) + 64px);
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 50;
+  padding: 7px 16px;
+  border: 1px solid rgba(226, 180, 95, 0.4);
+  border-radius: 999px;
+  background: rgba(11, 13, 26, 0.55);
+  backdrop-filter: blur(6px);
+  color: var(--sv-paper);
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+body.svatba a.admin-link { color: var(--sv-paper); }
+.admin-link:hover { background: rgba(226, 180, 95, 0.25); }
+@media (max-width: 699px) {
+  .admin-link { position: absolute; top: calc(max(16px, env(safe-area-inset-top)) + 58px); }
+}
+
 /* ---------- Main content stacking ---------- */
 .invite { position: relative; z-index: 3; }
 

@@ -62,9 +62,15 @@ const PRAGUE_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
 
 // Formats a Fio "Datum" column value (ms since epoch) as rrrr-mm-dd in
 // Europe/Prague. Returns null for anything that isn't a finite number.
-function formatFioDate(ms) {
-  if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
-  return PRAGUE_DATE_FORMATTER.format(new Date(ms));
+// The live JSON API sends it as text, "rrrr-mm-dd+GMT" (e.g. "2026-10-14+0200"),
+// which is already the Prague date: take the date part as is.
+function formatFioDate(value) {
+  if (typeof value === "string") {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+    return m ? m[1] : null;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return PRAGUE_DATE_FORMATTER.format(new Date(value));
 }
 
 // Today's date (Europe/Prague) as rrrr-mm-dd, for the Fio "periods" `to`
