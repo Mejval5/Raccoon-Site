@@ -63,7 +63,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho a užijte si celý den naplno, od obřadu až po poslední tanec. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
 
     "card.gifts.label": "Dary",
-    "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód. Ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
+    "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód, ten najdete už tady níže.",
 
     "card.acc.label": "Ubytování",
     "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu.",
@@ -219,7 +219,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "If you can find a babysitter, do, and enjoy the whole day to the full, from the ceremony to the last dance. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
 
     "card.gifts.label": "Gifts",
-    "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code. The same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
+    "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code, which you'll also find further down this page.",
 
     "card.acc.label": "Accommodation",
     "card.acc.text": "If you like, you can camp overnight right in the orchard.",
@@ -375,7 +375,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "Si vous trouvez une baby-sitter, profitez-en et savourez toute la journée, de la cérémonie à la dernière danse. Ce n'est pas une interdiction pour autant : si vous n'avez pas le choix, venez avec les enfants, ils seront les bienvenus.",
 
     "card.gifts.label": "Cadeaux",
-    "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code. Vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
+    "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code, que vous trouverez aussi plus bas sur cette page.",
 
     "card.acc.label": "Hébergement",
     "card.acc.text": "Si vous le souhaitez, vous pouvez dormir sous tente directement dans le verger.",
