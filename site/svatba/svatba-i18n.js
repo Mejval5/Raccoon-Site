@@ -63,7 +63,7 @@ window.SVATBA_I18N = {
     "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód – a ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
 
     "card.acc.label": "Ubytování",
-    "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu. Na konci večera zajistíme rozvoz do Brna a okolí.",
+    "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu – je na to vyhrazené místo a hned vedle velké parkoviště. Nebo si zařiďte ubytování v okolí či v Brně: Uber z Kounic do Brna jede 20 minut.",
 
     "card.contact.label": "Kontakt",
     "card.contact.text": "S čímkoliv se nám klidně ozvěte:",
@@ -296,7 +296,7 @@ window.SVATBA_I18N = {
     "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code – and the same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
 
     "card.acc.label": "Accommodation",
-    "card.acc.text": "If you fancy it, you can camp overnight right in the orchard. At the end of the evening we'll arrange rides back to Brno and the surrounding area.",
+    "card.acc.text": "If you like, you can camp overnight right in the orchard – there's a spot set aside for tents and a large car park next to it. Or book a place to stay nearby or in Brno: an Uber from Kounice to Brno takes 20 minutes.",
 
     "card.contact.label": "Contact",
     "card.contact.text": "Whatever you need, just get in touch:",
@@ -529,7 +529,7 @@ window.SVATBA_I18N = {
     "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code – vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
 
     "card.acc.label": "Hébergement",
-    "card.acc.text": "Pour ceux qui le souhaitent, il est possible de camper sous tente directement dans le verger. En fin de soirée, on organise des navettes vers Brno et les environs.",
+    "card.acc.text": "Si vous le souhaitez, vous pouvez dormir sous tente directement dans le verger – un espace y est réservé, avec un grand parking juste à côté. Sinon, réservez un hébergement dans les environs ou à Brno : en Uber, Kounice–Brno se fait en 20 minutes.",
 
     "card.contact.label": "Contact",
     "card.contact.text": "Pour n'importe quelle question, écrivez-nous :",
