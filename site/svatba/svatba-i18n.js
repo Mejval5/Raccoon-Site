@@ -46,20 +46,18 @@ window.SVATBA_I18N = {
     "card.p2": "Čeká nás dlouhý letní den pod meruňkami – s dobrým jídlem, vínem a lidmi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
 
     "card.kdy.label": "Kdy",
-    "card.kdy.text": "sobota 19. června 2027, obřad v 11:00",
+    "card.kdy.text": "sobota 19. června 2027, obřad v 11:00, od 12:00 oběd – a zůstaňte, jak dlouho budete chtít",
     "card.kde.label": "Kde",
     "card.kde.text": "Stodola v Meruňkovém sadu, Dolní Kounice, Jihomoravský kraj",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
-    "card.program.label": "Program",
-    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Žádný rozpis nemáme – zůstaňte, jak dlouho se vám bude chtít. Odpoledne v sadu, večer tanec, klidně až do rána.",
 
     "card.dress.label": "Dress code",
     "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí.",
 
     "card.kids.label": "Děti",
-    "card.kids.text": "Tenhle den bude bez dětí. Nechte ratolesti doma v klidu vychillovat a užijte si ho s námi naplno.",
+    "card.kids.text": "Děti vám samozřejmě nezakazujeme. Ale jestli se vám podaří sehnat hlídání, využijte ho – zatrsáte si jako za starých časů, nebudete lovit ratolesti pod stolem a nepůjdete spát v osm.",
 
     "card.gifts.label": "Dary",
     "card.gifts.text": "Největší radost nám uděláte příspěvkem do společné kasičky. Na místě najdete obálku i QR kód.",
@@ -281,20 +279,18 @@ window.SVATBA_I18N = {
     "card.p2": "A long summer day under the apricot trees is waiting for us – with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
 
     "card.kdy.label": "When",
-    "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00",
+    "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00, lunch from 12:00 – and stay as long as you like",
     "card.kde.label": "Where",
     "card.kde.text": "Stodola v Meruňkovém sadu (the Barn in the Apricot Orchard), Dolní Kounice, South Moravia",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
-    "card.program.label": "Programme",
-    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's no schedule – stay as long as you like. An afternoon in the orchard, dancing in the evening, and on into the night if you're up for it.",
 
     "card.dress.label": "Dress code",
     "card.dress.text": "There isn't one. Come in whatever you can dance in.",
 
     "card.kids.label": "Children",
-    "card.kids.text": "It's a grown-ups-only day. Leave the little ones at home to chill in peace and enjoy it with us to the full.",
+    "card.kids.text": "Kids are welcome, of course. But if you can find a babysitter, do – you'll get to dance like in the old days, with no one to fish out from under the table and no 8 pm bedtime.",
 
     "card.gifts.label": "Gifts",
     "card.gifts.text": "The best gift is a contribution to our shared kitty. You'll find an envelope and a QR code on the day.",
@@ -516,20 +512,18 @@ window.SVATBA_I18N = {
     "card.p2": "Une longue journée d'été nous attend sous les abricotiers – avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
 
     "card.kdy.label": "Quand",
-    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h",
+    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h, déjeuner dès 12 h – et restez aussi longtemps que vous voulez",
     "card.kde.label": "Où",
     "card.kde.text": "Stodola v Meruňkovém sadu (la Grange du verger d'abricotiers), Dolní Kounice, Moravie-du-Sud",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
 
-    "card.program.label": "Programme",
-    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite, pas de programme : restez aussi longtemps que vous voulez. Un après-midi dans le verger, de la danse le soir, et jusqu'au bout de la nuit si le cœur vous en dit.",
 
     "card.dress.label": "Dress code",
     "card.dress.text": "Il n'y en a pas. Venez dans la tenue où vous dansez le mieux.",
 
     "card.kids.label": "Enfants",
-    "card.kids.text": "Ce sera une journée entre grands. Laissez les petits chiller tranquillement à la maison et profitez-en pleinement avec nous.",
+    "card.kids.text": "Les enfants sont évidemment les bienvenus. Mais si vous trouvez une baby-sitter, profitez-en : vous danserez comme au bon vieux temps, sans aller chercher les petits sous la table ni vous coucher à 20 h.",
 
     "card.gifts.label": "Cadeaux",
     "card.gifts.text": "Le plus beau cadeau, c'est une participation à notre cagnotte commune. Vous trouverez une enveloppe et un QR code sur place.",
