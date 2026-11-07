@@ -39,3 +39,5 @@ functions/.secret.local
 .svatba-key
 # wedding gifts admin key (also the DARY_ADMIN_KEY secret)
 .dary-admin-key
+# local font comparison page, not for the site
+site/svatba/_fonts.html
