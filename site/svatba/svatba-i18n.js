@@ -37,7 +37,7 @@ window.SVATBA_I18N = {
     "hero.kicker": "Svatební oznámení",
     "hero.date": "19. 6. 2027",
     "hero.place": "<span class=\"place-a\">Stodola v Meruňkovém sadu</span><span class=\"place-sep\"> · </span><span class=\"place-b\">Dolní Kounice</span>",
-    "hero.cta": "Potvrdit účast",
+    "hero.cta": "Informace",
     "hero.scrollAria": "Přejít na pozvánku",
     "hero.family": "Nečesalovi",
 
@@ -69,6 +69,7 @@ window.SVATBA_I18N = {
 
     "card.contact.label": "Kontakt",
     "card.contact.text": "S čímkoliv se nám klidně ozvěte:",
+    "card.cta": "Potvrdit účast",
 
     "countdown.heading": "Odpočet do svatby",
 
@@ -271,7 +272,7 @@ window.SVATBA_I18N = {
     "hero.kicker": "Wedding announcement",
     "hero.date": "19 June 2027",
     "hero.place": "<span class=\"place-a\">Stodola v Meruňkovém sadu</span><span class=\"place-sep\"> · </span><span class=\"place-b\">Dolní Kounice, Czechia</span>",
-    "hero.cta": "RSVP",
+    "hero.cta": "Details",
     "hero.scrollAria": "Scroll to the invitation",
     "hero.family": "The Nečesals",
 
@@ -303,6 +304,7 @@ window.SVATBA_I18N = {
 
     "card.contact.label": "Contact",
     "card.contact.text": "Whatever you need, just get in touch:",
+    "card.cta": "RSVP",
 
     "countdown.heading": "Countdown to the wedding",
 
@@ -505,7 +507,7 @@ window.SVATBA_I18N = {
     "hero.kicker": "Faire-part de mariage",
     "hero.date": "19 juin 2027",
     "hero.place": "<span class=\"place-a\">Stodola v Meruňkovém sadu</span><span class=\"place-sep\"> · </span><span class=\"place-b\">Dolní Kounice, Tchéquie</span>",
-    "hero.cta": "Répondre",
+    "hero.cta": "Infos",
     "hero.scrollAria": "Faire défiler vers le faire-part",
     "hero.family": "Les Nečesal",
 
@@ -537,6 +539,7 @@ window.SVATBA_I18N = {
 
     "card.contact.label": "Contact",
     "card.contact.text": "Pour n'importe quelle question, écrivez-nous :",
+    "card.cta": "Répondre",
 
     "countdown.heading": "Compte à rebours avant le mariage",
 

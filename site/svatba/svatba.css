@@ -373,6 +373,11 @@ body.svatba a.hero-cta, body.svatba a.hero-cta:hover, body.svatba a.hero-cta:vis
   .hero-cta { min-height: 50px; margin-top: 18px; padding: 13px 32px; font-size: 0.9rem; }
 }
 
+.card-cta-wrap { margin: 28px 0 4px; text-align: center; }
+.card-cta { margin-top: 0; }
+/* .paper links are underlined; the button isn't */
+body.svatba .paper a.card-cta { text-decoration: none; color: #22162c; }
+
 .hero-place {
   display: flex;
   flex-wrap: wrap;
