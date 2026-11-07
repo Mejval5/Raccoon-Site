@@ -43,7 +43,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Milí naši,",
     "card.p1": "máme pro vás novinku: bereme se! A moc bychom si přáli, abyste u toho byli s námi.",
-    "card.p2": "Čeká nás dlouhý letní den pod meruňkami: dobré jídlo, víno a lidi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
+    "card.p2": "Čeká nás krásný letní den pod meruňkami: dobré jídlo, pití, hudba a lidi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
 
     "card.kdy.label": "Kdy",
     "card.kdy.text": "sobota 19. června 2027, obřad v 11:00",
@@ -279,7 +279,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Dear all,",
     "card.p1": "we have news: we're getting married! And we'd love you to be there with us.",
-    "card.p2": "A long summer day under the apricot trees is waiting for us, with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
+    "card.p2": "A beautiful summer day under the apricot trees is waiting for us: good food, drinks, music and the people we love. You bring the good mood, we'll take care of the rest.",
 
     "card.kdy.label": "When",
     "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00",
@@ -515,7 +515,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Chers tous,",
     "card.p1": "on a une nouvelle à vous annoncer : on se marie ! Et on aimerait beaucoup que vous soyez là avec nous.",
-    "card.p2": "Une longue journée d'été nous attend sous les abricotiers, avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
+    "card.p2": "Une belle journée d'été nous attend sous les abricotiers : de bons plats, à boire, de la musique et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
 
     "card.kdy.label": "Quand",
     "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h",
