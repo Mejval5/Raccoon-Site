@@ -57,7 +57,7 @@ window.SVATBA_I18N = {
 
 
     "card.dress.label": "Dress code",
-    "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí. Pánové, oblek nechte doma a pojďte víc nalehko. Dámy, kolem stodoly je trávník, tak myslete na vhodnou obuv.",
+    "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se cítíte dobře. Pánové, oblek nechte doma a pojďte víc nalehko. Dámy, kolem stodoly je trávník, tak myslete na vhodnou obuv.",
 
     "card.kids.label": "Děti",
     "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho a užijte si celý den naplno, od obřadu až po poslední tanec. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
@@ -213,7 +213,7 @@ window.SVATBA_I18N = {
 
 
     "card.dress.label": "Dress code",
-    "card.dress.text": "There isn't one. Come in whatever you can dance in. Gents, leave the suit at home and dress light. Ladies, there's a lawn around the barn, so choose your shoes with that in mind.",
+    "card.dress.text": "There isn't one. Come in whatever you feel good in. Gents, leave the suit at home and dress light. Ladies, there's a lawn around the barn, so choose your shoes with that in mind.",
 
     "card.kids.label": "Children",
     "card.kids.text": "If you can find a babysitter, do, and enjoy the whole day to the full, from the ceremony to the last dance. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
@@ -369,7 +369,7 @@ window.SVATBA_I18N = {
 
 
     "card.dress.label": "Dress code",
-    "card.dress.text": "Il n'y en a pas. Venez dans une tenue qui vous permette de danser à l'aise. Messieurs, laissez le costume à la maison et venez en plus léger. Mesdames, il y a de la pelouse autour de la grange, pensez-y pour vos chaussures.",
+    "card.dress.text": "Il n'y en a pas. Venez dans une tenue où vous vous sentez bien. Messieurs, laissez le costume à la maison et venez en plus léger. Mesdames, il y a de la pelouse autour de la grange, pensez-y pour vos chaussures.",
 
     "card.kids.label": "Enfants",
     "card.kids.text": "Si vous trouvez une baby-sitter, profitez-en et savourez toute la journée, de la cérémonie à la dernière danse. Ce n'est pas une interdiction pour autant : si vous n'avez pas le choix, venez avec les enfants, ils seront les bienvenus.",
