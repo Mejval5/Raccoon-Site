@@ -4,9 +4,9 @@
  * Guests pay into a shared account by QR code; a scheduled function reads the
  * bank and /api/dary returns the total. That one number decides how far along
  * the path we are: levels below it are done, the next one is highlighted, the
- * rest can be explored by scrolling. Money itself is never shown to guests;
- * DEBUG_AMOUNTS adds small grey amounts for checking the curve and is meant to
- * be switched off.
+ * rest can be explored by scrolling. Money is never shown to guests: the
+ * amounts in LEVELS only decide which milestone is reached (DEBUG_AMOUNTS
+ * shows them while tuning).
  *
  * The path is laid out along a main axis (the direction of progress) and a
  * cross axis (the wiggle). ORIENTATION picks how those map to the screen
@@ -35,13 +35,25 @@
   var PHONE_QUERY = '(max-width: 699px)';
   // Small grey amounts next to each level plus the raw total in a corner, for
   // checking the curve. Set to false and no amount appears anywhere.
-  var DEBUG_AMOUNTS = true;
+  var DEBUG_AMOUNTS = false;
 
-  var LEVEL_COUNT = 50;
-  var MAX_AMOUNT = 2500000;
-  // Level amounts follow MAX_AMOUNT * (i / LEVEL_COUNT) ^ CURVE, rounded to
-  // friendly numbers: >1 makes early steps small and later ones bigger.
-  var CURVE = 1.6;
+  // The milestones, in order: the amount (CZK) that reaches each one and its
+  // icon. Texts are dary.l<N>.title / .text in svatba-i18n.js. The last one
+  // is the house. Retune the amounts freely; nothing else depends on them.
+  var LEVEL_TABLE = [
+    [5000, 'scratchingPost'],   // 1  a scratching post
+    [15000, 'd20Die'],          // 2  new Pathfinder dice
+    [30000, 'threeCats'],       // 3  a third cat
+    [50000, 'resinDrop'],       // 4  resin-casting kit
+    [75000, 'robotVacuum'],     // 5  robot vacuum
+    [110000, 'apricotTree'],    // 6  an apricot tree
+    [150000, 'plane'],          // 7  honeymoon in Japan
+    [200000, 'hotTub'],         // 8  hot tub under the apricots
+    [300000, 'grapes'],         // 9  our own vineyard
+    [500000, 'houseHeart']      // 10 the house
+  ];
+  var LEVEL_COUNT = LEVEL_TABLE.length;
+  var MAX_AMOUNT = LEVEL_TABLE[LEVEL_COUNT - 1][0];
 
   // Distances along the main axis are px, across it % of the window.
   // `focus` is where the next level sits in the window, as a fraction along
@@ -236,29 +248,9 @@
   };
 
   // ---- Levels -----------------------------------------------------------------
-  // One icon per level; texts are dary.l<N>.title / .text in svatba-i18n.js.
-  var LEVEL_ICONS = [
-    'scratchingPost', 'catTreat', 'd20Die', 'resinDrop', 'threeCats', 'lawnmower', 'workshop', 'waveSun', 'robotVacuum', 'apricotTree',
-    'plane', 'houseDoor', 'catCrown', 'catTreat', 'd20Die', 'hotTub', 'houseDoor', 'champagneToast', 'catCrown', 'workshop',
-    'apricotTree', 'plane', 'lawnmower', 'wallBricks', 'threeCats', 'resinDrop', 'grapes', 'grapes', 'apricotTree', 'hotTub',
-    'lawnmower', 'roof', 'threeCats', 'waveSun', 'robotVacuum', 'apricotTree', 'd20Die', 'garage', 'houseDoor', 'threeCats',
-    'waveSun', 'roof', 'houseHeart', 'catCrown', 'houseDoor', 'plane', 'grapes', 'grapes', 'catTreat', 'houseHeart'
-  ];
-
-  function niceRound(x) {
-    var unit = x < 10000 ? 1000 : x < 100000 ? 5000 : x < 1000000 ? 10000 : 50000;
-    return Math.max(unit, Math.round(x / unit) * unit);
-  }
-  var LEVELS = [];
-  (function () {
-    var prev = 0;
-    for (var i = 1; i <= LEVEL_COUNT; i++) {
-      var amount = i === LEVEL_COUNT ? MAX_AMOUNT : niceRound(MAX_AMOUNT * Math.pow(i / LEVEL_COUNT, CURVE));
-      if (amount <= prev) amount = prev + 1000; // keep it strictly increasing whatever CURVE is
-      LEVELS.push({ n: i, amount: amount, icon: ICON[LEVEL_ICONS[i - 1]] || ICON.catTreat });
-      prev = amount;
-    }
-  })();
+  var LEVELS = LEVEL_TABLE.map(function (row, i) {
+    return { n: i + 1, amount: row[0], icon: ICON[row[1]] || ICON.catTreat };
+  });
 
   // How far a total gets us: `done` levels reached, `frac` of the way to the next.
   function progressFor(amount) {
