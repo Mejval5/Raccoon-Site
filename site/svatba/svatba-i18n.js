@@ -60,7 +60,7 @@ window.SVATBA_I18N = {
     "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí. Pánové, oblek nechte doma a pojďte víc nalehko. Dámy, kolem stodoly je trávník, tak myslete na vhodnou obuv.",
 
     "card.kids.label": "Děti",
-    "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho. Zatrsáte si jako za starých časů, nebudete lovit ratolesti pod stolem a nepůjdete spát v osm. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
+    "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho a užijte si celý den naplno, od obřadu až po poslední tanec. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
 
     "card.gifts.label": "Dary",
     "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód. Ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
@@ -296,7 +296,7 @@ window.SVATBA_I18N = {
     "card.dress.text": "There isn't one. Come in whatever you can dance in. Gents, leave the suit at home and dress light. Ladies, there's a lawn around the barn, so choose your shoes with that in mind.",
 
     "card.kids.label": "Children",
-    "card.kids.text": "If you can find a babysitter, do. You'll get to dance like in the old days, with no one to fish out from under the table and no 8 pm bedtime. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
+    "card.kids.text": "If you can find a babysitter, do, and enjoy the whole day to the full, from the ceremony to the last dance. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
 
     "card.gifts.label": "Gifts",
     "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code. The same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
@@ -532,7 +532,7 @@ window.SVATBA_I18N = {
     "card.dress.text": "Il n'y en a pas. Venez dans une tenue qui vous permette de danser à l'aise. Messieurs, laissez le costume à la maison et venez en plus léger. Mesdames, il y a de la pelouse autour de la grange, pensez-y pour vos chaussures.",
 
     "card.kids.label": "Enfants",
-    "card.kids.text": "Si vous trouvez une baby-sitter, profitez-en : vous danserez comme au bon vieux temps, sans aller chercher les petits sous la table ni vous coucher à 20 h. Ce n'est pas une interdiction pour autant : si vous n'avez pas le choix, venez avec les enfants, ils seront les bienvenus.",
+    "card.kids.text": "Si vous trouvez une baby-sitter, profitez-en et savourez toute la journée, de la cérémonie à la dernière danse. Ce n'est pas une interdiction pour autant : si vous n'avez pas le choix, venez avec les enfants, ils seront les bienvenus.",
 
     "card.gifts.label": "Cadeaux",
     "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code. Vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
