@@ -46,11 +46,14 @@ window.SVATBA_I18N = {
     "card.p2": "Čeká nás dlouhý letní den pod meruňkami – s dobrým jídlem, vínem a lidmi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
 
     "card.kdy.label": "Kdy",
-    "card.kdy.text": "sobota 19. června 2027, obřad v 11:00, od 12:00 oběd – a zůstaňte, jak dlouho budete chtít",
+    "card.kdy.text": "sobota 19. června 2027, obřad v 11:00",
     "card.kde.label": "Kde",
     "card.kde.text": "Stodola v Meruňkovém sadu, Dolní Kounice, Jihomoravský kraj",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
+
+    "card.program.label": "Program",
+    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Bude program, do kterého se můžete zapojit, a k tomu spousta aktivit, ke kterým se dostanete, kdy se vám zachce. Jídla bude po celý den víc než dost – sladké i slané, to je na vás – a bezedný kelímek. O zábavu se celý den postará DJ.",
 
 
     "card.dress.label": "Dress code",
@@ -279,11 +282,14 @@ window.SVATBA_I18N = {
     "card.p2": "A long summer day under the apricot trees is waiting for us – with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
 
     "card.kdy.label": "When",
-    "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00, lunch from 12:00 – and stay as long as you like",
+    "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00",
     "card.kde.label": "Where",
     "card.kde.text": "Stodola v Meruňkovém sadu (the Barn in the Apricot Orchard), Dolní Kounice, South Moravia",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
+
+    "card.program.label": "Programme",
+    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's a programme you can join in with, plus plenty of things to do whenever you feel like it. There'll be more than enough food all day – sweet or savoury, your call – and a bottomless cup. A DJ will keep things going all day long.",
 
 
     "card.dress.label": "Dress code",
@@ -512,11 +518,14 @@ window.SVATBA_I18N = {
     "card.p2": "Une longue journée d'été nous attend sous les abricotiers – avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
 
     "card.kdy.label": "Quand",
-    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h, déjeuner dès 12 h – et restez aussi longtemps que vous voulez",
+    "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h",
     "card.kde.label": "Où",
     "card.kde.text": "Stodola v Meruňkovém sadu (la Grange du verger d'abricotiers), Dolní Kounice, Moravie-du-Sud",
     "card.kde.map1": "Mapy.com",
     "card.kde.map2": "Google Maps",
+
+    "card.program.label": "Programme",
+    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite ? Un programme auquel vous pouvez participer, et plein d'activités à faire quand l'envie vous prend. Il y aura à manger toute la journée, plus qu'assez – sucré ou salé, à vous de voir – et un gobelet sans fond. Un DJ s'occupera de l'ambiance toute la journée.",
 
 
     "card.dress.label": "Dress code",
