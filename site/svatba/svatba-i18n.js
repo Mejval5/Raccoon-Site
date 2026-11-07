@@ -43,7 +43,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Milí naši,",
     "card.p1": "máme pro vás novinku: bereme se! A moc bychom si přáli, abyste u toho byli s námi.",
-    "card.p2": "Čeká nás dlouhý letní den pod meruňkami – s dobrým jídlem, vínem a lidmi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
+    "card.p2": "Čeká nás dlouhý letní den pod meruňkami: dobré jídlo, víno a lidi, které máme rádi. Vy přivezte dobrou náladu, o zbytek se postaráme.",
 
     "card.kdy.label": "Kdy",
     "card.kdy.text": "sobota 19. června 2027, obřad v 11:00",
@@ -53,20 +53,20 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Program",
-    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Bude program, do kterého se můžete zapojit, a k tomu spousta aktivit, ke kterým se dostanete, kdy se vám zachce. Jídla bude po celý den víc než dost – sladké i slané, to je na vás – a bezedný kelímek. O zábavu se celý den postará DJ.",
+    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Bude program, do kterého se můžete zapojit, a k tomu spousta aktivit, ke kterým se dostanete, kdy se vám zachce. Jídla bude po celý den víc než dost. Sladké, nebo slané? To je na vás. A k tomu bezedný kelímek. O zábavu se celý den postará DJ.",
 
 
     "card.dress.label": "Dress code",
     "card.dress.text": "Žádný nemáme. Přijďte v tom, v čem se vám dobře tančí.",
 
     "card.kids.label": "Děti",
-    "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho – zatrsáte si jako za starých časů, nebudete lovit ratolesti pod stolem a nepůjdete spát v osm. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
+    "card.kids.text": "Jestli se vám podaří sehnat hlídání, využijte ho. Zatrsáte si jako za starých časů, nebudete lovit ratolesti pod stolem a nepůjdete spát v osm. Žádný zákaz to ale není: když to jinak nejde, děti klidně přibalte, budou vítané.",
 
     "card.gifts.label": "Dary",
-    "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód – a ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
+    "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód. Ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
 
     "card.acc.label": "Ubytování",
-    "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu – je na to vyhrazené místo a hned vedle velké parkoviště. Jiná možnost ubytování přímo na místě není; zařiďte si nocleh v okolí nebo v Brně, Uber z Kounic do Brna jede 20 minut.",
+    "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu, je na to vyhrazené místo a hned vedle velké parkoviště. Jiná možnost ubytování přímo na místě není; zařiďte si nocleh v okolí nebo v Brně, Uber z Kounic do Brna jede 20 minut.",
 
     "card.contact.label": "Kontakt",
     "card.contact.text": "S čímkoliv se nám klidně ozvěte:",
@@ -90,7 +90,7 @@ window.SVATBA_I18N = {
     "rsvp.note.placeholder": "Chcete se na něco zeptat? Napište nám.",
     "rsvp.submit": "Odeslat odpověď",
 
-    "rsvp.err.name": "Zadejte prosím jméno (2–120 znaků).",
+    "rsvp.err.name": "Zadejte prosím jméno (2 až 120 znaků).",
     "rsvp.err.email": "Zadejte prosím platný e-mail (max. 200 znaků).",
     "rsvp.err.attending": "Zvolte prosím, zda přijdete.",
     "rsvp.err.party": "Text je příliš dlouhý (max. 300 znaků).",
@@ -102,7 +102,7 @@ window.SVATBA_I18N = {
     "rsvp.fail": "Odpověď se nám nepodařilo odeslat.",
     "rsvp.fail.invalid": "Zkontrolujte prosím zadané údaje.",
     "rsvp.fail.mail": "Napište nám prosím e-mailem",
-    "rsvp.mail.subject": "Svatba – odpověď",
+    "rsvp.mail.subject": "Svatba: odpověď",
 
     "rsvp.captcha.label": "Nejsem robot",
     "rsvp.captcha.verifying": "Ověřujeme…",
@@ -279,7 +279,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Dear all,",
     "card.p1": "we have news: we're getting married! And we'd love you to be there with us.",
-    "card.p2": "A long summer day under the apricot trees is waiting for us – with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
+    "card.p2": "A long summer day under the apricot trees is waiting for us, with good food, good wine and the people we love. You bring the good mood, we'll take care of the rest.",
 
     "card.kdy.label": "When",
     "card.kdy.text": "Saturday 19 June 2027, ceremony at 11:00",
@@ -289,20 +289,20 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's a programme you can join in with, plus plenty of things to do whenever you feel like it. There'll be more than enough food all day – sweet or savoury, your call – and a bottomless cup. A DJ will keep things going all day long.",
+    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's a programme you can join in with, plus plenty of things to do whenever you feel like it. There'll be more than enough food all day. Sweet or savoury? Your call. Plus a bottomless cup. A DJ will keep things going all day long.",
 
 
     "card.dress.label": "Dress code",
     "card.dress.text": "There isn't one. Come in whatever you can dance in.",
 
     "card.kids.label": "Children",
-    "card.kids.text": "If you can find a babysitter, do – you'll get to dance like in the old days, with no one to fish out from under the table and no 8 pm bedtime. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
+    "card.kids.text": "If you can find a babysitter, do. You'll get to dance like in the old days, with no one to fish out from under the table and no 8 pm bedtime. It isn't a ban, though: if there's no other way, bring the kids along, they'll be welcome.",
 
     "card.gifts.label": "Gifts",
-    "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code – and the same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
+    "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code. The same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
 
     "card.acc.label": "Accommodation",
-    "card.acc.text": "If you like, you can camp overnight right in the orchard – there's a spot set aside for tents and a large car park next to it. There's no other accommodation on site, so book a place nearby or in Brno; an Uber from Kounice to Brno takes 20 minutes.",
+    "card.acc.text": "If you like, you can camp overnight right in the orchard: there's a spot set aside for tents and a large car park next to it. There's no other accommodation on site, so book a place nearby or in Brno; an Uber from Kounice to Brno takes 20 minutes.",
 
     "card.contact.label": "Contact",
     "card.contact.text": "Whatever you need, just get in touch:",
@@ -326,7 +326,7 @@ window.SVATBA_I18N = {
     "rsvp.note.placeholder": "Got a question for us? Write it here.",
     "rsvp.submit": "Send reply",
 
-    "rsvp.err.name": "Please enter a name (2–120 characters).",
+    "rsvp.err.name": "Please enter a name (2 to 120 characters).",
     "rsvp.err.email": "Please enter a valid e-mail (max 200 characters).",
     "rsvp.err.attending": "Please choose whether you'll attend.",
     "rsvp.err.party": "That's too long (max 300 characters).",
@@ -515,7 +515,7 @@ window.SVATBA_I18N = {
 
     "card.greeting": "Chers tous,",
     "card.p1": "on a une nouvelle à vous annoncer : on se marie ! Et on aimerait beaucoup que vous soyez là avec nous.",
-    "card.p2": "Une longue journée d'été nous attend sous les abricotiers – avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
+    "card.p2": "Une longue journée d'été nous attend sous les abricotiers, avec de bons plats, du bon vin et les gens qu'on aime. Apportez votre bonne humeur, on s'occupe du reste.",
 
     "card.kdy.label": "Quand",
     "card.kdy.text": "samedi 19 juin 2027, cérémonie à 11 h",
@@ -525,7 +525,7 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite ? Un programme auquel vous pouvez participer, et plein d'activités à faire quand l'envie vous prend. Il y aura à manger toute la journée, plus qu'assez – sucré ou salé, à vous de voir – et un gobelet sans fond. Un DJ s'occupera de l'ambiance toute la journée.",
+    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite ? Un programme auquel vous pouvez participer, et plein d'activités à faire quand l'envie vous prend. Il y aura à manger toute la journée, plus qu'assez. Sucré ou salé ? À vous de voir. Et un gobelet sans fond. Un DJ s'occupera de l'ambiance toute la journée.",
 
 
     "card.dress.label": "Dress code",
@@ -535,10 +535,10 @@ window.SVATBA_I18N = {
     "card.kids.text": "Si vous trouvez une baby-sitter, profitez-en : vous danserez comme au bon vieux temps, sans aller chercher les petits sous la table ni vous coucher à 20 h. Ce n'est pas une interdiction pour autant : si vous n'avez pas le choix, venez avec les enfants, ils seront les bienvenus.",
 
     "card.gifts.label": "Cadeaux",
-    "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code – vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
+    "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code. Vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
 
     "card.acc.label": "Hébergement",
-    "card.acc.text": "Si vous le souhaitez, vous pouvez dormir sous tente directement dans le verger – un espace y est réservé, avec un grand parking juste à côté. Il n'y a pas d'autre hébergement sur place : réservez dans les environs ou à Brno, en Uber Kounice–Brno se fait en 20 minutes.",
+    "card.acc.text": "Si vous le souhaitez, vous pouvez dormir sous tente directement dans le verger : un espace y est réservé, avec un grand parking juste à côté. Il n'y a pas d'autre hébergement sur place. Réservez dans les environs ou à Brno, en Uber le trajet de Kounice à Brno se fait en 20 minutes.",
 
     "card.contact.label": "Contact",
     "card.contact.text": "Pour n'importe quelle question, écrivez-nous :",
@@ -574,7 +574,7 @@ window.SVATBA_I18N = {
     "rsvp.fail": "Nous n'avons pas réussi à envoyer votre réponse.",
     "rsvp.fail.invalid": "Merci de vérifier les informations saisies.",
     "rsvp.fail.mail": "Merci de nous écrire par e-mail",
-    "rsvp.mail.subject": "Mariage – réponse",
+    "rsvp.mail.subject": "Mariage : réponse",
 
     "rsvp.captcha.label": "Je ne suis pas un robot",
     "rsvp.captcha.verifying": "Vérification…",
