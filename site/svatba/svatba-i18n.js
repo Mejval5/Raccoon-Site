@@ -60,7 +60,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "Děti vám samozřejmě nezakazujeme. Ale jestli se vám podaří sehnat hlídání, využijte ho – zatrsáte si jako za starých časů, nebudete lovit ratolesti pod stolem a nepůjdete spát v osm.",
 
     "card.gifts.label": "Dary",
-    "card.gifts.text": "Největší radost nám uděláte příspěvkem do společné kasičky. Na místě najdete obálku i QR kód.",
+    "card.gifts.text": "Největší radost nám uděláte příspěvkem na stavbu domečku. Na místě bude krabička na obálky i QR kód – a ten QR kód najdete už tady níže, kdybyste chtěli přispět hned a setřást tu starost z hlavy.",
 
     "card.acc.label": "Ubytování",
     "card.acc.text": "Kdo chce, může přespat pod stanem přímo v sadu. Na konci večera zajistíme rozvoz do Brna a okolí.",
@@ -293,7 +293,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "Kids are welcome, of course. But if you can find a babysitter, do – you'll get to dance like in the old days, with no one to fish out from under the table and no 8 pm bedtime.",
 
     "card.gifts.label": "Gifts",
-    "card.gifts.text": "The best gift is a contribution to our shared kitty. You'll find an envelope and a QR code on the day.",
+    "card.gifts.text": "The best gift would be a contribution towards building our little house. On the day there'll be a box for envelopes and a QR code – and the same QR code is further down this page, if you'd like to contribute right away and have it off your mind.",
 
     "card.acc.label": "Accommodation",
     "card.acc.text": "If you fancy it, you can camp overnight right in the orchard. At the end of the evening we'll arrange rides back to Brno and the surrounding area.",
@@ -526,7 +526,7 @@ window.SVATBA_I18N = {
     "card.kids.text": "Les enfants sont évidemment les bienvenus. Mais si vous trouvez une baby-sitter, profitez-en : vous danserez comme au bon vieux temps, sans aller chercher les petits sous la table ni vous coucher à 20 h.",
 
     "card.gifts.label": "Cadeaux",
-    "card.gifts.text": "Le plus beau cadeau, c'est une participation à notre cagnotte commune. Vous trouverez une enveloppe et un QR code sur place.",
+    "card.gifts.text": "Le plus beau cadeau serait une contribution à la construction de notre petite maison. Sur place, il y aura une boîte pour les enveloppes et un QR code – vous le trouverez aussi plus bas sur cette page, si vous voulez contribuer tout de suite et ne plus y penser.",
 
     "card.acc.label": "Hébergement",
     "card.acc.text": "Pour ceux qui le souhaitent, il est possible de camper sous tente directement dans le verger. En fin de soirée, on organise des navettes vers Brno et les environs.",
