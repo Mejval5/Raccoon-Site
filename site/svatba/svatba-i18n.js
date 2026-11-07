@@ -53,7 +53,7 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Program",
-    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Bude program, do kterého se můžete zapojit, a k tomu spousta aktivit, ke kterým se dostanete, kdy se vám zachce. Jídla bude po celý den víc než dost. Sladké, nebo slané? To je na vás. A k tomu bezedný kelímek. O zábavu se celý den postará DJ.",
+    "card.program.text": "V 11:00 si řekneme ano, ve 12:00 si spolu sedneme k obědu. A pak? Bude program, do kterého se můžete zapojit, a k tomu další aktivity, ke kterým se dostanete, pokud budete mít náladu. Potom taneční parket, DJ a skvělá hudba.",
 
 
     "card.dress.label": "Dress code",
@@ -289,7 +289,7 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's a programme you can join in with, plus plenty of things to do whenever you feel like it. There'll be more than enough food all day. Sweet or savoury? Your call. Plus a bottomless cup. A DJ will keep things going all day long.",
+    "card.program.text": "At 11:00 we say \"I do\", and at 12:00 we all sit down to lunch. After that there's a programme you can join in with, plus other things to do if you're in the mood. Then the dance floor, a DJ and great music.",
 
 
     "card.dress.label": "Dress code",
@@ -525,7 +525,7 @@ window.SVATBA_I18N = {
     "card.kde.map2": "Google Maps",
 
     "card.program.label": "Programme",
-    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite ? Un programme auquel vous pouvez participer, et plein d'activités à faire quand l'envie vous prend. Il y aura à manger toute la journée, plus qu'assez. Sucré ou salé ? À vous de voir. Et un gobelet sans fond. Un DJ s'occupera de l'ambiance toute la journée.",
+    "card.program.text": "À 11 h, on se dit oui ; à 12 h, on passe tous à table. Ensuite ? Un programme auquel vous pouvez participer, et d'autres activités si le cœur vous en dit. Puis la piste de danse, un DJ et de la bonne musique.",
 
 
     "card.dress.label": "Dress code",
