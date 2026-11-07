@@ -18,8 +18,8 @@
   --sv-wine-hover: #6d1a28;
 
   --font-display: 'Cormorant Garamond', 'Times New Roman', serif;
-  --font-label: 'Josefin Sans', 'Nunito', sans-serif;
-  --font-body: 'Nunito', system-ui, sans-serif;
+  --font-label: 'Josefin Sans', 'Alegreya Sans', sans-serif;
+  --font-body: 'Alegreya Sans', system-ui, sans-serif;
 }
 
 /* ---------- Safety net: nothing on this page may cause horizontal scroll ---------- */
@@ -511,7 +511,7 @@ html.js-reveal .reveal.is-visible {
 }
 
 .paper h2 { font-size: clamp(1.6rem, 4vw, 2.1rem); font-style: italic; margin: 0 0 6px; }
-.paper p { margin: 0 0 14px; line-height: 1.6; color: var(--sv-ink); }
+.paper p { margin: 0 0 14px; font-size: 1.05rem; line-height: 1.6; color: var(--sv-ink); }
 .paper .greeting { font-style: italic; font-size: 1.4rem; margin-bottom: 10px; }
 
 .card-ornament { display: block; margin: 0 auto 14px; width: 84px; height: 48px; }
